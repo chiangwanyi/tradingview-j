@@ -30,20 +30,46 @@ const CDP_PORT = Number(process.env.TV_E2E_CDP_PORT || 9223);
 const ORIGIN = `http://127.0.0.1:${PORT}`;
 const SHOT_DIR = path.join(ROOT, 'data', 'e2e');
 
+// 时间轴（每日覆盖条带）在前端是关着的 —— 对应 web/app.js 里的 showTimeline。
+// 这个常量必须跟着它一起改：
+//   前端关了、这里还按「开着」断言 → 断言一个不存在的元素，假红；
+//   前端恢复了、这里还是 false    → 时间轴整块无人验证，假绿（比不写更危险）。
+// 所以两种状态下都保留断言，只是分成两套。
+const TIMELINE_ENABLED = false;
+
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 let passed = 0;
 let failed = 0;
+
+// ---------- 耗时诊断 ----------
+//
+// e2e 慢的时候必须能一眼看出「慢在哪一段」，否则只能靠猜（"大概是浏览器启动慢"），
+// 而猜出来的优化等于没优化。所以分两层打点：
+//   - section()：粗粒度，几大段各报一次，附带距上一段的毫秒；
+//   - check()：细粒度，单条断言超过 SLOW_MS 才把耗时印出来，免得 38 行全是 (12ms) 的噪音。
+const SLOW_MS = 800;
+let lastMark = Date.now();
+const t0 = Date.now();
+
+function section(name) {
+  const now = Date.now();
+  console.log(`\n${name}   [距上一段 ${now - lastMark}ms / 累计 ${now - t0}ms]`);
+  lastMark = now;
+}
+
 // 注意：这里必须是 async 且真的 await fn()。
 // 之前写的是同步版，断言回调一旦写成 async，它返回的 Promise 会被直接丢掉，
 // 里面的 assert 失败不会冒泡 —— 测试会「假绿」，比不写还危险。
 async function check(name, fn, detail) {
+  const c0 = Date.now();
+  const cost = (n) => (n >= SLOW_MS ? `  (${n}ms)` : '');
   try {
     await fn();
-    console.log(`  ok   ${name}`);
+    console.log(`  ok   ${name}${cost(Date.now() - c0)}`);
     passed++;
   } catch (e) {
-    console.log(`  FAIL ${name}\n       ${e.message}`);
+    console.log(`  FAIL ${name}${cost(Date.now() - c0)}\n       ${e.message}`);
     if (detail !== undefined) console.log(`       实际值：${JSON.stringify(detail)}`);
     failed++;
     process.exitCode = 1;
@@ -188,10 +214,21 @@ async function cleanup() {
   try {
     chrome?.kill();
   } catch {}
-  // 无头 Chrome 会派生子进程，按 profile 目录兜底清一遍
+  // 无头 Chrome 会派生子进程（renderer/gpu/utility），主进程 kill 之后它们可能留下来，
+  // 所以要按 profile 目录兜底清一遍。
+  //
+  // 为什么不能按 IMAGENAME 过滤：
+  //   taskkill /F /T /FI "IMAGENAME eq chrome.exe" 会命中**用户自己那个正在登录的 Chrome**，
+  //   而且是强杀 —— 未保存的分页全丢。测试没有权力动用户日常在用的浏览器。
+  // 所以改成按本轮那次 mkdtemp 出来的临时 profile 路径精确匹配命令行。
   try {
+    const pat = profile.replace(/'/g, "''");
+    const ps =
+      `Get-CimInstance Win32_Process -Filter "Name='${path.basename(browserExe)}'" | ` +
+      `Where-Object { $_.CommandLine -like '*${pat}*' } | ` +
+      `ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }`;
     await new Promise((res) => {
-      const k = spawn('taskkill', ['/F', '/T', '/FI', `IMAGENAME eq ${path.basename(browserExe)}`], {
+      const k = spawn('powershell', ['-NoProfile', '-NonInteractive', '-Command', ps], {
         stdio: 'ignore',
         shell: false,
       });
@@ -255,10 +292,11 @@ try {
   server.stdout.pipe(serverLog);
   server.stderr.pipe(serverLog);
   await waitHttp(`${ORIGIN}/api/health`);
-  console.log(`服务：${ORIGIN}\n`);
+  console.log(`服务：${ORIGIN}`);
+  section('服务启动完成（含前面的浏览器启动 + CDP 就绪）');
 
   // ---- 3. 后端 HTTP 断言 ----
-  console.log('后端接口');
+  section('后端接口断言');
   const health = await api('/api/health');
   await check('/api/health 起来且报告根目录与 pid', () => {
     assert.equal(health.ok, true);
@@ -331,7 +369,7 @@ try {
   }, raw.files.slice(0, 3).map((f) => ({ name: f.name, symbol: f.symbol, pending: f.pending })));
 
   // ---- 4. 打开工作台页面 ----
-  console.log('\n浏览器里的界面');
+  section('浏览器里的界面');
   await cdp.send('Target.activateTarget', { targetId: fbTarget });
   const { sessionId: pageSess } = await cdp.send('Target.attachToTarget', {
     targetId: fbTarget,
@@ -376,6 +414,7 @@ try {
     label: '页面 ready',
   });
   await sleep(700);
+  section('页面加载完成（navigate -> #app.ready）');
 
   await check('页面没有未捕获的 JS 异常', () => {
     assert.equal(pageErrors.length, 0, pageErrors.join(' | '));
@@ -467,7 +506,7 @@ try {
   await shot(cdp, pageSess, '01-control.png');
 
   // ---- 6. 交互：开始抓取 ----
-  console.log('\n交互：会话启停');
+  section('交互：会话启停');
   // 先造一个"图表页"：URL 里含 tradingview.com/chart 就会被匹配到。
   // 用本机地址冒充，完全不依赖外网和登录态。
   const fakeChart = `${ORIGIN}/fake/tradingview.com/chart/EuR5QG29/?symbol=CME_MINI%3AMNQ1%21`;
@@ -543,7 +582,7 @@ try {
   }, logText.slice(0, 200));
 
   // ---- 7. 覆盖视图 ----
-  console.log('\n交互：覆盖视图');
+  section('交互：覆盖视图');
   await P.ev("document.querySelector('[data-testid=tab-coverage]').click()");
   await P.until("document.querySelectorAll('[data-testid=calendar] .cal-cell').length > 0", {
     tries: 80,
@@ -554,21 +593,25 @@ try {
 
   const covGeo = await P.json(`JSON.stringify((() => {
     const cells = [...document.querySelectorAll('[data-testid=calendar] .cal-cell')];
+    // 时间轴整个可能被前端 v-if 掉，所以这里一律走空值保护。
+    // 不能假设 canvas 一定在 —— 采集脚本自己抛异常，会把下面所有无关断言一起带崩。
     const cv = document.querySelector('[data-testid=matrix]');
-    const wrap = cv.parentElement;
-    const r = cv.getBoundingClientRect();
+    const wrap = cv ? cv.parentElement : null;
+    const r = cv ? cv.getBoundingClientRect() : null;
     const blanks = [...document.querySelectorAll('[data-testid=calendar] > div')].filter(d => !d.classList.contains('cal-cell'));
     return {
+      hasCanvas: !!cv,
+      hasHint: !!document.querySelector('[data-testid=matrix-hint]'),
       cells: cells.length,
       firstCellW: Math.round(cells[0].getBoundingClientRect().width),
-      canvasW: Math.round(r.width),
-      canvasH: Math.round(r.height),
-      canvasAttrW: cv.width,
-      wrapW: Math.round(wrap.getBoundingClientRect().width),
-      wrapClientH: wrap.clientHeight,
-      wrapScrollH: wrap.scrollHeight,
-      wrapMaxH: parseFloat(getComputedStyle(wrap).maxHeight) || 0,
-      wrapOverflowY: getComputedStyle(wrap).overflowY,
+      canvasW: r ? Math.round(r.width) : 0,
+      canvasH: r ? Math.round(r.height) : 0,
+      canvasAttrW: cv ? cv.width : 0,
+      wrapW: wrap ? Math.round(wrap.getBoundingClientRect().width) : 0,
+      wrapClientH: wrap ? wrap.clientHeight : 0,
+      wrapScrollH: wrap ? wrap.scrollHeight : 0,
+      wrapMaxH: wrap ? (parseFloat(getComputedStyle(wrap).maxHeight) || 0) : 0,
+      wrapOverflowY: wrap ? getComputedStyle(wrap).overflowY : '',
       gridCols: getComputedStyle(cells[0].parentElement).gridTemplateColumns.split(' ').length,
       summaryCards: document.querySelectorAll('[data-testid=coverage-summary] .card-tight').length,
       blanks: blanks.length,
@@ -587,29 +630,39 @@ try {
     assert.ok(covGeo.firstCellW > 60, `格子宽 ${covGeo.firstCellW}`);
   }, covGeo);
 
-  await check('时间轴 canvas 有非零尺寸，且宽度不越过容器（超了就靠外层滚动）', () => {
-    assert.ok(covGeo.canvasW > 300, `canvas 宽 ${covGeo.canvasW}`);
-    assert.ok(covGeo.canvasH > 100, `canvas 高 ${covGeo.canvasH}`);
-    assert.ok(covGeo.canvasAttrW >= covGeo.canvasW, `位图宽 ${covGeo.canvasAttrW} 应 ≥ CSS 宽 ${covGeo.canvasW}`);
-  }, covGeo);
+  // 时间轴这一组断言只在前端真的显示它时才跑；关掉时改为断言"它确实不在"，
+  // 而不是把断言删掉 —— 删掉之后 e2e 全绿但覆盖面少一大块，还没人记得回来补。
+  if (!TIMELINE_ENABLED) {
+    await check('时间轴已隐藏：canvas、直方图说明与图例都不在 DOM 里', () => {
+      assert.equal(covGeo.hasCanvas, false, 'canvas 还在 —— showTimeline 没生效，或者前端又被改回来了');
+      assert.equal(covGeo.hasHint, false, '直方图说明还在，说明藏的是别的块');
+      assert.equal(covGeo.legend, false, '图例还在，同上');
+    }, covGeo);
+  } else {
+    await check('时间轴 canvas 有非零尺寸，且宽度不越过容器（超了就靠外层滚动）', () => {
+      assert.ok(covGeo.canvasW > 300, `canvas 宽 ${covGeo.canvasW}`);
+      assert.ok(covGeo.canvasH > 100, `canvas 高 ${covGeo.canvasH}`);
+      assert.ok(covGeo.canvasAttrW >= covGeo.canvasW, `位图宽 ${covGeo.canvasAttrW} 应 ≥ CSS 宽 ${covGeo.canvasW}`);
+    }, covGeo);
 
-  await check('时间轴容器高度被 max-height 卡住（天数多时内部滚动，不撑破页面）', () => {
-    assert.ok(covGeo.wrapMaxH > 0, `wrap 没有 max-height：${covGeo.wrapMaxH}`);
-    assert.ok(
-      covGeo.wrapClientH <= covGeo.wrapMaxH + 1,
-      `clientHeight=${covGeo.wrapClientH} 超过了 max-height=${covGeo.wrapMaxH}`,
-    );
-    assert.notEqual(covGeo.wrapOverflowY, 'visible', '容器必须能滚动，否则天数一多就把页面撑破');
-    // canvas 是真内容，必须完整地装在滚动容器里，而不是被容器裁掉一半却滚不到
-    assert.ok(
-      covGeo.wrapScrollH + 1 >= covGeo.canvasH,
-      `scrollHeight=${covGeo.wrapScrollH} < canvasHeight=${covGeo.canvasH}，底部会被裁掉且滚不到`,
-    );
-  }, covGeo);
+    await check('时间轴容器高度被 max-height 卡住（天数多时内部滚动，不撑破页面）', () => {
+      assert.ok(covGeo.wrapMaxH > 0, `wrap 没有 max-height：${covGeo.wrapMaxH}`);
+      assert.ok(
+        covGeo.wrapClientH <= covGeo.wrapMaxH + 1,
+        `clientHeight=${covGeo.wrapClientH} 超过了 max-height=${covGeo.wrapMaxH}`,
+      );
+      assert.notEqual(covGeo.wrapOverflowY, 'visible', '容器必须能滚动，否则天数一多就把页面撑破');
+      // canvas 是真内容，必须完整地装在滚动容器里，而不是被容器裁掉一半却滚不到
+      assert.ok(
+        covGeo.wrapScrollH + 1 >= covGeo.canvasH,
+        `scrollHeight=${covGeo.wrapScrollH} < canvasHeight=${covGeo.canvasH}，底部会被裁掉且滚不到`,
+      );
+    }, covGeo);
 
-  await check('图例说明了"应有但缺"（否则红格子没法解释）', () => {
-    assert.equal(covGeo.legend, true);
-  }, covGeo.legend);
+    await check('图例说明了"应有但缺"（否则红格子没法解释）', () => {
+      assert.equal(covGeo.legend, true);
+    }, covGeo.legend);
+  }
 
   await check('汇总卡片是 5 张（覆盖天数/覆盖率/缺口/断档/下一个目标）', () => {
     assert.equal(covGeo.summaryCards, 5, `实际 ${covGeo.summaryCards}`);
@@ -620,72 +673,81 @@ try {
     assert.ok(covGeo.breakRows > 0, `断档表 ${covGeo.breakRows} 行`);
   }, { gaps: covGeo.gapRows, breaks: covGeo.breakRows });
 
-  const histLine = await P.ev("document.querySelector('[data-testid=matrix-hint]').textContent");
-  await check('时间轴带直方图说明', () => {
-    assert.ok(histLine.includes('直方图'), histLine);
-  }, histLine);
+  // 直方图说明也挂在时间轴上，跟同一个开关走。
+  // 这里不能无脑 querySelector(...).textContent：元素不在时页面内求值会直接抛，
+  // 整轮 e2e 就此中断 —— 那不是"一条失败"，是后面全都不跑了。
+  if (TIMELINE_ENABLED) {
+    const histLine = await P.ev("document.querySelector('[data-testid=matrix-hint]').textContent");
+    await check('时间轴带直方图说明', () => {
+      assert.ok(histLine.includes('直方图'), histLine);
+    }, histLine);
+  }
 
   // 逐格对账：把 canvas 上画出来的颜色和接口给的位图逐格比。
   // 光看截图只能看出"像是有点少"，看不出到底少在哪 —— 这个断言能。
-  const pix = await P.json(`(async () => {
-    const slug = document.querySelector('[data-testid=symbol-select]').value;
-    const cal = await fetch('/api/symbols/' + encodeURIComponent(slug) + '/calendar').then((r) => r.json());
-    const cv = document.querySelector('[data-testid=matrix]');
-    const L = window.__tv && window.__tv.layout();
-    if (!L) return { error: '拿不到布局（window.__tv.layout() 为空）' };
-    const dpr = cv.width / L.width;
-    const W = cv.width;
-    const H = cv.height;
-    const img = cv.getContext('2d').getImageData(0, 0, W, H).data;
-    const at = (x, y) => {
-      const px = Math.round(x * dpr);
-      const py = Math.round(y * dpr);
-      if (px < 0 || py < 0 || px >= W || py >= H) return null;
-      const i = (py * W + px) * 4;
-      return [img[i], img[i + 1], img[i + 2], img[i + 3]];
-    };
-    // 分类只看"偏红 / 偏蓝 / 灰"三个方向 —— 抗锯齿和 color-mix 的精确值不该由测试来锁
-    const cls = (p) => {
-      if (!p || p[3] < 200) return 'blank';
-      const [r, g, b] = p;
-      if (r > b + 18 && r > g + 8) return '2';
-      if (b > r + 18) return '1';
-      return '0';
-    };
-    const counts = { 0: 0, 1: 0, 2: 0, blank: 0 };
-    const expect = { 0: 0, 1: 0, 2: 0 };
-    const mismatch = [];
-    for (let r = 0; r < cal.days.length; r++) {
-      const y = L.matrixTop + r * L.rowH + L.rowH / 2;
-      for (let i = 0; i < cal.slotsPerDay; i++) {
-        const x = L.gutter + i * L.bucketW + L.bucketW / 2;
-        const got = cls(at(x, y));
-        const st = cal.days[r].states[i];
-        counts[got] = (counts[got] || 0) + 1;
-        // '3' 是淡蓝，会被归进 '1'，不参与对账
-        if (st !== '3') expect[st]++;
-        if (st !== '3' && got !== st && mismatch.length < 10) mismatch.push({ r, i, st, got });
+  // 时间轴关着的时候这整块没有意义（canvas 都不存在），但不删 ——
+  // 恢复时间轴时这一块就是现成的回归网，删了没人会想起来重建。
+  if (TIMELINE_ENABLED) {
+    const pix = await P.json(`(async () => {
+      const slug = document.querySelector('[data-testid=symbol-select]').value;
+      const cal = await fetch('/api/symbols/' + encodeURIComponent(slug) + '/calendar').then((r) => r.json());
+      const cv = document.querySelector('[data-testid=matrix]');
+      const L = window.__tv && window.__tv.layout();
+      if (!L) return { error: '拿不到布局（window.__tv.layout() 为空）' };
+      const dpr = cv.width / L.width;
+      const W = cv.width;
+      const H = cv.height;
+      const img = cv.getContext('2d').getImageData(0, 0, W, H).data;
+      const at = (x, y) => {
+        const px = Math.round(x * dpr);
+        const py = Math.round(y * dpr);
+        if (px < 0 || py < 0 || px >= W || py >= H) return null;
+        const i = (py * W + px) * 4;
+        return [img[i], img[i + 1], img[i + 2], img[i + 3]];
+      };
+      // 分类只看"偏红 / 偏蓝 / 灰"三个方向 —— 抗锯齿和 color-mix 的精确值不该由测试来锁
+      const cls = (p) => {
+        if (!p || p[3] < 200) return 'blank';
+        const [r, g, b] = p;
+        if (r > b + 18 && r > g + 8) return '2';
+        if (b > r + 18) return '1';
+        return '0';
+      };
+      const counts = { 0: 0, 1: 0, 2: 0, blank: 0 };
+      const expect = { 0: 0, 1: 0, 2: 0 };
+      const mismatch = [];
+      for (let r = 0; r < cal.days.length; r++) {
+        const y = L.matrixTop + r * L.rowH + L.rowH / 2;
+        for (let i = 0; i < cal.slotsPerDay; i++) {
+          const x = L.gutter + i * L.bucketW + L.bucketW / 2;
+          const got = cls(at(x, y));
+          const st = cal.days[r].states[i];
+          counts[got] = (counts[got] || 0) + 1;
+          // '3' 是淡蓝，会被归进 '1'，不参与对账
+          if (st !== '3') expect[st]++;
+          if (st !== '3' && got !== st && mismatch.length < 10) mismatch.push({ r, i, st, got });
+        }
       }
-    }
-    return { counts, expect, mismatch, bucketW: L.bucketW, dpr, days: cal.days.length, slots: cal.slotsPerDay };
-  })()`);
+      return { counts, expect, mismatch, bucketW: L.bucketW, dpr, days: cal.days.length, slots: cal.slotsPerDay };
+    })()`);
 
-  await check('每格画出来的颜色与位图状态一一对应（不是靠肉眼看着差不多）', () => {
-    assert.ok(!pix.error, pix.error);
-    assert.equal(
-      pix.mismatch.length,
-      0,
-      `对不上 ${pix.mismatch.length} 格，例如 ${JSON.stringify(pix.mismatch.slice(0, 4))}`,
-    );
-  }, pix);
+    await check('每格画出来的颜色与位图状态一一对应（不是靠肉眼看着差不多）', () => {
+      assert.ok(!pix.error, pix.error);
+      assert.equal(
+        pix.mismatch.length,
+        0,
+        `对不上 ${pix.mismatch.length} 格，例如 ${JSON.stringify(pix.mismatch.slice(0, 4))}`,
+      );
+    }, pix);
 
-  await check('canvas 上"有数据"的格子数 = 位图里 \'1\' 的个数（差一个都算漏画）', () => {
-    // 这条是给"主题变量读不到 → fillStyle 被静默忽略 → 整层图形不画"那个坑兜底的：
-    // 当时位图里 2274 个 '1'，画布上一个都没画出来，而其它断言全都绿。
-    assert.equal(pix.counts['1'], pix.expect['1'], `画了 ${pix.counts['1']}，应画 ${pix.expect['1']}`);
-    assert.ok(pix.expect['1'] > 100, `位图里只有 ${pix.expect['1']} 个"有数据"格子，样本太少不足以说明问题`);
-    assert.equal(pix.counts['blank'], 0, `有 ${pix.counts['blank']} 格是透明的（该画没画）`);
-  }, { drawn: pix.counts, expect: pix.expect });
+    await check('canvas 上"有数据"的格子数 = 位图里 \'1\' 的个数（差一个都算漏画）', () => {
+      // 这条是给"主题变量读不到 → fillStyle 被静默忽略 → 整层图形不画"那个坑兜底的：
+      // 当时位图里 2274 个 '1'，画布上一个都没画出来，而其它断言全都绿。
+      assert.equal(pix.counts['1'], pix.expect['1'], `画了 ${pix.counts['1']}，应画 ${pix.expect['1']}`);
+      assert.ok(pix.expect['1'] > 100, `位图里只有 ${pix.expect['1']} 个"有数据"格子，样本太少不足以说明问题`);
+      assert.equal(pix.counts['blank'], 0, `有 ${pix.counts['blank']} 格是透明的（该画没画）`);
+    }, { drawn: pix.counts, expect: pix.expect });
+  }
 
   await shot(cdp, pageSess, '03-coverage.png');
   // 整页截图，方便肉眼过一遍
@@ -725,7 +787,7 @@ try {
   }, outsideDetail.slice(0, 240));
 
   // ---- 8. 数据管理 ----
-  console.log('\n交互：数据管理');
+  section('交互：数据管理');
   await P.ev("document.querySelector('[data-testid=tab-data]').click()");
   await P.until("document.querySelectorAll('[data-testid=symbols-table] tbody tr').length > 0", {
     tries: 60,
@@ -756,6 +818,7 @@ try {
   await shot(cdp, pageSess, '05-data.png');
 
   // ---- 9. 深浅色都过一遍 ----
+  section('深浅色切换');
   await P.ev("document.querySelector('[data-testid=theme]').click()");
   await sleep(600);
   const darkGeo = await P.json(`JSON.stringify(({
@@ -774,21 +837,23 @@ try {
   await sleep(800);
   await shot(cdp, pageSess, '06-dark-coverage.png');
 
-  // 深色下 canvas 也得重画（否则还是浅色主题的配色）
-  const canvasDark = await P.json(`JSON.stringify((() => {
-    const cv = document.querySelector('[data-testid=matrix]');
-    const ctx = cv.getContext('2d');
-    const d = ctx.getImageData(0, 0, Math.min(cv.width, 400), Math.min(cv.height, 200)).data;
-    let nonEmpty = 0;
-    let light = 0;
-    for (let i = 0; i < d.length; i += 4) {
-      if (d[i + 3] > 0) { nonEmpty++; if (d[i] + d[i + 1] + d[i + 2] > 300) light++; }
-    }
-    return { nonEmpty, light, total: d.length / 4 };
-  })())`);
-  await check('深色模式下时间轴 canvas 仍然画出了内容', () => {
-    assert.ok(canvasDark.nonEmpty > 500, `非透明像素 ${canvasDark.nonEmpty}`);
-  }, canvasDark);
+  // 深色下 canvas 也得重画（否则还是浅色主题的配色）。同样只在前端显示时间轴时才验。
+  if (TIMELINE_ENABLED) {
+    const canvasDark = await P.json(`JSON.stringify((() => {
+      const cv = document.querySelector('[data-testid=matrix]');
+      const ctx = cv.getContext('2d');
+      const d = ctx.getImageData(0, 0, Math.min(cv.width, 400), Math.min(cv.height, 200)).data;
+      let nonEmpty = 0;
+      let light = 0;
+      for (let i = 0; i < d.length; i += 4) {
+        if (d[i + 3] > 0) { nonEmpty++; if (d[i] + d[i + 1] + d[i + 2] > 300) light++; }
+      }
+      return { nonEmpty, light, total: d.length / 4 };
+    })())`);
+    await check('深色模式下时间轴 canvas 仍然画出了内容', () => {
+      assert.ok(canvasDark.nonEmpty > 500, `非透明像素 ${canvasDark.nonEmpty}`);
+    }, canvasDark);
+  }
 
   await shot(cdp, pageSess, '07-dark-data.png', { full: true });
 
@@ -800,21 +865,34 @@ try {
   if (process.env.TV_TRACE) console.error(e.stack);
   process.exitCode = 1;
 } finally {
+  const c0 = Date.now();
   await cleanup();
+  console.log(`\n[收尾] 关浏览器 + 清临时 profile：${Date.now() - c0}ms`);
 }
 
 console.log(`\n${passed} 项通过${failed ? `，${failed} 项失败` : '，全部通过'}`);
+console.log(`总耗时：${((Date.now() - t0) / 1000).toFixed(1)}s`);
 console.log(`截图目录：${SHOT_DIR}`);
 
 // ----------------------------------------------------------------
 
-async function shot(cdpClient, sessionId, name, { full = false } = {}) {
+// 截图只是给人看的产物，断言不依赖它 —— 所以它绝不该有能力拖死整轮测试。
+// 实测：深色模式下的整页截图（captureBeyondViewport）会长时间不返回，
+// 而这个 Promise 一旦 pending，后面的断言就再也不会跑，进程干挂在那儿。
+// 于是这里加超时：截不出来就报一声继续，别把 e2e 变成"跑了十分钟什么都没有"。
+// 超时后那个 CDP 请求还挂在 pending 表里，无所谓 —— 会话结束就一起没了。
+async function shot(cdpClient, sessionId, name, { full = false, timeoutMs = 15000 } = {}) {
   try {
-    const r = await cdpClient.send(
-      'Page.captureScreenshot',
-      { format: 'png', captureBeyondViewport: full },
-      sessionId,
-    );
+    const r = await Promise.race([
+      cdpClient.send(
+        'Page.captureScreenshot',
+        { format: 'png', captureBeyondViewport: full },
+        sessionId,
+      ),
+      new Promise((_, rej) =>
+        setTimeout(() => rej(new Error(`超过 ${timeoutMs}ms 没返回`)), timeoutMs).unref?.(),
+      ),
+    ]);
     fs.writeFileSync(path.join(SHOT_DIR, name), Buffer.from(r.data, 'base64'));
   } catch (e) {
     console.log(`  (截图 ${name} 失败：${e.message})`);

@@ -30,6 +30,14 @@
 - **`check()` 必须 async 且真 await**，否则 async 断言回调的 Promise 被丢掉 → 假绿。
 - **不要把自己对协议字段的猜测写成自测当事实** —— 会制造虚假的绿色（踩过）。
 - **注释写"为什么"和踩过的坑**，不写"做了什么"。
+- **藏功能 = 前端开关 + e2e 常量成对，且断言分两套而不是删掉**。
+  前端 `showX: false`（配 `v-if`，不用 `v-show` —— 后者只是 CSS 藏，canvas 还照画），
+  e2e 顶部配一个同名常量。删断言会让 e2e 全绿但静默少掉一大块覆盖面，日后恢复也没人补回来。
+- **e2e 里凡是要 `querySelector` 的元素，都要先判存在再取属性**。
+  页面内求值抛异常 = 整轮中断（不是"一条失败"，是后面全不跑）。
+- **截图/日志这类人工产物必须带超时**：`await` 一个不返回的 CDP 请求 = 进程干挂。
+- **测试清理只能动自己起的东西**：e2e 收尾曾按 `IMAGENAME eq chrome.exe` 杀进程，
+  会连用户正在登录的 Chrome 一起强杀。按本轮临时 profile 匹配 `CommandLine` 才安全。
 
 ## 关键事实（别忘）
 
@@ -59,6 +67,8 @@
 - **canvas 里别用 CSS 的 `color-mix()`**（`fillStyle` 解析支持度不保证），用 `globalAlpha`。
 - 深色模式用 `html.dark`（0,1,1）压过 `:root`（0,1,0）覆盖变量，不靠顺序赌。
 - 时间轴画在 canvas 上，DOM 里拿不到 gutter/rowH → 布局常量经 `window.__tv.layout()` 暴露给 e2e。
+  **该可视化当前已隐藏**（`web/app.js` 的 `showTimeline: false`）——代码全留，只是不渲染，
+  所以 `window.__tv.layout()` 现在恒为 null；`test/e2e.mjs` 的 `TIMELINE_ENABLED` 跟着它走。
 - 只要改了 `web/` 下的东西，**必须跑 `node test/e2e.mjs`** —— 纯函数测试看不见布局与颜色。
 
 ## 用户偏好

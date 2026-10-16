@@ -235,6 +235,12 @@ createApp({
       exporting: '',
       migrating: false,
 
+      // 时间轴（每日覆盖条带）暂时隐藏 —— 目前看意义不大，先停用。
+      // 关掉的是「画」这一环：canvas 不渲染，drawMatrix 因拿不到 ref 直接返回，
+      // window.__tv.layout() 也就一直是 null。算覆盖日历、缺口、断档的逻辑一概不动，
+      // 因为那些仍由月历 / 单日明细 / 缺口与断档表在用。
+      showTimeline: false,
+
       _layout: null,
       _pendingCal: null,
     };

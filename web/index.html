@@ -414,8 +414,11 @@ html.dark {
         </div>
       </div>
 
-      <!-- 时间轴 -->
-      <div class="card">
+      <!-- 时间轴（每日覆盖条带）暂时隐藏：结论意义不大，先停用（见 app.js 的 showTimeline）。
+           用 v-if 而不是 v-show —— v-show 只是 CSS 藏起来，canvas 仍在 DOM 里、drawMatrix 照样跑，
+           等于白画；v-if 直接不渲染，$refs.matrixCanvas 为空，drawMatrix 首行的空值保护会安全返回，
+           连绘制一起停掉。恢复只需把 showTimeline 置 true（e2e 的断言跟着那个开关走）。 -->
+      <div v-if="showTimeline" class="card">
         <div class="mb-2 flex flex-wrap items-center gap-3">
           <span class="sect-title">时间轴 · 每日覆盖条带</span>
           <span class="text-[11px] text-faint" data-testid="matrix-hint">上面是「每个时段被覆盖了多少天」的直方图，下面是每天一行、每格一个 {{ cal.bucket }}</span>

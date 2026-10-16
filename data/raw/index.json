@@ -85,6 +85,30 @@
       "url": "https://cn.tradingview.com/chart/EuR5QG29/?symbol=CME_MINI%3AMNQ1%21",
       "title": "MNQ1! 30,129.75 ▼ −0.05% XAUUSD",
       "at": 1792120937448
+    },
+    "2026-10-16T03-29-16.ndjson": {
+      "symbol": "CME_MINI:MNQ1!",
+      "url": "http://127.0.0.1:8795/fake/tradingview.com/chart/EuR5QG29/?symbol=CME_MINI%3AMNQ1%21",
+      "title": "127.0.0.1:8795/fake/tradingview.com/chart/EuR5QG29/?symbol=CME_MINI%3AMNQ1%21",
+      "at": 1792121356034
+    },
+    "2026-10-16T03-38-34.ndjson": {
+      "symbol": "CME_MINI:MNQ1!",
+      "url": "http://127.0.0.1:8795/fake/tradingview.com/chart/EuR5QG29/?symbol=CME_MINI%3AMNQ1%21",
+      "title": "127.0.0.1:8795/fake/tradingview.com/chart/EuR5QG29/?symbol=CME_MINI%3AMNQ1%21",
+      "at": 1792121914867
+    },
+    "2026-10-16T03-41-39.ndjson": {
+      "symbol": "CME_MINI:MNQ1!",
+      "url": "http://127.0.0.1:8795/fake/tradingview.com/chart/EuR5QG29/?symbol=CME_MINI%3AMNQ1%21",
+      "title": "127.0.0.1:8795/fake/tradingview.com/chart/EuR5QG29/?symbol=CME_MINI%3AMNQ1%21",
+      "at": 1792122099364
+    },
+    "2026-10-16T04-12-42.ndjson": {
+      "symbol": "CME_MINI:MNQ1!",
+      "url": "http://127.0.0.1:8795/fake/tradingview.com/chart/EuR5QG29/?symbol=CME_MINI%3AMNQ1%21",
+      "title": "127.0.0.1:8795/fake/tradingview.com/chart/EuR5QG29/?symbol=CME_MINI%3AMNQ1%21",
+      "at": 1792123962642
     }
   }
 }
