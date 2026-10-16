@@ -9,6 +9,9 @@
     },
     "NASDAQ:NDX": {
       "folder": "NASDAQ_NDX"
+    },
+    "NYMEX:CL1!": {
+      "folder": "NYMEX_CL1!"
     }
   }
 }
