@@ -3,5 +3,8 @@
 *.cmd text eol=crlf
 *.bat text eol=crlf
 
+# 版本号文件由 build.cmd 用 set /p 读，保持 Windows 行尾
+VERSION text eol=crlf
+
 # 二进制产物不要做行尾转换
 *.exe binary

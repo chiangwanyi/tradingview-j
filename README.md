@@ -3,7 +3,8 @@
 > 旁路抓取你**本人已登录的 Chrome** 里 TradingView 图表页的 WebSocket 行情帧，
 > 解出 **5 分钟 K 线**，按「一个标的一个文件夹、一天一个 CSV」落盘。
 
-纯 Go 实现，**零第三方依赖**（WebSocket 客户端也是自写的），产物是单个 `tv-capture.exe`。
+纯 Go 实现，**零第三方依赖**（WebSocket 客户端也是自写的），产物是**根目录下**的单个 exe：
+`tv-capture-v0.1.0.exe` —— 版本号既在文件名里，也写进了 exe 的文件属性。
 
 程序只**被动**监听浏览器已经收到的数据：不往页面里注入脚本、不需要浏览器扩展、
 不主动操作图表、也没有自动回拉 —— **抓取链路上没有一行 JavaScript**。
@@ -28,6 +29,9 @@
   3. 勾选 **Allow remote debugging for this browser instance**
   4. 打开 TradingView 的**图表页**（URL 里带 `/chart/`），周期切到 **5 分钟**
 - **Go 1.22+**（`go.mod` 里声明的是 `go 1.22`）：只在从源码构建时需要；跑 exe 不需要任何运行时。
+- **`go-winres`**：构建时用它把版本信息写进 exe 的文件属性，一次性装好即可：
+  `go install github.com/tc-hib/go-winres@latest`，然后确认 `%USERPROFILE%\go\bin` 在 `PATH` 里。
+  它是**构建期工具**，不进入程序：`go.mod` 里依然没有 `require`。
 - 当前只在 **Windows** 上实际跑过；代码本身不依赖平台特性。
 
 > Chrome 136 起，给默认用户数据目录加 `--remote-debugging-port` 启动参数会被**静默忽略**，
@@ -37,10 +41,13 @@
 
 ## 快速开始
 
-```bash
-go build -o tv-capture.exe .     # 或者双击 build.cmd
-./tv-capture.exe                 # 或者直接双击
+```bat
+build.cmd                        :: 双击它，或者在命令行里跑
+tv-capture-v0.1.0.exe            :: 产物就落在根目录（版本号来自 VERSION）
 ```
+
+构建只做三件事，都在 `build.cmd` 里：读根目录的 `VERSION` → 生成 exe 属性要用的资源对象
+→ `go build`。产物**就地**落在根目录，文件名带版本号。详细约定见下面「构建与版本号」。
 
 启动后是一个四选一的菜单：
 
@@ -60,6 +67,38 @@ go build -o tv-capture.exe .     # 或者双击 build.cmd
 按 `Ctrl+C` 停下来：抓取会先把内存里的当天数据刷进 CSV、打印本次写入统计；
 网页服务则直接停掉监听。**两者都是回到菜单**，不是退出程序 ——
 想接着抓就再选 1，选 4 才退出。
+
+## 构建与版本号
+
+版本号**只有一个来源**：仓库根目录的 `VERSION` 文件（一行，例如 `0.1.0`）。
+`build.cmd` 按顺序做三件事，全程不需要你手写第二个版本号：
+
+| 步骤 | 做什么 | 版本号用在哪儿 |
+|---|---|---|
+| 1 | 读 `VERSION` | 下面两步都用它 |
+| 2 | `go-winres make … --file-version=<v> --product-version=<v>` | 生成 `rsrc_windows_amd64.syso` 并编进 exe —— 右键「属性 → 详细信息」里的**文件版本 / 产品版本**就是它 |
+| 3 | `go build -ldflags "-X main.version=<v>" -o tv-capture-v<v>.exe .` | **产物文件名**（就落在根目录），以及程序内的启动横幅、网页版页脚与 `/api/analysis` 里的 `meta.version` |
+
+**升版本 = 改 `VERSION` 那一行，再跑一次 `build.cmd`。** 光改 VERSION 不重新构建是没有用的：
+`rsrc_windows_amd64.syso` 是**编译期快照**，由构建脚本每次重新生成，
+不要手工维护它、也不要提交进仓库（已在 `.gitignore` 里）。
+
+`version_test.go` 盯着这四个落点：`VERSION` 必须是一行三段数字、`main.go` 里的兜底值与它一致、
+`build.cmd` 确实做了「读 VERSION / 注入 / 带版本命名」、而 `winres\winres.json` 里
+**不许再出现版本号**。谁漂了 `go test .` 会当场报出来。为什么这么定见
+[docs/design.md](docs/design.md) 的「版本号为什么只有一个来源」。
+
+产物**就在根目录**，跟 `config.json`、`data\`、`raw\` 并排，所以双击它读写的还是你原来那份数据
+—— 没有 `dist\`，构建也不搬运任何文件。注意 `outDir` / `rawDir` 是**相对 exe 所在目录**展开的：
+换个目录放 exe（或者把它拷给别人）就等于换一份数据目录，那边会新建自己的
+`config.json` 和 `data\`。想长期用就让它留在根目录。
+
+> `build.cmd` 里的日志是**英文**：这个文件必须保持**纯 ASCII**，
+> 因为 cmd.exe 按字节偏移回读批处理脚本，中文这类多字节字符会让它把行尾当成新命令执行
+> （实测：脚本里中文从 237 字节涨到 1071 字节后，跑到一半就开始报
+> `'。' is not recognized as an internal or external command`）。
+> 程序本身当然还是中文的 —— 只有这个构建脚本如此。细节见
+> [docs/testing.md](docs/testing.md) 的「改代码时的注意」。
 
 ## 使用
 
@@ -226,6 +265,9 @@ time,open,high,low,close,volume
 ## 项目结构
 
 ```
+VERSION                 唯一的版本号来源（一行，例如 0.1.0）
+build.cmd               构建脚本：读 VERSION → 生成资源对象 → 就地编译出 tv-capture-v<版本>.exe
+winres/winres.json      Windows 资源模板（exe 属性里的产品名与描述；不含版本号）
 main.go                 入口：横幅、菜单主循环分发、退出汇总
 menu.go                 菜单与输入（全程只有一个 stdin reader）
 analyze.go              菜单选项 2：只读统计的终端排版
@@ -266,6 +308,11 @@ testdata/               真实抓包裁剪出的回归样本
 | 网页版打不开 / 浏览器里是旧内容 | 终端里会打印**实际**地址（`webPort` 被占用时会换端口）；页面本身也带「重新扫描」，刷新不会缓存旧数据 |
 | 网页版显示的数字会不会和菜单 2 不一样 | 不会，是同一份 `store.Scan` 的结果，网页只做排版 |
 | 从源码构建时 `go test` / `go run` 弹「此应用的一部分已被阻止」，报 `An Application Control policy has blocked this file` | 本机开着智能应用控制，它拦的是 `go.exe` 启动的那个二进制，与代码无关。定位与处理见 [docs/testing.md](docs/testing.md) 的「本机环境：智能应用控制会拦 go test / go run」一节 |
+
+| 改了 `VERSION`，exe 属性里还是旧版本 | 光改文件不够：`rsrc_windows_amd64.syso` 是**编译期快照**，要重新跑 `build.cmd`（它会重新生成；别手工改那个文件） |
+| 构建时提示「没找到 go-winres」 | 一次性装：`go install github.com/tc-hib/go-winres@latest`，再确认 `%USERPROFILE%\go\bin` 在 `PATH` 里 |
+| 把 exe 挪到别的目录后，菜单 2 / 3 说没有数据 | 换目录就等于换数据目录：`outDir` 相对 **exe 所在目录**展开，新位置会新建自己的 `config.json` 和 `data\`。exe 就留在根目录别动 |
+| exe 属性里的「公司」「版权」是空的 | 设计如此：`winres\winres.json` 里只填了产品名、内部名与描述，没编公司名和版权 |
 
 每条现象的成因与代码位置见 [docs/testing.md](docs/testing.md) 的「排查要点」。
 

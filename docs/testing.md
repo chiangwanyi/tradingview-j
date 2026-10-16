@@ -31,7 +31,7 @@ go test ./internal/wsclient/  # 握手 / 大帧 / 分片 / ping-pong
 go test ./internal/config/    # 配置生成 / 缺键补齐 / 非法值回退
 go test ./internal/logx/      # 状态行原地刷新 / 中文按显示宽度擦除 / 重定向不留回车
 go test ./internal/webreport/ # 网页版的 JSON 形状 / 静态资源 / 端口回退 / 只读
-go test .                     # 菜单报表排版（表头是中文、数据行是 ASCII，列宽必须一致）
+go test .                     # 菜单报表排版（中文表头列宽一致）+ 版本号机制的四个落点
 ```
 
 ### 只读扫描的测试
@@ -99,6 +99,31 @@ go test .                     # 菜单报表排版（表头是中文、数据行
 > 就能把 `#app` 里的整页模板和 `index.html` 里那段日历组件模板各编译一遍 ——
 > 模板语法错、指令写错、引用了不存在的方法，都会在这里当场报出来。
 > 这一步既没被 `go test` 覆盖，也是「页面全白」最常见的来源。
+
+### 版本号机制的测试
+
+`version_test.go`（根包）全是读文件，不启动任何东西。它盯的是**「只有一个来源」这件事本身**，
+而不是某个具体数字 —— 数字漂了顶多难看，来源多一个才会出现「产物名 0.2.0、属性页 0.1.0」
+这种没人能一眼看穿的错：
+
+| 断言 | 防的是 |
+|---|---|
+| `VERSION` 只有一行有效内容，且是三段数字 | `build.cmd` 用 `set /p` 读，**只读第一行** —— 往里加注释行会被静默忽略，表现成「改了版本却没生效」 |
+| `main.go` 的 `version` 与 `VERSION` 一致 | 兜底值漂了，IDE 里直接跑出来的横幅就和产物名不一致 |
+| `build.cmd` 含 `<VERSION`、`-X main.version=`、`-o "tv-capture-v%VER%.exe"`、`--file-version`、`--product-version` | 有人「顺手简化」掉其中一步，版本号机制就只剩一半 |
+| `build.cmd` 里**没有** `dist`、也没有 `copy` / `mkdir`（`TestBuildCmdKeepsExeInRootDir`） | 产物被挪进子目录：`outDir` 相对 **exe 所在目录**展开，搬个目录就等于换一份数据（见 [design.md](design.md) 里被回退的那个方案） |
+| `build.cmd` 里**没有非 ASCII 字节**、也**没有裸 LF**（`TestBuildCmdIsAsciiAndCRLF`） | 两种「编不出来」的错：中文让 cmd 把行尾当命令执行；裸 LF 让每行行首被吃掉。理由与实测见「改代码时的注意」第一条 |
+| `winres\winres.json` 里不出现 `file_version` / `FileVersion` 这类键 | 出现第二个来源：那个值会被命令行覆盖，于是文件里留着一个**永远不生效、看起来又像真值**的数字 |
+
+它测不到的只有一件事：**`build.cmd` 本身不能在测试里跑**（要跑就得拉一个 cmd 进程）。
+所以那三步的实际效果靠人工核一次，三条命令就够：
+
+```powershell
+# 1) 产物名带版本；2) exe 属性里有版本；3) 程序自己认这个版本
+dir tv-capture-v*.exe
+(Get-Item .\tv-capture-v0.1.0.exe).VersionInfo | Select-Object FileVersion,ProductVersion,ProductName
+.\tv-capture-v0.1.0.exe     # 横幅第一行应当是 tradingview-j  v0.1.0
+```
 
 ### 本机环境：智能应用控制会拦 `go test` / `go run`
 
@@ -281,6 +306,11 @@ meta + 一条携带完整 300 根历史的 `timescale_update` + 一条 `du` + �
 | 网页上某一天**标红** | 两条原因：① 根数与该星期应有的根数不符（鼠标停在格子上会写「周二应当是 276 根」）；② 文件有坏行 / 重复行 / 读不了。点开那一天，明细里的「检查」会逐条列出来 |
 | 网页上某一天**标黄** | 当天各标的的根数不完全相同。点「全部标的按日期合计」里那一天，能看到各标的的分布（`276×2 · 275×1`），不是多数派的那几行也标黄了 —— 美国节假日提前收市就会这样，不同品种的收市时刻本来就不一样 |
 | 日历上满屏标红 | 先看是不是**星期几那张表**跟你的数据对不上（比如标的是 24 小时交易的品种，或者数据不是 5 分钟）。表在 `store.ExpectedBars`，页面的「统计口径」里也印着。**别在 `app.js` 里改** —— 判据只许有一份 |
+| 改了 `VERSION`，exe 属性里还是旧版本 | 光改文件不够：`rsrc_windows_amd64.syso` 是**编译期快照**（`build.cmd` 每次重新生成），必须重新构建。别手工去改那个 `.syso` |
+| 构建时提示「没找到 go-winres」 | 一次性装：`go install github.com/tc-hib/go-winres@latest`，再确认 `%USERPROFILE%\go\bin` 在 `PATH` 里（`build.cmd` 里那段 `:nowinres`） |
+| 把 exe 挪到别的目录后，菜单 2 / 3 说没有数据 | 换目录 = 换数据目录：`outDir` 相对 **exe 所在目录**展开（`internal/config` 的 `resolve`），新位置会新建自己的 `config.json` 与 `data\`。exe 就留在根目录 |
+| 跑 `build.cmd` 时冒出 `'xxx' is not recognized as an internal or external command`，而且相邻的 `echo` 整行消失（输出的中文本身却是对的） | 脚本里混进了**中文 / 任何多字节字符**：cmd.exe 按字节偏移回读批处理，多字节字符让偏移和解码后的字符错位，一行的尾段就被当成新命令执行了。这个文件必须纯 ASCII（日志写英文），由 `version_test.go` 的 `TestBuildCmdIsAsciiAndCRLF` 拦 |
+| `go test .` 报「build.cmd 里找不到 …」 | 构建脚本被改动了，版本号机制的某一步没了。这是刻意的断言，看 `version_test.go` 里那条用例的说明 |
 | `go test` / `go run` 报 `An Application Control policy has blocked this file`，同时右下角弹「此应用的一部分已被阻止」 | 智能应用控制拦了 **`go.exe` 启动的**那个二进制，与代码无关。为什么只拦它、以及两种处理方式，见本文档「本机环境：智能应用控制会拦 go test / go run」一节 |
 
 ## 改代码时的注意
@@ -289,11 +319,30 @@ meta + 一条携带完整 300 根历史的 `timescale_update` + 一条 `du` + �
 - **不要让「分析」写任何东西**：统计路径必须走只读的 `store.Scan`，
   `store.Store` 一 Open 就会建目录、分配标的目录名。
 - **不要让两处各写一份解析**：CSV 行格式只在 `store.readDayFile` 里定义一次。
-- **`build.cmd` 必须是 CRLF 行尾**。本仓库 `core.autocrlf=true`，但那只在 checkout/commit
-  时转换，**工具直接写盘不会被转**，所以用写文件的方式生成 `.cmd` 就会留下 LF ——
-  cmd.exe 按字节偏移回读脚本，LF 会让它吃掉每行行首若干字符，报出一串
-  「xxx 不是内部或外部命令」（实测把 `exit /b 1` 吃成 `it`、`pause` 吃成 `e`）。
-  已用 `.gitattributes`（`*.cmd text eol=crlf`）钉死。改这个文件务必按 CRLF 写。
+- **版本号只改 `VERSION` 一个文件**。另外三个落点（产物名、exe 的文件属性、程序内显示）
+  全部由 `build.cmd` 从它推导：文件名靠 `%VER%`、属性靠 `go-winres --file-version`、
+  程序内靠 `go build -ldflags -X main.version`。顺手在源码里、或在 `winres\winres.json` 里
+  再写一个版本号，就是给自己留一个迟早对不上的地方（`version_test.go` 会拦）。
+  改完必须**重新构建**：`.syso` 是编译期快照。
+- **`build.cmd` 必须是纯 ASCII，且是 CRLF 行尾**。两条都是承重的，不是风格问题：
+  - **ASCII**：cmd.exe 回读批处理脚本时按**字节偏移**定位每一行，多字节字符会让这个偏移
+    和它按代码页解码出来的字符对不上，症状是**一行的尾段被单独当命令执行**。
+    实测（2026-10-16）：改造前的脚本 237 个非 ASCII 字节、一直跑得好好的；
+    加入版本号机制后涨到 1071 个字节，跑到一半开始报
+    `'。' is not recognized as an internal or external command`，
+    且相邻两三行 `echo` 整个消失（输出的中文本身还是对的，所以只可能以为是「显示问题」）。
+    所以这个文件里的日志一律用英文写，**中文留给程序自己打**。
+  - **CRLF**：本仓库 `core.autocrlf=true`，但那只在 checkout/commit 时转换，
+    **工具直接写盘不会被转**，用写文件的方式生成 `.cmd` 就会留下 LF ——
+    而 cmd.exe 假设每个换行占 2 字节，于是逐行累积错位、每行行首被吃掉
+    （实测把 `exit /b 1` 吃成 `it`、`pause` 吃成 `e`）。已用 `.gitattributes`
+    （`*.cmd text eol=crlf`）钉死。
+
+  两条都由 `version_test.go` 的 `TestBuildCmdIsAsciiAndCRLF` 断言（会报出是第几行哪个字节）。
+  要验证只 `od -c build.cmd | head -1` 是**不够的** —— 只看第一行会漏掉后面全是 LF 的情况，
+  那次就是这么被骗过去的：第一行恰好是 CRLF。要整文件核，用
+  `python -c "d=open('build.cmd','rb').read(); print(sum(1 for b in d if b>0x7f), d.count(b'\n')-d.count(b'\r\n'))"`
+  （两个数都得是 0）。
 - **菜单只能有一个 stdin reader**：菜单读缓冲 reader、「按回车继续」又直接读 `os.Stdin` 的话，
   缓冲层里攒着的字符会被绕过去，表现成「按一次回车跳过两项」（`menu.go`）。
 - **网页版不许有「算数字」的代码**：根数 / 断档区间 / 应有根数 / 异常判定只能在 Go 里算

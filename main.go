@@ -30,7 +30,13 @@ import (
 	"tradingview-j/internal/store"
 )
 
-var version = "1.4.0"
+// version 是程序版本号，**唯一来源是根目录的 VERSION 文件**。
+//
+// 这个字面量只是「没有构建脚本参与」时的兜底值（IDE 里直接跑、手敲 go build）；
+// build.cmd 会用 -ldflags "-X main.version=<VERSION 的内容>" 覆盖它，
+// 并拿同一个值去命名产物、写进 exe 的文件属性。三处对不上时 version_test.go
+// 会当场报错 —— 所以**升版本只需要改 VERSION 这一个文件**。
+var version = "0.1.0"
 
 func main() {
 	lg := logx.New(os.Stdout)
