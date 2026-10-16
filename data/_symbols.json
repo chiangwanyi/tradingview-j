@@ -7,6 +7,9 @@
     "CME_MINI:MNQ1!": {
       "folder": "CME_MINI_MNQ1!"
     },
+    "COMEX_MINI:MGC1!": {
+      "folder": "COMEX_MINI_MGC1!"
+    },
     "NASDAQ:NDX": {
       "folder": "NASDAQ_NDX"
     },
