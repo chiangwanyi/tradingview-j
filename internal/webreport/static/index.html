@@ -103,10 +103,11 @@ try { if (localStorage.getItem('tvj-theme') === 'dark') document.documentElement
             <span class="ml-1 font-normal text-faint">（和终端菜单 2 用的是同一份代码，数字一定一样）</span>
           </summary>
           <ul class="mt-2 space-y-1 text-[12px] leading-relaxed text-muted">
-            <li><b class="text-ink">根数</b> = 该日文件里的 K 线行数（同一时间戳只算一根）。</li>
-            <li><b class="text-ink">缺口</b> = 首根与尾根之间按 {{ meta.step }} 秒推算应当有多少根，减去实有根数。期货每日结算休市、周末休市都会留下缺口，那是正常形态，不是丢数据。</li>
+            <li><b class="text-ink">根数</b> = 该日文件里的 K 线行数（同一时间戳只算一根）。日历格子中间那个大数字就是它。</li>
+            <li><b class="text-ink">缺口</b> = 首根与尾根之间按 {{ meta.step }} 秒推算应当有多少根，减去实有根数。期货每日结算休市、周末休市都会留下缺口，那是正常形态，不是丢数据 —— 所以有缺口的日只在格子角落写一行「缺N」，不算异常。</li>
             <li><b class="text-ink">最大断档</b> = 相邻两根之间最大的间隔（拖图时跳过了范围，或交易所休市）。</li>
-            <li><b class="text-ink">坏行 / 重复行</b> = 解析不了的行数 / 同一时间戳出现多次的行数。正常写入是「整体重写 + 原子改名」，重复行应当恒为 0 —— 一旦不为 0，说明文件被手工改过或被别的工具合并过。</li>
+            <li><b class="text-ink">坏行 / 重复行</b> = 解析不了的行数 / 同一时间戳出现多次的行数。正常写入是「整体重写 + 原子改名」，重复行应当恒为 0 —— 一旦不为 0，说明文件被手工改过或被别的工具合并过。这两种日文件在日历上整格标红（显示「异常」）。</li>
+            <li><b class="text-ink">灰格子</b> = 这一天没有数据（周末、还没抓到的日期，或翻到了别的月份）。</li>
           </ul>
         </details>
       </section>
@@ -129,16 +130,28 @@ try { if (localStorage.getItem('tvj-theme') === 'dark') document.documentElement
 
         <!-- ── 工具条 ──────────────────────────────────────────────── -->
         <section class="mb-3 flex flex-wrap items-center gap-x-4 gap-y-2">
-          <input class="inp max-w-[240px]" type="search" v-model.trim="q" placeholder="筛选标的或日期，如 2026-10 / MES">
-          <label class="flex cursor-pointer select-none items-center gap-2 text-[12.5px] text-muted">
-            <input type="checkbox" v-model="onlyIssues">
-            只看异常（坏行 / 重复 / 读不了）
+          <input class="inp max-w-[220px]" type="search" v-model.trim="q" placeholder="筛选标的或日期，如 2026-10 / MES">
+          <div class="cal-nav" title="日历月份（所有日历一起翻）">
+            <button class="btn" type="button" @click="stepMonth(-1)">&lsaquo;</button>
+            <select class="inp cal-month" v-model="month" @change="markMonthTouched">
+              <option v-for="m in monthOptions" :key="m" :value="m">{{ m }}</option>
+            </select>
+            <button class="btn" type="button" @click="stepMonth(1)">&rsaquo;</button>
+            <button class="btn" type="button" @click="gotoLatest" title="跳到最新有数据的月份">最新</button>
+          </div>
+          <label class="flex cursor-pointer select-none items-center gap-2 text-[12.5px] text-muted" title="只有坏行 / 重复行 / 读不了的日标红，其余变淡">
+            <input type="checkbox" v-model="hlIssue">
+            高亮异常日
           </label>
-          <label class="flex cursor-pointer select-none items-center gap-2 text-[12.5px] text-muted">
-            <input type="checkbox" v-model="onlyGap">
-            只看有缺口
+          <label class="flex cursor-pointer select-none items-center gap-2 text-[12.5px] text-muted" title="有缺口的日留原样，其余变淡">
+            <input type="checkbox" v-model="hlGap">
+            高亮有缺口的日
           </label>
-          <span class="text-[12px] text-faint">筛出 {{ shownFolderCount }} / {{ folders.length }} 个标的</span>
+          <span v-if="dayFilterOn" class="text-[12px] text-faint">
+            命中的日文件：{{ num(hits.days) }} 天 · {{ num(hits.bars) }} 根
+            <span v-if="hlIssue || hlGap">（没命中的日子只是变淡，不隐藏）</span>
+          </span>
+          <span v-else class="text-[12px] text-faint">点日历上的某一天看当天明细</span>
           <button class="btn ml-auto" type="button" @click="allOpen = !allOpen">{{ allOpen ? '全部折叠' : '全部展开' }}</button>
         </section>
 
@@ -162,90 +175,156 @@ try { if (localStorage.getItem('tvj-theme') === 'dark') document.documentElement
               </div>
             </header>
 
-            <div v-if="isOpen(f.folder)" class="overflow-x-auto">
-              <table class="tbl">
-                <thead>
-                  <tr>
-                    <th class="sortable" :class="sortCls('date')" @click="sortBy('date')">日期{{ arrow('date') }}</th>
-                    <th class="sortable text-right" :class="sortCls('bars')" @click="sortBy('bars')">根数{{ arrow('bars') }}</th>
-                    <th class="text-right">首根</th>
-                    <th class="text-right">尾根</th>
-                    <th class="sortable text-right" :class="sortCls('missing')" @click="sortBy('missing')">缺口{{ arrow('missing') }}</th>
-                    <th class="sortable text-right" :class="sortCls('maxGap')" @click="sortBy('maxGap')">最大断档{{ arrow('maxGap') }}</th>
-                    <th class="sortable text-right" :class="sortCls('bytes')" @click="sortBy('bytes')">文件{{ arrow('bytes') }}</th>
-                    <th>备注</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr v-for="d in filesOf(f)" :key="d.date" :class="rowCls(d)">
-                    <td class="font-mono">{{ d.date }}</td>
-                    <td class="text-right font-mono" :title="'文件里 ' + num(d.rows) + ' 行数据'">{{ num(d.bars) }}</td>
-                    <td class="text-right font-mono text-muted">{{ d.bars ? clock(d.firstT) : '—' }}</td>
-                    <td class="text-right font-mono text-muted">{{ d.bars ? clock(d.lastT) : '—' }}</td>
-                    <td class="text-right font-mono" :class="d.missing ? 'text-warn' : 'text-faint'"
-                        :title="'首尾之间应当有 ' + num(d.span) + ' 根'">{{ d.missing ? num(d.missing) : '—' }}</td>
-                    <td class="text-right font-mono" :class="d.maxGap > meta.step ? 'text-muted' : 'text-faint'">
-                      {{ d.bars > 1 ? gap(d.maxGap) : '—' }}
-                    </td>
-                    <td class="text-right font-mono text-muted">{{ bytes(d.bytes) }}</td>
-                    <td>
-                      <span v-if="d.err" class="badge badge-bad" :title="d.err">读不了</span>
-                      <span v-if="d.skipped" class="badge badge-bad">坏 {{ num(d.skipped) }} 行</span>
-                      <span v-if="d.dupes" class="badge badge-bad">重复 {{ num(d.dupes) }} 行</span>
-                      <span v-if="!d.err && !d.skipped && !d.dupes" class="text-faint">—</span>
-                    </td>
-                  </tr>
-                  <tr v-if="!filesOf(f).length">
-                    <td colspan="8" class="empty-cell text-center text-faint">
-                      {{ f.files.length ? '都被筛选条件滤掉了' : '这个文件夹里没有 CSV' }}
-                    </td>
-                  </tr>
-                </tbody>
-                <tfoot v-if="filesOf(f).length">
-                  <tr>
-                    <td class="text-muted">小计</td>
-                    <td class="text-right font-mono font-semibold">{{ num(sumOf(f).bars) }}</td>
-                    <td colspan="2"></td>
-                    <td class="text-right font-mono">{{ num(sumOf(f).missing) }}</td>
-                    <td></td>
-                    <td class="text-right font-mono">{{ bytes(sumOf(f).bytes) }}</td>
-                    <td></td>
-                  </tr>
-                </tfoot>
-              </table>
+            <div v-if="isOpen(f.folder)" class="px-4 pb-4">
+              <div class="cal-row">
+                <div class="cal-col">
+                  <cal-grid :cells="cellsOf(f)" @pick="pickDay(f, $event)"></cal-grid>
+                  <p v-if="!monthHasData(f)" class="mt-2 text-[12px] text-faint">
+                    {{ curMonth }} 这个标的没有数据 —— 用上面的 ‹ › 或月份下拉换一个。
+                  </p>
+                  <p v-else-if="dayFilterOn" class="mt-2 text-[12px] text-faint">
+                    本月命中 {{ num(filesOf(f).length) }} 天 · {{ num(sumOf(f).bars) }} 根{{ sumOf(f).missing ? ' · 缺口 ' + num(sumOf(f).missing) : '' }}
+                  </p>
+                </div>
+
+                <!-- 点某一天 → 当天的具体数据 -->
+                <template v-for="d in one(pickedDay(f))" :key="d.date">
+                  <div class="detail-col">
+                    <div class="card px-4 py-3">
+                      <div class="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+                        <h3 class="font-mono text-[14px] font-semibold">{{ d.date }}</h3>
+                        <span class="text-[12px] text-muted">{{ weekday(d.date) }}</span>
+                        <span class="text-[11.5px] text-faint">{{ f.symbol }}</span>
+                        <button class="btn ml-auto" type="button" @click="pickDay(f, d)">收起</button>
+                      </div>
+
+                      <div v-if="d.err" class="alert alert-bad mt-2">
+                        <p class="text-[12px]">这份文件没统计到：{{ d.err }}</p>
+                      </div>
+
+                      <div class="mt-2 grid grid-cols-2 gap-x-4 gap-y-2 sm:grid-cols-3">
+                        <div>
+                          <div class="stat-lbl">根数</div>
+                          <div class="font-mono text-[13px]">{{ num(d.bars) }}</div>
+                        </div>
+                        <div>
+                          <div class="stat-lbl">首根</div>
+                          <div class="font-mono text-[13px]">{{ d.bars ? clock(d.firstT) : '—' }}</div>
+                        </div>
+                        <div>
+                          <div class="stat-lbl">尾根</div>
+                          <div class="font-mono text-[13px]">{{ d.bars ? clock(d.lastT) : '—' }}</div>
+                        </div>
+                        <div>
+                          <div class="stat-lbl">缺口</div>
+                          <div class="font-mono text-[13px]" :class="d.missing ? 'text-warn' : 'text-faint'"
+                               :title="'首尾之间按 ' + meta.step + ' 秒推算应当有 ' + num(d.span) + ' 根'">
+                            {{ d.missing ? num(d.missing) : '—' }}
+                          </div>
+                        </div>
+                        <div>
+                          <div class="stat-lbl">最大断档</div>
+                          <div class="font-mono text-[13px]">{{ d.bars > 1 ? gap(d.maxGap) : '—' }}</div>
+                        </div>
+                        <div>
+                          <div class="stat-lbl">文件大小</div>
+                          <div class="font-mono text-[13px]">{{ bytes(d.bytes) }}</div>
+                        </div>
+                        <div>
+                          <div class="stat-lbl">文件行数</div>
+                          <div class="font-mono text-[13px]" :title="'= 根数 ' + num(d.bars) + ' + 坏行 ' + num(d.skipped) + ' + 重复行 ' + num(d.dupes)">
+                            {{ num(d.rows) }}
+                          </div>
+                        </div>
+                        <div>
+                          <div class="stat-lbl">首尾跨度</div>
+                          <div class="font-mono text-[13px]">{{ num(d.span) }} 根</div>
+                        </div>
+                        <div>
+                          <div class="stat-lbl">写入检查</div>
+                          <div class="text-[13px]">
+                            <span v-if="rowIssue(d)" class="badge badge-bad">
+                              <template v-if="d.skipped">坏 {{ num(d.skipped) }} 行 </template>
+                              <template v-if="d.dupes">重复 {{ num(d.dupes) }} 行</template>
+                            </span>
+                            <span v-else class="text-faint">正常</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      <p class="mt-2 font-mono text-[11.5px] text-faint">{{ f.folder }}/{{ d.date }}.csv</p>
+                    </div>
+                  </div>
+                </template>
+              </div>
             </div>
           </div>
         </section>
 
-        <!-- ── 按日期合计（只有一个标的时没有信息量） ─────────────── -->
+        <!-- ── 全部标的合计（只有一个标的时没有信息量） ──────────────── -->
         <section v-if="folders.length > 1" class="mb-4">
           <div class="card">
             <header class="border-b border-line px-4 py-2.5">
               <h2 class="text-[13.5px] font-semibold">全部标的按日期合计</h2>
-              <p class="text-[12px] text-muted">同一个交易日，所有标的加起来一共抓了多少根</p>
+              <p class="text-[12px] text-muted">格子中间的数字 = 这一天所有标的加起来多少根；小字 = 有几个标的有数据。点一天看当天各标的各自的数字。</p>
             </header>
-            <div class="overflow-x-auto">
-              <table class="tbl">
-                <thead>
-                  <tr>
-                    <th>日期</th>
-                    <th class="text-right">有数据的标的</th>
-                    <th class="text-right">根数</th>
-                    <th class="text-right">平均每标的</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr v-for="r in byDate" :key="r.date">
-                    <td class="font-mono">{{ r.date }}</td>
-                    <td class="text-right font-mono">{{ num(r.symbols) }}</td>
-                    <td class="text-right font-mono">{{ num(r.bars) }}</td>
-                    <td class="text-right font-mono text-muted">{{ num(avg(r)) }}</td>
-                  </tr>
-                  <tr v-if="!byDate.length">
-                    <td colspan="4" class="empty-cell text-center text-faint">都被筛选条件滤掉了</td>
-                  </tr>
-                </tbody>
-              </table>
+            <div class="px-4 pb-4 pt-3">
+              <div class="cal-row">
+                <div class="cal-col">
+                  <cal-grid :cells="gCells()" @pick="pickGlobal($event)"></cal-grid>
+                  <p v-if="!byDateAll.length" class="mt-2 text-[12px] text-faint">这段时间里还没抓到任何数据。</p>
+                </div>
+
+                <template v-for="r in one(gRow)" :key="r.date">
+                  <div class="detail-col">
+                    <div class="card">
+                      <header class="flex flex-wrap items-baseline gap-x-3 gap-y-1 border-b border-line px-4 py-2.5">
+                        <h3 class="font-mono text-[14px] font-semibold">{{ r.date }}</h3>
+                        <span class="text-[12px] text-muted">{{ weekday(r.date) }}</span>
+                        <span class="text-[12px] text-muted">{{ num(r.symbols) }} 个标的 · 合计 {{ num(r.bars) }} 根</span>
+                        <button class="btn ml-auto" type="button" @click="gPicked = ''">收起</button>
+                      </header>
+                      <div class="overflow-x-auto">
+                        <table class="tbl">
+                          <thead>
+                            <tr>
+                              <th>标的</th>
+                              <th class="text-right">根数</th>
+                              <th class="text-right">首根</th>
+                              <th class="text-right">尾根</th>
+                              <th class="text-right">缺口</th>
+                              <th class="text-right">最大断档</th>
+                              <th class="text-right">文件</th>
+                              <th>备注</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            <tr v-for="row in symbolsOnDate(r.date)" :key="row.folder" :class="rowIssue(row) ? 'row-issue' : ''">
+                              <td class="font-mono">{{ row.symbol }}</td>
+                              <td class="text-right font-mono">{{ num(row.bars) }}</td>
+                              <td class="text-right font-mono text-muted">{{ row.bars ? clock(row.firstT) : '—' }}</td>
+                              <td class="text-right font-mono text-muted">{{ row.bars ? clock(row.lastT) : '—' }}</td>
+                              <td class="text-right font-mono" :class="row.missing ? 'text-warn' : 'text-faint'">
+                                {{ row.missing ? num(row.missing) : '—' }}
+                              </td>
+                              <td class="text-right font-mono" :class="row.maxGap > meta.step ? 'text-muted' : 'text-faint'">
+                                {{ row.bars > 1 ? gap(row.maxGap) : '—' }}
+                              </td>
+                              <td class="text-right font-mono text-muted">{{ bytes(row.bytes) }}</td>
+                              <td>
+                                <span v-if="row.err" class="badge badge-bad" :title="row.err">读不了</span>
+                                <span v-if="row.skipped" class="badge badge-bad">坏 {{ num(row.skipped) }} 行</span>
+                                <span v-if="row.dupes" class="badge badge-bad">重复 {{ num(row.dupes) }} 行</span>
+                                <span v-if="!row.err && !row.skipped && !row.dupes" class="text-faint">—</span>
+                              </td>
+                            </tr>
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  </div>
+                </template>
+              </div>
             </div>
           </div>
         </section>
@@ -258,6 +337,22 @@ try { if (localStorage.getItem('tvj-theme') === 'dark') document.documentElement
     </template>
   </main>
 </div>
+
+<!-- 日历格子的模板。**必须放在 #app 外面** —— 放进 #app 会被 Vue 当成页面模板编译，
+     而这里的用法是「取出 innerHTML 当作组件的模板字符串」（见 app.js 的 CalGrid）。 -->
+<template id="tv-cal-tpl">
+  <div class="cal-grid">
+    <div v-for="w in wd" :key="w" class="cal-wd">{{ w }}</div>
+    <template v-for="(c, i) in cells" :key="i">
+      <div v-if="!c.date" class="cal-cell cal-blank"></div>
+      <button v-else type="button" class="cal-cell" :class="cls(c)" :disabled="!c.have" :title="tip(c)" @click="$emit('pick', c)">
+        <span class="cal-day">{{ c.day }}</span>
+        <span v-if="c.have" class="cal-bars">{{ num(c.bars) }}</span>
+        <span v-if="c.have && c.sub" class="cal-sub">{{ c.sub }}</span>
+      </button>
+    </template>
+  </div>
+</template>
 
 <script src="/static/vendor/vue.global.prod.js"></script>
 <script src="/static/app.js"></script>

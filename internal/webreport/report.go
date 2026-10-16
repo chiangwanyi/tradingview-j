@@ -111,6 +111,7 @@ type DateTotal struct {
 	Date    string `json:"date"`
 	Symbols int    `json:"symbols"`
 	Bars    int    `json:"bars"`
+	Issues  int    `json:"issues"` // 这一天有几个标的的文件带异常（日历上要标红）
 }
 
 // Build 把一次 store.Scan 的结果翻译成网页用的快照。
@@ -184,7 +185,7 @@ func Build(res *store.ScanResult, loc *time.Location, version string) *Report {
 	}
 
 	for _, r := range res.ByDate() {
-		rep.ByDate = append(rep.ByDate, DateTotal{Date: r.Date, Symbols: r.Symbols, Bars: r.Bars})
+		rep.ByDate = append(rep.ByDate, DateTotal{Date: r.Date, Symbols: r.Symbols, Bars: r.Bars, Issues: r.Issues})
 	}
 	return rep
 }

@@ -229,8 +229,9 @@ func (r *ScanResult) GlobalRange() (first, last int64, ok bool) {
 // ByDate 把所有标的的数据按日期合并，得到「这一天一共多少根」。
 func (r *ScanResult) ByDate() []DateTotal {
 	type acc struct {
-		syms int
-		bars int
+		syms   int
+		bars   int
+		issues int
 	}
 	m := map[string]*acc{}
 	for _, f := range r.Folders {
@@ -245,11 +246,14 @@ func (r *ScanResult) ByDate() []DateTotal {
 			}
 			a.syms++
 			a.bars += d.Bars
+			if d.Err != "" || d.Skipped > 0 || d.Dupes > 0 {
+				a.issues++
+			}
 		}
 	}
 	out := make([]DateTotal, 0, len(m))
 	for date, a := range m {
-		out = append(out, DateTotal{Date: date, Symbols: a.syms, Bars: a.bars})
+		out = append(out, DateTotal{Date: date, Symbols: a.syms, Bars: a.bars, Issues: a.issues})
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Date < out[j].Date })
 	return out
@@ -259,6 +263,7 @@ type DateTotal struct {
 	Date    string
 	Symbols int
 	Bars    int
+	Issues  int // 这一天有几个标的的文件带异常（坏行 / 重复行 / 读不了）
 }
 
 // Clock / Stamp 把时间戳按给定时区格式化成明文，供上层直接打印。

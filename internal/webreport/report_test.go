@@ -99,6 +99,18 @@ func TestBuildKeepsStoreNumbers(t *testing.T) {
 	}
 }
 
+func TestBuildCarriesByDateIssueCount(t *testing.T) {
+	// 日历上「这一天有异常」的红标用的是按日期合计里的 issues —— 它是 Go 算的，
+	// 前端不许自己扫一遍文件去凑这个数（否则又是一份口径）。
+	res := sample(t)
+	res.Folders[0].Days[0].Skipped = 3
+
+	rep := Build(res, cst, "1.2.0")
+	if len(rep.ByDate) != 1 || rep.ByDate[0].Issues != 1 {
+		t.Fatalf("按日期合计没带上异常标的数：%+v", rep.ByDate)
+	}
+}
+
 func TestBuildEmptyResultMarshalsToEmptyArrays(t *testing.T) {
 	// 前端直接 folders.length / notes.length 判断，null 会让 Vue 模板里的 .length 报错。
 	// 所以空的必须是 []，不是 null。

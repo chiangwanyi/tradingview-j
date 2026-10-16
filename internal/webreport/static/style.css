@@ -173,3 +173,70 @@ input[type="checkbox"] { accent-color: var(--accent); }
 /* 有坏行/重复行/读不了的日文件整行染色，扫一眼就能找到 */
 .tbl tr.row-issue td { background: var(--badbg); }
 .tbl tr.row-issue:hover td { background: var(--badbd); }
+
+/* ── 日历 ────────────────────────────────────────────────────────────
+ * 日历的观感**全部**走这里的类，一个 Tailwind 工具类都不用。
+ * 原因：承载日历的那段模板是运行期字符串（见 app.js 的 CalGrid，取自
+ * index.html 的 #app 之外的 <template id="tv-cal-tpl">），而 Tailwind 的
+ * 浏览器版是扫 DOM 推导样式的 —— 运行期才出现的类名有漏扫的风险，
+ * 一旦漏了就是「格子挤成一坨」而没有任何报错。普通 CSS 的类是编译期写死的。
+ *
+ * 同理，这里的类刻意不写 Tailwind 那边也想控制的维度（见文件头的分层陷阱）：
+ * 日历元素上不会再叠工具类，所以怎么写都不会打架。 */
+
+/* 日历 + 当天明细并排放，窄屏自动上下堆叠 */
+.cal-row { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 16px; }
+.cal-col { flex: 1 1 430px; min-width: 300px; max-width: 560px; }
+.detail-col { flex: 1 1 320px; min-width: 280px; max-width: 640px; }
+
+.cal-grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 4px;
+}
+
+.cal-wd {
+  padding: 0 0 4px;
+  text-align: center;
+  font-size: 11.5px;
+  color: var(--faint);
+}
+
+.cal-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-height: 54px;
+  padding: 4px 6px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: none;
+  color: var(--ink);
+  font: inherit;
+  text-align: left;
+  cursor: default;
+}
+/* 补位格（上月末/下月初）：占住栅格但不显示任何东西 */
+.cal-cell.cal-blank { visibility: hidden; }
+.cal-cell.cal-has {
+  border-color: var(--line);
+  background: var(--panel2);
+  cursor: pointer;
+}
+.cal-cell.cal-has:hover { border-color: var(--accentbd); background: var(--accentbg); }
+/* 异常日（坏行 / 重复行 / 读不了）整格标红，扫一眼就能找到 */
+.cal-cell.cal-issue { border-color: var(--badbd); background: var(--badbg); }
+.cal-cell.cal-issue:hover { background: var(--badbd); }
+/* 选中的那天：外描边，不改变底色，免得和「异常」的红底打架 */
+.cal-cell.cal-sel { outline: 2px solid var(--accent); outline-offset: -1px; border-color: var(--accent); }
+/* 没命中筛选的日子变淡，**不隐藏** —— 格子里空了会让人以为那天没数据 */
+.cal-cell.cal-dim { opacity: .32; }
+
+.cal-day { font-size: 11px; line-height: 1.3; color: var(--faint); font-variant-numeric: tabular-nums; }
+.cal-bars { font-size: 14px; font-weight: 600; line-height: 1.25; font-variant-numeric: tabular-nums; }
+.cal-sub { font-size: 10.5px; line-height: 1.3; color: var(--faint); }
+.cal-cell.cal-issue .cal-sub { color: var(--bad); }
+
+/* 工具条上的月份翻页 */
+.cal-nav { display: flex; align-items: center; gap: 4px; }
+.cal-month { width: auto; padding: 5px 8px; font-variant-numeric: tabular-nums; }

@@ -13,6 +13,9 @@
   唯一的 JS 是 v1.2.0 新增的菜单 3 网页版界面（`internal/webreport/static/`）：
   零构建 Vue 3 + Tailwind 浏览器版，两个库用 `//go:embed static` 内嵌进 exe ——
   仍然不需要 npm、不需要联网、产物仍然只有一个 exe。
+- **网页版是日历视图（v1.3.0 起，之前是按日的表格）**：每个标的一张月历，
+  格子中间的大数字 = 当天 K 线根数；点某一天在右侧出当天明细。
+  「全部标的按日期合计」也是一张月历（当天合计根数 + 有几个标的）。详见下面「核心约定」。
 - **配置只有 `config.json`**（exe 同目录），**不接受任何命令行参数** —— 使用方式是双击。
   相对路径（outDir/rawDir）相对 **exe 所在目录**展开，因为双击时 cwd 不可靠。
   `webPort`（默认 8765）是菜单 3 的监听端口，占用时自动换端口并**在终端里说明**。
@@ -69,11 +72,39 @@
   确实写了两份，靠 `internal/webreport/testdata/format.test.cjs` 逐条对着 `report_test.go`
   的期望值断言（`go test ./internal/webreport/` 会调 node 跑它，没 node 则 skip）。
   ② **服务只绑 `127.0.0.1`，且没有任何能改数据 / 触发动作的接口**（只有 `/api/analysis` + 内嵌静态）。
+  ④ **日历视图（v1.3.0 起）的约定**：
+  · **一个月份状态全局共用**（`month`），翻一次每个标的的日历和「全部标的合计」那张一起翻；
+  不按标的各存一份，否则横向对比时要来回切两遍月份。
+  · **格子里的数字一个都不是前端算的**。为了让日历能标红「这一天有异常」，
+  给 `store.DateTotal` 加了 `Issues`（这一天有几个标的的文件带坏行/重复/读不了），
+  `webreport` 透传成 `"issues"`。**不要**改成让 JS 扫一遍 `folders` 去凑 —— 那就是第二份口径。
+  · 「只要异常 / 只要缺口」这两个开关在日历上语义是**高亮**（没命中的变淡、不隐藏），
+  因为日历用「空着」表示「没有数据」，把格子藏掉会让人误以为那天没数据。
+  · 格子的观感**全在 `style.css` 的 `.cal-*`**，一个 Tailwind 工具类都不用。原因：
+    承载格子的模板是**运行期字符串** —— 放在 `index.html` 的 `<template id="tv-cal-tpl">` 里
+    （**必须在 `#app` 之外**，放进去会被当成页面模板编译），`app.js` 的 `templateText()` 取它的
+    `innerHTML` 注册成 `cal-grid` 组件（`innerHTML` 空了就克隆 `.content` 兜底）。
+    Tailwind 浏览器版是扫 DOM 推导样式的，运行期才出现的类名有漏扫风险，漏了就是格子挤成一坨
+    且**没有任何报错**。`.cal-row/.cal-col/.detail-col` 这些布局类同理写进了 CSS。
+  · 日历的**日期算术在前端**（`monthOf/isMonth/addMonth/todayMonth/monthCells/weekday/monthsOf`），
+    断言用固定日期（`2026-10-01` 是周四 → 前补 3 格、整月 35 格；闰年 2 月 29 天），
+    **不要写依赖「今天是什么日子」的期望值**。`addMonth` 交给 `Date` 进位，不自己算跨年/闰月。
+  · 表格时代的排序（点表头）已删；`sortFiles` 留着，用在「当天各标的」那张小表上。
   ③ 改 `internal/webreport/static/` 下任何文件都要**重新 `go build`** —— `//go:embed` 是编译期快照。
 - **统计口径与落盘共用一份代码**：`store.readDayFile` / `parseRow` / `readIndexFile`。
   两边各写一份解析迟早会漂移，表现成"文件里 288 行、分析说 287 根"，用户没法判断信谁。
 - **测试禁止无头浏览器**（用户明确要求：慢、且中断不可见）。替代 = 假 CDP 服务端。
   `go test ./...` 全离线可跑，人工联调由用户自己开浏览器做。
+  **不想开浏览器又能查出「页面为什么全白」的便宜办法（2026-10-16 用通）**：
+  在 node 里用 `vue.global.prod.js`（完整版，带运行时编译器）把模板编译一遍 ——
+  `Vue.compile(tpl, {onError: e => {throw e}, onWarn: w => warns.push(w.message)})`
+  能把模板语法错、指令写错当场报出来。两个必须踩到的坑：
+  ① 要给一个极小的 `document` 替身（`createElement` 返回带 `innerHTML` getter/setter、
+  `textContent`、`children[0].getAttribute` 的对象），编译器只用它解 HTML 实体；
+  ② 必须 **`globalThis.Vue = Vue`** —— 生成的渲染函数里直接引用全局 `Vue`，
+  不挂回全局就是 `ReferenceError: Vue is not defined`。
+  再配一段正则把模板里引用的标识符（先剥掉字符串字面量与 `v-for` 别名）回查 `app.js`，
+  就能确认没有引用不存在的方法/字段。脚本是一次性的，不进仓库、不进 `go test`。
 - **本机智能应用控制（SAC）会拦 `go test ./internal/capture/` 与 `go run .`**（2026-10-16 定位）。
   报 `fork/exec ...: An Application Control policy has blocked this file`，右下角同时弹
   「此应用的一部分已被阻止」（截图为 `capture.test.exe`）。触发条件**只剩一条：由 `go.exe`

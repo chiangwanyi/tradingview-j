@@ -63,7 +63,10 @@ go test .                     # 菜单报表排版（表头是中文、数据行
 3. **`frontend_test.go`** —— 让 node 跑 `testdata/format.test.cjs`：
    把 `app.js` 里 createApp 之前的那段纯函数切出来 eval，逐条断言
    `num` / `bytes` / `gap` 与 **`report_test.go` 里那张期望值表完全一致**，
-   外加筛选口径、排序（不原地改数组、同值按日期兜底）、告警文案。
+   外加筛选口径、排序（不原地改数组、同值按日期兜底）、告警文案，
+   以及**日历的日期算术**（`monthCells` 铺格子、`addMonth` 跨年、`weekday`、
+   `monthsOf` 去重倒序、闰年 2 月）。日历那几条刻意用固定日期算期望值
+   （`2026-10-01` 是周四 → 前面补 3 格、整月 35 格），不依赖跑测试的机器上是什么日子。
    没有 node 就 `t.Skip` —— 这是交叉校验，不该变成所有人都必须装 node 的理由。
    手工跑：`node internal/webreport/testdata/format.test.cjs`。
 
@@ -74,8 +77,16 @@ go test .                     # 菜单报表排版（表头是中文、数据行
 > 这类只认「真浏览器里量出来的几何和 computed style」，
 > 用 Edge/Chrome 的 `--headless=new --remote-debugging-port` + 一个几十行的 CDP 脚本
 > （Node 22 自带 `WebSocket`，零安装）跑一次即可：断言栅格列数、字号、颜色、
-> 行数（`94 个日文件 + 47 行按日期合计 = 141`）、排序/筛选/折叠/深色模式的真实效果。
+> 日历格子数（7 的整数倍、当月天数为 31 / 30 / 29 / 28）、点某一天后右侧面板的出现、
+> 筛选变淡、折叠、深色模式的真实效果。
 > 这是**开发时的一次性验证**，不进 `go test`（那条线仍然禁止浏览器）。
+>
+> 不想开浏览器时，有一件事可以便宜地验：**模板本身能不能编译**。
+> `vue.global.prod.js` 是完整版（带运行时编译器），在 node 里给它一个
+> 只说 `createElement` / `querySelector` 的极小 `document` 替身，
+> 就能把 `#app` 里的整页模板和 `index.html` 里那段日历组件模板各编译一遍 ——
+> 模板语法错、指令写错、引用了不存在的方法，都会在这里当场报出来。
+> 这一步既没被 `go test` 覆盖，也是「页面全白」最常见的来源。
 
 ### 本机环境：智能应用控制会拦 `go test` / `go run`
 
@@ -271,9 +282,17 @@ meta + 一条携带完整 300 根历史的 `timescale_update` + 一条 `du` + �
 - **菜单只能有一个 stdin reader**：菜单读缓冲 reader、「按回车继续」又直接读 `os.Stdin` 的话，
   缓冲层里攒着的字符会被绕过去，表现成「按一次回车跳过两项」（`menu.go`）。
 - **网页版不许有「算数字」的代码**：根数/缺口/断档只能在 Go 里算（`store.Scan`），
-  `app.js` 只做排版。改了 `num` / `bytes` / `gap` 就必须同步改
-  `internal/webreport/testdata/format.test.cjs` 的期望值（那张表是照抄 `report_test.go` 的），
+  日历上「这一天有几个标的带异常」也一样 —— 它在 `store.ByDate` 里（`DateTotal.Issues`），
+  不让 `app.js` 扫一遍 `folders` 去凑。`app.js` 只做排版。
+  改了 `num` / `bytes` / `gap` 或日历的日期算术（`monthCells` / `addMonth` / `weekday` /
+  `monthsOf`），就必须同步改 `internal/webreport/testdata/format.test.cjs` 的期望值
+  （其中格式化那张表是照抄 `report_test.go` 的），
   否则 `go test ./internal/webreport/` 会红 —— 这是刻意的，两边都改才算改对。
+- **日历的格子观感走 `style.css` 的 `.cal-*`，别在那儿叠 Tailwind 工具类**：
+  承载格子的模板是**运行期字符串**（`index.html` 里 `<template id="tv-cal-tpl">` 的内容，
+  由 `app.js` 取出来注册成 `cal-grid` 组件），而 Tailwind 的浏览器版是扫 DOM 推导样式的，
+  运行期才出现的类名有漏扫的风险 —— 漏了就是「格子挤成一坨」而没有任何报错。
+  另外这个 `<template>` 必须留在 `#app` **外面**，放进去会被当成页面模板编译。
 - **改完 `internal/webreport/static/` 下的任何文件都要重新 `go build`**：
   `//go:embed` 是**编译期**快照，不重新构建的话 exe 里还是旧页面，
   而浏览器这边看起来「我明明改了」（这种现象最费时间）。

@@ -147,6 +147,25 @@ func TestScanIgnoresNonCSVAndSumsAcrossSymbols(t *testing.T) {
 	if len(rows) != 1 || rows[0].Date != "2026-10-16" || rows[0].Symbols != 2 || rows[0].Bars != 4 {
 		t.Fatalf("按日期合计 = %+v", rows)
 	}
+	if rows[0].Issues != 0 {
+		t.Fatalf("两份文件都是干净的，异常标的数该是 0：%+v", rows[0])
+	}
+}
+
+func TestByDateCountsSymbolsWithIssues(t *testing.T) {
+	root := t.TempDir()
+	// A 干净，B 有坏行 —— 这一天应当记「1 个标的带异常」，而不是把坏行数加进去
+	writeFile(t, filepath.Join(root, "A", "2026-10-16.csv"),
+		"time,open,high,low,close,volume\n2026-10-16 09:00,1,2,0.5,1.5,10\n")
+	writeFile(t, filepath.Join(root, "B", "2026-10-16.csv"),
+		"time,open,high,low,close,volume\n"+
+			"2026-10-16 09:00,1,2,0.5,1.5,10\n"+
+			"这不是时间,1,2,0.5,1.5,10\n")
+
+	rows := Scan(root, cst, 300).ByDate()
+	if len(rows) != 1 || rows[0].Issues != 1 {
+		t.Fatalf("按日期合计的异常标的数 = %+v, 期望 1", rows)
+	}
 }
 
 func TestScanIsReadOnlyAndTolerant(t *testing.T) {

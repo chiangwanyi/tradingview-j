@@ -24,7 +24,8 @@ if (cut < 0) {
 // 只取 createApp 之前的那一半：不碰 Vue、不碰 DOM，在 node 里能直接跑
 const mod = { exports: {} };
 const code = src.slice(0, cut) +
-  '\nmodule.exports = { num, bytes, gap, clock, stamp, dayIssue, isDateQuery, sortFiles, sumOf, alertsOf };\n';
+  '\nmodule.exports = { num, bytes, gap, clock, stamp, dayIssue, isDateQuery, sortFiles, sumOf, alertsOf,' +
+  ' monthOf, isMonth, addMonth, todayMonth, monthCells, weekday, monthsOf };\n';
 new Function('module', 'exports', code)(mod, mod.exports);
 const f = mod.exports;
 
@@ -95,6 +96,45 @@ eq(byGapDesc, ['2026-10-16', '2026-10-14', '2026-10-15'], '断档降序');
 eq(files[0].date, '2026-10-16', 'sortFiles 不能就地改原数组（Vue 里那份是响应式数据）');
 
 eq(f.sumOf(files), { bars: 840, missing: 17, bytes: 44037 }, '小计');
+
+// ---- 日历：纯日期算术，期望值不依赖跑测试的机器 ----
+eq(f.monthOf('2026-10-16'), '2026-10', 'monthOf 取年月');
+eq(f.monthOf('2026-10'), '2026-10', '已经是月份时原样返回');
+eq(f.monthOf(''), '', '空串不该炸');
+ok(f.isMonth('2026-10'), '合法月份');
+ok(!f.isMonth('2026'), '只有年份不是月份');
+ok(!f.isMonth('2026-13'), '13 月不是月份');
+
+// 前后翻月必须跨年正确 —— 手写进位最常在这里翻车，所以一律交给 Date
+eq(f.addMonth('2026-01', -1), '2025-12', '往前翻跨年');
+eq(f.addMonth('2026-12', 1), '2027-01', '往后翻跨年');
+eq(f.addMonth('2026-10', -12), '2025-10', '往前翻一整年');
+
+// 2026-10-01 是周四 → 周一打头的日历前面要空 3 格
+const oct = f.monthCells('2026-10');
+eq(oct.slice(0, 3).map(function (c) { return c.date; }), ['', '', ''], '10 月 1 日前的补位格');
+eq(oct[3], { date: '2026-10-01', day: 1 }, '补位之后第一个是 10 月 1 日');
+eq(oct.length, 35, '31 天 + 前补 3 = 34，尾部补满整周后是 35');
+const octDays = oct.filter(function (c) { return c.date; });
+eq(octDays.length, 31, '10 月应当有 31 个格子');
+eq(octDays[30].day, 31, '最后一个有日期的格子是 31 日');
+eq(octDays[30].date, '2026-10-31', '最后一格的日期');
+ok(oct.length % 7 === 0, '格子数永远是 7 的整数倍，否则日历会缺一角');
+// 闰年 2 月：2024 年是闰年（能被 4 整除且不是整百年）
+eq(f.monthCells('2024-02').filter(function (c) { return c.date; }).length, 29, '2024 年 2 月有 29 天');
+eq(f.monthCells('2026-02').filter(function (c) { return c.date; }).length, 28, '2026 年 2 月有 28 天');
+eq(f.monthCells('乱写的'), [], '不是月份就返回空，不抛异常');
+
+ok(/^\d{4}-\d{2}$/.test(f.todayMonth()), 'todayMonth 的格式应当是 yyyy-MM：' + f.todayMonth());
+eq(f.todayMonth(), f.monthOf(f.stamp(Date.now() / 1000)), 'todayMonth 和 stamp 必须来自同一个时刻');
+
+eq(f.weekday('2026-10-16'), '周五', 'weekday 认得出周五');
+eq(f.weekday('2026-10-18'), '周日', 'weekday 认得出周日');
+eq(f.weekday(''), '', '空日期不给星期');
+
+eq(f.monthsOf(['2026-10-16', '2026-09-01', '2026-10-02']), ['2026-10', '2026-09'], '月份去重且倒序');
+eq(f.monthsOf(['2026-10-16', '乱写的']), ['2026-10'], '认不出来的日期直接跳过');
+eq(f.monthsOf([]), [], '没有日期就没有月份');
 
 // ---- 告警：notes 原样透传，坏行/重复行再补一句 ----
 const alerts = f.alertsOf({
