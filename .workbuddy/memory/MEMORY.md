@@ -1,78 +1,82 @@
 # tradingview-j 项目长期笔记
 
-## 这个项目是什么
+## 这个项目是什么（2026-10-16 起是 Go 版）
 
-通过 CDP 接入**用户本人已登录的 Chrome**，旁路抓 TradingView 图表页的 WebSocket 行情帧，
-解码成 OHLCV 持续入库，目标是**把一条时间轴尽量填满**（学习/研究用途，非实时）。
+通过 CDP 接入**用户本人已登录的 Chrome**，**被动**旁路抓 TradingView 图表页的 WebSocket 帧，
+解出 5 分钟 K 线，写成 CSV。形态是**一个 Go 程序**：
 
-形态是**本地 Node 项目 + 网页工作台**：`npm start` 起 `server/index.mjs`（默认 `127.0.0.1:8787`），
-页面三页签（抓取控制 / 覆盖视图 / 数据管理），CLI `bin/tv.mjs` 保留全部命令。
+- 产物 `tv-capture.exe`（根目录；`go build -o tv-capture.exe .` 或双击 `build.cmd`）。
+- **没有任何 JavaScript**：只被动监听，不需要页面注入，也不需要扩展，所以"必须保留的 JS"是零。
+- **配置只有 `config.json`**（exe 同目录），**不接受任何命令行参数** —— 使用方式是双击。
+  相对路径（outDir/rawDir）相对 **exe 所在目录**展开，因为双击时 cwd 不可靠。
+- **零第三方依赖**，`go.mod` 里没有 require；WebSocket 客户端自写在 `internal/wsclient`。
+- 结构：`main.go` + `internal/{config,cdp,wsclient,tvproto,ingest,store,rawlog,capture,logx}`
+  + `internal/wstest`（测试专用假 WS 服务端）+ `testdata/`（两份真实抓包裁剪的回归样本：
+  `real-capture.ndjson` 普通样本、`mixed-symbols.ndjson` 品种串味回归样本）。
+- `legacy/` = 旧 Node 实现（网页工作台 + SQLite + 自动回拉 + 覆盖度报告）与旧 `data/`，
+  只作留档。Node 路径（Go 项目用不到）：
+  `C:/Users/jiang/.workbuddy/binaries/node/versions/22.22.2-6/node.exe`
 
-零第三方依赖：Node 22 自带 `WebSocket` 与 `node:sqlite`。前端是 Vue 3 + Tailwind 4 的
-**零构建**组合（两个库放 `web/vendor/`）。Node 路径：
-`C:/Users/jiang/.workbuddy/binaries/node/versions/22.22.2-6/node.exe`
+## 核心约定
 
-## 项目约定
+- **只被动监听**：不拖图表、不刷新、不注入脚本、无自动回拉。风控优先，这是刻意的。
+- **只收 5 分钟**（`intervalSeconds: 300`），其他周期的 series 整段跳过并记日志。
+- **周期靠相邻时间戳的众数差反推**（帧里没有周期字段）；反推出来前 K 线**暂存不落盘**。
+  反推**按（会话，序列）分别做**（`seriesKey{scope,name}`）：一个页面上可以有多个图表会话，
+  它们的序列都叫 `sds_1`，混在一起投票会互相污染。
+- **标的归属只认 `symbol_resolved`**，按「会话 + 序列」判定，绝不按序列名全局认：
+  `config.symbol` >（`create_series` 的序列→品种键绑定 + `symbol_resolved` 的品种键→pro_name）
+  > 该会话唯一品种 > 页面唯一品种 > URL `?symbol=` 猜测（日志会说明是猜的）> **暂存不落盘**。
+  不知道写进哪个目录时绝不猜。
+- **一个页面的 WebSocket 上跑的不只有图表数据**：侧边栏/自选/报价的 `qsd` 里同样带 `pro_name`
+  且是别的品种（踩过：MNQ1! 的 K 线被写进 `NASDAQ_NDX/`）。所以旧的
+  "在任意消息里搜 pro_name" 这种做法是 bug，已删除；`tvproto` 只暴露
+  `SymbolResolved` / `SeriesBinding` / `MessageScope` / `QuoteNames`（最后一个只用于诊断）。
+- **CSV 写入 = 整体重写**：内存按 `(标的,日期)` 聚合 `t→bar`，每 `flushSeconds` 秒
+  用 tmp+rename 重写整个日文件。重复数据在结构上不可能出现，所以没有"是否已存在"判断。
+  **启动时必须先把磁盘上当日文件读回内存**，否则重启后接着拖同一天会覆盖掉之前抓的。
+- **时间列是本地时区明文 `yyyy-MM-dd HH:MM`（开盘时间）**，文件名 `yyyy-MM-dd.csv`。
+  换机器/换时区会影响"哪一天"的划分。
+- **写文件用 tmp+rename**；被 Excel 占用会失败，保持"脏"下个周期重试。
+- **测试禁止无头浏览器**（用户明确要求：慢、且中断不可见）。替代 = 假 CDP 服务端。
+  `go test ./...` 全离线可跑，人工联调由用户自己开浏览器做。
 
-- **命令入口两个**：网页 `server/index.mjs`（用户日常用）+ `bin/tv.mjs`（脚本/排障）。
-  两边必须共用同一个控制器 `src/session.mjs::CaptureSession`，别各写一套。
-- **存储：一个品种一个 `.sqlite`**，落在 `data/db/<slug>.sqlite`，`data/db/index.json` 存映射。
-  改名/迁移走 `src/registry.mjs` + `src/migrate.mjs`，**旧库永远只读、不删**。
-- **协议层不硬编码方法名**：按形状找 `{ s: [ { i, v: [数值…] } ] }`。协议改版时不容易碎。
-- **入库幂等**：主键 `(symbol, series, t)` + `ON CONFLICT DO UPDATE`。
-  这让"反复来回拖、窗口大面积重叠"变成无害操作。
-- **算根数先去重**：series 换号会留重复行。对外报"根数"一律 `COUNT(DISTINCT t)`，
-  物理行数单独作 `rows` 暴露 —— 两者不等本身就是"发生过重连"的信号。
-- **读-改-写的接口不能在循环外缓存快照**（`index.json` 踩过，迁移后索引被旧快照抹空）。
-- **自测必须离线可跑**，且分三层：
-  `test/selftest.mjs`（后端纯 Node）/ `test/ui-selftest.mjs`（前端纯函数）/ `test/e2e.mjs`（真浏览器）。
-  加断言时优先加在 e2e —— jsdom 读不到 Tailwind 注入的样式，布局类断言只有真浏览器答得了。
-- **`check()` 必须 async 且真 await**，否则 async 断言回调的 Promise 被丢掉 → 假绿。
-- **不要把自己对协议字段的猜测写成自测当事实** —— 会制造虚假的绿色（踩过）。
-- **注释写"为什么"和踩过的坑**，不写"做了什么"。
-- **藏功能 = 前端开关 + e2e 常量成对，且断言分两套而不是删掉**。
-  前端 `showX: false`（配 `v-if`，不用 `v-show` —— 后者只是 CSS 藏，canvas 还照画），
-  e2e 顶部配一个同名常量。删断言会让 e2e 全绿但静默少掉一大块覆盖面，日后恢复也没人补回来。
-- **e2e 里凡是要 `querySelector` 的元素，都要先判存在再取属性**。
-  页面内求值抛异常 = 整轮中断（不是"一条失败"，是后面全不跑）。
-- **截图/日志这类人工产物必须带超时**：`await` 一个不返回的 CDP 请求 = 进程干挂。
-- **测试清理只能动自己起的东西**：e2e 收尾曾按 `IMAGENAME eq chrome.exe` 杀进程，
-  会连用户正在登录的 Chrome 一起强杀。按本轮临时 profile 匹配 `CommandLine` 才安全。
+## 关键事实（实测，别忘）
 
-## 关键事实（别忘）
-
-- Chrome ≥ 136：对默认用户数据目录加 `--remote-debugging-port` 被**静默忽略**。
-  只能走 `chrome://inspect/#remote-debugging` 勾选开关（Chrome ≥ 144），每个浏览器会话要重新勾。
-- 新版 Chrome 只开放**浏览器级 WS**，`/json/version` 与 `/json/list` 一律 404。
-  页面发现走 `Target.getTargets` + `Target.attachToTarget`。
-  **`Target.createTarget` 不接受 `width`/`height`**（Chrome 155 报
-  "Target position can only be set for new windows"），视口用 `Emulation.setDeviceMetricsOverride`。
-- Chrome 不补发 `Network.enable` 之前已建立的 WS 的 `webSocketCreated` → 帧 `url` 为空。
-- **series id（`sds_1`/`sds_2`…）是每条连接的临时订阅号，重连会换号**。别当身份用。
-- 图表**按需**取数：可视范围走出缓存窗口才发 `request_more_data`。
-  这是"填时间轴"的立足点 —— 拨动图表即可，不必手动回放。
-- 周期只能靠相邻时间戳众数差反推。`lbs.bar_close_time` 是图表右侧可视边界，**不是**每根 K 线的收盘时间。
-- 期货休市时间（CME，UTC）：每日 21:00–22:00 结算，周六全天 + 周日 22:00 前。
-- **风控**：自动回拉默认关闭，是刻意的。主动操作图表会产生非人类交互序列。
-
-## 前端零构建的坑
-
-- Tailwind 4 里**未分层的普通 CSS 永远赢过分层 CSS** → `web/style.css` 只写
-  `.card`/`.btn`/`.switch` 这类结构性样式，绝不写 margin/width（写了就盖掉工具类）。
-- Tailwind 的 preflight **不设 `font-size`** → 必须显式写 `body { font-size: 14px }`。
-- **Tailwind 4 会 tree-shake 主题变量**：没有任何工具类引用的变量不会输出到 `:root`。
-  canvas 用 `getComputedStyle` 读它会拿到空串，而 `ctx.fillStyle = ''` 是静默忽略 →
-  整层图形无声消失。**`@theme static` 不能省**，且 canvas 取色要逐项兜底 + 缺变量时报 error。
-  判定手段：e2e 里逐格采样 canvas 像素与接口位图对账，别靠看截图。
-- **canvas 里别用 CSS 的 `color-mix()`**（`fillStyle` 解析支持度不保证），用 `globalAlpha`。
-- 深色模式用 `html.dark`（0,1,1）压过 `:root`（0,1,0）覆盖变量，不靠顺序赌。
-- 时间轴画在 canvas 上，DOM 里拿不到 gutter/rowH → 布局常量经 `window.__tv.layout()` 暴露给 e2e。
-  **该可视化当前已隐藏**（`web/app.js` 的 `showTimeline: false`）——代码全留，只是不渲染，
-  所以 `window.__tv.layout()` 现在恒为 null；`test/e2e.mjs` 的 `TIMELINE_ENABLED` 跟着它走。
-- 只要改了 `web/` 下的东西，**必须跑 `node test/e2e.mjs`** —— 纯函数测试看不见布局与颜色。
+- Chrome ≥ 136：给默认用户数据目录加 `--remote-debugging-port` 被**静默忽略**，只能走
+  `chrome://inspect/#remote-debugging` 的开关（≥144）；每个浏览器会话要重勾，
+  每次外部连接会弹一次 Allow 框，**不点就不通**。
+- 新版 Chrome 只开放**浏览器级 WS**，`/json/version`、`/json/list` 一律 404。
+  端口与 WS 路径从 `<User Data>/DevToolsActivePort` 读（第一行端口，第二行 `/devtools/browser/<uuid>`）。
+  页面发现走 `Target.getTargets` + `Target.attachToTarget`(flatten)。
+- **一个标签页同时只能有一个调试会话** → 该页开着 DevTools 时 attach 必失败（代码 1 分钟退避）。
+- 抓包里**有** `symbol_resolved`（旧版注释说没有，是错的）：
+  `{"m":"symbol_resolved","p":["cs_X","sds_sym_1",{…"pro_name":"CME_MINI:MNQ1!"…}]}`。
+  配套的绑定信令 `{"m":"create_series","p":["cs_X","sds_1","s1","sds_sym_1","5",300,""]}`
+  是**客户端发上去的**（所以上行帧也要扫，但只扫这一条）。数据消息的 `p[0]` 就是会话 id。
+  `modify_series` 未在抓包中出现过 —— 代码按同形状试解析，属**推断**。
+- 报价里的伪品种键形如 `={"adjustment":"splits",…,"symbol":"CME_MINI_DL:MNQ1!"}`，
+  不是品种名；`CME_MINI:MNQ1!` 的报价里还夹着 `"underlying-symbol":"NASDAQ:NDX"`。
+- 按形状抽 K 线**不会**误抽报价/指标：655 帧的真实抓包里 211 个含 K 线的段全部是
+  图表会话的 `du`/`timescale_update`，`qsd`（含 57KB 那一条）与 `st` 一根都没贡献。
+- 帧：`~m~<长度>~m~<负载>`；心跳两种形态都见过 —— 裸 `~h~1` 与 `~m~4~m~~h~1`。
+  声明长度与实测不符约 3%（5305 段中 146 段）→ 对不上时必须退化为"切到下一个帧头之前"；
+  **但"负载长度必须等于声明长度"不能省**，否则声明超长时会把后面几段一起吞掉。
+- K 线形状 `{s:[{i,v:[t,o,h,l,c,v]}]}`，t 是 Unix 秒，series 名是它上一层的键名（`sds_1`…）。
+  `st1`/`st2` 是指标（`st` 键）、`qsd` 是报价，都不会被误抽。
+- `lbs.bar_close_time` **不是**收盘时间，是图表右侧可视边界。
+- 单帧最大实测 247KB（WS 客户端必须支持 64 位长度与分片；写帧必须掩码）。
+- 图表**按需**取数：可视范围走出缓存窗口才发 `request_more_data` → 拖图表就是填历史的手段。
+- 期货休市（CME，UTC）：每日 21:00–22:00 结算，周六全天 + 周日 22:00 前。
+- **`build.cmd` 必须是 CRLF 行尾**。本仓库 `core.autocrlf=true`，但那只在 checkout/commit
+  时转换，**工具直接写盘不会被转**，所以用写文件的方式生成 .cmd 就会留下 LF ——
+  cmd.exe 按字节偏移回读脚本，LF 会让它吃掉每行行首若干字符，报出一串
+  「xxx 不是内部或外部命令」（实测把 `exit /b 1` 吃成 `it`、`pause` 吃成 `e`）。
+  已用 `.gitattributes`（`*.cmd text eol=crlf`）钉死。改这个文件务必按 CRLF 写。
 
 ## 用户偏好
 
 - 需要"先纠正认知误区，再给可执行结论"，并结合他自己工程的具体文件举例。
 - 喜欢可视化图示配合讲解。
-- 重视"结论要有实测支撑"，讨厌凭空推断 —— 汇报时要如实标出哪些是验证过的、哪些还是猜测。
+- 重视结论要有实测支撑，讨厌凭空推断 —— 汇报时如实标出哪些验证过、哪些还是猜测。
+- 对**不可逆操作**敏感方向：声称"清除数据"时，我选择归档而非物理删除并明确告知，他没有反对。

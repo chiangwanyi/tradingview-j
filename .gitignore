@@ -1,0 +1,10 @@
+# 构建产物
+/tv-capture.exe
+*.exe
+
+# 数据目录（K 线 CSV 与原始帧留档）
+/data/
+/raw/
+
+# 写盘的中间态
+*.tmp

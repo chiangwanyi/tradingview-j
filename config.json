@@ -1,0 +1,18 @@
+{
+  "_comment": "配置说明见 README.md。程序不接受命令行参数，改配置就改这个文件。",
+  "matchUrl": "tradingview.com/chart",
+  "symbol": "",
+  "cdpPort": 0,
+  "intervalSeconds": 300,
+  "outDir": "data",
+  "rawDir": "raw",
+  "saveRawFrames": true,
+  "csvHeader": true,
+  "flushSeconds": 1,
+  "attachPollSeconds": 3,
+  "retrySeconds": 5,
+  "statusSeconds": 15,
+  "networkBufferMB": 200,
+  "maxFrameMB": 16,
+  "pauseOnExit": true
+}

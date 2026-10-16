@@ -1,0 +1,7 @@
+# 批处理文件必须是 CRLF：cmd.exe 按字节偏移回读脚本，
+# 只有 LF 时会把下一行行首的字符一起吃掉，报出「xxx 不是内部或外部命令」。
+*.cmd text eol=crlf
+*.bat text eol=crlf
+
+# 二进制产物不要做行尾转换
+*.exe binary
