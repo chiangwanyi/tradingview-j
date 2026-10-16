@@ -57,6 +57,16 @@ export async function capture(options = {}) {
     reload = false,
     hookWs = false,
     sampleCount = 0,
+    // onRecord: 每写一条记录就回调一次 —— watch 模式靠它做流式解码入库，
+    //           这样就不必再回头读文件，也不会有"抓了但忘了 ingest"的情况。
+    // onProgress/progressEveryMs: 定期回调，用来打印累计进度（watch 模式）。
+    onRecord = null,
+    onProgress = null,
+    progressEveryMs = 0,
+    // onReady: 拿到可用会话后回调一次（不阻塞主流程，用来启动驱动器，比如自动回填循环）
+    // shouldStop: 每 250ms 询问一次，返回 true 就优雅收尾（自动化流程用它决定何时收工）
+    onReady = null,
+    shouldStop = null,
     log = (m) => process.stdout.write(m + '\n'),
   } = options;
 
@@ -88,7 +98,16 @@ export async function capture(options = {}) {
   const stream = fs.createWriteStream(outFile, { flags: 'a' });
   const sample = sampleFile ? fs.createWriteStream(sampleFile, { flags: 'a' }) : null;
 
-  const write = (rec) => stream.write(JSON.stringify(rec) + '\n');
+  const write = (rec) => {
+    stream.write(JSON.stringify(rec) + '\n');
+    if (onRecord) {
+      try {
+        onRecord(rec);
+      } catch (e) {
+        log(`[warn] onRecord 处理失败：${e.message}`);
+      }
+    }
+  };
 
   write({
     k: 'meta',
@@ -173,6 +192,13 @@ export async function capture(options = {}) {
     await session.send('Page.reload', { ignoreCache: false });
   }
 
+  if (onReady) {
+    // 故意不 await：驱动器要跨整个抓取周期运行
+    Promise.resolve()
+      .then(() => onReady({ session, target, endpoint }))
+      .catch((e) => log(`[warn] onReady 失败：${e.message}`));
+  }
+
   log(`开始抓帧 → ${outFile}`);
   log('（若要停止：Ctrl+C）');
 
@@ -189,9 +215,19 @@ export async function capture(options = {}) {
   let stopReason = 'signal';
   try {
     const startedAt = Date.now();
+    let lastProgress = Date.now();
     stopReason = await new Promise((resolve) => {
       const tick = setInterval(() => {
+        if (onProgress && progressEveryMs && Date.now() - lastProgress >= progressEveryMs) {
+          lastProgress = Date.now();
+          try {
+            onProgress({ recv, sent, wsCount: wsUrls.size, startedAt, elapsedMs: Date.now() - startedAt });
+          } catch (e) {
+            log(`[warn] onProgress 处理失败：${e.message}`);
+          }
+        }
         if (stopping) return finish('signal');
+        if (shouldStop && shouldStop()) return finish('requested');
         if (durationMs && Date.now() - startedAt >= durationMs) return finish('duration');
         if (idleStopMs && Date.now() - lastActivity >= idleStopMs) return finish('idle');
       }, 250);

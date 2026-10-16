@@ -10,7 +10,8 @@ import path from 'node:path';
 import readline from 'node:readline';
 import { splitFrame, buildFrame, extractBars, toBar, symbolFromUrl, intervalName } from '../src/frames.mjs';
 import { ingest } from '../src/ingest.mjs';
-import { openStore, makeWriter } from '../src/store.mjs';
+import { computeCoverage, dayLabel } from '../src/coverage.mjs';
+import { openStore, makeWriter, readBars } from '../src/store.mjs';
 
 let passed = 0;
 function check(name, fn) {
@@ -265,6 +266,123 @@ check('品种来自 symbol_resolved 而不是兜底 hint', () => {
 });
 
 db.close();
+
+console.log('覆盖度 coverage');
+{
+  const DAY = 86400;
+  const tmp2 = fs.mkdtempSync(path.join(os.tmpdir(), 'tv-cov-'));
+  const db2 = path.join(tmp2, 'cov.sqlite');
+  const store2 = openStore(db2);
+  const w2 = makeWriter(store2);
+
+  const START_DAY = 20000; // 任意起始日，20000 天 = 4 整周
+  const WEEKS = 4;
+  const HOLE_DAY = START_DAY + 10; // 抽掉这一整天
+  const SLOTS = 288; // 24h / 5min
+
+  for (let d = START_DAY; d < START_DAY + WEEKS * 7; d++) {
+    if (d === HOLE_DAY) continue;
+    for (let i = 0; i < SLOTS; i++) {
+      w2.writeBar({
+        symbol: 'TEST:SYM',
+        series: 'sds_1',
+        t: d * DAY + i * 300,
+        interval: '5m',
+        o: 100,
+        h: 101,
+        l: 99,
+        c: 100.5,
+        v: 1,
+        source: 'test',
+        raw: null,
+      });
+    }
+  }
+  w2.close();
+
+  const db3 = openStore(db2);
+  const [rep] = computeCoverage(db3, { symbol: 'TEST:SYM' });
+  db3.close();
+
+  check('覆盖度：识别出唯一被抽掉的那一天', () => {
+    assert.equal(rep.gaps.length, 1);
+    assert.equal(dayLabel(rep.gaps[0].day), dayLabel(HOLE_DAY));
+  });
+  check('覆盖度：缺失量 = 288 个时段（整日）', () => {
+    assert.equal(rep.gaps[0].missing.length, SLOTS);
+    // expectedTotal 统计的是"整个区间应有"（含被抽掉那天的 288 个时段），
+    // missingTotal 才是真正的缺口
+    assert.equal(rep.expectedTotal, WEEKS * 7 * SLOTS);
+    assert.equal(rep.matched, WEEKS * 7 * SLOTS - SLOTS);
+    assert.equal(rep.missingTotal, SLOTS);
+    assert.equal(rep.coverageRatio, 1 - SLOTS / (WEEKS * 7 * SLOTS));
+  });
+  check('覆盖度：整周样本 -> 参照充分，不做"偏乐观"告警', () => {
+    assert.equal(rep.patternWeak, false);
+    assert.equal(rep.unknownDays.length, 0);
+  });
+  check('覆盖度：断档列表交叉验证到同一处', () => {
+    assert.equal(rep.breaks.length, 1);
+    assert.equal(rep.breaks[0].missing, SLOTS);
+  });
+  check('覆盖度：只有 1 天样本时判定参照不足', () => {
+    const tmp3 = fs.mkdtempSync(path.join(os.tmpdir(), 'tv-cov1-'));
+    const db4 = path.join(tmp3, 'one.sqlite');
+    const s4 = openStore(db4);
+    const w4 = makeWriter(s4);
+    for (let i = 0; i < SLOTS; i++) {
+      w4.writeBar({
+        symbol: 'TEST:ONE', series: 'sds_1', t: START_DAY * DAY + i * 300, interval: '5m',
+        o: 1, h: 1, l: 1, c: 1, v: 1, source: 'test', raw: null,
+      });
+    }
+    w4.close();
+    const db5 = openStore(db4);
+    const [r1] = computeCoverage(db5, { symbol: 'TEST:ONE' });
+    db5.close();
+    assert.equal(r1.patternWeak, true);
+  });
+
+  fs.rmSync(tmp2, { recursive: true, force: true });
+}
+
+console.log('导出收敛 readBars');
+{
+  const tmp6 = fs.mkdtempSync(path.join(os.tmpdir(), 'tv-dedupe-'));
+  const db6 = path.join(tmp6, 'd.sqlite');
+  const s6 = openStore(db6);
+  const w6 = makeWriter(s6);
+  const mk = (series, t, c, seenAt) => ({
+    symbol: 'TEST:S', series, t, interval: '5m', o: 1, h: c, l: 1, c, v: 1, source: 't', raw: null, seen_at: seenAt,
+  });
+  // 同一根 K 线来自两条连接（重连换了 series 号），后者更新
+  w6.writeBar(mk('sds_1', 300000, 10, 1000));
+  w6.writeBar(mk('sds_2', 300000, 11, 2000));
+  w6.writeBar(mk('sds_1', 300300, 20, 1000));
+  w6.writeBar({ ...mk('sds_1', 900000, 99, 1000), interval: '15m' }); // 不同周期不该被合并
+  w6.close();
+
+  const db7 = openStore(db6);
+  const d = readBars(db7, { symbol: 'TEST:S', dedupe: true });
+  const raw = readBars(db7, { symbol: 'TEST:S', dedupe: false });
+  db7.close();
+
+  check('收敛：同一 (symbol,interval,t) 的重复行被合并', () => {
+    assert.equal(raw.rows.length, 4);
+    assert.equal(d.rows.length, 3);
+    assert.equal(d.collapsed, 1);
+  });
+  check('收敛：保留的是最后见到的那一行', () => {
+    const row = d.rows.find((r) => r.t === 300000);
+    assert.equal(row.c, 11);
+  });
+  check('收敛：不同周期不互相覆盖', () => {
+    assert.equal(d.rows.filter((r) => r.t === 900000).length, 1);
+  });
+
+  fs.rmSync(tmp6, { recursive: true, force: true });
+}
+
 fs.rmSync(tmp, { recursive: true, force: true });
 
 console.log(`\n${passed} 项通过${process.exitCode ? '（有失败项）' : '，全部通过'}`);

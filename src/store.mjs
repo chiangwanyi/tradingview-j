@@ -191,3 +191,61 @@ export function csvEscape(v) {
   const s = String(v);
   return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 }
+
+// 导出用的读取。默认按 (symbol, interval, t) 收敛：
+//
+// TradingView 的 series id（sds_1 / sds_2 …）是**每条 WebSocket 连接自己发的临时订阅号**，
+// 重连后会换号 —— 实测 2026-10-16：页面重连后，同一个 5m 图从 sds_1 变成 sds_2，
+// 于是同一根 K 线在库里留下两行（内容一致）。
+// 对研究用途来说这是无意义的重复，导出时收敛掉；原始行仍然留在库里可查。
+export function readBars(db, { symbol = null, interval = null, dedupe = true, limit = 0 } = {}) {
+  const where = [];
+  const args = [];
+  if (symbol) {
+    where.push('symbol = ?');
+    args.push(symbol);
+  }
+  if (interval) {
+    where.push('interval = ?');
+    args.push(interval);
+  }
+  const rows = db
+    .prepare(
+      `SELECT symbol, series, interval, t, o, h, l, c, v, seen_at FROM bars` +
+        (where.length ? ` WHERE ${where.join(' AND ')}` : '') +
+        ` ORDER BY symbol ASC, t ASC`,
+    )
+    .all(...args);
+
+  let out = rows;
+  let collapsed = 0;
+  if (dedupe) {
+    const map = new Map();
+    for (const r of rows) {
+      const key = `${r.symbol}\u0000${r.interval ?? ''}\u0000${r.t}`;
+      const prev = map.get(key);
+      if (!prev) map.set(key, r);
+      else {
+        collapsed++;
+        if ((r.seen_at || 0) >= (prev.seen_at || 0)) map.set(key, r);
+      }
+    }
+    out = [...map.values()].sort((a, b) =>
+      a.symbol === b.symbol ? a.t - b.t : a.symbol < b.symbol ? -1 : 1,
+    );
+  }
+  return { rows: limit ? out.slice(0, limit) : out, total: rows.length, collapsed };
+}
+
+// 同一品种下出现过哪些 series —— 用来暴露"重连换号"这件事
+export function listSeriesIds(db, symbol = null) {
+  return db
+    .prepare(
+      `SELECT symbol, series, COUNT(*) AS bars, COUNT(DISTINCT t) AS distinct_t,
+              MIN(t) AS first_t, MAX(t) AS last_t
+       FROM bars` +
+        (symbol ? ' WHERE symbol = ?' : '') +
+        ` GROUP BY symbol, series ORDER BY symbol, series`,
+    )
+    .all(...(symbol ? [symbol] : []));
+}
