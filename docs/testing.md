@@ -23,16 +23,22 @@ internal/capture/capture_test.go
 全部真跑了一遍。各层另有单元测试：
 
 ```bash
-go test ./internal/tvproto/   # 分帧 / 抽 K 线 / 品种与序列绑定解析（含两份真实抓包回归）
-go test ./internal/store/     # CSV 落盘 / 覆盖语义 / 重启后合并 / 坏行容错 / 只读扫描
-go test ./internal/ingest/    # 周期反推 / 暂存补写 / 品种归属与串味防护
-go test ./internal/cdp/       # 端点发现 / 命令与事件 / 超时 / 断线
-go test ./internal/wsclient/  # 握手 / 大帧 / 分片 / ping-pong
-go test ./internal/config/    # 配置生成 / 缺键补齐 / 非法值回退
-go test ./internal/logx/      # 状态行原地刷新 / 中文按显示宽度擦除 / 重定向不留回车
-go test ./internal/webreport/ # 网页版的 JSON 形状 / 静态资源 / 端口回退 / 只读
-go test .                     # 菜单报表排版（中文表头列宽一致）+ 版本号机制的四个落点
+go test ./internal/tvproto/    # 分帧 / 抽 K 线 / 品种与序列绑定解析（含两份真实抓包回归）
+go test ./internal/store/      # CSV 落盘 / 覆盖语义 / 重启后合并 / 坏行容错 / 只读扫描
+go test ./internal/ingest/     # 周期反推 / 暂存补写 / 品种归属与串味防护
+go test ./internal/cdp/        # 端点发现 / 命令与事件 / 超时 / 断线
+go test ./internal/wsclient/   # 握手 / 大帧 / 分片 / ping-pong
+go test ./internal/config/     # 配置生成 / 缺键补齐 / 非法值回退
+go test ./internal/logx/       # 状态行原地刷新 / 中文按显示宽度擦除 / 重定向不留回车
+go test ./internal/termreport/ # 终端报表排版（中文表头列宽一致，菜单 2）
+go test ./internal/webreport/  # 网页版的 JSON 形状 / 静态资源 / 端口回退 / 只读（含前端格式化交叉校验）
+go test .                      # 版本号机制的四个落点（VERSION / 兜底值 / build.cmd / winres）
 ```
+
+`internal/cli`、`internal/rawlog`、`internal/wstest` 没有自己的测试文件：
+前者的编排要么是「起服务等 Ctrl+C」这种必须真起进程的行为，要么被 `internal/capture`
+的端到端用例覆盖（它跑的正是同一条链路）；后两个分别在 `internal/capture` 与
+`internal/wsclient` 的测试里被调用。
 
 ### 只读扫描的测试
 
@@ -49,7 +55,7 @@ go test .                     # 菜单报表排版（中文表头列宽一致）
   某个标的当天根本没这份文件（还没抓到）不能当成它抓了 0 根，否则每加一个新标的，
   它入库之前的每一天都会集体误报。
 
-报表排版的测试（`report_test.go`）用「每行显示宽度必须相等」把口径钉死：
+报表排版的测试（`internal/termreport/report_test.go`）用「每行显示宽度必须相等」把口径钉死：
 表头是中文（`日期`、`最大断档`）、数据行几乎全是 ASCII，
 一旦有人把「按显示宽度补齐」换成 `fmt` 的 `%-12s` 或 `len()`，中文列会当场少算一半宽度、
 整张表往左串行 —— 而那种歪斜在代码里看不出来，只有盯着终端才发现。
@@ -58,7 +64,7 @@ go test .                     # 菜单报表排版（中文表头列宽一致）
 
 三层，全部离线：
 
-1. **`report_test.go`** —— `Build` 是纯函数（只读入参、不碰磁盘、不看时钟），
+1. **`report_test.go`**（`internal/webreport/`）—— `Build` 是纯函数（只读入参、不碰磁盘、不看时钟），
    拿手工构造的 `store.ScanResult` 就能断言：合计、时间跨度、标的映射、日文件数字、
    断档区间、应有根数、取日期合计，以及 **notes / 读不了的错误原样透传**。
    其中有两条是刻意的：① **`Build` 一次都不许重算判定** —— 用例把根数改成 275 而
@@ -73,7 +79,7 @@ go test .                     # 菜单报表排版（中文表头列宽一致）
    最后 —— **分析前后目录快照逐项对比**，证明网页版一个字节都没动。
 3. **`frontend_test.go`** —— 让 node 跑 `testdata/format.test.cjs`：
    把 `app.js` 里 createApp 之前的那段纯函数切出来 eval，逐条断言
-   `num` / `bytes` 与 **`report_test.go` 里那张期望值表完全一致**，
+   `num` / `bytes` 与 **`internal/termreport/report_test.go` 里那张期望值表完全一致**，
    外加判据的转述（`dayAnomaly` / `dayNotes` / `cellSub` / `expectText` / `countsText`）、
    排序（不原地改数组、同值按日期兜底）、告警文案，
    以及**日历的日期算术**（`monthCells` 铺格子、`addMonth` 跨年、`weekday`、
@@ -291,8 +297,8 @@ meta + 一条携带完整 300 根历史的 `timescale_update` + 一条 `du` + �
 
 | 现象 | 原因与位置 |
 |---|---|
-| 菜单里按回车没反应 | 设计如此：回车 = 重画菜单（`menu.go`）。要开始抓就按 **1** |
-| 抓完之后窗口直接关了 | 只有选 **3** 才退出（`menu.go` 的 `menu`）。若确实退出了，看上一段日志里的报错 |
+| 菜单里按回车没反应 | 设计如此：回车 = 重画菜单（`internal/cli/menu.go`）。要开始抓就按 **1** |
+| 抓完之后窗口直接关了 | 只有选 **3** 才退出（`internal/cli/menu.go` 的 `App.menu`）。若确实退出了，看上一段日志里的报错 |
 | 一直打印「还没发现 Chrome 调试端点」 | 「前置条件」里那个开关没勾，或 Chrome 没开（`internal/cdp` 的端点发现） |
 | 连上了但没弹 Allow 框、随后报「连接已关闭」 | 上一次的授权被拒了，重新连一次并在浏览器里点 Allow |
 | 找到页面但提示「接不进这个页面」 | **该标签页上开着开发者工具** —— 一个标签页同时只能有一个调试会话，关掉 DevTools 即可 |
@@ -300,7 +306,7 @@ meta + 一条携带完整 300 根历史的 `timescale_update` + 一条 `du` + �
 | 状态行里 `暂存 N 根` 一直不降 | 那些 K 线所在的序列凑不齐两票、周期反推不出来（一般是页面上另一个会话/迷你图的零星数据），或者它们的会话里解析出多个品种而序列没有绑定。**它们不会落盘，也不影响主图采集** —— 这是刻意的（`internal/ingest`） |
 | `品种` 显示的标的跟你正在看的图表不一致 | 先看日志里那句 `识别品种：…（会话 … · 品种键 …）` 对不对。实在不放心就把 `config.json` 的 `symbol` 填死（`internal/tvproto` 的归属判定） |
 | CSV 文件被 Excel 占用导致写失败 | 日志会提示「下个周期重试」，关掉 Excel 即可（`internal/store` 的 `writeFileAtomic`） |
-| 菜单里按 `Ctrl+C` 程序直接没了 | 回到菜单后 SIGINT 已经交还给系统（`main.go` 里 `stop()` 在刷盘之后才调用），此时 Ctrl+C 就是退出程序 |
+| 菜单里按 `Ctrl+C` 程序直接没了 | 回到菜单后 SIGINT 已经交还给系统（`internal/cli/capture.go` 里 `stop()` 在刷盘之后才调用），此时 Ctrl+C 就是退出程序 |
 | 「分析」里的 `重复N行` 亮了 | 说明日文件被手工改过或被别的工具合并过。正常写入（整体重写 + 原子改名）下同一时间戳不可能出现两次 —— 这是**报警**，不是统计（见 [design.md](design.md) 的「写入语义」） |
 | 「分析」里的缺口看着很大 | 那是期货每日结算休市，不是丢数据。网页版（菜单 3）已经没有「缺口 / 最大断档」这两列了，改用「这一天应当有多少根」判异常（见 [design.md](design.md) 的附录） |
 | 网页上某一天**标红** | 两条原因：① 根数与该星期应有的根数不符（鼠标停在格子上会写「周二应当是 276 根」）；② 文件有坏行 / 重复行 / 读不了。点开那一天，明细里的「检查」会逐条列出来 |
@@ -344,7 +350,7 @@ meta + 一条携带完整 300 根历史的 `timescale_update` + 一条 `du` + �
   `python -c "d=open('build.cmd','rb').read(); print(sum(1 for b in d if b>0x7f), d.count(b'\n')-d.count(b'\r\n'))"`
   （两个数都得是 0）。
 - **菜单只能有一个 stdin reader**：菜单读缓冲 reader、「按回车继续」又直接读 `os.Stdin` 的话，
-  缓冲层里攒着的字符会被绕过去，表现成「按一次回车跳过两项」（`menu.go`）。
+  缓冲层里攒着的字符会被绕过去，表现成「按一次回车跳过两项」（`internal/cli/prompt.go`）。
 - **网页版不许有「算数字」的代码**：根数 / 断档区间 / 应有根数 / 异常判定只能在 Go 里算
   （`store.Scan`），日历上「这一天有几个标的带异常」「各标的根数一不一致」也一样 ——
   它们在 `store.ByDate` 里（`DateTotal.Issues` / `Mismatch` / `Majority`），
@@ -354,7 +360,7 @@ meta + 一条携带完整 300 根历史的 `timescale_update` + 一条 `du` + �
   它自己不知道 276 这个数字）。
   改了 `num` / `bytes` / 判据转述那几个函数或日历的日期算术（`monthCells` / `addMonth` /
   `weekday` / `monthsOf`），就必须同步改 `internal/webreport/testdata/format.test.cjs` 的期望值
-  （其中格式化那张表是照抄 `report_test.go` 的），
+  （其中格式化那张表是照抄 `internal/termreport/report_test.go` 的），
   否则 `go test ./internal/webreport/` 会红 —— 这是刻意的，两边都改才算改对。
 - **改了 `internal/webreport/static/` 下任何文件都要重新 `go build`**：`//go:embed` 是
   编译期快照，改完不重编，跑起来的还是旧页面 —— 表现是「明明改了，浏览器里没变」。
@@ -376,6 +382,6 @@ meta + 一条携带完整 300 根历史的 `timescale_update` + 一条 `du` + �
   而浏览器这边看起来「我明明改了」（这种现象最费时间）。
 - **网页版必须只读、只监听 `127.0.0.1`**：它和菜单 2 一样走 `store.Scan`；
   不要给它加任何能改数据或触发动作的接口（见 [design.md](design.md) 的「网页版分析」）。
-- **不要在 Go 里重写一遍前端排版**：终端报表（`analyze.go`）和网页的排版是两套，
+- **不要在 Go 里重写一遍前端排版**：终端报表（`internal/termreport`）和网页的排版是两套，
   但**统计量只有一份**。想让两边长得一样时，加的是「把同一个数字显示得更清楚」的约定，
   不是把终端的字符串塞进 JSON。

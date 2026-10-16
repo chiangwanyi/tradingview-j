@@ -1,4 +1,4 @@
-package main
+package cli
 
 // 菜单里的「3 网页版分析」。
 //
@@ -16,52 +16,51 @@ import (
 	"syscall"
 	"time"
 
-	"tradingview-j/internal/logx"
 	"tradingview-j/internal/webreport"
 )
 
-func runWeb(lg *logx.Logger, baseDir string) int {
-	cfg, ok := loadConfig(lg, baseDir)
+func (a *App) runWeb() int {
+	cfg, ok := a.loadConfig()
 	if !ok {
 		return 1
 	}
 	root := cfg.OutPath()
 
-	lg.Rule(72)
-	lg.Plain("  网页版分析 · %s", root)
-	lg.Plain("  一根 K 线 %d 秒 · 时区 %s · 与菜单 2 同一份统计代码", cfg.IntervalSeconds, time.Local)
-	lg.Plain("  只读：页面上的任何操作都不会改动数据目录里的文件")
-	lg.Rule(72)
+	a.Log.Rule(72)
+	a.Log.Plain("  网页版分析 · %s", root)
+	a.Log.Plain("  一根 K 线 %d 秒 · 时区 %s · 与菜单 2 同一份统计代码", cfg.IntervalSeconds, time.Local)
+	a.Log.Plain("  只读：页面上的任何操作都不会改动数据目录里的文件")
+	a.Log.Rule(72)
 
 	srv, err := webreport.Start(webreport.Options{
 		Root:     root,
 		Step:     cfg.IntervalSeconds,
 		Location: time.Local,
-		Version:  version,
-		Log:      func(format string, args ...any) { lg.Info(format, args...) },
+		Version:  a.Version,
+		Log:      func(format string, args ...any) { a.Log.Info(format, args...) },
 	}, cfg.WebPort)
 	if err != nil {
-		lg.Error("%v", err)
+		a.Log.Error("%v", err)
 		return 1
 	}
 	if srv.Moved {
 		// 换了端口必须说出来：用户是拿这个端口号去浏览器里敲地址的
-		lg.Warn("端口 %d 起不来（多半被别的程序占着），已改用 %d —— 要固定就用别的端口改 config.json 的 webPort", cfg.WebPort, srv.Port)
+		a.Log.Warn("端口 %d 起不来（多半被别的程序占着），已改用 %d —— 要固定就用别的端口改 config.json 的 webPort", cfg.WebPort, srv.Port)
 	}
-	lg.Plain("  地址      %s", srv.URL)
-	lg.Plain("  已尝试用默认浏览器打开；没打开就手动把上面的地址粘进去。")
-	lg.Rule(72)
+	a.Log.Plain("  地址      %s", srv.URL)
+	a.Log.Plain("  已尝试用默认浏览器打开；没打开就手动把上面的地址粘进去。")
+	a.Log.Rule(72)
 
 	openBrowser(srv.URL)
 
-	lg.Info("服务运行中。停止并回到菜单：在这个窗口按 Ctrl+C")
+	a.Log.Info("服务运行中。停止并回到菜单：在这个窗口按 Ctrl+C")
 	waitStop()
 
-	lg.Info("正在停止网页服务…")
+	a.Log.Info("正在停止网页服务…")
 	if err := srv.Close(); err != nil {
-		lg.Warn("关闭服务时出错：%v", err)
+		a.Log.Warn("关闭服务时出错：%v", err)
 	}
-	lg.Plain("  网页服务已停止。")
+	a.Log.Plain("  网页服务已停止。")
 	return 0
 }
 
@@ -69,8 +68,8 @@ func runWeb(lg *logx.Logger, baseDir string) int {
 //
 // 这里刻意**不用回车**来停：要在等回车的同时响应 Ctrl+C，就得在后台起一个读 stdin 的
 // goroutine，而 Ctrl+C 先到的话那个 goroutine 会一直挂在 stdin 上 —— 菜单读的是同一份
-// 缓冲 reader，于是它会把用户回到菜单后敲的第一个字符吃掉，表现成「选了没反应」。
-// 抓取那条路径也是 Ctrl+C 停，两处行为一致，不用记两套。
+// 缓冲 reader（见 prompt.go），于是它会把用户回到菜单后敲的第一个字符吃掉，
+// 表现成「选了没反应」。抓取那条路径也是 Ctrl+C 停，两处行为一致，不用记两套。
 func waitStop() {
 	sig := make(chan os.Signal, 1)
 	signal.Notify(sig, os.Interrupt, syscall.SIGTERM)

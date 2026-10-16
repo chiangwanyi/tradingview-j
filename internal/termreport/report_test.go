@@ -1,4 +1,4 @@
-package main
+package termreport
 
 // 报表排版的回归测试。
 //

@@ -265,26 +265,39 @@ time,open,high,low,close,volume
 ## 项目结构
 
 ```
-VERSION                 唯一的版本号来源（一行，例如 0.1.0）
-build.cmd               构建脚本：读 VERSION → 生成资源对象 → 就地编译出 tv-capture-v<版本>.exe
-winres/winres.json      Windows 资源模板（exe 属性里的产品名与描述；不含版本号）
-main.go                 入口：横幅、菜单主循环分发、退出汇总
-menu.go                 菜单与输入（全程只有一个 stdin reader）
-analyze.go              菜单选项 2：只读统计的终端排版
-web.go                  菜单选项 3：起本地网页服务、开浏览器、等 Ctrl+C
-internal/config/        config.json 的加载 / 生成 / 校验
-internal/cdp/           CDP 接入：端点发现、命令与事件、目标页挑选
-internal/wsclient/      极简 WebSocket 客户端（零依赖，支持大帧与分片）
-internal/tvproto/       协议层：~m~/~h~ 分帧、按形状抽 K 线、标的解析
-internal/ingest/        解码器：周期反推、暂存、交给落盘出口
-internal/store/         CSV 存储：标的文件夹 + 每日文件整体重写；scan.go 是只读扫描
-internal/rawlog/        原始帧留档（NDJSON）
-internal/capture/       常驻会话：等端口、等页面、挂监听、状态行
-internal/logx/          控制台日志（UTF-8 代码页、状态行原地刷新、显示宽度）
-internal/webreport/     网页版分析：JSON 接口 + 内嵌前端（static/ 是页面，vendor/ 是两个前端库）
-internal/wstest/        测试专用的手写 WebSocket 服务端（不进最终产物）
-testdata/               真实抓包裁剪出的回归样本
+VERSION               唯一的版本号来源（一行，例如 0.1.0）
+build.cmd             构建脚本：读 VERSION → 生成资源对象 → 就地编译出 tv-capture-v<版本>.exe
+winres/winres.json    Windows 资源模板（exe 属性里的产品名与描述；不含版本号）
+main.go               入口：只有 main() 与 version（-ldflags 的注入点）
+
+internal/cli/         命令行外壳：横幅、菜单循环、三个菜单项的编排
+                      （prompt.go 里是全程唯一的 stdin reader）
+
+internal/capture/     常驻会话：等端口、等页面、挂监听、状态行
+
+internal/cdp/         CDP 接入：端点发现、命令与事件、目标页挑选
+internal/wsclient/    极简 WebSocket 客户端（零依赖，支持大帧与分片）
+internal/tvproto/     协议层：~m~/~h~ 分帧、按形状抽 K 线、标的解析
+
+internal/ingest/      解码器：周期反推、暂存、交给落盘出口
+internal/store/       CSV 存储：标的文件夹 + 每日文件整体重写；scan.go 是只读扫描
+internal/config/      config.json 的加载 / 生成 / 校验
+internal/rawlog/      原始帧留档（NDJSON）
+
+internal/termreport/  终端报表排版（菜单 2）
+internal/webreport/   网页版分析（菜单 3）：JSON 接口 + 内嵌前端（static/ 是页面，vendor/ 是两个前端库）
+
+internal/logx/        控制台日志：UTF-8 代码页、状态行原地刷新、显示宽度
+internal/wstest/      测试专用的手写 WebSocket 服务端（不进最终产物）
+
+testdata/             真实抓包裁剪出的回归样本（tvproto / ingest / capture 共用）
+data/                 抓到的 K 线 CSV（一个标的一个文件夹，一天一个文件）
+raw/                  原始帧留档的默认目录（不入库）
 ```
+
+上面那些空行就是**分层**：外壳 → 编排 → 协议与存储 → 表现层 → 基础设施。
+分组依据是「谁能 import 谁」，不是目录层级 —— 入口为什么不放进 `cmd/`、
+`internal/` 为什么不按层再套子目录，见 [docs/design.md](docs/design.md) 的「代码怎么分工」。
 
 ## 文档
 

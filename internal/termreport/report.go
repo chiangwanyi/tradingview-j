@@ -1,13 +1,14 @@
-package main
-
-// 菜单里的「2  分析已抓取的数据」。
+// Package termreport 把一次只读扫描的结果排版成终端表格（菜单 2）。
 //
-// 这一条路径**只读**：走的是 store.Scan（纯扫描），而不是 store.Store。
-// Store 是给写入用的 —— 它一 Open 就会建数据目录、会在 _symbols.json 里分配
-// 标的目录名。统计动作不该对数据产生任何副作用，所以这里刻意绕开它。
+// 它和 internal/webreport 是同一件事的两个表现层：入参都是 store.Scan 的
+// ScanResult，都**只读**（不建目录、不写索引、不动文件），也都不重算任何统计量
+// —— 根数、缺口、断档、异常判定全部来自 store，这一层只决定「印成什么样」。
 //
-// 统计的口径（根数 / 缺口 / 断档）全部来自 store 层，和落盘用的是同一份
-// 解析规则，不在这里重新实现一遍 CSV 解析。
+// 排版有一条承重规则：表头是中文（"日期"、"最大断档"），数据行几乎全是 ASCII，
+// 所以列宽必须按**显示宽度**算（logx.Width），不能用 %-12s 或 len() ——
+// 中文一个字占两列却只有一个 rune，用 %-Ns 排出来的表会当场串行，
+// 而这种歪斜在代码里看不出来。report_test.go 用「每行显示宽度必须相等」钉死它。
+package termreport
 
 import (
 	"fmt"
@@ -19,32 +20,15 @@ import (
 	"tradingview-j/internal/store"
 )
 
-func runAnalyze(lg *logx.Logger, baseDir string) int {
-	cfg, ok := loadConfig(lg, baseDir)
-	if !ok {
-		return 1
-	}
-	loc := time.Local
-	root := cfg.OutPath()
-
-	lg.Rule(72)
-	lg.Plain("  数据分析 · %s", root)
-	lg.Plain("  一根 K 线 %d 秒（config.json 的 intervalSeconds）· 时区 %s", cfg.IntervalSeconds, loc)
-	lg.Rule(72)
-
-	res := store.Scan(root, loc, cfg.IntervalSeconds)
-	for _, n := range res.Notes {
-		lg.Warn("%s", n)
-	}
+// Print 把一次只读扫描的结果印成终端报表：
+// 总览 → 每个标的一段 → 多个标的时再按日期合计。
+//
+// 没有数据时什么都不印，由调用方决定怎么提示 —— 「先选 1 抓数据」是交互层的话，
+// 不是报表的话。
+func Print(lg *logx.Logger, res *store.ScanResult, loc *time.Location) {
 	if len(res.Folders) == 0 {
-		if res.Exists {
-			lg.Plain("  数据目录里还没有任何 K 线。")
-			lg.Plain("  先选 1 启动抓取，然后在 TradingView 图表上拖一拖，数据就会落到这里。")
-		}
-		lg.Rule(72)
-		return 0
+		return
 	}
-
 	printOverview(lg, res, loc)
 	for _, f := range res.Folders {
 		printFolder(lg, f, loc)
@@ -52,8 +36,6 @@ func runAnalyze(lg *logx.Logger, baseDir string) int {
 	if len(res.Folders) > 1 {
 		printByDate(lg, res)
 	}
-	lg.Rule(72)
-	return 0
 }
 
 func printOverview(lg *logx.Logger, res *store.ScanResult, loc *time.Location) {

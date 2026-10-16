@@ -268,7 +268,7 @@
 「等回车」看起来更亲切，但要在等回车的同时响应 Ctrl+C，就得在后台起一个读 stdin 的 goroutine；
 Ctrl+C 先到的话那个 goroutine 会一直挂在 stdin 上 —— 菜单读的是**同一个**带缓冲的 reader，
 于是它会把用户回到菜单后敲的第一个字符吃掉，表现成「选了 1 没反应」。
-（这条和 menu.go 顶部那段注释是同一个坑的两面。）
+（这条和 `internal/cli/prompt.go` 顶部那段注释是同一个坑的两面。）
 
 ### 端口被占用时换端口，但必须说出来
 
@@ -324,6 +324,65 @@ Ctrl+C 先到的话那个 goroutine 会一直挂在 stdin 上 —— 菜单读�
 
 `version_test.go` 把这些约定钉成了断言：`VERSION` 是一行三段数字、`main.go` 的兜底值与它一致、
 `build.cmd` 三步齐全且是 CRLF 行尾、`winres\winres.json` 里不许出现版本号键。
+
+## 代码怎么分工：目录与包的边界
+
+### 入口留在根目录，不搬进 `cmd/`
+
+`cmd/<二进制名>/` 是**多**二进制项目的标准答案，本工程只有一个可执行文件，而且使用方式
+是「双击 exe」—— `go build .` / `go run .` 得能直接用。把 main 包搬进 `cmd/tv-capture/`
+会连带改掉三处已经被测试或机制钉住的东西：
+
+1. `build.cmd` 里的包路径（`-o` 之外还要多一个 `./cmd/tv-capture`）；
+2. `rsrc_windows_amd64.syso` 的输出目录 —— `.syso` 只会被链接进**与它同目录**的那个包，
+   搬走 main 包而 `.syso` 留在根目录，exe 属性页会变成空的（而且没有任何报错）；
+3. `version_test.go` 里所有按根目录解析的相对路径（`VERSION` / `build.cmd` / `winres\winres.json`）。
+
+换来的只是「目录名更标准」。所以入口留在根目录，但**必须薄**：`main.go` 只有 `main()`
+和一个 `version` 变量。后者留在 `main` 包不是偷懒 —— `-X` 只能设置包级字符串变量，
+而 `build.cmd` 里写死的是 `-X main.version`（`version_test.go` 会拦），
+所以是把这个值**传进** `internal/cli`，而不是把启动逻辑留在根目录。
+
+### `internal/` 保持扁平，不按「层」再套子目录
+
+Go 的导入路径就是包路径。往中间插一层（`internal/protocol/cdp`）只会让 import 变长，
+不产生任何编译器或工具链能看见的边界 —— 那只是把「分层」写在了目录名上。
+真正的层次由**谁能 import 谁**表达：
+
+| 层 | 包 | 约束 |
+|---|---|---|
+| 入口 | `main` | 只 import `internal/cli` |
+| 编排 | `internal/cli`、`internal/capture` | 可以 import 下面所有层 |
+| 协议与外部世界 | `internal/cdp`、`internal/wsclient`、`internal/tvproto` | 不 import 领域层与表现层 |
+| 领域与存储 | `internal/ingest`、`internal/store`、`internal/config`、`internal/rawlog` | 不 import 编排层与表现层 |
+| 表现层 | `internal/termreport`、`internal/webreport` | **只读** `store.Scan` 的结果，不重算任何统计量 |
+| 基础设施 | `internal/logx` | 谁都可以用 |
+
+包的数量就是职责的数量，不做「一个目录一个文件」式的细分：`internal/cli` 一句话说得清
+（「和用户打交道的那一层」），它内部的 6 个文件是按**菜单项**切的，不是按类型切的。
+
+### 终端报表和网页报表是一对孪生包
+
+「菜单 2」和「菜单 3」是同一件事的两个界面：入参都是 `store.Scan` 的 `ScanResult`，
+都只读、都不重算根数/缺口/异常判定。所以它们的形状也对称 ——
+`internal/termreport` 把结果印成终端表格，`internal/webreport` 把它序列化成 JSON
+再套一个内嵌页面。两个包各带自己的排版测试。
+
+唯一允许「写两份」的是**显示格式**（千分位、`1时5分`、KB/MB）：终端和浏览器本来就该
+各按各的方式显示。这一份差异由 `internal/webreport/testdata/format.test.cjs` 逐条对着
+`internal/termreport/report_test.go` 的期望值断言（`go test ./internal/webreport/`
+会调 node 跑它，没 node 则跳过）。**统计量一份都没有第二份实现**。
+
+### 重构前的样子，以及为什么那样不行
+
+`menu.go` / `analyze.go` / `web.go` 原本和 `main.go` 一起躺在根目录的 `package main` 里。
+问题不在「根目录文件多」，而在于**终端报表排版和进程启动共用了同一个包**：
+一边是 `baseDir()` / `banner()` / `openBrowser()`，一边是 `comma()` / `cell()` /
+按显示宽度算的列宽 —— 边界在代码里完全看不出来（谁都可以随手用另一边的函数），
+而且报表排版没法被单独测（它当时确实有测试，但测试和 `version` 变量、`os.Executable`
+待在同一个包，职责是混的）。现在按上面的分层拆开之后，`main` 只剩一行
+`os.Exit(cli.Run(version))`，终端排版进了 `internal/termreport`，
+它的测试也跟着过去了。
 
 ## 附录：协议与实测事实
 
