@@ -116,21 +116,39 @@ type symbolIndex struct {
 
 func (s *Store) indexPath() string { return filepath.Join(s.opts.Root, indexFile) }
 
+// readIndexFile 读 <root>/_symbols.json。
+//
+// 写成独立函数是为了让只读的 store.Scan 也能用同一份解析：索引格式一改，
+// 写入路径和统计路径必须同时跟上，否则「分析」会显示成文件夹名而落盘仍在用标的。
+func readIndexFile(root string) (symbolIndex, error) {
+	raw, err := os.ReadFile(filepath.Join(root, indexFile))
+	if err != nil {
+		return symbolIndex{}, err
+	}
+	var idx symbolIndex
+	if err := json.Unmarshal(raw, &idx); err != nil {
+		return symbolIndex{}, err
+	}
+	if idx.Symbols == nil {
+		return symbolIndex{}, fmt.Errorf("索引里没有 symbols 字段")
+	}
+	return idx, nil
+}
+
 func (s *Store) loadIndex() {
-	raw, err := os.ReadFile(s.indexPath())
+	idx, err := readIndexFile(s.opts.Root)
 	if err == nil {
-		var idx symbolIndex
-		if json.Unmarshal(raw, &idx) == nil && idx.Symbols != nil {
-			for sym, rec := range idx.Symbols {
-				if rec.Folder == "" {
-					continue
-				}
-				s.folders[sym] = rec.Folder
-				s.taken[strings.ToLower(rec.Folder)] = sym
+		for sym, rec := range idx.Symbols {
+			if rec.Folder == "" {
+				continue
 			}
-			return
+			s.folders[sym] = rec.Folder
+			s.taken[strings.ToLower(rec.Folder)] = sym
 		}
-		s.logf("[store] %s 解析失败，按空索引继续（不会覆盖已有文件夹，只会新分配）", indexFile)
+		return
+	}
+	if !os.IsNotExist(err) {
+		s.logf("[store] %s 读不了或解析失败（%v），按空索引继续（不会覆盖已有文件夹，只会新分配）", indexFile, err)
 	}
 	// 没有索引时，把磁盘上已有的目录先认领成「符号名 = 目录名」，
 	// 否则一个手工拷进来的目录可能被当成新标的、再分配一个名字相近的目录。
@@ -257,16 +275,51 @@ func (s *Store) dayPath(folder, date string) string {
 // 必须读：程序重启后用户接着拖图表，同一个日文件会被重新碰，
 // 不先载入就等于把之前抓的几天数据整体覆盖掉。
 func (s *Store) loadDayLocked(folder, date string) *day {
-	d := &day{path: s.dayPath(folder, date), dir: filepath.Dir(s.dayPath(folder, date)), bars: map[int64]Bar{}}
-	f, err := os.Open(d.path)
+	path := s.dayPath(folder, date)
+	d := &day{path: path, dir: filepath.Dir(path)}
+	bars, rs, err := readDayFile(path, s.loc)
+	d.bars, d.skip = bars, rs.Bad
+	if err != nil && !os.IsNotExist(err) {
+		s.logf("[store] 读 %s 出错：%v（已读到的部分照常合并，不会被这次重写抹掉）", path, err)
+	}
+	if rs.Bad > 0 {
+		s.logf("[store] %s 有 %d 行无法解析（已跳过，不影响其它行）", filepath.Base(path), rs.Bad)
+	}
+	// 正常写入是「整体重写 + 原子改名」，同一时间戳不可能出现两次。
+	// 真出现了就说明文件被人手工动过（或被别的工具合并过），这里如实说出来 ——
+	// 重写之后它们会合并成一行，不说的话这次「静默修正」谁也不知道。
+	if dup := rs.Good() - len(bars); dup > 0 {
+		s.logf("[store] %s 有 %d 行时间戳重复（是手工改过文件吗？重写后会合并成一行）", filepath.Base(path), dup)
+	}
+	return d
+}
+
+// RowStat 是读一份日文件时顺手数出来的行数情况。
+type RowStat struct {
+	Rows int // 读到的数据行数（不含表头）
+	Bad  int // 解析不了、被跳过的行数
+}
+
+// Good 是「解析成功」的行数。它和 len(bars) 的差就是重复（同一时间戳出现多次）。
+func (r RowStat) Good() int { return r.Rows - r.Bad }
+
+// readDayFile 只读地把一个日文件读成「时间戳 -> K 线」，并回报读了多少行、坏了几行。
+//
+// 写入路径（loadDayLocked：先把磁盘上已有的读回来再合并）和只读统计（store.Scan）
+// 共用这一份解析规则。两边各写一遍迟早会漂移，而漂移的表现是「统计出来的根数
+// 和文件里实际的行数对不上」—— 那种偏差藏在数字里，最难被发现。
+//
+// 返回的 err 只表示「文件打不开」或「读到一半出错」；坏行不算 err，只记进 RowStat。
+// 读到一半出错时，已经读到的部分照常返回，调用方继续用（宁可少几行，也别整份丢掉）。
+func readDayFile(path string, loc *time.Location) (map[int64]Bar, RowStat, error) {
+	f, err := os.Open(path)
 	if err != nil {
-		if !os.IsNotExist(err) {
-			s.logf("[store] 读不了 %s: %v", d.path, err)
-		}
-		return d
+		return map[int64]Bar{}, RowStat{}, err
 	}
 	defer f.Close()
 
+	bars := map[int64]Bar{}
+	var rs RowStat
 	r := csv.NewReader(f)
 	r.FieldsPerRecord = -1 // 容忍列数不一致的坏行，逐行跳过而不是整文件失败
 	r.ReuseRecord = false
@@ -274,11 +327,10 @@ func (s *Store) loadDayLocked(folder, date string) *day {
 	for {
 		rec, err := r.Read()
 		if err == io.EOF {
-			break
+			return bars, rs, nil
 		}
 		if err != nil {
-			s.logf("[store] %s 读取中断: %v", d.path, err)
-			break
+			return bars, rs, err
 		}
 		if firstRow {
 			firstRow = false
@@ -286,49 +338,50 @@ func (s *Store) loadDayLocked(folder, date string) *day {
 				continue
 			}
 		}
-		if len(rec) < 5 {
-			d.skip++
+		rs.Rows++
+		b, ok := parseRow(rec, loc)
+		if !ok {
+			rs.Bad++
 			continue
 		}
-		ts, err := time.ParseInLocation(timeLayout, strings.TrimSpace(rec[0]), s.loc)
+		bars[b.T] = b
+	}
+}
+
+// parseRow 解析一行 CSV。前 4 列（OHLC）必须都能解析；
+// 第 5 列成交量允许为空 —— 有些品种的帧里没有成交量，写出来就是一列空值，
+// 读回来不能因此把整行丢掉。
+func parseRow(rec []string, loc *time.Location) (Bar, bool) {
+	if len(rec) < 5 {
+		return Bar{}, false
+	}
+	ts, err := time.ParseInLocation(timeLayout, strings.TrimSpace(rec[0]), loc)
+	if err != nil {
+		return Bar{}, false
+	}
+	vals := make([]float64, 0, 5)
+	for i := 1; i <= 5 && i < len(rec); i++ {
+		raw := strings.TrimSpace(rec[i])
+		if raw == "" {
+			if i == 5 {
+				break
+			}
+			return Bar{}, false
+		}
+		f, err := strconv.ParseFloat(raw, 64)
 		if err != nil {
-			d.skip++
-			continue
+			return Bar{}, false
 		}
-		// 前 4 列（OHLC）必须都能解析；第 5 列成交量允许为空 ——
-		// 有些品种的帧里没有成交量，写出来就是一列空值，读回来不能因此把整行丢掉。
-		vals := make([]float64, 0, 5)
-		bad := false
-		for i := 1; i <= 5 && i < len(rec); i++ {
-			raw := strings.TrimSpace(rec[i])
-			if raw == "" {
-				if i == 5 {
-					break
-				}
-				bad = true
-				break
-			}
-			f, err := strconv.ParseFloat(raw, 64)
-			if err != nil {
-				bad = true
-				break
-			}
-			vals = append(vals, f)
-		}
-		if bad || len(vals) < 4 {
-			d.skip++
-			continue
-		}
-		b := Bar{T: ts.Unix(), O: vals[0], H: vals[1], L: vals[2], C: vals[3]}
-		if len(vals) == 5 {
-			b.V, b.HasVolume = vals[4], true
-		}
-		d.bars[b.T] = b
+		vals = append(vals, f)
 	}
-	if d.skip > 0 {
-		s.logf("[store] %s 有 %d 行无法解析（已跳过，不影响其它行）", filepath.Base(d.path), d.skip)
+	if len(vals) < 4 {
+		return Bar{}, false
 	}
-	return d
+	b := Bar{T: ts.Unix(), O: vals[0], H: vals[1], L: vals[2], C: vals[3]}
+	if len(vals) == 5 {
+		b.V, b.HasVolume = vals[4], true
+	}
+	return b, true
 }
 
 // Flush 把所有脏的日文件重写一遍。

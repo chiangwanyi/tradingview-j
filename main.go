@@ -3,17 +3,18 @@
 // 使用方式只有一种：双击（或终端里运行）这个 exe。程序**不接受任何命令行参数**，
 // 所有配置都在 exe 同目录的 config.json 里。
 //
-// 工作流程：
+// 运行起来是一个三选一的菜单：
 //
-//	启动 -> 等 Chrome 的调试端口 -> 等 TradingView 图表页 -> 被动监听 WebSocket 帧
-//	     -> 解出 5 分钟 K 线 -> 覆盖写 <数据目录>/<标的>/<yyyy-MM-dd>.csv
+//	1  启动抓取  —— 等 Chrome 的调试端口 -> 等 TradingView 图表页 -> 被动监听 WebSocket 帧
+//	                -> 解出 5 分钟 K 线 -> 覆盖写 <数据目录>/<标的>/<yyyy-MM-dd>.csv
+//	2  分析数据  —— 只读地扫一遍数据目录，报每个标的每天有多少根、缺口在哪
+//	3  退出
 //
-// 想停止就 Ctrl+C：会先把内存里的当天数据刷盘再退出。
+// 抓取停下来（Ctrl+C）之后是**回到菜单**，不是退出程序 —— 想接着抓就再选 1。
 package main
 
 import (
 	"context"
-	"fmt"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -27,12 +28,13 @@ import (
 	"tradingview-j/internal/store"
 )
 
-var version = "1.0.0"
+var version = "1.1.0"
 
 func main() {
 	lg := logx.New(os.Stdout)
 	baseDir := baseDir()
-	exitCode := run(lg, baseDir)
+	banner(lg, baseDir)
+	exitCode := menu(lg, baseDir)
 	lg.ClearStatus()
 	if exitCode != 0 {
 		os.Exit(exitCode)
@@ -53,14 +55,13 @@ func baseDir() string {
 	return filepath.Dir(exe)
 }
 
-func run(lg *logx.Logger, baseDir string) int {
-	banner(lg, baseDir)
-
+// loadConfig 每次进菜单分支都重新读一遍 config.json。
+// 读一次缓着更省事，但用户改完配置却要重开程序才能生效，是很难解释的行为。
+func loadConfig(lg *logx.Logger, baseDir string) (*config.Config, bool) {
 	cfg, res, err := config.Load(baseDir)
 	if err != nil {
 		lg.Error("%v", err)
-		pauseIfNeeded(true)
-		return 1
+		return nil, false
 	}
 	if res.Created {
 		lg.Info("没找到配置文件，已生成一份默认的：%s", res.Path)
@@ -73,7 +74,15 @@ func run(lg *logx.Logger, baseDir string) int {
 	for _, n := range res.Notes {
 		lg.Warn("%s", n)
 	}
+	return cfg, true
+}
 
+// runCapture 就是菜单里的「1」。返回后回到菜单，由调用方决定怎么处理 cwd。
+func runCapture(lg *logx.Logger, baseDir string) int {
+	cfg, ok := loadConfig(lg, baseDir)
+	if !ok {
+		return 1
+	}
 	printConfig(lg, cfg)
 
 	st, err := store.Open(store.Options{
@@ -89,13 +98,12 @@ func run(lg *logx.Logger, baseDir string) int {
 	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer stop()
 
 	sess := capture.New(cfg, st, lg)
-	lg.Info("开始运行。要停止：在这个窗口按 Ctrl+C")
+	lg.Info("开始运行。要停止：在这个窗口按 Ctrl+C（会先刷盘，然后回到菜单）")
 	lg.Rule(72)
 
-	err = sess.Run(ctx)
+	runErr := sess.Run(ctx)
 
 	// 退出前一定要刷盘：用户可能刚拖出来一大段历史
 	lg.Info("正在收尾：把内存里的数据写进 CSV…")
@@ -107,8 +115,12 @@ func run(lg *logx.Logger, baseDir string) int {
 	printSummary(lg, st)
 	lg.Rule(72)
 
-	if err != nil {
-		lg.Error("运行出错：%v", err)
+	// 刷完盘才交还 SIGINT：这样收尾期间再来一次 Ctrl+C 仍是「等它写完」，
+	// 而不是把写了一半的进程干掉；回到菜单之后再按 Ctrl+C 才是真的退出。
+	stop()
+
+	if runErr != nil {
+		lg.Error("运行出错：%v", runErr)
 		pauseIfNeeded(cfg.PauseOnExit)
 		return 1
 	}
@@ -121,6 +133,13 @@ func banner(lg *logx.Logger, baseDir string) {
 	lg.Plain("  旁路抓 TradingView 图表页的 WebSocket 行情帧，把 5 分钟 K 线写成 CSV")
 	lg.Plain("  目录：%s", baseDir)
 	lg.Plain("  运行时：Go %s / %s", runtime.Version(), runtime.GOOS)
+	lg.Rule(72)
+	lg.Plain("  接入 Chrome 的前置操作（每个浏览器会话做一次，抓取前先做掉）：")
+	lg.Plain("    1. 打开你平时登录着 TradingView 的那个 Chrome")
+	lg.Plain("    2. 地址栏输入 chrome://inspect/#remote-debugging")
+	lg.Plain("    3. 勾选 “Allow remote debugging for this browser instance”")
+	lg.Plain("    4. 打开 TradingView 的图表页，周期切到 5 分钟")
+	lg.Plain("  前 4 步没做也没关系：抓取会一直等，条件一满足就自动接上，不用重启程序。")
 	lg.Rule(72)
 }
 
@@ -140,13 +159,6 @@ func printConfig(lg *logx.Logger, cfg *config.Config) {
 	} else {
 		lg.Plain("  CDP 端口      自动发现（DevToolsActivePort + 9222/9229/9333 探测）")
 	}
-	lg.Rule(72)
-	lg.Plain("  接入 Chrome 的前置操作（只需做一次，每个浏览器会话要做一次）：")
-	lg.Plain("    1. 打开你平时登录着 TradingView 的那个 Chrome")
-	lg.Plain("    2. 地址栏输入 chrome://inspect/#remote-debugging")
-	lg.Plain("    3. 勾选 “Allow remote debugging for this browser instance”")
-	lg.Plain("    4. 保持 Chrome 开着，并打开 TradingView 的图表页")
-	lg.Plain("  程序会自己等这些条件满足，不需要重启程序。")
 	lg.Rule(72)
 }
 
@@ -176,18 +188,5 @@ func pauseIfNeeded(on bool) {
 	if !on {
 		return
 	}
-	if !isTerminal() {
-		return
-	}
-	fmt.Print("\n按回车键关闭窗口…")
-	var b [1]byte
-	os.Stdin.Read(b[:])
-}
-
-func isTerminal() bool {
-	fi, err := os.Stdin.Stat()
-	if err != nil {
-		return false
-	}
-	return fi.Mode()&os.ModeCharDevice != 0
+	waitEnter("\n按回车键关闭窗口…")
 }

@@ -109,6 +109,10 @@ func (l *Logger) Rule(n int) {
 	l.Plain("%s", strings.Repeat("─", n))
 }
 
+// Width 估算一段文本占几个终端列（中日韩全角算 2）。
+// 给对齐用的：中文字段按 rune 数或 len() 补齐都会歪两列，表格会串行。
+func Width(s string) int { return displayWidth(s) }
+
 // displayWidth 估算一行文本占几个终端列。
 // 不需要严格按 Unicode 规范实现：只要做到「中日韩全角算 2、组合字符算 0」，
 // 补空格擦除就不会擦不干净或擦过头。

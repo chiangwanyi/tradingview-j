@@ -6,15 +6,26 @@
 解出 5 分钟 K 线，写成 CSV。形态是**一个 Go 程序**：
 
 - 产物 `tv-capture.exe`（根目录；`go build -o tv-capture.exe .` 或双击 `build.cmd`）。
+- **入口是菜单式**（v1.1.0 起）：`1 启动抓取` / `2 分析已抓取的数据` / `3 退出`。
+  抓取中 Ctrl+C = 刷盘 + 打印统计 + **回到菜单**（不退出程序）。
 - **没有任何 JavaScript**：只被动监听，不需要页面注入，也不需要扩展，所以"必须保留的 JS"是零。
 - **配置只有 `config.json`**（exe 同目录），**不接受任何命令行参数** —— 使用方式是双击。
   相对路径（outDir/rawDir）相对 **exe 所在目录**展开，因为双击时 cwd 不可靠。
 - **零第三方依赖**，`go.mod` 里没有 require；WebSocket 客户端自写在 `internal/wsclient`。
-- 结构：`main.go` + `internal/{config,cdp,wsclient,tvproto,ingest,store,rawlog,capture,logx}`
-  + `internal/wstest`（测试专用假 WS 服务端）+ `testdata/`（两份真实抓包裁剪的回归样本：
-  `real-capture.ndjson` 普通样本、`mixed-symbols.ndjson` 品种串味回归样本）。
-- `legacy/` = 旧 Node 实现（网页工作台 + SQLite + 自动回拉 + 覆盖度报告）与旧 `data/`，
-  只作留档。Node 路径（Go 项目用不到）：
+- 结构：`main.go`（横幅+菜单分发）+ `menu.go`（菜单与输入）+ `analyze.go`（选项 2 的排版）
+  + `internal/{config,cdp,wsclient,tvproto,ingest,store,rawlog,capture,logx}`
+  （`store/scan.go` 是只读扫描）+ `internal/wstest`（测试专用假 WS 服务端）
+  + `testdata/`（两份真实抓包裁剪的回归样本：`real-capture.ndjson` 普通样本、
+  `mixed-symbols.ndjson` 品种串味回归样本）。
+- **文档分工（2026-10-16 起）**：`README.md` 只放项目介绍与上手（特性 / 前置条件 / 快速开始 /
+  使用 / 配置 / 数据输出 / 项目结构 / FAQ / 注意事项），深度内容拆到
+  `docs/design.md`（设计取舍 + 协议与实测事实附录 + 旧版对照）与
+  `docs/testing.md`（离线测试 / 回归样本 / 人工联调 / 排查要点 / 改代码注意）。
+  新增"为什么这么做"的内容写进 design.md，别往 README 里堆。
+- `legacy/`（旧 Node 实现：网页工作台 + SQLite + 自动回拉 + 覆盖度报告，含旧 `data/`）
+  **已于 2026-10-16 整体删除**（60 个文件 / 14MB，用户明确要求）。删除前确认过它全部在 HEAD 里，
+  可完整取回：`git checkout ac9e35c -- legacy/`。
+  Node 运行时的路径（本 Go 项目用不到）：
   `C:/Users/jiang/.workbuddy/binaries/node/versions/22.22.2-6/node.exe`
 
 ## 核心约定
@@ -38,8 +49,18 @@
 - **时间列是本地时区明文 `yyyy-MM-dd HH:MM`（开盘时间）**，文件名 `yyyy-MM-dd.csv`。
   换机器/换时区会影响"哪一天"的划分。
 - **写文件用 tmp+rename**；被 Excel 占用会失败，保持"脏"下个周期重试。
+- **菜单/交互约定**：全程只有**一个** `bufio.Reader(os.Stdin)`（`menu.go` 的 `readLine`）。
+  菜单读一个缓冲 reader、`waitEnter` 又直接读 `os.Stdin`，缓冲里的字符会被绕过去，
+  表现成"按一次回车跳过两项"。`waitEnter` 在 stdin 非终端（重定向/后台）时直接返回，不空转。
+  stdin EOF → 菜单直接退出，不转圈。
+- **"分析"这条路径必须只读**：走 `store.Scan`，**不要**用 `store.Store`（它 Open 就建目录、
+  会往 `_symbols.json` 里分配标的目录名）。测试用「扫描前后目录快照一致」钉住。
+- **统计口径与落盘共用一份代码**：`store.readDayFile` / `parseRow` / `readIndexFile`。
+  两边各写一份解析迟早会漂移，表现成"文件里 288 行、分析说 287 根"，用户没法判断信谁。
 - **测试禁止无头浏览器**（用户明确要求：慢、且中断不可见）。替代 = 假 CDP 服务端。
   `go test ./...` 全离线可跑，人工联调由用户自己开浏览器做。
+  本机跑 capture 包测试可能需要 `GOTMPDIR=$PWD/.tmpbuild`（系统临时目录被
+  Application Control 策略拦过：`fork/exec ... blocked this file`）。
 
 ## 关键事实（实测，别忘）
 
@@ -68,6 +89,12 @@
 - 单帧最大实测 247KB（WS 客户端必须支持 64 位长度与分片；写帧必须掩码）。
 - 图表**按需**取数：可视范围走出缓存窗口才发 `request_more_data` → 拖图表就是填历史的手段。
 - 期货休市（CME，UTC）：每日 21:00–22:00 结算，周六全天 + 周日 22:00 前。
+  看起来像"丢数据"的正常形态：工作日日文件 276 根、缺口 12、最大断档 1时5分
+  （就是那 1 小时结算）；周六日文件约 60 根（凌晨收市）。
+- **CSV 的时间列是明文本地时间，所以"时间戳是否落在文件名日期之外"这类自检恒为 0** ——
+  读回来用哪个时区解析，日期部分都还是原文那一天，判据自己是循环的。别写这种永远不响的检查
+  （曾写过一版"越界根数"，发现恒 0 后删掉）。有效报警是**重复行计数**：写入是整体重写 + 原子改名，
+  同一时间戳不可能重复，一旦不为 0 就说明文件被手工改过或被别的工具合并过。
 - **`build.cmd` 必须是 CRLF 行尾**。本仓库 `core.autocrlf=true`，但那只在 checkout/commit
   时转换，**工具直接写盘不会被转**，所以用写文件的方式生成 .cmd 就会留下 LF ——
   cmd.exe 按字节偏移回读脚本，LF 会让它吃掉每行行首若干字符，报出一串
