@@ -1,9 +1,15 @@
-// 解码 + 入库：读抓包 NDJSON -> 切帧 -> 抽 K 线 -> 幂等写入 SQLite
+// 解码 + 入库：读抓包 NDJSON -> 切帧 -> 抽 K 线 -> 幂等写入对应品种的 SQLite
 //
 // 两种用法共用同一套解码逻辑，避免"离线能解、在线解不了"的分叉：
 //
-//   createIngestor({ dbFile }).push(rec)   流式：watch 模式边抓边入库
-//   ingest({ files, dbFile })              批处理：事后扫历史抓包文件
+//   createIngestor({ root }).push(rec)   流式：常驻会话边抓边入库
+//   runIngest({ root, files })           批处理：事后扫历史抓包文件
+//
+// 品种路由：每根 K 线写进它自己品种的库文件（data/db/<slug>.sqlite）。
+// 品种名的来源按可靠性排序：
+//   1. 帧里若出现 symbol_resolved 之类的消息（实测 prodata 没有，但留着）
+//   2. 抓包文件自己的 meta.symbolHint，或 raw 索引里记的品种
+//   3. 都没有 -> data/db/unknown.sqlite
 //
 // 幂等性由 store 的 (symbol, series, t) 主键保证：同一根 K 线抓到几次都只留一份，
 // 这正好让"回放反复来回跳、窗口大面积重叠"变成无害操作 —— 重叠部分自动去重。
@@ -12,7 +18,29 @@ import fs from 'node:fs';
 import path from 'node:path';
 import readline from 'node:readline';
 import { splitFrame, extractBars, toBar } from './frames.mjs';
-import { openStore, makeWriter } from './store.mjs';
+import { openSymbolStore, makeWriter } from './store.mjs';
+import { UNKNOWN_SYMBOL } from './registry.mjs';
+import { listRawFiles, latestRawFile as latestRaw } from './rawindex.mjs';
+
+export { listRawFiles };
+export const latestRawFile = latestRaw;
+
+export const LEDGER_FILE = (root) => path.join(root, 'data', 'ingest-state.json');
+
+export function readLedger(root) {
+  try {
+    return JSON.parse(fs.readFileSync(LEDGER_FILE(root), 'utf8'));
+  } catch {
+    return {};
+  }
+}
+
+export function writeLedger(root, obj) {
+  const f = LEDGER_FILE(root);
+  fs.mkdirSync(path.dirname(f), { recursive: true });
+  fs.writeFileSync(f, JSON.stringify(obj, null, 2) + '\n');
+  return obj;
+}
 
 // 抓包里如果出现 symbol_resolved 一类的消息，就顺手建立 series -> 品种名 的映射。
 // 实测（2026-10-16）prodata 抓包里并没有这种消息，品种只能从页面 URL 的 ?symbol= 兜底，
@@ -30,37 +58,75 @@ function collectResolved(node, map) {
   return map;
 }
 
-export function rawDirOf(root) {
-  return path.join(root, 'data', 'raw');
-}
+// 多品种写手：按 symbol 懒加载每个库的 writer，同时最多保持 maxOpen 个连接。
+// 常驻会话会跑很久，连接数得有个上限，否则回放几十个品种后句柄会失控。
+export function createSymbolRouter({ root, maxOpen = 8 }) {
+  const open = new Map(); // symbol -> { db, writer, file, lastUsed }
+  const counters = new Map(); // symbol -> { bars, added }
 
-// 按修改时间升序返回抓包文件，带上 size/mtime 供增量入库判断
-export function listRawFiles(root) {
-  const dir = rawDirOf(root);
-  let entries;
-  try {
-    entries = fs.readdirSync(dir).filter((f) => f.endsWith('.ndjson'));
-  } catch {
-    return [];
+  function bump(symbol, n = 1) {
+    let c = counters.get(symbol);
+    if (!c) {
+      c = { bars: 0, added: 0 };
+      counters.set(symbol, c);
+    }
+    c.bars += n;
+    return c;
   }
-  return entries
-    .map((f) => {
-      const file = path.join(dir, f);
-      const st = fs.statSync(file);
-      return { file, name: f, mtimeMs: st.mtimeMs, size: st.size };
-    })
-    .sort((a, b) => a.mtimeMs - b.mtimeMs);
+
+  function evictIfNeeded() {
+    while (open.size > maxOpen) {
+      let oldest = null;
+      for (const [sym, rec] of open) {
+        if (!oldest || rec.lastUsed < oldest[1].lastUsed) oldest = [sym, rec];
+      }
+      if (!oldest) break;
+      try {
+        oldest[1].writer.close();
+      } catch {}
+      open.delete(oldest[0]);
+    }
+  }
+
+  function forSymbol(symbol) {
+    const sym = symbol || UNKNOWN_SYMBOL;
+    let rec = open.get(sym);
+    if (!rec) {
+      const { db, file } = openSymbolStore(root, sym);
+      // writer 绑定品种：库里的 symbol 列不会再出现别的值
+      rec = { db, writer: makeWriter(db, { symbol: sym }), file, lastUsed: Date.now() };
+      open.set(sym, rec);
+      evictIfNeeded();
+    }
+    rec.lastUsed = Date.now();
+    return rec;
+  }
+
+  return {
+    counters,
+    forSymbol,
+    openFiles: () => [...open].map(([symbol, r]) => ({ symbol, file: r.file })),
+    flushAll() {
+      for (const r of open.values()) {
+        try {
+          r.writer.flush();
+        } catch {}
+      }
+    },
+    closeAll() {
+      for (const r of open.values()) {
+        try {
+          r.writer.close();
+        } catch {}
+      }
+      open.clear();
+    },
+    bump,
+  };
 }
 
-export function latestRawFile(root) {
-  const all = listRawFiles(root);
-  return all.length ? all[all.length - 1].file : null;
-}
-
-// 流式解码器：喂 NDJSON 记录进去，K 线进库
-export function createIngestor({ dbFile, symbol = null, log = () => {} } = {}) {
-  const db = openStore(dbFile);
-  const writer = makeWriter(db);
+export function createIngestor({ root, symbol = null, maxOpen = 8, log = () => {} } = {}) {
+  const router = createSymbolRouter({ root, maxOpen });
   const resolved = new Map();
   const symbolHint = { symbol: null };
   const summary = {
@@ -73,8 +139,18 @@ export function createIngestor({ dbFile, symbol = null, log = () => {} } = {}) {
     bars: 0,
     skipped: 0,
     byMethod: new Map(),
+    bySymbol: new Map(),
     resolved,
   };
+
+  function noteSymbol(sym, n) {
+    let c = summary.bySymbol.get(sym);
+    if (!c) {
+      c = { bars: 0 };
+      summary.bySymbol.set(sym, c);
+    }
+    c.bars += n;
+  }
 
   function push(rec) {
     if (!rec || typeof rec !== 'object') return;
@@ -119,7 +195,7 @@ export function createIngestor({ dbFile, symbol = null, log = () => {} } = {}) {
           resolved.get(entry.series) ||
           resolved.get(String(entry.series)) ||
           symbolHint.symbol ||
-          '(unknown)';
+          UNKNOWN_SYMBOL;
         if (symbol && sym !== symbol) {
           summary.skipped++;
           continue;
@@ -127,54 +203,49 @@ export function createIngestor({ dbFile, symbol = null, log = () => {} } = {}) {
         const bar = toBar(entry, sym);
         if (!bar) continue;
         bar.source = method;
-        writer.writeBar(bar);
+
+        const target = router.forSymbol(sym);
+        target.writer.writeBar(bar);
         summary.bars++;
+        noteSymbol(sym, 1);
       }
     }
   }
 
   return {
     push,
-    flush: () => writer.flush(),
-    db,
+    flush: () => router.flushAll(),
+    root,
     summary,
     symbolHint,
     resolved,
+    openFiles: router.openFiles,
+    counters: router.counters,
+    // 暴露给常驻会话：它要拿同一个写连接去查"现在这个品种有多少根"，
+    // 另开连接也不是不行，但共用能保证一定看得到刚才写进去的行。
+    forSymbol: router.forSymbol,
     close() {
-      // 注意：store 的 makeWriter.close() 内部已经 flush 并关闭了 db，
-      // 这里不能再 db.close() 一次 —— 重复关闭会抛 ERR_INVALID_STATE。
-      writer.close();
+      router.closeAll();
     },
   };
 }
 
-export function formatSummary(s, log = (m) => process.stdout.write(m + '\n')) {
-  log('');
-  log(`帧总数 ${s.frames}（收 ${s.recv} / 发 ${s.send}）`);
-  log(`心跳 ~h~ ${s.heartbeats} 段 · JSON 段落 ${s.json} · 非文本/无法解析 ${s.opaque}`);
-  log(
-    `写入 K 线 ${s.bars} 根（按 symbol+series+t 幂等）` +
-      (s.skipped ? ` · 因 --symbol 过滤跳过 ${s.skipped} 根` : ''),
-  );
-  if (s.resolved.size) {
-    log(`series → symbol 映射：${[...s.resolved].map(([k, v]) => `${k}=${v}`).join(', ')}`);
-  }
-  const top = [...s.byMethod].sort((a, b) => b[1] - a[1]).slice(0, 10);
-  if (top.length) {
-    log('');
-    log('出现频次最高的方法：');
-    for (const [m, n] of top) log(`  ${String(n).padStart(6)}  ${m}`);
-  }
-}
-
-export async function ingest({ files, dbFile, symbol = null, log = (m) => process.stdout.write(m + '\n') }) {
+// 批处理入口：把若干抓包文件解码入库
+export async function runIngest({
+  root,
+  files,
+  symbol = null,
+  log = (m) => process.stdout.write(m + '\n'),
+}) {
   const list = (Array.isArray(files) ? files : [files]).filter(Boolean);
   if (!list.length) throw new Error('没有可处理的抓包文件');
 
-  const ing = createIngestor({ dbFile, symbol, log });
+  const ing = createIngestor({ root, symbol, log });
   const perFile = [];
 
-  for (const file of list) {
+  for (const item of list) {
+    const file = typeof item === 'string' ? item : item.file;
+    const fileSymbol = typeof item === 'string' ? null : item.symbol || null;
     const before = ing.summary.bars;
     const rl = readline.createInterface({ input: fs.createReadStream(file), crlfDelay: Infinity });
     let lines = 0;
@@ -187,15 +258,70 @@ export async function ingest({ files, dbFile, symbol = null, log = (m) => proces
       } catch {
         continue;
       }
+      // 文件级品种提示：帧里的 meta 只出现在第一条，但万一文件被截断过，
+      // raw 索引里记的品种仍然可用
+      if (fileSymbol && rec.k === 'meta' && !rec.symbolHint) rec.symbolHint = fileSymbol;
       ing.push(rec);
     }
     ing.flush();
-    const st = fs.statSync(file);
+    let st = { size: 0, mtimeMs: 0 };
+    try {
+      st = fs.statSync(file);
+    } catch {}
     const added = ing.summary.bars - before;
     log(`读取 ${path.basename(file)} · ${lines} 条记录 · ${added} 根`);
-    perFile.push({ file, name: path.basename(file), lines, bars: added, size: st.size, mtimeMs: st.mtimeMs });
+    perFile.push({
+      file,
+      name: path.basename(file),
+      lines,
+      bars: added,
+      size: st.size,
+      mtimeMs: st.mtimeMs,
+      symbol: fileSymbol,
+    });
   }
 
+  const bySymbol = Object.fromEntries(
+    [...ing.summary.bySymbol].map(([k, v]) => [k, v.bars]),
+  );
+  const openFiles = ing.openFiles();
   ing.close();
-  return { summary: ing.summary, files: perFile };
+  return { summary: ing.summary, files: perFile, bySymbol, dbFiles: openFiles };
+}
+
+// 增量扫描：默认只处理新增或变动过的文件（台账 data/ingest-state.json）
+export function pickChangedFiles(root, { symbol = null, force = false, ledger = null } = {}) {
+  const all = listRawFiles(root, { symbol }).filter((f) => f.size > 0);
+  const led = ledger || readLedger(root);
+  if (force) return { files: all, ledger: led, all };
+  const changed = all.filter((f) => {
+    const prev = led[f.name];
+    return !prev || prev.size !== f.size || prev.mtimeMs !== f.mtimeMs;
+  });
+  return { files: changed, ledger: led, all };
+}
+
+export function formatSummary(s, log = (m) => process.stdout.write(m + '\n')) {
+  log('');
+  log(`帧总数 ${s.frames}（收 ${s.recv} / 发 ${s.send}）`);
+  log(`心跳 ~h~ ${s.heartbeats} 段 · JSON 段落 ${s.json} · 非文本/无法解析 ${s.opaque}`);
+  log(
+    `写入 K 线 ${s.bars} 根（按 symbol+series+t 幂等）` +
+      (s.skipped ? ` · 因品种过滤跳过 ${s.skipped} 根` : ''),
+  );
+  if (s.bySymbol.size) {
+    log('分品种：');
+    for (const [sym, v] of [...s.bySymbol].sort((a, b) => b[1].bars - a[1].bars)) {
+      log(`  ${String(v.bars).padStart(6)}  ${sym}`);
+    }
+  }
+  if (s.resolved.size) {
+    log(`series → symbol 映射：${[...s.resolved].map(([k, v]) => `${k}=${v}`).join(', ')}`);
+  }
+  const top = [...s.byMethod].sort((a, b) => b[1] - a[1]).slice(0, 10);
+  if (top.length) {
+    log('');
+    log('出现频次最高的方法：');
+    for (const [m, n] of top) log(`  ${String(n).padStart(6)}  ${m}`);
+  }
 }

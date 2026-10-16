@@ -1,0 +1,602 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TradingView 抓取工作台</title>
+<!-- 不写这行控制台会多一条 favicon 404 -->
+<link rel="icon" href="data:,">
+<script>
+/* 样式生效前先挂主题类，避免深色模式闪白 */
+try { if (localStorage.getItem('tv-theme') === 'dark') document.documentElement.classList.add('dark'); } catch (e) {}
+</script>
+<link rel="stylesheet" href="/style.css">
+<!-- 放 head，让它早点开始扫描 DOM -->
+<script src="/vendor/tailwind.js"></script>
+<style type="text/tailwindcss">
+@custom-variant dark (&:where(.dark, .dark *));
+/*
+  static 不能省。
+  Tailwind 4 默认只把「被某个工具类实际引用到」的主题变量写进 :root，
+  其余直接 tree-shake 掉。而 canvas 是拿 getComputedStyle 读变量的 ——
+  它读不到没被输出的变量，会拿到空字符串。
+  （`--color-accent` 就是这样：全站只有 canvas 和我自己写的 CSS 用它，
+  没有任何 `bg-accent` 之类的类名，于是它被删了 → 浅色模式下
+  "有数据"的格子、直方图柱、图例色块全都画不出来/不显示。踩过。）
+*/
+@theme static {
+  --color-bg: #f6f6f4;
+  --color-panel: #ffffff;
+  --color-panel2: #f0efeb;
+  --color-line: #e3e1da;
+  --color-line2: #cbc8bd;
+  --color-ink: #23221d;
+  --color-muted: #6c695f;
+  --color-faint: #9a978d;
+  --color-accent: #185fa5;
+  --color-accent2: #2f7fd1;
+  --color-accentbg: #e7f1fb;
+  --color-ok: #0f6e56;
+  --color-okbg: #e2f5ee;
+  --color-warn: #8a5309;
+  --color-warnbg: #faeeda;
+  --color-bad: #a32d2d;
+  --color-badbg: #fcebeb;
+
+  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", "PingFang SC", sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, "Courier New", monospace;
+}
+/* 用 html.dark（0,1,1）压过 :root（0,1,0）。
+   只写 .dark 是同优先级，就得靠顺序赌，不稳。 */
+html.dark {
+  --color-bg: #191817;
+  --color-panel: #232220;
+  --color-panel2: #2c2b28;
+  --color-line: #35342f;
+  --color-line2: #47463f;
+  --color-ink: #e9e6de;
+  --color-muted: #a29e93;
+  --color-faint: #7a776d;
+  --color-accent: #6fb3f2;
+  --color-accent2: #4a95dd;
+  --color-accentbg: #1b2c3f;
+  --color-ok: #5cc9a5;
+  --color-okbg: #122a23;
+  --color-warn: #e0aa4e;
+  --color-warnbg: #33280f;
+  --color-bad: #ef8f8f;
+  --color-badbg: #3a1d1d;
+}
+</style>
+</head>
+<body class="bg-bg font-sans text-ink antialiased">
+<div id="app" v-cloak>
+
+<!-- ============================ 顶栏 ============================ -->
+<header class="sticky top-0 z-20 border-b border-line bg-panel">
+  <div class="mx-auto flex max-w-[1560px] items-center gap-3 px-5 py-2.5">
+    <div class="text-[15px] font-semibold tracking-tight whitespace-nowrap">TradingView 抓取工作台</div>
+    <span class="badge" :class="sse.cls"><i class="dot" :class="sse.dot"></i>{{ sse.text }}</span>
+
+    <div class="ml-auto flex items-center gap-2">
+      <span class="text-[11px] text-muted whitespace-nowrap">当前品种</span>
+      <select class="inp w-[250px]" data-testid="symbol-select" v-model="selectedSlug" @change="onSymbolChange">
+        <option value="">— 尚未选择 —</option>
+        <option v-for="s in symbols" :key="s.slug" :value="s.slug">
+          {{ s.symbol }} · {{ fmtInt(s.bars) }} 根
+        </option>
+      </select>
+      <button class="btn btn-sm" data-testid="theme" @click="toggleTheme" :title="theme === 'dark' ? '切换到浅色' : '切换到深色'">
+        {{ theme === 'dark' ? '浅色' : '深色' }}
+      </button>
+    </div>
+  </div>
+</header>
+
+<main class="mx-auto max-w-[1560px] px-5 py-4">
+
+  <!-- 旧库迁移提示 -->
+  <div v-if="state.legacy && state.legacy.pending" class="card mb-4 border-warn/40 bg-warnbg">
+    <div class="flex items-center gap-3">
+      <span class="badge badge-warn">待迁移</span>
+      <span class="text-[13px]">检测到旧版混合库 <span class="mono">data/bars.sqlite</span>，需要拆分成「一个品种一个文件」。旧文件不会被删改。</span>
+      <button class="btn btn-sm ml-auto" :disabled="migrating" @click="doMigrate">{{ migrating ? '迁移中…' : '立即迁移' }}</button>
+    </div>
+  </div>
+
+  <!-- 页签 -->
+  <nav class="mb-4 flex items-center gap-1.5">
+    <button class="tab" data-testid="tab-control" :class="{ 'tab-active': tab === 'control' }" @click="tab = 'control'">抓取控制</button>
+    <button class="tab" data-testid="tab-coverage" :class="{ 'tab-active': tab === 'coverage' }" @click="switchCoverage">覆盖视图</button>
+    <button class="tab" data-testid="tab-data" :class="{ 'tab-active': tab === 'data' }" @click="switchData">数据管理</button>
+    <span class="ml-auto text-[11px] text-faint">{{ registryLine }}</span>
+  </nav>
+
+  <!-- ======================= ① 抓取控制 ======================= -->
+  <section v-show="tab === 'control'" data-testid="panel-control" class="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_460px]">
+
+    <div class="flex flex-col gap-4">
+
+      <!-- 状态 + 启停 -->
+      <div class="card">
+        <div class="mb-3 flex flex-wrap items-center gap-3">
+          <span class="badge" :class="st.cls" data-testid="session-state"><i class="dot" :class="st.dot"></i>{{ st.text }}</span>
+          <span class="text-xs text-muted" v-if="session.running">已运行 {{ fmtDur(session.elapsedMs) }}</span>
+          <span class="text-xs text-muted" v-if="session.symbol">· {{ session.symbol }}</span>
+          <div class="ml-auto flex gap-2">
+            <button class="btn btn-primary" data-testid="start" :disabled="session.running" @click="startCapture">
+              {{ session.running ? '运行中…' : '开始抓取' }}
+            </button>
+            <button class="btn btn-danger" data-testid="stop" :disabled="!session.running" @click="stopCapture">停止抓取</button>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-2 gap-2 md:grid-cols-4">
+          <div v-for="s in statTiles" :key="s.label" class="card-tight">
+            <div class="text-[11px] text-muted">{{ s.label }}</div>
+            <div class="text-[19px] font-semibold leading-tight" :style="{ color: s.color || 'var(--color-ink)' }">{{ s.value }}</div>
+            <div class="text-[10.5px] text-faint">{{ s.sub }}</div>
+          </div>
+        </div>
+
+        <div v-if="session.lastError" class="mt-3 rounded-lg border border-bad/40 bg-badbg px-3 py-2 text-[12.5px]">
+          <span class="badge badge-bad mr-2">错误</span>{{ session.lastError }}
+        </div>
+      </div>
+
+      <!-- 自动回拉 -->
+      <div class="card">
+        <div class="flex items-start gap-3">
+          <button class="switch mt-[2px]" data-testid="autopull" :class="{ 'switch-on': autoPullOn }"
+                  @click="toggleAutoPull" :title="session.running ? '运行中也可随时切换' : '设置默认值，下次启动生效'">
+            <span class="switch-knob"></span>
+          </button>
+          <div class="min-w-0 flex-1">
+            <div class="flex items-center gap-2">
+              <span class="sect-title">自动控制图表回拉</span>
+              <span v-if="session.autoPull" class="badge badge-ok">已开启</span>
+              <span v-else class="badge">已关闭</span>
+              <span v-if="session.autoPullStopReason" class="badge badge-warn">{{ autoStopText }}</span>
+            </div>
+            <p class="mt-1 text-[12.5px] text-muted">
+              开启后，程序会主动拖动图表，逼页面去请求更早的历史 K 线 —— 全自动，不用你手动回放。
+              关闭时程序<b>只被动记录</b>：你在图表上手动回放、缩放、切周期，它老实把数据收下，不向服务器多发一个请求。
+            </p>
+            <p class="mt-1.5 text-[12px] text-warn">
+              ⚠ 主动操作图表会产生非人类的交互序列，高频使用有被风控的可能。默认关闭；
+              开启时建议把「每步间隔」保持在 2 秒以上，并给「最多步数」设个上限，别挂机跑一整夜。
+            </p>
+            <p class="mt-1.5 text-[12px] text-muted" v-if="!session.autoPull && session.running">
+              现在是纯被动监听模式：<b>去那个 Chrome 里打开回放、手动跳到各个日期</b>即可，抓到就入库。
+            </p>
+            <p class="mt-1.5 text-[12px] text-muted" v-if="!session.running">
+              会话未开始。开关状态会在「开始抓取」时生效；也可以先在这里设好再启动。
+            </p>
+          </div>
+        </div>
+
+        <div class="mt-4 grid grid-cols-2 gap-3 md:grid-cols-3">
+          <label v-for="f in fieldDefs" :key="f.k" class="block">
+            <span class="mb-1 block text-[11px] text-muted">{{ f.label }}</span>
+            <input v-if="f.type === 'number'" class="inp" type="number" :min="f.min" :max="f.max" :step="f.step"
+                   :disabled="f.runningLock && session.running" v-model.number="form[f.k]">
+            <input v-else class="inp" type="text" :disabled="f.runningLock && session.running" v-model="form[f.k]">
+            <span class="mt-1 block text-[10.5px] text-faint">{{ f.hint }}</span>
+          </label>
+        </div>
+
+        <div class="mt-3 flex flex-wrap items-center gap-4">
+          <label v-for="c in boolDefs" :key="c.k" class="flex items-center gap-2 text-[12.5px]">
+            <input type="checkbox" v-model="form[c.k]" style="accent-color: var(--color-accent)">
+            <span>{{ c.label }}</span>
+            <span class="text-[10.5px] text-faint">{{ c.hint }}</span>
+          </label>
+          <button class="btn btn-sm ml-auto" @click="saveSettings" :disabled="savingSettings">
+            {{ savingSettings ? '保存中…' : '保存为默认' }}
+          </button>
+        </div>
+      </div>
+
+      <!-- CDP 诊断 -->
+      <div class="card">
+        <div class="flex items-center gap-2">
+          <span class="sect-title">浏览器接入诊断</span>
+          <span v-if="doctor" class="badge" :class="doctor.ok ? 'badge-ok' : 'badge-bad'">
+            {{ doctor.ok ? '可接入' : '接不上' }}
+          </span>
+          <button class="btn btn-sm ml-auto" :disabled="doctorLoading" @click="runDoctor">
+            {{ doctorLoading ? '检测中…' : '重新检测' }}
+          </button>
+        </div>
+
+        <div v-if="doctor" class="mt-3">
+          <div class="mb-2 flex flex-wrap items-center gap-3 text-[12px]">
+            <span>Node {{ doctor.node }}</span>
+            <span class="text-muted">原生 WebSocket：{{ doctor.webSocket ? '可用' : '缺失' }}</span>
+            <span v-for="(v, p) in doctor.ports" :key="p" class="mono" :class="v ? 'text-ok' : 'text-faint'">
+              127.0.0.1:{{ p }} {{ v ? '通' : '堵' }}
+            </span>
+          </div>
+
+          <div v-if="doctor.endpoint" class="mono break-all text-[11.5px] text-muted">{{ doctor.endpoint.url }}</div>
+
+          <p v-if="doctor.error" class="mt-2 rounded-lg border border-bad/40 bg-badbg px-3 py-2 text-[12.5px]">
+            {{ doctor.error }}
+          </p>
+
+          <div v-if="doctor.targets && doctor.targets.length" class="mt-3">
+            <div class="mb-1 text-[11px] text-muted">可抓的页面（共 {{ doctor.targets.length }} 个，图表页 {{ chartTargetCount }} 个）</div>
+            <div class="max-h-[180px] overflow-auto">
+              <table class="tbl">
+                <tr v-for="t in doctor.targets" :key="t.id">
+                  <td class="w-[45px]">
+                    <span v-if="t.isChart" class="badge badge-accent">图表</span>
+                    <span v-else class="text-faint">—</span>
+                  </td>
+                  <td>{{ t.title }}</td>
+                  <td class="mono text-faint">{{ t.url }}</td>
+                </tr>
+              </table>
+            </div>
+          </div>
+
+          <div v-if="!doctor.ok" class="mt-3 rounded-lg border border-line bg-panel2 px-3 py-2 text-[12.5px] text-muted">
+            <div class="mb-1 font-semibold text-ink">排查顺序</div>
+            <ol class="ml-4 list-decimal">
+              <li>在你正用着的那个 Chrome 里打开 <span class="mono">chrome://inspect/#remote-debugging</span></li>
+              <li>勾选 “Allow remote debugging for this browser instance”</li>
+              <li>本程序发起连接时，Chrome 会弹 “Allow remote debugging?” —— 必须点 Allow</li>
+              <li>回到这里点「重新检测」</li>
+            </ol>
+            <p class="mt-2">
+              注意：Chrome ≥ 136 起，给默认用户数据目录加 <span class="mono">--remote-debugging-port</span> 会被静默忽略，
+              「重启 Chrome 加参数」这条路走不通；每个新的浏览器会话都要重新勾一次开关。
+            </p>
+          </div>
+        </div>
+        <p v-else class="mt-2 text-[12.5px] text-muted">点「重新检测」看看能不能接上你已登录的 Chrome。</p>
+      </div>
+    </div>
+
+    <!-- 日志 -->
+    <div class="card flex h-[calc(100vh-190px)] min-h-[420px] flex-col xl:sticky xl:top-[62px]">
+      <div class="mb-2 flex items-center gap-2">
+        <span class="sect-title">运行日志</span>
+        <span class="text-[11px] text-faint">{{ logs.length }} 条</span>
+        <label class="ml-auto flex items-center gap-1.5 text-[11px] text-muted">
+          <input type="checkbox" v-model="autoScroll" style="accent-color: var(--color-accent)">自动滚动
+        </label>
+        <button class="btn btn-sm btn-ghost" @click="logs = []">清空</button>
+      </div>
+      <div class="logbox flex-1" data-testid="logbox" ref="logBox">
+        <div v-for="(l, i) in logs" :key="l.at + '-' + i" class="log-line" :class="'log-' + l.level">
+          <span class="log-t">{{ fmtClock(l.at) }}</span>  {{ l.text }}
+        </div>
+        <div v-if="!logs.length" class="log-line log-muted">（暂无日志）</div>
+      </div>
+      <div class="mt-2 text-[10.5px] text-faint">
+        抓包原始文件写在 <span class="mono">data/raw/&lt;品种&gt;/</span>，边抓边解码入库。
+      </div>
+    </div>
+  </section>
+
+  <!-- ======================= ② 覆盖视图 ======================= -->
+  <section v-show="tab === 'coverage'" data-testid="panel-coverage">
+    <div v-if="!selectedSlug" class="card text-[13px] text-muted">
+      右上角选一个品种，就能看到它的覆盖情况。（还没有品种？去「抓取控制」跑一次抓取，或在「数据管理」里入库已有抓包。）
+    </div>
+
+    <div v-else-if="cal && cal.empty" class="card text-[13px] text-muted">
+      <b>{{ selectedSymbol?.symbol }}</b> 这个品种库里还没有 K 线。
+    </div>
+
+    <div v-else-if="cal" class="flex flex-col gap-4">
+
+      <!-- 汇总 -->
+      <div class="card">
+        <div class="flex flex-wrap items-center gap-3">
+          <span class="text-[15px] font-semibold">{{ cal.symbol }}</span>
+          <span class="badge badge-accent">{{ cal.interval || '周期未知' }}</span>
+          <span class="badge">每格 {{ cal.bucket }}</span>
+          <span class="text-[12px] text-muted">{{ cal.range.fromIso }} → {{ cal.range.toIso }}（{{ cal.range.days }} 天，UTC）</span>
+          <div class="ml-auto flex items-center gap-2">
+            <span class="text-[11px] text-muted">时间窗</span>
+            <button v-for="w in windowOptions" :key="w.v" class="btn btn-sm"
+                    :class="{ 'btn-primary': windowDays === w.v }" @click="setWindow(w.v)">{{ w.t }}</button>
+            <button class="btn btn-sm" :disabled="calLoading" @click="loadCalendar">{{ calLoading ? '刷新中…' : '刷新' }}</button>
+          </div>
+        </div>
+
+        <div v-if="cal.summary" class="mt-3 grid grid-cols-2 gap-2 md:grid-cols-5" data-testid="coverage-summary">
+          <div class="card-tight">
+            <div class="text-[11px] text-muted">已抓 K 线</div>
+            <div class="text-[19px] font-semibold">{{ fmtInt(cal.summary.bars) }}</div>
+            <div class="text-[10.5px] text-faint">跨 {{ cal.summary.spanDays }} 天 / 有数据 {{ cal.summary.coveredDays }} 天</div>
+          </div>
+          <div class="card-tight">
+            <div class="text-[11px] text-muted">覆盖率</div>
+            <div class="text-[19px] font-semibold"
+                 :style="{ color: coverageColor }">{{ fmtPct(cal.summary.coverageRatio) }}</div>
+            <div class="text-[10.5px] text-faint">实到 {{ fmtInt(cal.summary.matched) }} / 应到 {{ fmtInt(cal.summary.expectedTotal) }}</div>
+          </div>
+          <div class="card-tight">
+            <div class="text-[11px] text-muted">缺口</div>
+            <div class="text-[19px] font-semibold" :style="{ color: cal.summary.missingTotal ? 'var(--color-warn)' : 'var(--color-ok)' }">
+              {{ fmtInt(cal.summary.missingTotal) }}
+            </div>
+            <div class="text-[10.5px] text-faint">{{ cal.summary.gapDays }} 天存在缺口</div>
+          </div>
+          <div class="card-tight">
+            <div class="text-[11px] text-muted">断档</div>
+            <div class="text-[19px] font-semibold">{{ cal.summary.breakCount }}</div>
+            <div class="text-[10.5px] text-faint">时间轴被切成 {{ cal.summary.breakCount + 1 }} 段</div>
+          </div>
+          <div class="card-tight">
+            <div class="text-[11px] text-muted">下一个建议目标</div>
+            <div class="text-[15px] font-semibold">{{ cal.summary.nextTarget ? cal.summary.nextTarget.iso : '—' }}</div>
+            <div class="text-[10.5px] text-faint">
+              {{ cal.summary.nextTarget ? `该日缺 ${cal.summary.nextTarget.missingCount} 个时段` : '当前参照下无明显缺口' }}
+            </div>
+          </div>
+        </div>
+
+        <p v-if="cal.summary && cal.summary.patternWeak" class="mt-3 rounded-lg border border-warn/40 bg-warnbg px-3 py-2 text-[12.5px]">
+          <b>参照样本不足</b>（每个星期几最少只有 {{ cal.summary.minSample }} 天样本），上面的覆盖率偏乐观 ——
+          此时它只适合当「有没有明显大洞」的粗筛。<b>请以下面的断档列表为准</b>，那部分不做任何交易时段假设。
+        </p>
+        <p v-if="cal.summary && cal.summary.breakCount" class="mt-2 text-[11.5px] text-faint">
+          说明：期货有每日结算间歇、还有周末休市，这些「正常断开」会出现在断档列表里。
+          判断标准是：短于 3 天的多半是正常间歇，长于 3 天的才更可能是真的漏抓。
+        </p>
+      </div>
+
+      <!-- 月历 + 单日详情 -->
+      <div class="card">
+        <div class="mb-3 flex items-center gap-2">
+          <span class="sect-title">抓取日历</span>
+          <span class="text-[11px] text-faint">格子里是当天 K 线根数，颜色代表完整度</span>
+          <div class="ml-auto flex items-center gap-1.5">
+            <button class="btn btn-sm" @click="shiftMonth(-1)">←</button>
+            <span class="mono min-w-[76px] text-center text-[12.5px]">{{ calMonthLabel }}</span>
+            <button class="btn btn-sm" @click="shiftMonth(1)">→</button>
+            <button class="btn btn-sm" @click="gotoLatestMonth">最新</button>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
+          <div>
+            <div class="mb-1 grid grid-cols-7 gap-1.5">
+              <div v-for="w in ['一','二','三','四','五','六','日']" :key="w" class="text-center text-[11px] text-muted">{{ w }}</div>
+            </div>
+            <div class="grid grid-cols-7 gap-1.5" data-testid="calendar">
+              <template v-for="(c, i) in calGrid" :key="i">
+                <div v-if="!c" class="min-h-[62px] rounded-lg border border-dashed border-line/70"></div>
+                <button v-else class="cal-cell" :class="{ 'cal-cell-sel': c.iso === focusDay }"
+                        :style="dayCellStyle(c)" @click="focusOnDay(c.iso)" :title="dayTitle(c)">
+                  <div class="flex items-baseline justify-between">
+                    <span class="cal-day">{{ c.d }}</span>
+                    <span class="cal-meta" :style="{ color: c.n ? 'var(--color-ink)' : 'var(--color-faint)' }">{{ c.n || '—' }}</span>
+                  </div>
+                  <div class="cal-bar my-1"><i :style="{ width: ratioPct(c) }"></i></div>
+                  <div class="cal-meta truncate">{{ dayStatusText(c) }}</div>
+                </button>
+              </template>
+            </div>
+          </div>
+
+          <div class="card-tight" data-testid="day-detail">
+            <div class="mb-2 flex items-center gap-2">
+              <span class="sect-title">单日明细</span>
+              <span class="badge" v-if="focusDay">{{ focusDay }}</span>
+            </div>
+            <template v-if="cal.focus">
+              <div class="mb-2 grid grid-cols-2 gap-2 text-[12px]">
+                <div><span class="text-muted">根数</span> <b>{{ cal.focus.n }}</b></div>
+                <div><span class="text-muted">应有</span> <b>{{ cal.focus.expected || '—' }}</b></div>
+                <div><span class="text-muted">缺失</span> <b>{{ cal.focus.missing }}</b></div>
+                <div><span class="text-muted">状态</span> <b>{{ statusText(cal.focus.status) }}</b></div>
+              </div>
+              <p v-if="cal.focus.status === 'out-of-range'" class="mb-2 rounded-lg border border-line bg-panel2 px-3 py-2 text-[12px] text-muted">
+                这天在已抓范围之外（{{ cal.range.fromIso }} → {{ cal.range.toIso }}）。
+                想看它就得先把时间轴往回拨到那天。
+              </p>
+              <p v-else-if="!cal.focus.n" class="mb-2 rounded-lg border border-warn/40 bg-warnbg px-3 py-2 text-[12px]">
+                这天一根都没有。它落在已抓范围之内，是<b>整日空洞</b> —— 属于该补的目标。
+              </p>
+              <div class="mb-1 text-[11px] text-muted">有数据的连续时段</div>
+              <div class="max-h-[220px] overflow-auto">
+                <div v-for="(seg, i) in cal.focus.segments" :key="i" class="mono text-[11.5px]">{{ seg }}</div>
+                <div v-if="!cal.focus.segments.length" class="text-[12px] text-faint">（该日无数据）</div>
+              </div>
+            </template>
+            <p v-else class="text-[12px] text-faint">点左边日历里的任意一天，这里显示它每个时段的抓取情况。</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- 时间轴 -->
+      <div class="card">
+        <div class="mb-2 flex flex-wrap items-center gap-3">
+          <span class="sect-title">时间轴 · 每日覆盖条带</span>
+          <span class="text-[11px] text-faint" data-testid="matrix-hint">上面是「每个时段被覆盖了多少天」的直方图，下面是每天一行、每格一个 {{ cal.bucket }}</span>
+          <div class="ml-auto flex flex-wrap items-center gap-3 text-[11px]">
+            <span class="flex items-center gap-1.5"><i class="legend-swatch" style="background: var(--color-accent)"></i>有数据</span>
+            <span class="flex items-center gap-1.5"><i class="legend-swatch" style="background: color-mix(in oklab, var(--color-bad) 60%, transparent)"></i>应有但缺</span>
+            <span class="flex items-center gap-1.5"><i class="legend-swatch" style="background: var(--color-line)"></i>非交易时段</span>
+          </div>
+        </div>
+
+        <div class="canvas-wrap relative" style="max-height: 560px">
+          <canvas data-testid="matrix" ref="matrixCanvas"
+                  @mousemove="onMatrixMove" @mouseleave="tip = null" @click="onMatrixClick"></canvas>
+        </div>
+
+        <div class="mt-2 flex items-center gap-4 text-[11px] text-faint">
+          <span v-if="tip" class="mono text-ink">{{ tip.text }}</span>
+          <span v-else>把鼠标移到格子上看具体时段；点一下可切到那天的单日明细</span>
+          <span class="ml-auto">共 {{ cal.days.length }} 天 · 每行 {{ cal.slotsPerDay }} 格</span>
+        </div>
+      </div>
+
+      <!-- 缺口与断档 -->
+      <div class="grid grid-cols-1 gap-4 xl:grid-cols-2">
+        <div class="card">
+          <div class="mb-2 flex items-center gap-2">
+            <span class="sect-title">缺口清单</span>
+            <span class="text-[11px] text-faint">按缺失时段数排序，前 40 天</span>
+          </div>
+          <div class="max-h-[360px] overflow-auto">
+            <table class="tbl" data-testid="gaps-table">
+              <thead>
+                <tr><th>日期</th><th>星期</th><th>已有/应有</th><th>缺失时段</th></tr>
+              </thead>
+              <tbody>
+                <tr v-for="g in (cal.summary ? cal.summary.topGaps : [])" :key="g.day">
+                  <td><button class="btn btn-sm btn-ghost" @click="focusOnDay(g.iso)">{{ g.iso }}</button></td>
+                  <td class="text-muted">{{ wdCN[g.weekday] }}</td>
+                  <td>{{ g.present }} / {{ g.expected }}</td>
+                  <td class="mono text-[11px]" :style="{ color: 'var(--color-warn)' }">
+                    {{ g.missing.join(' ') }}<span v-if="g.missingCount > g.missing.length"> …（共 {{ g.missingCount }} 个）</span>
+                  </td>
+                </tr>
+                <tr v-if="!cal.summary || !cal.summary.topGaps.length">
+                  <td colspan="4" class="text-faint">当前参照下没有缺口。</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="mb-2 flex items-center gap-2">
+            <span class="sect-title">断档</span>
+            <span class="text-[11px] text-faint">不做任何交易时段假设，纯看时间轴被切成了几块</span>
+          </div>
+          <div class="max-h-[360px] overflow-auto">
+            <table class="tbl" data-testid="breaks-table">
+              <thead>
+                <tr><th>从</th><th>到</th><th>时长</th><th>约缺</th></tr>
+              </thead>
+              <tbody>
+                <tr v-for="(b, i) in (cal.summary ? cal.summary.breaks : [])" :key="i">
+                  <td class="mono text-[11px]">{{ b.fromIso }}</td>
+                  <td class="mono text-[11px]">{{ b.toIso }}</td>
+                  <td>{{ fmtDurShort(b.seconds) }}</td>
+                  <td>{{ b.missing }} 根</td>
+                </tr>
+                <tr v-if="!cal.summary || !cal.summary.breaks.length">
+                  <td colspan="4" class="text-faint">没有断档 —— 相邻 K 线间隔都在一个周期内。</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ======================= ③ 数据管理 ======================= -->
+  <section v-show="tab === 'data'" data-testid="panel-data" class="flex flex-col gap-4">
+
+    <div class="card">
+      <div class="mb-3 flex flex-wrap items-center gap-3">
+        <span class="sect-title">品种库</span>
+        <span class="text-[11px] text-faint">
+          一个品种一个 <span class="mono">.sqlite</span> 文件，放在 <span class="mono">data/db/</span>
+        </span>
+        <div class="ml-auto flex gap-2">
+          <button class="btn btn-sm" :disabled="symbolsLoading" @click="loadSymbols">{{ symbolsLoading ? '刷新中…' : '刷新' }}</button>
+        </div>
+      </div>
+      <table class="tbl" data-testid="symbols-table">
+        <thead>
+          <tr><th>品种</th><th>周期</th><th>K 线</th><th>范围（UTC）</th><th>文件</th><th>大小</th><th></th></tr>
+        </thead>
+        <tbody>
+          <tr v-for="s in symbols" :key="s.slug">
+            <td>
+              <b>{{ s.symbol }}</b>
+              <span v-if="s.seriesCount > 1" class="badge ml-2" :title="'重连换过 series 号：' + s.series.map(x => x.series).join(', ')">
+                {{ s.seriesCount }} 个 series
+              </span>
+            </td>
+            <td>{{ s.interval || '—' }}</td>
+            <td>{{ fmtInt(s.bars) }}<span class="text-faint"> / {{ fmtInt(s.rows) }} 行</span></td>
+            <td class="mono text-[11px]">{{ fmtTs(s.firstT) }} → {{ fmtTs(s.lastT) }}</td>
+            <td class="mono text-[11px] text-muted">{{ s.filename }}</td>
+            <td>{{ fmtBytes(s.sizeBytes) }}</td>
+            <td class="text-right whitespace-nowrap">
+              <button class="btn btn-sm" @click="selectSymbol(s.slug)">查看覆盖</button>
+              <button class="btn btn-sm" @click="exportCsv(s)" :disabled="exporting === s.slug">
+                {{ exporting === s.slug ? '导出中…' : '导出 CSV' }}
+              </button>
+            </td>
+          </tr>
+          <tr v-if="!symbols.length">
+            <td colspan="7" class="text-faint">还没有品种库。先跑一次抓取，或在下面入库已有的抓包文件。</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_420px]">
+      <div class="card">
+        <div class="mb-2 flex items-center gap-2">
+          <span class="sect-title">原始抓包文件</span>
+          <span class="text-[11px] text-faint">{{ rawFiles.length }} 个 · 已入库 {{ ingestedCount }}</span>
+          <button class="btn btn-sm ml-auto" @click="loadRaw">刷新</button>
+        </div>
+        <div class="max-h-[380px] overflow-auto">
+          <table class="tbl" data-testid="raw-table">
+            <thead><tr><th>文件</th><th>品种</th><th>大小</th><th>时间</th><th>状态</th></tr></thead>
+            <tbody>
+              <tr v-for="f in rawFiles" :key="f.name">
+                <td class="mono text-[11px]">{{ f.name }}</td>
+                <td class="text-[11.5px]">{{ f.symbol || '—' }}</td>
+                <td>{{ fmtBytes(f.sizeBytes) }}</td>
+                <td class="mono text-[11px]">{{ fmtTs(f.mtime / 1000) }}</td>
+                <td>
+                  <span v-if="f.pending" class="badge badge-warn">待入库</span>
+                  <span v-else class="badge badge-ok">已入库</span>
+                </td>
+              </tr>
+              <tr v-if="!rawFiles.length"><td colspan="5" class="text-faint">data/raw 下还没有抓包文件。</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="sect-title mb-2">入库</div>
+        <p class="mb-3 text-[12.5px] text-muted">
+          把 <span class="mono">data/raw</span> 里新增或变动过的抓包文件解码写入对应品种的库。已经入库过的会跳过（台账记着）。
+          边抓边入库是自动的，这里主要是给「事后补录」和「手工拷进来的文件」用。
+        </p>
+        <div class="flex flex-col gap-2">
+          <button class="btn btn-primary" :disabled="ingesting" @click="doIngest(false)">
+            {{ ingesting ? '入库中…' : '入库新增文件' }}
+          </button>
+          <button class="btn" :disabled="ingesting" @click="doIngest(true)">强制全量重扫</button>
+        </div>
+        <p v-if="ingestMsg" class="mt-3 rounded-lg border border-line bg-panel2 px-3 py-2 text-[12.5px]">{{ ingestMsg }}</p>
+
+        <div class="mt-4 border-t border-line pt-3">
+          <div class="sect-title mb-1">存储布局</div>
+          <div class="mono text-[11px] text-muted">
+            data/db/index.json&nbsp;&nbsp;&nbsp;&nbsp;品种 → 文件名的索引<br>
+            data/db/&lt;slug&gt;.sqlite&nbsp;&nbsp;&nbsp;&nbsp;每个品种一个库<br>
+            data/raw/&lt;slug&gt;/&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;该品种的原始抓包<br>
+            data/ingest-state.json&nbsp;&nbsp;入库台账
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+</main>
+</div>
+
+<script src="/vendor/vue.global.prod.js"></script>
+<script src="/app.js"></script>
+</body>
+</html>

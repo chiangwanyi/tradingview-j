@@ -1,18 +1,17 @@
 {
   "name": "tradingview-j",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "type": "module",
-  "description": "通过 CDP 接入已登录的 Chrome，抓取 TradingView 图表 WebSocket 行情帧，解码为 OHLCV 并增量入库",
+  "description": "TradingView 图表 WebSocket 抓取工作台：本地 Web 界面 + 一个品种一个 SQLite",
   "engines": {
-    "node": ">=22.5"
+    "node": ">=22.5.0"
   },
   "scripts": {
-    "doctor": "node bin/tv.mjs doctor",
-    "targets": "node bin/tv.mjs targets",
-    "capture": "node bin/tv.mjs capture",
-    "ingest": "node bin/tv.mjs ingest",
-    "stats": "node bin/tv.mjs stats",
-    "export": "node bin/tv.mjs export"
+    "start": "node server/index.mjs",
+    "dev": "node server/index.mjs --port 8787",
+    "tv": "node bin/tv.mjs",
+    "migrate": "node bin/tv.mjs migrate",
+    "test": "node test/selftest.mjs && node test/ui-selftest.mjs"
   }
 }

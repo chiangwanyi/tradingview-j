@@ -1,10 +1,16 @@
-// 落库：按 (symbol, series, t) 幂等，重复抓到同一根 K 线就覆盖
-// 这样 du 增量更新正在走的那根 K 线时，库里始终是最后一次收到的版本。
+// 落库：按 (symbol, series, t) 幂等，重复抓到同一根 K 线就覆盖。
+//
+// 每个库文件只服务一个品种（见 registry.mjs）。symbol 列仍然保留 —— 它在这类库里
+// 恒等于同一个值，看似冗余，但让所有既有查询/导出代码不用改，代价只是一个 TEXT 字段。
+//
+// 幂等的意义：回放反复来回跳、窗口大面积重叠是常态操作，重叠部分自动去重，
+// 所以"多抓几次"永远是无害的。
 
 import fs from 'node:fs';
 import path from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { intervalName } from './frames.mjs';
+import { UNKNOWN_SYMBOL, fileForSymbol } from './registry.mjs';
 
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS bars (
@@ -46,6 +52,13 @@ CREATE TABLE IF NOT EXISTS runs (
   send     INTEGER DEFAULT 0,
   bars     INTEGER DEFAULT 0
 );
+
+-- 每个库自己的身份信息：真实品种名、时区偏好、备注。
+-- slug 只是文件名，真正的品种名在这里，所以文件可以随便改名/挪位置。
+CREATE TABLE IF NOT EXISTS meta (
+  k TEXT PRIMARY KEY,
+  v TEXT
+);
 `;
 
 // 从相邻时间戳的众数差反推周期 —— 兜底用。
@@ -78,18 +91,48 @@ export function inferInterval(db, symbol, series) {
   return intervalName(best[0]);
 }
 
-export function openStore(file) {
+export function getMeta(db, key, fallback = null) {
+  const row = db.prepare(`SELECT v FROM meta WHERE k = ?`).get(key);
+  if (!row) return fallback;
+  try {
+    return JSON.parse(row.v);
+  } catch {
+    return row.v;
+  }
+}
+
+export function setMeta(db, key, value) {
+  db.prepare(
+    `INSERT INTO meta (k, v) VALUES (?, ?) ON CONFLICT(k) DO UPDATE SET v = excluded.v`,
+  ).run(key, JSON.stringify(value));
+  return value;
+}
+
+export function openStore(file, { symbol = null } = {}) {
   fs.mkdirSync(path.dirname(file), { recursive: true });
   const db = new DatabaseSync(file);
   db.exec('PRAGMA journal_mode = WAL');
   db.exec('PRAGMA synchronous = NORMAL');
   db.exec(SCHEMA);
+  if (symbol) {
+    // 只在没有时写，避免把用户手工改过的名字覆盖掉
+    if (getMeta(db, 'symbol') == null) setMeta(db, 'symbol', String(symbol));
+  }
   return db;
 }
 
-export function makeWriter(db) {
+// 按品种打开对应的库文件（索引里没有就地分配一个）
+export function openSymbolStore(root, symbol, opts = {}) {
+  const file = fileForSymbol(root, symbol || UNKNOWN_SYMBOL, { persist: opts.persist !== false });
+  const db = openStore(file, { symbol: symbol || UNKNOWN_SYMBOL });
+  return { db, file };
+}
+
+export function makeWriter(db, { symbol = null } = {}) {
+  const forced = symbol ? String(symbol) : null;
   // 极简事务：攒够 N 条或隔一段时间提交一次，避免每根 K 线都刷盘
   let pending = 0;
+  let touchedSinceFlush = 0;
   const upsert = db.prepare(`
     INSERT INTO bars (symbol, series, t, interval, timescale, o, h, l, c, v, source, raw, seen_at)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -117,10 +160,11 @@ export function makeWriter(db) {
   const now = () => Date.now();
 
   return {
+    symbol: forced,
     writeBar(bar) {
-      if (!bar.symbol) bar.symbol = '(unknown)';
+      const sym = forced || bar.symbol || UNKNOWN_SYMBOL;
       upsert.run(
-        bar.symbol,
+        sym,
         String(bar.series ?? '(unknown)'),
         bar.t,
         bar.interval ?? null,
@@ -134,25 +178,33 @@ export function makeWriter(db) {
         JSON.stringify(bar.raw ?? null),
         now(),
       );
-      touched.add(`${bar.symbol}\u0000${bar.series ?? '(unknown)'}`);
+      touched.add(`${sym}\u0000${bar.series ?? '(unknown)'}`);
+      touchedSinceFlush++;
       if (++pending >= 500) this.flush();
     },
     flush() {
-      for (const key of touched) {
-        const [symbol, series] = key.split('\u0000');
-        const row = db
-          .prepare(
-            `SELECT COUNT(*) AS bars, MIN(t) AS first_t, MAX(t) AS last_t
-             FROM bars WHERE symbol = ? AND series = ?`,
-          )
-          .get(symbol, series);
-        if (!row) continue;
-        const interval = inferInterval(db, symbol, series);
-        // 把反推结果回填到 bars，表自身就自洽了，后续 flush 也不必重算
-        if (interval) markInterval.run(interval, symbol, series);
-        rollup.run(symbol, series, interval, row.first_t, row.last_t, row.bars, now());
+      if (touched.size) {
+        for (const key of touched) {
+          const [symbol, series] = key.split('\u0000');
+          const row = db
+            .prepare(
+              `SELECT COUNT(*) AS bars, MIN(t) AS first_t, MAX(t) AS last_t
+               FROM bars WHERE symbol = ? AND series = ?`,
+            )
+            .get(symbol, series);
+          if (!row) continue;
+          const interval = inferInterval(db, symbol, series);
+          // 把反推结果回填到 bars，表自身就自洽了，后续 flush 也不必重算
+          if (interval) markInterval.run(interval, symbol, series);
+          rollup.run(symbol, series, interval, row.first_t, row.last_t, row.bars, now());
+        }
+        touched.clear();
       }
-      touched.clear();
+      // 记下最近一次落库时间，UI 用它显示"最后写入"
+      if (touchedSinceFlush) {
+        setMeta(db, 'last_write_at', now());
+        touchedSinceFlush = 0;
+      }
       pending = 0;
     },
     stats() {
@@ -248,4 +300,59 @@ export function listSeriesIds(db, symbol = null) {
         ` GROUP BY symbol, series ORDER BY symbol, series`,
     )
     .all(...(symbol ? [symbol] : []));
+}
+
+// 一个库的整体摘要（UI 的品种列表就用它）
+export function summarize(db, { symbol = null } = {}) {
+  const row = db
+    .prepare(
+      `SELECT COUNT(*) AS rows, COUNT(DISTINCT t) AS distinct_t, MIN(t) AS first_t, MAX(t) AS last_t
+       FROM bars` + (symbol ? ' WHERE symbol = ?' : ''),
+    )
+    .get(...(symbol ? [symbol] : []));
+
+  const intervals = db
+    .prepare(
+      `SELECT interval, COUNT(DISTINCT t) AS n FROM bars WHERE interval IS NOT NULL
+       GROUP BY interval ORDER BY n DESC`,
+    )
+    .all();
+  // 直接用 bars.interval 统计，不依赖 series_meta 是否已经 rollup 过
+  const dominant = intervals[0]?.interval ?? null;
+
+  const series = listSeriesIds(db, symbol).map((s) => ({
+    series: s.series,
+    bars: s.bars,
+    distinctT: s.distinct_t,
+    firstT: s.first_t,
+    lastT: s.last_t,
+  }));
+
+  return {
+    symbol: getMeta(db, 'symbol', symbol) || symbol,
+    intervals: intervals.map((i) => ({ interval: i.interval, days: i.n })),
+    interval: dominant,
+    rows: row.rows ?? 0,
+    bars: row.distinct_t ?? 0,
+    firstT: row.first_t ?? null,
+    lastT: row.last_t ?? null,
+    series,
+    seriesCount: series.length,
+    lastWriteAt: getMeta(db, 'last_write_at', null),
+  };
+}
+
+// 打开一个品种库并给出摘要，出错不抛（UI 列表场景：一个坏文件不该让整个页面挂掉）
+export function safeSummarize(file, { symbol = null } = {}) {
+  let db = null;
+  try {
+    db = openStore(file, { symbol });
+    return summarize(db, { symbol });
+  } catch (e) {
+    return { error: e.message, rows: 0, bars: 0, series: [] };
+  } finally {
+    try {
+      db?.close();
+    } catch {}
+  }
 }

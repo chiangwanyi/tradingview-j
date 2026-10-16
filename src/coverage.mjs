@@ -91,7 +91,9 @@ function humanDuration(sec) {
 
 // 单个 symbol 的覆盖度分析
 function analyze(symbol, list, minConfidence) {
-  const ts = list.map((r) => r.t).sort((a, b) => a - b);
+  // 去重：同一个品种可能因为 WebSocket 重连换过 series 号（sds_1 → sds_2），
+  // 同一根 K 线在库里留下两行。不去重的话「根数」会虚高，断档计算也会看到一堆 0 间隔。
+  const ts = [...new Set(list.map((r) => r.t))].sort((a, b) => a - b);
   const first = ts[0];
   const last = ts[ts.length - 1];
 
@@ -191,7 +193,7 @@ function analyze(symbol, list, minConfidence) {
     symbol,
     interval,
     stepSec,
-    bars: list.length,
+    bars: ts.length,
     first,
     last,
     spanDays: lastDay - firstDay + 1,

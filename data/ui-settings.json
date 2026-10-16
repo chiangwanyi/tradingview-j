@@ -1,0 +1,14 @@
+{
+  "autoPull": false,
+  "dx": 1200,
+  "maxSteps": 12,
+  "stopAfter": 4,
+  "quietSec": 3,
+  "betweenSec": 2.5,
+  "maxMinutes": 30,
+  "restoreView": true,
+  "match": "tradingview.com/chart",
+  "hookWs": true,
+  "reloadOnStart": false,
+  "symbol": ""
+}

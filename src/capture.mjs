@@ -57,6 +57,11 @@ export async function capture(options = {}) {
     reload = false,
     hookWs = false,
     sampleCount = 0,
+    // rawDir / symbolHint: 让调用方决定抓包文件落在哪个品种的目录、以及它的品种名。
+    // 默认行为（不放参数）仍然写到 data/raw 根目录，兼容旧用法。
+    rawDir = null,
+    symbolHint = null,
+    onOpen = null,
     // onRecord: 每写一条记录就回调一次 —— watch 模式靠它做流式解码入库，
     //           这样就不必再回头读文件，也不会有"抓了但忘了 ingest"的情况。
     // onProgress/progressEveryMs: 定期回调，用来打印累计进度（watch 模式）。
@@ -90,13 +95,20 @@ export async function capture(options = {}) {
     maxResourceBufferSize: 20 * 1024 * 1024,
   });
 
-  const rawDir = defaultRawDir(root);
-  fs.mkdirSync(rawDir, { recursive: true });
+  const rawDirFinal = rawDir || defaultRawDir(root);
+  fs.mkdirSync(rawDirFinal, { recursive: true });
   const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
-  const outFile = path.join(rawDir, `${stamp}.ndjson`);
-  const sampleFile = sampleCount > 0 ? path.join(rawDir, `${stamp}.sample.txt`) : null;
+  const outFile = path.join(rawDirFinal, `${stamp}.ndjson`);
+  const sampleFile = sampleCount > 0 ? path.join(rawDirFinal, `${stamp}.sample.txt`) : null;
   const stream = fs.createWriteStream(outFile, { flags: 'a' });
   const sample = sampleFile ? fs.createWriteStream(sampleFile, { flags: 'a' }) : null;
+  if (onOpen) {
+    try {
+      onOpen({ file: outFile, sampleFile });
+    } catch (e) {
+      log(`[warn] onOpen 处理失败：${e.message}`);
+    }
+  }
 
   const write = (rec) => {
     stream.write(JSON.stringify(rec) + '\n');
@@ -113,7 +125,7 @@ export async function capture(options = {}) {
     k: 'meta',
     at: Date.now(),
     target: { id: target.id, url: target.url, title: target.title },
-    symbolHint: symbolFromUrl(target.url),
+    symbolHint: symbolHint || symbolFromUrl(target.url),
     endpoint: { port: endpoint.port, browser: endpoint.browser, source: endpoint.source },
     node: process.version,
   });

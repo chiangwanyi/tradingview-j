@@ -1,0 +1,383 @@
+/* ------------------------------------------------------------------
+   只放「结构性的、不需要被工具类覆盖」的样式。
+
+   Tailwind 4 把所有东西放进 @layer，而**没有 @layer 的普通 CSS 永远赢过分层 CSS**。
+   所以这里一旦写了 padding / margin / width，模板里再写 p-4 / mb-2 就不生效了。
+   规矩：这里可以写 border / background / border-radius / padding，
+   但**不写 margin、不写尺寸**，那些交给模板里的工具类。
+   ------------------------------------------------------------------ */
+
+html {
+  background: var(--color-bg);
+  color-scheme: light;
+}
+html.dark {
+  background: var(--color-bg);
+  color-scheme: dark;
+}
+
+/* preflight 不动 font-size，浏览器默认 16px。
+   不显式设成 14px 的话，整个界面会比设计稿大一圈，而且因为每处局部字号都是显式的，
+   从现象上很难一眼看出来。行高给 1.65 是给中文留呼吸。 */
+body {
+  font-size: 14px;
+  line-height: 1.65;
+}
+
+/* Tailwind 编译完成前会有一段「内容可见但没样式」的窗口，压一下避免闪 */
+#app {
+  opacity: 0;
+}
+#app.ready {
+  opacity: 1;
+  transition: opacity 0.12s ease;
+}
+
+/* ---------- 组件 ---------- */
+
+.card {
+  border: 1px solid var(--color-line);
+  background: var(--color-panel);
+  border-radius: 12px;
+  padding: 16px;
+}
+
+.card-tight {
+  border: 1px solid var(--color-line);
+  background: var(--color-panel);
+  border-radius: 10px;
+  padding: 12px;
+}
+
+.sect-title {
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+/* 小标签：颜色是它的重点，所以这里显式写色，不再在外面用 text-* 覆盖 */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  line-height: 1.5;
+  padding: 1px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--color-line2);
+  color: var(--color-muted);
+  background: var(--color-panel2);
+  white-space: nowrap;
+}
+.badge-ok {
+  color: var(--color-ok);
+  background: var(--color-okbg);
+  border-color: color-mix(in oklab, var(--color-ok) 35%, transparent);
+}
+.badge-warn {
+  color: var(--color-warn);
+  background: var(--color-warnbg);
+  border-color: color-mix(in oklab, var(--color-warn) 35%, transparent);
+}
+.badge-bad {
+  color: var(--color-bad);
+  background: var(--color-badbg);
+  border-color: color-mix(in oklab, var(--color-bad) 35%, transparent);
+}
+.badge-accent {
+  color: var(--color-accent);
+  background: var(--color-accentbg);
+  border-color: color-mix(in oklab, var(--color-accent) 35%, transparent);
+}
+
+.dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--color-faint);
+  flex: none;
+}
+.dot-ok {
+  background: var(--color-ok);
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--color-ok) 22%, transparent);
+}
+.dot-warn {
+  background: var(--color-warn);
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--color-warn) 22%, transparent);
+}
+.dot-bad {
+  background: var(--color-bad);
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--color-bad) 22%, transparent);
+}
+.dot-accent {
+  background: var(--color-accent);
+  animation: pulse 1.4s ease-in-out infinite;
+}
+@keyframes pulse {
+  0%, 100% { box-shadow: 0 0 0 3px color-mix(in oklab, var(--color-accent) 25%, transparent); }
+  50% { box-shadow: 0 0 0 6px color-mix(in oklab, var(--color-accent) 6%, transparent); }
+}
+
+/* 按钮 */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  font-size: 13px;
+  line-height: 1.4;
+  padding: 7px 14px;
+  border-radius: 8px;
+  border: 1px solid var(--color-line2);
+  background: var(--color-panel);
+  color: var(--color-ink);
+  cursor: pointer;
+  transition: background 0.12s ease, border-color 0.12s ease, opacity 0.12s ease;
+  white-space: nowrap;
+}
+.btn:hover:not(:disabled) {
+  background: var(--color-panel2);
+}
+.btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.btn-primary {
+  background: var(--color-accent);
+  border-color: var(--color-accent);
+  /* 深色主题的 accent 是浅蓝，白字会看不清；用 panel（深底）反而对比正确 */
+  color: var(--color-panel);
+  font-weight: 600;
+}
+.btn-primary:hover:not(:disabled) {
+  background: var(--color-accent2);
+  border-color: var(--color-accent2);
+}
+.btn-danger {
+  background: var(--color-bad);
+  border-color: var(--color-bad);
+  color: var(--color-panel);
+  font-weight: 600;
+}
+.btn-danger:hover:not(:disabled) {
+  opacity: 0.9;
+}
+.btn-ghost {
+  background: transparent;
+  border-color: transparent;
+  color: var(--color-muted);
+}
+.btn-ghost:hover:not(:disabled) {
+  background: var(--color-panel2);
+  color: var(--color-ink);
+}
+.btn-sm {
+  padding: 4px 9px;
+  font-size: 12px;
+}
+
+/* 输入 */
+.inp {
+  width: 100%;
+  font-size: 13px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--color-line2);
+  background: var(--color-panel);
+  color: var(--color-ink);
+  font-family: inherit;
+}
+.inp:focus {
+  outline: none;
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--color-accent) 18%, transparent);
+}
+select.inp {
+  cursor: pointer;
+}
+
+/* 开关 */
+.switch {
+  position: relative;
+  width: 46px;
+  height: 26px;
+  border-radius: 999px;
+  background: var(--color-line2);
+  border: none;
+  cursor: pointer;
+  flex: none;
+  transition: background 0.15s ease;
+  padding: 0;
+}
+.switch-on {
+  background: var(--color-accent);
+}
+.switch:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.switch-knob {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 20px;
+  height: 20px;
+  border-radius: 999px;
+  background: var(--color-panel);
+  transition: transform 0.15s ease;
+  box-shadow: 0 1px 3px rgb(0 0 0 / 0.25);
+}
+.switch-on .switch-knob {
+  transform: translateX(20px);
+}
+
+/* 页签 */
+.tab {
+  padding: 8px 14px;
+  font-size: 13px;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--color-muted);
+  cursor: pointer;
+  font-weight: 500;
+}
+.tab:hover {
+  background: var(--color-panel2);
+  color: var(--color-ink);
+}
+.tab-active {
+  background: var(--color-panel);
+  border-color: var(--color-line);
+  color: var(--color-ink);
+  font-weight: 600;
+}
+
+/* 日志 */
+.logbox {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  line-height: 1.7;
+  background: var(--color-panel2);
+  border: 1px solid var(--color-line);
+  border-radius: 10px;
+  overflow: auto;
+  padding: 8px 10px;
+}
+.log-line {
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.log-t {
+  color: var(--color-faint);
+}
+.log-info { color: var(--color-ink); }
+.log-muted { color: var(--color-muted); }
+.log-warn { color: var(--color-warn); }
+.log-error { color: var(--color-bad); }
+.log-ok { color: var(--color-ok); }
+
+/* 月历格子 */
+.cal-cell {
+  border: 1px solid var(--color-line);
+  border-radius: 8px;
+  background: var(--color-panel);
+  padding: 5px 6px;
+  min-height: 62px;
+  cursor: pointer;
+  overflow: hidden;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  display: block;
+  width: 100%;
+}
+.cal-cell:hover {
+  border-color: var(--color-accent);
+}
+.cal-cell-sel {
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 2px color-mix(in oklab, var(--color-accent) 25%, transparent);
+}
+.cal-day {
+  font-size: 12px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--color-ink);
+}
+.cal-meta {
+  font-size: 10.5px;
+  color: var(--color-muted);
+  font-variant-numeric: tabular-nums;
+}
+.cal-bar {
+  height: 3px;
+  border-radius: 999px;
+  background: var(--color-line);
+  overflow: hidden;
+}
+.cal-bar > i {
+  display: block;
+  height: 100%;
+  background: var(--color-accent);
+}
+
+/* 表格 */
+.tbl {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12.5px;
+}
+.tbl th {
+  text-align: left;
+  font-weight: 600;
+  color: var(--color-muted);
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--color-line);
+  white-space: nowrap;
+}
+.tbl td {
+  padding: 5px 8px;
+  border-bottom: 1px solid var(--color-line);
+  font-variant-numeric: tabular-nums;
+}
+.tbl tr:last-child td {
+  border-bottom: none;
+}
+.mono {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+}
+
+/* canvas 容器 */
+.canvas-wrap {
+  border: 1px solid var(--color-line);
+  border-radius: 10px;
+  background: var(--color-panel);
+  overflow: auto;
+}
+
+/* K 线槽位色块（图例用；真实绘制在 canvas 里） */
+.legend-swatch {
+  width: 12px;
+  height: 12px;
+  border-radius: 3px;
+  flex: none;
+}
+
+/* 滚动条 */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--color-line2);
+  border-radius: 999px;
+  border: 2px solid var(--color-bg);
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-faint);
+}

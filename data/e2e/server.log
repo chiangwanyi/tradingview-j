@@ -1,0 +1,11 @@
+(node:21460) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+  TradingView 抓取工作台
+  → http://127.0.0.1:8795
+
+  数据目录  E:\Data\projects\tradingview-j\data
+  品种库    E:\Data\projects\tradingview-j\data\db（一个品种一个 .sqlite）
+
+  停止服务：Ctrl+C
+

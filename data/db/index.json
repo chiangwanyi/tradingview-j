@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "symbols": {
+    "CME_MINI:MNQ1!": {
+      "file": "CME_MINI_MNQ1!.sqlite",
+      "slug": "CME_MINI_MNQ1!",
+      "created": 1792118553931
+    }
+  }
+}
