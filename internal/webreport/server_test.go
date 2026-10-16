@@ -23,7 +23,8 @@ const testIndex = `{
   }
 }`
 
-// 3 根，跨 15 分钟：按 300 秒推应有 4 根 → 缺口 1，最大断档 600 秒。
+// 3 根：00:00 / 00:05 / 00:15 —— 中间少了 00:10 一根（断档 1 处），
+// 而 2026-10-16 是周五、应当 276 根，所以这一天同时是「根数不符」的异常日。
 const testCSV = "time,open,high,low,close,volume\n" +
 	"2026-10-16 00:00,1,2,0.5,1.5,10\n" +
 	"2026-10-16 00:05,1.5,2,1,1.8,11\n" +
@@ -131,8 +132,26 @@ func TestAnalysisEndpointReportsSameNumbersAsScan(t *testing.T) {
 		t.Fatalf("日文件数 = %d（.tmp 不该被算进来）", len(fo.Files))
 	}
 	d := fo.Files[0]
-	if d.Bars != 3 || d.Rows != 3 || d.Missing != 1 || d.MaxGap != 600 {
+	if d.Bars != 3 || d.Rows != 3 {
 		t.Fatalf("日文件数字不对：%+v", d)
+	}
+	// 00:05 -> 00:15 之间少了 00:10 一根，断档边界取的就是那根缺失 K 线自己的时刻
+	if len(d.Gaps) != 1 || d.Gaps[0].Bars != 1 {
+		t.Fatalf("断档不对：%+v", d.Gaps)
+	}
+	if !d.BarsOff || !d.Anomaly {
+		t.Fatalf("3 根不等于周五应有的 276 根，应当判成异常：%+v", d)
+	}
+
+	// 「缺口 / 最大断档」这两个概念已经整个从报告里删掉了 —— 字段不该再出现在响应里，
+	// 否则前端可能又照着老字段渲染一遍，而那两个数字恰恰是这一版要去掉的东西。
+	for _, gone := range []string{`"missing"`, `"maxGap"`} {
+		if strings.Contains(body, gone) {
+			t.Fatalf("响应里还有 %s 字段：\n%s", gone, body)
+		}
+	}
+	if !strings.Contains(body, `"expectRule"`) || !strings.Contains(body, `"gaps"`) {
+		t.Fatalf("新字段没进响应：\n%s", body)
 	}
 
 	if len(rep.ByDate) != 1 || rep.ByDate[0].Bars != 3 || rep.ByDate[0].Symbols != 1 {

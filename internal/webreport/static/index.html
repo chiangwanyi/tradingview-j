@@ -100,15 +100,28 @@ try { if (localStorage.getItem('tvj-theme') === 'dark') document.documentElement
         <details class="card flex-1 basis-[420px] px-3.5 py-3">
           <summary class="cursor-pointer select-none text-[12.5px] font-medium">
             统计口径
-            <span class="ml-1 font-normal text-faint">（和终端菜单 2 用的是同一份代码，数字一定一样）</span>
+            <span class="ml-1 font-normal text-faint">（和终端菜单 2 走同一个 store.Scan，根数一定一样）</span>
           </summary>
           <ul class="mt-2 space-y-1 text-[12px] leading-relaxed text-muted">
             <li><b class="text-ink">根数</b> = 该日文件里的 K 线行数（同一时间戳只算一根）。日历格子中间那个大数字就是它。</li>
-            <li><b class="text-ink">缺口</b> = 首根与尾根之间按 {{ meta.step }} 秒推算应当有多少根，减去实有根数。期货每日结算休市、周末休市都会留下缺口，那是正常形态，不是丢数据 —— 所以有缺口的日只在格子角落写一行「缺N」，不算异常。</li>
-            <li><b class="text-ink">最大断档</b> = 相邻两根之间最大的间隔（拖图时跳过了范围，或交易所休市）。</li>
-            <li><b class="text-ink">坏行 / 重复行</b> = 解析不了的行数 / 同一时间戳出现多次的行数。正常写入是「整体重写 + 原子改名」，重复行应当恒为 0 —— 一旦不为 0，说明文件被手工改过或被别的工具合并过。这两种日文件在日历上整格标红（显示「异常」）。</li>
+            <li><b class="text-ink">异常日</b>（日历上标红）= 满足任一条：① <b class="text-ink">根数不对</b> —— 这一天按星期几应当有多少根是固定的（见下表），不符就是异常；② 文件里有解析不了的行、时间戳重复的行，或整份读不了。</li>
+            <li><b class="text-ink">数量不一致</b>（日历上标黄）= 同一天里各标的的根数不完全相同。不同品种的休市时刻并不总是一样（美国节假日提前收市时尤其明显），当天各标的各自的数字会一起印在点开后的明细表里。只比较当天有数据的标的 —— 某个标的当天根本没这份文件（还没抓到），不算它抓了 0 根。</li>
+            <li><b class="text-ink">时间断档</b> = 相邻两根之间大于一个周期的空档。点某一天，明细里会列出每一段断档的<b class="text-ink">缺失开始时刻与缺失结束时刻</b>。期货每日结算休市（1 小时 = 12 根 5 分钟）是正常形态，不算异常，所以只在明细里如实列出，不做任何汇总。</li>
+            <li><b class="text-ink">坏行 / 重复行</b> = 解析不了的行数 / 同一时间戳出现多次的行数。正常写入是「整体重写 + 原子改名」，重复行应当恒为 0 —— 一旦不为 0，说明文件被手工改过或被别的工具合并过。</li>
             <li><b class="text-ink">灰格子</b> = 这一天没有数据（周末、还没抓到的日期，或翻到了别的月份）。</li>
           </ul>
+          <div class="mt-3 border-t border-line pt-2">
+            <div class="stat-lbl">应有根数（按本地时间的星期几定，判定在 store.ExpectedBars）</div>
+            <div class="mt-1 flex flex-wrap gap-x-4 gap-y-1 font-mono text-[12px]">
+              <span v-for="w in expectRule" :key="w.weekday">
+                <span class="text-muted">{{ w.weekday }}</span>
+                <b class="ml-1 text-ink">{{ barsList(w.bars) }}</b>
+              </span>
+            </div>
+            <p class="mt-1 text-[11.5px] text-faint">
+              夏令时/冬令时会让本地时刻整体挪 1 小时，所以周一和周六各有两个正常值。交易所临时休市（美国节假日提前收市之类）会给出别的数字 —— 那些正是要报出来的。
+            </p>
+          </div>
         </details>
       </section>
 
@@ -139,17 +152,17 @@ try { if (localStorage.getItem('tvj-theme') === 'dark') document.documentElement
             <button class="btn" type="button" @click="stepMonth(1)">&rsaquo;</button>
             <button class="btn" type="button" @click="gotoLatest" title="跳到最新有数据的月份">最新</button>
           </div>
-          <label class="flex cursor-pointer select-none items-center gap-2 text-[12.5px] text-muted" title="只有坏行 / 重复行 / 读不了的日标红，其余变淡">
+          <label class="flex cursor-pointer select-none items-center gap-2 text-[12.5px] text-muted" title="根数与该星期应有根数不符、或有坏行/重复行/读不了的日标红，其余变淡">
             <input type="checkbox" v-model="hlIssue">
             高亮异常日
           </label>
-          <label class="flex cursor-pointer select-none items-center gap-2 text-[12.5px] text-muted" title="有缺口的日留原样，其余变淡">
-            <input type="checkbox" v-model="hlGap">
-            高亮有缺口的日
+          <label class="flex cursor-pointer select-none items-center gap-2 text-[12.5px] text-muted" title="当天各标的根数不完全相同的日子标黄，其余变淡">
+            <input type="checkbox" v-model="hlMismatch">
+            高亮数量不一致日
           </label>
           <span v-if="dayFilterOn" class="text-[12px] text-faint">
             命中的日文件：{{ num(hits.days) }} 天 · {{ num(hits.bars) }} 根
-            <span v-if="hlIssue || hlGap">（没命中的日子只是变淡，不隐藏）</span>
+            <span v-if="hlIssue || hlMismatch">（没命中的日子只是变淡，不隐藏）</span>
           </span>
           <span v-else class="text-[12px] text-faint">点日历上的某一天看当天明细</span>
           <button class="btn ml-auto" type="button" @click="allOpen = !allOpen">{{ allOpen ? '全部折叠' : '全部展开' }}</button>
@@ -183,7 +196,7 @@ try { if (localStorage.getItem('tvj-theme') === 'dark') document.documentElement
                     {{ curMonth }} 这个标的没有数据 —— 用上面的 ‹ › 或月份下拉换一个。
                   </p>
                   <p v-else-if="dayFilterOn" class="mt-2 text-[12px] text-faint">
-                    本月命中 {{ num(filesOf(f).length) }} 天 · {{ num(sumOf(f).bars) }} 根{{ sumOf(f).missing ? ' · 缺口 ' + num(sumOf(f).missing) : '' }}
+                    本月命中 {{ num(filesOf(f).length) }} 天 · {{ num(sumOf(f).bars) }} 根
                   </p>
                 </div>
 
@@ -195,6 +208,8 @@ try { if (localStorage.getItem('tvj-theme') === 'dark') document.documentElement
                         <h3 class="font-mono text-[14px] font-semibold">{{ d.date }}</h3>
                         <span class="text-[12px] text-muted">{{ weekday(d.date) }}</span>
                         <span class="text-[11.5px] text-faint">{{ f.symbol }}</span>
+                        <span v-if="d.barsOff" class="badge badge-bad" :title="'按星期几应当是 ' + expectText(d) + ' 根'">根数不符</span>
+                        <span v-if="d.mismatch" class="badge badge-warn" :title="'当天各标的根数并不完全相同（见下方「全部标的按日期合计」里的明细）'">数量不一致</span>
                         <button class="btn ml-auto" type="button" @click="pickDay(f, d)">收起</button>
                       </div>
 
@@ -205,7 +220,12 @@ try { if (localStorage.getItem('tvj-theme') === 'dark') document.documentElement
                       <div class="mt-2 grid grid-cols-2 gap-x-4 gap-y-2 sm:grid-cols-3">
                         <div>
                           <div class="stat-lbl">根数</div>
-                          <div class="font-mono text-[13px]">{{ num(d.bars) }}</div>
+                          <div class="font-mono text-[13px]" :class="d.barsOff ? 'text-bad' : ''">{{ num(d.bars) }}</div>
+                        </div>
+                        <div>
+                          <div class="stat-lbl">应有根数</div>
+                          <div class="font-mono text-[13px]" :class="d.barsOff ? 'text-bad' : 'text-muted'"
+                               :title="weekday(d.date) + '应当是 ' + expectText(d) + ' 根'">{{ expectText(d) }}</div>
                         </div>
                         <div>
                           <div class="stat-lbl">首根</div>
@@ -214,17 +234,6 @@ try { if (localStorage.getItem('tvj-theme') === 'dark') document.documentElement
                         <div>
                           <div class="stat-lbl">尾根</div>
                           <div class="font-mono text-[13px]">{{ d.bars ? clock(d.lastT) : '—' }}</div>
-                        </div>
-                        <div>
-                          <div class="stat-lbl">缺口</div>
-                          <div class="font-mono text-[13px]" :class="d.missing ? 'text-warn' : 'text-faint'"
-                               :title="'首尾之间按 ' + meta.step + ' 秒推算应当有 ' + num(d.span) + ' 根'">
-                            {{ d.missing ? num(d.missing) : '—' }}
-                          </div>
-                        </div>
-                        <div>
-                          <div class="stat-lbl">最大断档</div>
-                          <div class="font-mono text-[13px]">{{ d.bars > 1 ? gap(d.maxGap) : '—' }}</div>
                         </div>
                         <div>
                           <div class="stat-lbl">文件大小</div>
@@ -236,20 +245,45 @@ try { if (localStorage.getItem('tvj-theme') === 'dark') document.documentElement
                             {{ num(d.rows) }}
                           </div>
                         </div>
-                        <div>
-                          <div class="stat-lbl">首尾跨度</div>
-                          <div class="font-mono text-[13px]">{{ num(d.span) }} 根</div>
-                        </div>
-                        <div>
-                          <div class="stat-lbl">写入检查</div>
+                        <div class="col-span-2 sm:col-span-3">
+                          <div class="stat-lbl">检查</div>
                           <div class="text-[13px]">
-                            <span v-if="rowIssue(d)" class="badge badge-bad">
-                              <template v-if="d.skipped">坏 {{ num(d.skipped) }} 行 </template>
-                              <template v-if="d.dupes">重复 {{ num(d.dupes) }} 行</template>
-                            </span>
-                            <span v-else class="text-faint">正常</span>
+                            <span v-if="d.err" class="badge badge-bad">读不了</span>
+                            <span v-if="d.skipped" class="badge badge-bad">坏 {{ num(d.skipped) }} 行</span>
+                            <span v-if="d.dupes" class="badge badge-bad">重复 {{ num(d.dupes) }} 行</span>
+                            <span v-if="d.barsOff" class="badge badge-bad">根数不符</span>
+                            <span v-if="d.mismatch" class="badge badge-warn">数量不一致</span>
+                            <span v-if="!d.err && !d.skipped && !d.dupes && !d.barsOff && !d.mismatch" class="text-faint">正常</span>
                           </div>
                         </div>
+                      </div>
+
+                      <!-- 时间断档：缺失区间的起止时刻。正常的一天就是「05:00 → 06:05」这一行
+                           （CME 每日结算休市），所以不汇总、不挑最大的那条，就一段段列出来。 -->
+                      <div class="mt-3 border-t border-line pt-2">
+                        <div class="flex flex-wrap items-baseline gap-x-2">
+                          <span class="stat-lbl">时间断档 · 缺失区间的起止时刻</span>
+                          <span v-if="!d.gaps.length" class="text-[12px] text-faint">这一天没有断档</span>
+                          <span v-else class="text-[12px] text-faint">共 {{ d.gaps.length }} 处</span>
+                        </div>
+                        <table v-if="d.gaps.length" class="tbl mt-1">
+                          <thead>
+                            <tr>
+                              <th>#</th>
+                              <th>缺失开始</th>
+                              <th>缺失结束</th>
+                              <th class="text-right">缺几根</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            <tr v-for="(g, gi) in d.gaps" :key="gi">
+                              <td class="text-faint">{{ gi + 1 }}</td>
+                              <td class="font-mono">{{ clock(g.startT) }}</td>
+                              <td class="font-mono">{{ clock(g.endT) }}</td>
+                              <td class="text-right font-mono text-muted">{{ num(g.bars) }}</td>
+                            </tr>
+                          </tbody>
+                        </table>
                       </div>
 
                       <p class="mt-2 font-mono text-[11.5px] text-faint">{{ f.folder }}/{{ d.date }}.csv</p>
@@ -266,7 +300,7 @@ try { if (localStorage.getItem('tvj-theme') === 'dark') document.documentElement
           <div class="card">
             <header class="border-b border-line px-4 py-2.5">
               <h2 class="text-[13.5px] font-semibold">全部标的按日期合计</h2>
-              <p class="text-[12px] text-muted">格子中间的数字 = 这一天所有标的加起来多少根；小字 = 有几个标的有数据。点一天看当天各标的各自的数字。</p>
+              <p class="text-[12px] text-muted">格子中间的数字 = 这一天所有标的加起来多少根；小字 = 有几个标的有数据。标红 = 当天至少一个标的异常，标黄 = 当天各标的的根数不完全相同。点一天看当天各标的各自的数字。</p>
             </header>
             <div class="px-4 pb-4 pt-3">
               <div class="cal-row">
@@ -282,40 +316,47 @@ try { if (localStorage.getItem('tvj-theme') === 'dark') document.documentElement
                         <h3 class="font-mono text-[14px] font-semibold">{{ r.date }}</h3>
                         <span class="text-[12px] text-muted">{{ weekday(r.date) }}</span>
                         <span class="text-[12px] text-muted">{{ num(r.symbols) }} 个标的 · 合计 {{ num(r.bars) }} 根</span>
+                        <span v-if="r.mismatch" class="badge badge-warn" :title="'各标的根数并不完全相同'">数量不一致</span>
                         <button class="btn ml-auto" type="button" @click="gPicked = ''">收起</button>
                       </header>
+                      <p v-if="r.mismatch" class="border-b border-line px-4 py-2 text-[12px] text-warn">
+                        当天各标的的根数：<span class="font-mono">{{ countsText(r.counts) }}</span>
+                        （<span class="font-mono">根数×标的数</span>）—— 下表里不是多数派的那几行标黄。
+                      </p>
                       <div class="overflow-x-auto">
                         <table class="tbl">
                           <thead>
                             <tr>
                               <th>标的</th>
                               <th class="text-right">根数</th>
+                              <th class="text-right">应有</th>
                               <th class="text-right">首根</th>
                               <th class="text-right">尾根</th>
-                              <th class="text-right">缺口</th>
-                              <th class="text-right">最大断档</th>
+                              <th class="text-right">断档</th>
                               <th class="text-right">文件</th>
                               <th>备注</th>
                             </tr>
                           </thead>
                           <tbody>
-                            <tr v-for="row in symbolsOnDate(r.date)" :key="row.folder" :class="rowIssue(row) ? 'row-issue' : ''">
+                            <tr v-for="row in symbolsOnDate(r.date)" :key="row.folder"
+                                :class="rowIssue(row) ? 'row-issue' : (rowMismatch(r, row) ? 'row-mismatch' : '')">
                               <td class="font-mono">{{ row.symbol }}</td>
                               <td class="text-right font-mono">{{ num(row.bars) }}</td>
+                              <td class="text-right font-mono" :class="row.barsOff ? 'text-bad' : 'text-faint'">{{ expectText(row) }}</td>
                               <td class="text-right font-mono text-muted">{{ row.bars ? clock(row.firstT) : '—' }}</td>
                               <td class="text-right font-mono text-muted">{{ row.bars ? clock(row.lastT) : '—' }}</td>
-                              <td class="text-right font-mono" :class="row.missing ? 'text-warn' : 'text-faint'">
-                                {{ row.missing ? num(row.missing) : '—' }}
-                              </td>
-                              <td class="text-right font-mono" :class="row.maxGap > meta.step ? 'text-muted' : 'text-faint'">
-                                {{ row.bars > 1 ? gap(row.maxGap) : '—' }}
+                              <td class="text-right font-mono" :class="row.gaps.length ? 'text-muted' : 'text-faint'"
+                                  :title="gapsTitle(row.gaps)">
+                                {{ row.gaps.length ? row.gaps.length + ' 处' : '—' }}
                               </td>
                               <td class="text-right font-mono text-muted">{{ bytes(row.bytes) }}</td>
                               <td>
                                 <span v-if="row.err" class="badge badge-bad" :title="row.err">读不了</span>
                                 <span v-if="row.skipped" class="badge badge-bad">坏 {{ num(row.skipped) }} 行</span>
                                 <span v-if="row.dupes" class="badge badge-bad">重复 {{ num(row.dupes) }} 行</span>
-                                <span v-if="!row.err && !row.skipped && !row.dupes" class="text-faint">—</span>
+                                <span v-if="row.barsOff" class="badge badge-bad" :title="'按星期几应当是 ' + expectText(row) + ' 根'">根数不符</span>
+                                <span v-if="row.mismatch" class="badge badge-warn">数量不一致</span>
+                                <span v-if="!row.err && !row.skipped && !row.dupes && !row.barsOff && !row.mismatch" class="text-faint">—</span>
                               </td>
                             </tr>
                           </tbody>

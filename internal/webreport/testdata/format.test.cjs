@@ -1,8 +1,8 @@
 // 前端那一段纯函数（格式化 / 筛选 / 排序）的断言，交给 node 跑。
 //
-// 为什么要单独测：app.js 里的 num / bytes / gap 是 Go 侧 comma / humanBytes / gapText
-// 的第二份实现 —— 统计量不会漂移（那部分只在 Go 里算），但**显示出来的数字**会。
-// 一旦有人只改了 Go 那一侧，用户就会看到「终端写 1时5分、网页写 65分」。
+// 为什么要单独测：app.js 里的 num / bytes 是 Go 侧 comma / humanBytes 的第二份实现 ——
+// 统计量不会漂移（那部分只在 Go 里算），但**显示出来的数字**会。
+// 一旦有人只改了 Go 那一侧，用户就会看到「终端写 14.7 KB、网页写 15037 B」。
 // 所以这里的期望值刻意照抄 report_test.go 的那张表：两边都改才算改对。
 //
 // 由 Go 侧的 TestFrontendFormattingMatchesGo 调起来（没有 node 就跳过），
@@ -24,7 +24,8 @@ if (cut < 0) {
 // 只取 createApp 之前的那一半：不碰 Vue、不碰 DOM，在 node 里能直接跑
 const mod = { exports: {} };
 const code = src.slice(0, cut) +
-  '\nmodule.exports = { num, bytes, gap, clock, stamp, dayIssue, isDateQuery, sortFiles, sumOf, alertsOf,' +
+  '\nmodule.exports = { num, bytes, clock, stamp, expectText, barsList, countsText, dayAnomaly, dayNotes, cellSub,' +
+  ' isDateQuery, sortFiles, sumOf, alertsOf,' +
   ' monthOf, isMonth, addMonth, todayMonth, monthCells, weekday, monthsOf };\n';
 new Function('module', 'exports', code)(mod, mod.exports);
 const f = mod.exports;
@@ -59,22 +60,35 @@ eq(f.bytes(15037), '14.7 KB', 'bytes(15037)');
 eq(f.bytes(573 * 1024), '573.0 KB', 'bytes(573KB)');
 eq(f.bytes(5 * 1024 * 1024), '5.0 MB', 'bytes(5MB)');
 
-eq(f.gap(45), '45秒', 'gap(45)');
-eq(f.gap(300), '5分', 'gap(300)');
-eq(f.gap(3900), '1时5分', 'gap(3900)');
-eq(f.gap(7200), '2时', 'gap(7200)');
-
 // ---- 时间：不钉死具体时区（换台机器跑就会红），只钉格式和内部一致性 ----
 const t = Math.floor(Date.UTC(2026, 0, 2, 3, 4) / 1000);
 ok(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/.test(f.stamp(t)), 'stamp 的格式应当是 yyyy-MM-dd HH:MM：' + f.stamp(t));
 ok(/^\d{2}:\d{2}$/.test(f.clock(t)), 'clock 的格式应当是 HH:MM：' + f.clock(t));
 eq(f.clock(t), f.stamp(t).slice(11), 'clock 和 stamp 必须来自同一个时刻');
 
-// ---- 筛选口径 ----
-ok(f.dayIssue({ err: '读不了' }), '整份读不了算异常');
-ok(f.dayIssue({ skipped: 1 }), '坏行算异常');
-ok(f.dayIssue({ dupes: 2 }), '重复行算异常');
-ok(!f.dayIssue({ bars: 276, missing: 12, skipped: 0, dupes: 0 }), '缺口不算异常（休市是常态）');
+// ---- 判据的转述：只是把 Go 送来的字段说成人话，不在这里做任何判断 ----
+ok(f.dayAnomaly({ anomaly: true }), 'anomaly=true 就是异常');
+ok(!f.dayAnomaly({ bars: 276, expect: [276], barsOff: false }), '根数正常就不算异常');
+ok(!f.dayAnomaly(null), '没有这一天也不算异常');
+
+eq(f.expectText({ expect: [276] }), '276', '应有根数');
+eq(f.expectText({ expect: [216, 204] }), '216 或 204', '两个取值时列出来');
+eq(f.expectText({}), '—', '没有判定表就画个破折号，别编数字');
+eq(f.barsList([72, 60]), '72 或 60', '判定表那一行');
+
+eq(f.cellSub({ barsOff: true }), '根数不符', '格子小字：根数不符');
+eq(f.cellSub({ mismatch: true }), '不一致', '格子小字：数量不一致');
+eq(f.cellSub({ skipped: 2 }), '坏2行', '格子小字：坏行');
+eq(f.cellSub({ err: '拒绝访问' }), '读不了', '格子小字：读不了');
+eq(f.cellSub({}), '', '一切正常时格子角上不写东西');
+eq(f.dayNotes({ barsOff: true, date: '2026-10-19', expect: [216, 204] }),
+  ['根数不符：周一应当是 216 或 204 根'], '悬停提示要说清楚「这一天应当是几根」');
+eq(f.dayNotes({}), [], '没有情况就没有提示');
+ok(f.dayNotes({ mismatch: true }).length === 1, '数量不一致单独一条');
+
+eq(f.countsText([{ bars: 276, symbols: 2 }, { bars: 275, symbols: 1 }]), '276×2 · 275×1', '根数分布');
+eq(f.countsText([{ bars: 275, symbols: 1 }, { bars: 276, symbols: 2 }]), '276×2 · 275×1', '分布先按标的数排序，与输入顺序无关');
+eq(f.countsText([]), '', '没有分布就是空串');
 
 ok(f.isDateQuery('2026-10'), '日期查询');
 ok(f.isDateQuery('2026'), '纯数字也当日期');
@@ -83,19 +97,19 @@ ok(!f.isDateQuery(''), '空查询词');
 
 // ---- 排序：不原地改数组，同值时按日期升序兜底 ----
 const files = [
-  { date: '2026-10-16', bars: 276, missing: 12, maxGap: 3900, bytes: 15037 },
-  { date: '2026-10-15', bars: 288, missing: 0, maxGap: 300, bytes: 16000 },
-  { date: '2026-10-14', bars: 276, missing: 5, maxGap: 600, bytes: 13000 },
+  { date: '2026-10-16', bars: 276, bytes: 15037 },
+  { date: '2026-10-15', bars: 288, bytes: 16000 },
+  { date: '2026-10-14', bars: 276, bytes: 13000 },
 ];
 const byBarsDesc = f.sortFiles(files, 'bars', -1).map(function (d) { return d.date; });
 eq(byBarsDesc, ['2026-10-15', '2026-10-14', '2026-10-16'], '根数降序（同值按日期升序兜底）');
 const byDateAsc = f.sortFiles(files, 'date', 1).map(function (d) { return d.date; });
 eq(byDateAsc, ['2026-10-14', '2026-10-15', '2026-10-16'], '日期升序');
-const byGapDesc = f.sortFiles(files, 'maxGap', -1).map(function (d) { return d.date; });
-eq(byGapDesc, ['2026-10-16', '2026-10-14', '2026-10-15'], '断档降序');
+const byBytesDesc = f.sortFiles(files, 'bytes', -1).map(function (d) { return d.date; });
+eq(byBytesDesc, ['2026-10-15', '2026-10-16', '2026-10-14'], '文件大小降序');
 eq(files[0].date, '2026-10-16', 'sortFiles 不能就地改原数组（Vue 里那份是响应式数据）');
 
-eq(f.sumOf(files), { bars: 840, missing: 17, bytes: 44037 }, '小计');
+eq(f.sumOf(files), { bars: 840, bytes: 44037 }, '小计');
 
 // ---- 日历：纯日期算术，期望值不依赖跑测试的机器 ----
 eq(f.monthOf('2026-10-16'), '2026-10', 'monthOf 取年月');
@@ -146,5 +160,14 @@ eq(alerts[0].text, '数据目录还不存在（还没抓过数据？）', 'notes
 ok(alerts[1].text.indexOf('2 行解析不了') >= 0 && alerts[1].text.indexOf('1 行时间戳重复') >= 0,
   '坏行/重复行的汇总文案：' + alerts[1].text);
 eq(f.alertsOf({ notes: [], totals: {} }).length, 0, '一切正常时不该有告警');
+
+// 根数不符 / 数量不一致各一条汇总。注意两条的文字不同调：
+// 前者是「有问题」，后者是「值得看一眼」（节假日提前收市就会这样）。
+const alerts2 = f.alertsOf({ notes: [], totals: { skipped: 0, dupes: 0, barsOff: 3, mismatchDays: 2 } });
+eq(alerts2.length, 2, '两条汇总告警');
+eq(alerts2[0].kind, 'bad', '根数不符算问题');
+ok(alerts2[0].text.indexOf('3 个日文件') >= 0, '根数不符的文案：' + alerts2[0].text);
+eq(alerts2[1].kind, 'warn', '数量不一致只是提醒');
+ok(alerts2[1].text.indexOf('2 天') >= 0, '数量不一致的文案：' + alerts2[1].text);
 
 console.log('OK  ' + checks + ' 项断言通过（' + path.basename(APP) + ' 与 Go 侧口径一致）');

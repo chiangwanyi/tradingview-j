@@ -170,7 +170,11 @@ input[type="checkbox"] { accent-color: var(--accent); }
 .sortable:hover { color: var(--ink); }
 .sorted { color: var(--ink); font-weight: 600; }
 
-/* 有坏行/重复行/读不了的日文件整行染色，扫一眼就能找到 */
+/* 有坏行/重复行/读不了的日文件整行染色，扫一眼就能找到。
+   黄（数量不一致）的规则写在红的前面：两种都成立时让红赢 —— 红的那条更要紧，
+   而黄的那件事并没有消失，它还在备注列的徽章和悬停提示里。 */
+.tbl tr.row-mismatch td { background: var(--warnbg); }
+.tbl tr.row-mismatch:hover td { background: var(--warnbd); }
 .tbl tr.row-issue td { background: var(--badbg); }
 .tbl tr.row-issue:hover td { background: var(--badbd); }
 
@@ -224,7 +228,12 @@ input[type="checkbox"] { accent-color: var(--accent); }
   cursor: pointer;
 }
 .cal-cell.cal-has:hover { border-color: var(--accentbd); background: var(--accentbg); }
-/* 异常日（坏行 / 重复行 / 读不了）整格标红，扫一眼就能找到 */
+/* 数量不一致（同一天各标的根数不同）整格标黄。规则刻意写在 cal-issue 之前：
+   两个类同时挂上时让红色赢 —— 底色只放得下一种，更要紧的是红的那条；
+   黄的那件事并没被丢掉，它在格子角上那行小字和悬停提示里照旧列着。 */
+.cal-cell.cal-mismatch { border-color: var(--warnbd); background: var(--warnbg); }
+.cal-cell.cal-mismatch:hover { background: var(--warnbd); }
+/* 异常日（根数不符 / 坏行 / 重复行 / 读不了）整格标红，扫一眼就能找到 */
 .cal-cell.cal-issue { border-color: var(--badbd); background: var(--badbg); }
 .cal-cell.cal-issue:hover { background: var(--badbd); }
 /* 选中的那天：外描边，不改变底色，免得和「异常」的红底打架 */
@@ -235,6 +244,8 @@ input[type="checkbox"] { accent-color: var(--accent); }
 .cal-day { font-size: 11px; line-height: 1.3; color: var(--faint); font-variant-numeric: tabular-nums; }
 .cal-bars { font-size: 14px; font-weight: 600; line-height: 1.25; font-variant-numeric: tabular-nums; }
 .cal-sub { font-size: 10.5px; line-height: 1.3; color: var(--faint); }
+/* 同上：黄在前、红在后，两件事同时成立时角上那行小字取红的颜色 */
+.cal-cell.cal-mismatch .cal-sub { color: var(--warn); }
 .cal-cell.cal-issue .cal-sub { color: var(--bad); }
 
 /* 工具条上的月份翻页 */

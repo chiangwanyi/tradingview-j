@@ -37,9 +37,17 @@ go test .                     # 菜单报表排版（表头是中文、数据行
 ### 只读扫描的测试
 
 菜单选项 2 的统计逻辑有自己的测试（`internal/store/scan_test.go`）：造几个日文件，
-断言根数、缺口、最大断档、按日期合计、坏行只跳自己、目录不存在只报说明、
+断言根数、首尾、断档区间的起止、每根 K 线一根、按日期合计、坏行只跳自己、目录不存在只报说明、
 `_symbols.json` 登记与否对标的显示的影响、重复行计入，以及 ——
 **扫描前后把整个目录快照对比，证明它一个字节都没动**。
+
+其中两条是本机作息的实测结论，写错了会让日历天天误报，所以单独钉住：
+
+- `TestExpectedBarsByWeekday` —— 「星期几应当有多少根」那张表（周一 216/204、周六 72/60、
+  周日 0）以及「日期认不出来就不判」；
+- `TestScanFlagsCrossSymbolMismatch` —— 跨标的比较**只比当天有数据的标的**：
+  某个标的当天根本没这份文件（还没抓到）不能当成它抓了 0 根，否则每加一个新标的，
+  它入库之前的每一天都会集体误报。
 
 报表排版的测试（`report_test.go`）用「每行显示宽度必须相等」把口径钉死：
 表头是中文（`日期`、`最大断档`）、数据行几乎全是 ASCII，
@@ -52,18 +60,22 @@ go test .                     # 菜单报表排版（表头是中文、数据行
 
 1. **`report_test.go`** —— `Build` 是纯函数（只读入参、不碰磁盘、不看时钟），
    拿手工构造的 `store.ScanResult` 就能断言：合计、时间跨度、标的映射、日文件数字、
-   按日期合计，以及 **notes / 读不了的错误原样透传**。
-   另有一条专门钉「空结果必须序列化成 `[]` 而不是 `null`」—— 前端直接 `.length`，
-   `null` 会让模板当场报错。
+   断档区间、应有根数、取日期合计，以及 **notes / 读不了的错误原样透传**。
+   其中有两条是刻意的：① **`Build` 一次都不许重算判定** —— 用例把根数改成 275 而
+   `BarsOff` 保持 scanner 给的 false，透传出来就必须还是 false（谁在 Build 或前端里
+   自己按 276 比一遍，这条会先红）；② 空结果必须序列化成 `[]` 而不是 `null`
+   （前端直接 `.length`，`null` 会让模板当场报错），断档为空的那天 `gaps` 也必须是 `[]`。
 2. **`server_test.go`** —— 起 `httptest`，真造一个数据目录（含一份 `_symbols.json`
    和一份 `.tmp` 干扰文件），然后：断言 `/api/analysis` 的数字与 `store.Scan` 一致
-   （3 根 / 缺口 1 / 断档 600 秒 / `.tmp` 不算数据）；断言首页与四个静态资源都取得到；
+   （3 根 / 断档 1 处且缺 1 根 / `.tmp` 不算数据）；**断言响应里不再有 `missing`、`maxGap`**
+   （那两个概念已经删掉，字段不该悄悄活着）；断言首页与四个静态资源都取得到；
    断言未知路径是 404；断言端口被占用时**换端口并置 `Moved`**；
    最后 —— **分析前后目录快照逐项对比**，证明网页版一个字节都没动。
 3. **`frontend_test.go`** —— 让 node 跑 `testdata/format.test.cjs`：
    把 `app.js` 里 createApp 之前的那段纯函数切出来 eval，逐条断言
-   `num` / `bytes` / `gap` 与 **`report_test.go` 里那张期望值表完全一致**，
-   外加筛选口径、排序（不原地改数组、同值按日期兜底）、告警文案，
+   `num` / `bytes` 与 **`report_test.go` 里那张期望值表完全一致**，
+   外加判据的转述（`dayAnomaly` / `dayNotes` / `cellSub` / `expectText` / `countsText`）、
+   排序（不原地改数组、同值按日期兜底）、告警文案，
    以及**日历的日期算术**（`monthCells` 铺格子、`addMonth` 跨年、`weekday`、
    `monthsOf` 去重倒序、闰年 2 月）。日历那几条刻意用固定日期算期望值
    （`2026-10-01` 是周四 → 前面补 3 格、整月 35 格），不依赖跑测试的机器上是什么日子。
@@ -265,7 +277,10 @@ meta + 一条携带完整 300 根历史的 `timescale_update` + 一条 `du` + �
 | CSV 文件被 Excel 占用导致写失败 | 日志会提示「下个周期重试」，关掉 Excel 即可（`internal/store` 的 `writeFileAtomic`） |
 | 菜单里按 `Ctrl+C` 程序直接没了 | 回到菜单后 SIGINT 已经交还给系统（`main.go` 里 `stop()` 在刷盘之后才调用），此时 Ctrl+C 就是退出程序 |
 | 「分析」里的 `重复N行` 亮了 | 说明日文件被手工改过或被别的工具合并过。正常写入（整体重写 + 原子改名）下同一时间戳不可能出现两次 —— 这是**报警**，不是统计（见 [design.md](design.md) 的「写入语义」） |
-| 「分析」里的缺口看着很大 | 先看是不是休市造成：工作日 12 根 / 最大断档 1时5分、周六约 60 根都是正常形态（见 [design.md](design.md) 的附录） |
+| 「分析」里的缺口看着很大 | 那是期货每日结算休市，不是丢数据。网页版（菜单 3）已经没有「缺口 / 最大断档」这两列了，改用「这一天应当有多少根」判异常（见 [design.md](design.md) 的附录） |
+| 网页上某一天**标红** | 两条原因：① 根数与该星期应有的根数不符（鼠标停在格子上会写「周二应当是 276 根」）；② 文件有坏行 / 重复行 / 读不了。点开那一天，明细里的「检查」会逐条列出来 |
+| 网页上某一天**标黄** | 当天各标的的根数不完全相同。点「全部标的按日期合计」里那一天，能看到各标的的分布（`276×2 · 275×1`），不是多数派的那几行也标黄了 —— 美国节假日提前收市就会这样，不同品种的收市时刻本来就不一样 |
+| 日历上满屏标红 | 先看是不是**星期几那张表**跟你的数据对不上（比如标的是 24 小时交易的品种，或者数据不是 5 分钟）。表在 `store.ExpectedBars`，页面的「统计口径」里也印着。**别在 `app.js` 里改** —— 判据只许有一份 |
 | `go test` / `go run` 报 `An Application Control policy has blocked this file`，同时右下角弹「此应用的一部分已被阻止」 | 智能应用控制拦了 **`go.exe` 启动的**那个二进制，与代码无关。为什么只拦它、以及两种处理方式，见本文档「本机环境：智能应用控制会拦 go test / go run」一节 |
 
 ## 改代码时的注意
@@ -281,13 +296,27 @@ meta + 一条携带完整 300 根历史的 `timescale_update` + 一条 `du` + �
   已用 `.gitattributes`（`*.cmd text eol=crlf`）钉死。改这个文件务必按 CRLF 写。
 - **菜单只能有一个 stdin reader**：菜单读缓冲 reader、「按回车继续」又直接读 `os.Stdin` 的话，
   缓冲层里攒着的字符会被绕过去，表现成「按一次回车跳过两项」（`menu.go`）。
-- **网页版不许有「算数字」的代码**：根数/缺口/断档只能在 Go 里算（`store.Scan`），
-  日历上「这一天有几个标的带异常」也一样 —— 它在 `store.ByDate` 里（`DateTotal.Issues`），
-  不让 `app.js` 扫一遍 `folders` 去凑。`app.js` 只做排版。
-  改了 `num` / `bytes` / `gap` 或日历的日期算术（`monthCells` / `addMonth` / `weekday` /
-  `monthsOf`），就必须同步改 `internal/webreport/testdata/format.test.cjs` 的期望值
+- **网页版不许有「算数字」的代码**：根数 / 断档区间 / 应有根数 / 异常判定只能在 Go 里算
+  （`store.Scan`），日历上「这一天有几个标的带异常」「各标的根数一不一致」也一样 ——
+  它们在 `store.ByDate` 里（`DateTotal.Issues` / `Mismatch` / `Majority`），
+  不让 `app.js` 扫一遍 `folders` 去凑。**连带效应**：「周几应当有多少根」那张表也只在
+  `store.ExpectedBars` 一处，页面通过 `meta.expectRule` 印出来，HTML 里不许再抄一份数字。
+  `app.js` 只做排版与「判据的转述」（`dayAnomaly` 就是把 Go 给的 `anomaly` 读出来，
+  它自己不知道 276 这个数字）。
+  改了 `num` / `bytes` / 判据转述那几个函数或日历的日期算术（`monthCells` / `addMonth` /
+  `weekday` / `monthsOf`），就必须同步改 `internal/webreport/testdata/format.test.cjs` 的期望值
   （其中格式化那张表是照抄 `report_test.go` 的），
   否则 `go test ./internal/webreport/` 会红 —— 这是刻意的，两边都改才算改对。
+- **改了 `internal/webreport/static/` 下任何文件都要重新 `go build`**：`//go:embed` 是
+  编译期快照，改完不重编，跑起来的还是旧页面 —— 表现是「明明改了，浏览器里没变」。
+  想不开浏览器就确认模板没写坏，可以拿 `vue.global.prod.js` 在 node 里把模板编译一遍
+  （语法错、指令错当场报错，能被 `onError` 抓到；但**少一个闭合标签它不报**，
+  因为 Vue 的解析器会自己补 —— 那种情况要么目测标签配平，要么真开一次浏览器）。
+  这个脚本是一次性的，不进仓库、不进 `go test`。实测两个必须踩到的坑：
+  ① 要给一个极小的 `document` 替身，而且要**按 innerHTML 回出 `textContent` 和
+  `children[0].getAttribute('foo')`**（Vue 只用它解 HTML 实体，回 null 会让编译器自己崩）；
+  ② vendor 里是 IIFE 形态的 global 构建，`require` 拿不到那个 `var Vue`，
+  得把源码包进 `new Function(src + ';return Vue;')()` 里取出来。
 - **日历的格子观感走 `style.css` 的 `.cal-*`，别在那儿叠 Tailwind 工具类**：
   承载格子的模板是**运行期字符串**（`index.html` 里 `<template id="tv-cal-tpl">` 的内容，
   由 `app.js` 取出来注册成 `cal-grid` 组件），而 Tailwind 的浏览器版是扫 DOM 推导样式的，

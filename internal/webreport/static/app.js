@@ -1,12 +1,12 @@
 // 网页版「分析已抓取的数据」的前端逻辑。
 //
-// 这里**不计算任何统计量**：根数、缺口、断档、坏行全部由 Go 侧的 store.Scan 算好，
-// 通过 /api/analysis 原样送过来。前端只做两件事：格式化显示、按日历摆放。
+// 这里**不计算任何统计量**：根数、断档区间、异常判定、坏行全部由 Go 侧的 store.Scan
+// 算好，通过 /api/analysis 原样送过来。前端只做两件事：格式化显示、按日历摆放。
 // 之所以这么切，是因为统计口径一旦有两份实现（Go 一份、JS 一份），迟早会出现
 // 「终端说这一天 288 根、网页说 287 根」而这种矛盾用户没法自查。
 //
 // ↓↓↓ 这一段是纯函数区（不依赖 Vue），可以被 node 直接 eval 出来断言，
-//     见 internal/webreport/static/test/format.test.cjs。下面的期望值刻意和
+//     见 internal/webreport/testdata/format.test.cjs。下面的期望值刻意和
 //     report_test.go 里的逐条对齐 —— 两边都改才算改对。
 
 /* ---------- 纯函数：格式化 ---------- */
@@ -35,14 +35,16 @@ function bytes(n) {
   return (v / 1048576).toFixed(1) + ' MB';
 }
 
-// gap 把秒数说成人话：3900 -> 1时5分。和 analyze.go 的 gapText() 同口径。
-function gap(sec) {
-  const s = Math.round(Number(sec) || 0);
-  if (s < 60) return s + '秒';
-  if (s < 3600) return Math.floor(s / 60) + '分';
-  const h = Math.floor(s / 3600);
-  const m = Math.floor((s % 3600) / 60);
-  return m === 0 ? h + '时' : h + '时' + m + '分';
+// expectText 把「这一天应当有多少根」说成一句话：'276' 或 '60 或 72'。
+// 取值是 Go 按星期几给的（store.ExpectedBars），前端一个都不许自己填。
+function expectText(d) {
+  const e = (d && d.expect) || [];
+  return e.length ? e.join(' 或 ') : '—';
+}
+
+// barsList 同上，只是换个入口：判定表里那一行 Bars 数组直接印出来。
+function barsList(bars) {
+  return (bars || []).join(' 或 ');
 }
 
 function pad2(n) { return n < 10 ? '0' + n : String(n); }
@@ -122,12 +124,53 @@ function monthsOf(dates) {
   return out;
 }
 
-/* ---------- 纯函数：筛选与排序 ---------- */
+/* ---------- 纯函数：判据的转述与筛选 ---------- */
 
-// dayIssue：「异常」= 坏行 / 重复行 / 整份读不了。
-// 缺口不算异常 —— 期货每日结算休市、周末休市都会稳定留下缺口，那是正常形态。
-function dayIssue(d) {
-  return !!(d.err || d.skipped || d.dupes);
+// dayAnomaly：这一天算不算「异常」。
+//
+// **判据不在这里** —— 它在 Go 里（store.DayStat.Anomaly：根数与该星期应有根数不符，
+// 或文件有坏行 / 重复行 / 读不了）。这里只是把那个布尔值读出来。
+// 一旦在这边自己写一遍「不是 276 就算异常」，两份口径又会分家，
+// 而界面与后端给出不同结论时，用户没有任何办法裁决。
+function dayAnomaly(d) {
+  return !!(d && d.anomaly);
+}
+
+// dayNotes 是「这一天哪里不对劲」的完整说法（悬停提示、当天明细卡用），按要紧程度排列。
+// 它只是**判据的转述**：每条对应 Go 送来的一个字段，不引入任何新判断。
+function dayNotes(d) {
+  const out = [];
+  if (!d) return out;
+  if (d.err) out.push('整份读不了：' + d.err);
+  if (d.skipped) out.push('有 ' + num(d.skipped) + ' 行解析不了');
+  if (d.dupes) out.push('有 ' + num(d.dupes) + ' 行时间戳重复（正常写入下不该出现）');
+  if (d.barsOff) out.push('根数不符：' + weekday(d.date) + '应当是 ' + expectText(d) + ' 根');
+  if (d.mismatch) out.push('与其他标的不一致：这一天各标的的根数并不完全相同');
+  return out;
+}
+
+// cellSub 是日历格子角上那行小字。格子很窄（7 列平分，一行大约放得下 4 个汉字），
+// 所以只说最要紧的那一条；完整说法在悬停提示里（tip 用 dayNotes 拼）。
+function cellSub(d) {
+  if (!d) return '';
+  if (d.err) return '读不了';
+  if (d.skipped) return '坏' + num(d.skipped) + '行';
+  if (d.dupes) return '重复' + num(d.dupes) + '行';
+  if (d.barsOff) return '根数不符';
+  if (d.mismatch) return '不一致';
+  return '';
+}
+
+// countsText 把「各标的根数的分布」印成一行：'276×2 · 275×1'。
+// 分布本身是 Go 算的（store.BarCount），这里只排序显示 —— 多的在前。
+function countsText(counts) {
+  const list = (counts || []).slice();
+  if (!list.length) return '';
+  list.sort(function (a, b) {
+    if (a.symbols !== b.symbols) return b.symbols - a.symbols;
+    return b.bars - a.bars;
+  });
+  return list.map(function (c) { return num(c.bars) + '×' + num(c.symbols); }).join(' · ');
 }
 
 // 只有纯数字/连字符的查询词才当成日期（"2026-10"），否则当成标的名（"MES"）。
@@ -136,7 +179,7 @@ function isDateQuery(q) {
   return /^[0-9][0-9\-\/.]*$/.test(q || '');
 }
 
-const NUMERIC_SORTS = { bars: 1, missing: 1, maxGap: 1, bytes: 1 };
+const NUMERIC_SORTS = { bars: 1, bytes: 1 };
 
 // sortFiles 返回排好序的副本；同值时按日期升序兜底，避免刷新一次顺序就变。
 function sortFiles(files, key, dir) {
@@ -157,17 +200,17 @@ function sortFiles(files, key, dir) {
 }
 
 function sumOf(files) {
-  const out = { bars: 0, missing: 0, bytes: 0 };
+  const out = { bars: 0, bytes: 0 };
   for (let i = 0; i < files.length; i++) {
     out.bars += Number(files[i].bars) || 0;
-    out.missing += Number(files[i].missing) || 0;
     out.bytes += Number(files[i].bytes) || 0;
   }
   return out;
 }
 
 // alertsOf 把「值得单独提醒一句」的情况收成一列。
-// 数据目录不存在、读不了某份文件这类事实由 Go 侧的 store.Scan 记在 notes 里，原样透传。
+// 数据目录不存在、读不了某份文件这类事实由 Go 侧的 store.Scan 记在 notes 里，原样透传；
+// 后面几句只是把 Go 已经算好的几个合计数念一遍（前端不做任何统计）。
 function alertsOf(rep) {
   const out = [];
   const notes = (rep && rep.notes) || [];
@@ -178,6 +221,20 @@ function alertsOf(rep) {
       kind: 'bad',
       text: '合计有 ' + num(t.skipped) + ' 行解析不了、' + num(t.dupes) + ' 行时间戳重复' +
         '（见日历上标红的日期）。',
+    });
+  }
+  if (t.barsOff > 0) {
+    out.push({
+      kind: 'bad',
+      text: '有 ' + num(t.barsOff) + ' 个日文件的根数与该星期应有根数不符' +
+        '（见日历上标红的「根数不符」）。',
+    });
+  }
+  if (t.mismatchDays > 0) {
+    out.push({
+      kind: 'warn',
+      text: '有 ' + num(t.mismatchDays) + ' 天各标的的根数不完全一致（见日历上标黄的日期）。' +
+        '不同品种的休市时刻并不总是一样，美国节假日提前收市时尤其常见。',
     });
   }
   return out;
@@ -224,10 +281,14 @@ const CalGrid = {
   data() { return { wd: WEEKDAYS }; },
   methods: {
     num,
+    // 黄（数量不一致）与红（异常）可以同时成立：CSS 里红的规则写在黄的后面，红赢。
+    // 两个都留下而不是二选一，是为了让「这一天既不符预期、又和其他标的不一样」这种
+    // 更值得看的情况不至于被悄悄降级成只显示一半。
     cls(c) {
       return {
         'cal-has': !!c.have,
         'cal-issue': !!(c.have && c.bad),
+        'cal-mismatch': !!(c.have && c.mismatch),
         'cal-sel': !!(c.have && c.sel),
         'cal-dim': !!(c.have && c.dim),
       };
@@ -236,7 +297,8 @@ const CalGrid = {
       if (!c.date) return '';
       const head = c.date + ' ' + weekday(c.date);
       if (!c.have) return head + ' · 没有数据';
-      return head + ' · ' + num(c.bars) + ' 根' + (c.sub ? ' · ' + c.sub : '');
+      const notes = c.notes || [];
+      return head + ' · ' + num(c.bars) + ' 根' + (notes.length ? ' · ' + notes.join(' · ') : '');
     },
   },
   template: CAL_TPL,
@@ -249,8 +311,8 @@ const app = createApp({
       loading: false,
       err: '',
       q: '',
-      hlIssue: false,   // 高亮异常日（剩下的变淡，不隐藏 —— 格子里「没了」会让人以为那天没数据）
-      hlGap: false,     // 高亮有缺口的日
+      hlIssue: false,      // 高亮异常日（剩下的变淡，不隐藏 —— 格子里「没了」会让人以为那天没数据）
+      hlMismatch: false,   // 高亮「各标的根数不一致」的日子
       month: '',        // 日历月份，所有日历共用；翻一次到处都跟着翻
       monthTouched: false, // 用户自己翻过月份后，重新扫描不再把月份抢回最新
       picked: {},       // 标的目录 -> 选中的那一天的 Day 对象
@@ -269,6 +331,9 @@ const app = createApp({
       return (this.rep && this.rep.meta) || { root: '', step: 300, tz: '', version: '' };
     },
     totals() { return (this.rep && this.rep.totals) || {}; },
+    // 判定表原样来自 Go（store.ExpectedBarsRule），这里只是给它一个短名字。
+    // 页面上那张表不写死数字，就是为了「改了判定表忘了改页面」不会发生。
+    expectRule() { return (this.rep && this.rep.meta && this.rep.meta.expectRule) || []; },
     span() { return this.rep && this.rep.span ? this.rep.span : null; },
     folders() { return (this.rep && this.rep.folders) || []; },
     byDateAll() { return (this.rep && this.rep.byDate) || []; },
@@ -280,7 +345,7 @@ const app = createApp({
     // 查询词是日期时才拿它过日期，否则只当标的名 —— 见 isDateQuery 的注释
     qIsDate() { return isDateQuery(this.q); },
     // 日期类筛选（而不是「按标的名找」）打开时，工具条才需要报命中数
-    dayFilterOn() { return !!(this.qIsDate || this.hlIssue || this.hlGap); },
+    dayFilterOn() { return !!(this.qIsDate || this.hlIssue || this.hlMismatch); },
     hits() {
       const self = this;
       let days = 0, bars = 0;
@@ -334,9 +399,21 @@ const app = createApp({
 
   methods: {
     // ---- 格式化（模板里直接用，函数本体在纯函数区） ----
-    num, bytes, gap, clock, stamp, weekday,
+    num, bytes, clock, stamp, weekday, expectText, barsList, countsText,
 
-    rowIssue(r) { return dayIssue(r); },
+    rowIssue(r) { return dayAnomaly(r); },
+    // 少数派那几行：当天各标的根数不一致时，根数不等于「多数派」的行染黄。
+    // 多数派是 Go 算好的（DateTotal.Majority），这里只做相等比较，不重新投票。
+    rowMismatch(r, row) { return !!(r && r.mismatch && Number(row.bars) !== Number(r.majority)); },
+    // 断档一栏的悬停提示：把每段缺失的起止时刻串起来。
+    // 用 clock（HH:MM）而不是带日期的完整时刻 —— 断档只可能落在同一个日文件里。
+    gapsTitle(gaps) {
+      const list = gaps || [];
+      if (!list.length) return '这一天没有断档';
+      return list.map(function (g) {
+        return clock(g.startT) + ' → ' + clock(g.endT) + '（缺 ' + num(g.bars) + ' 根）';
+      }).join('；');
+    },
     sameName(f) { return (f.symbol || '').toLowerCase() === (f.folder || '').toLowerCase(); },
 
     // one 把「有或没有」的一个对象包成长度 0/1 的数组：模板里 `v-for="d in one(x)"`
@@ -362,8 +439,8 @@ const app = createApp({
     dayPass(d) {
       if (!d) return false;
       if (this.qIsDate && d.date.indexOf(this.q) < 0) return false;
-      if (this.hlIssue && !dayIssue(d)) return false;
-      if (this.hlGap && !(Number(d.missing) > 0)) return false;
+      if (this.hlIssue && !dayAnomaly(d)) return false;
+      if (this.hlMismatch && !d.mismatch) return false;
       return true;
     },
     filesOf(f) {
@@ -380,11 +457,6 @@ const app = createApp({
       for (let i = 0; i < list.length; i++) if (list[i].date === date) return list[i];
       return null;
     },
-    cellSub(d) {
-      if (!d) return '';
-      if (dayIssue(d)) return '异常';
-      return Number(d.missing) > 0 ? '缺 ' + num(d.missing) : '';
-    },
     cellsOf(f) {
       const self = this;
       const sel = this.picked[f.folder];
@@ -394,8 +466,10 @@ const app = createApp({
           date: c.date, day: c.day,
           have: !!d,
           bars: d ? Number(d.bars) || 0 : 0,
-          bad: !!(d && dayIssue(d)),
-          sub: self.cellSub(d),
+          bad: dayAnomaly(d),
+          mismatch: !!(d && d.mismatch),
+          notes: dayNotes(d),
+          sub: cellSub(d),
           dim: !!(d && !self.dayPass(d)),
           sel: !!(d && sel && sel.date === c.date),
         };
@@ -408,16 +482,23 @@ const app = createApp({
       return monthCells(this.curMonth).map(function (c) {
         const r = c.date ? map[c.date] : null;
         const have = !!r;
+        const bad = !!(have && Number(r.issues) > 0);
+        // 「这一天各标的根数不一致」以及「有几个标的异常」都由 Go 的 ByDate 算好
+        // （store.DateTotal），前端不自己扫一遍 folders 去凑 —— 那又是一份口径。
+        const notes = [];
+        if (bad) notes.push(num(r.issues) + ' 个标的异常');
+        if (have && r.mismatch) notes.push('各标的根数不一致：' + countsText(r.counts));
         return {
           date: c.date, day: c.day,
           have: have,
           bars: have ? Number(r.bars) || 0 : 0,
           sub: have ? num(r.symbols) + ' 标的' : '',
-          // 有异常的日子标红。异常标的数是 Go 的 ByDate 算的（见 store.ByDate），
-          // 前端不自己扫一遍文件去凑 —— 那又是一份口径。
-          bad: !!(have && Number(r.issues) > 0),
+          bad: bad,
+          mismatch: !!(have && r.mismatch),
+          notes: notes,
           dim: !!(have && ((self.qIsDate && r.date.indexOf(self.q) < 0) ||
-            (self.hlIssue && !(Number(r.issues) > 0)))),
+            (self.hlIssue && !bad) ||
+            (self.hlMismatch && !r.mismatch))),
           sel: !!(have && self.gPicked === c.date),
         };
       });
@@ -454,7 +535,8 @@ const app = createApp({
       if (!cell || !cell.date) return;
       this.gPicked = this.gPicked === cell.date ? '' : cell.date;
     },
-    // 这一天每个标的各抓了多少 —— 就是把各标的当天那条记录挑出来，不重算任何东西
+    // 这一天每个标的各抓了多少 —— 就是把各标的当天那条记录挑出来，不重算任何东西。
+    // 排序固定按根数降序：这份小表的用途就是横向比根数，顺序一变就没法比了。
     symbolsOnDate(date) {
       const out = [];
       this.folders.forEach(function (f) {
@@ -465,8 +547,9 @@ const app = createApp({
           out.push({
             folder: f.folder, symbol: f.symbol,
             date: d.date, bars: d.bars, rows: d.rows, skipped: d.skipped, dupes: d.dupes,
-            firstT: d.firstT, lastT: d.lastT, span: d.span, missing: d.missing,
-            maxGap: d.maxGap, bytes: d.bytes, err: d.err || '',
+            firstT: d.firstT, lastT: d.lastT, bytes: d.bytes, err: d.err || '',
+            gaps: d.gaps || [], expect: d.expect || [],
+            barsOff: !!d.barsOff, mismatch: !!d.mismatch, anomaly: !!d.anomaly,
           });
           break;
         }
