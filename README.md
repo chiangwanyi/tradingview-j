@@ -204,6 +204,7 @@ testdata/               真实抓包裁剪出的回归样本
 | 状态行里 `暂存 N 根` 一直不降 | 那几根所在的序列周期反推不出来、或品种定不了。**它们不会落盘，也不影响主图采集** —— 这是刻意的 |
 | `品种` 显示的标的跟你正在看的图表不一致 | 看日志里那句 `识别品种：…（会话 … · 品种键 …）`。实在不放心就把 `config.json` 的 `symbol` 填死 |
 | CSV 文件被 Excel 占用导致写失败 | 日志会提示「下个周期重试」，关掉 Excel 即可 |
+| 从源码构建时 `go test` / `go run` 弹「此应用的一部分已被阻止」，报 `An Application Control policy has blocked this file` | 本机开着智能应用控制，它拦的是 `go.exe` 启动的那个二进制，与代码无关。定位与处理见 [docs/testing.md](docs/testing.md) 的「本机环境：智能应用控制会拦 go test / go run」一节 |
 
 每条现象的成因与代码位置见 [docs/testing.md](docs/testing.md) 的「排查要点」。
 

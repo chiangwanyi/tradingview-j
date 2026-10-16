@@ -45,18 +45,123 @@ go test .                     # 菜单报表排版（表头是中文、数据行
 一旦有人把「按显示宽度补齐」换成 `fmt` 的 `%-12s` 或 `len()`，中文列会当场少算一半宽度、
 整张表往左串行 —— 而那种歪斜在代码里看不出来，只有盯着终端才发现。
 
-### 环境提示
+### 本机环境：智能应用控制会拦 `go test` / `go run`
 
-本机跑 `internal/capture`（依赖 `net`/`tls`，产物较大）时，测试二进制偶尔会被
-Windows 的 Application Control 策略拦下，报 `fork/exec ... An Application Control policy
-has blocked this file`。这是策略对新生临时 exe 的拦截，与代码无关；换个临时目录即可绕开：
+本机开着 **智能应用控制**（Smart App Control），它会把 `go.exe` 直接拉起的二进制判为
+不受信任并拦下，报：
 
-```bash
-mkdir -p .tmpbuild && GOTMPDIR="$PWD/.tmpbuild" go test ./internal/capture/
+```
+fork/exec C:\Users\...\Temp\go-build<n>\b001\capture.test.exe:
+    An Application Control policy has blocked this file.
 ```
 
-（注意：`GOTMPDIR` 会连带影响 `t.TempDir()` 的位置，个别依赖临时目录路径的断言可能因此失败 ——
-那种失败同样是环境问题，不是回归。）
+**影响范围**（2026-10-16 实测）：只有 `internal/capture` 的测试和 `go run .` 被拦；
+`store` / `tvproto` / `config` / `ingest` / `wsclient` / `cdp` / `logx` 以及主包 `.` 的测试
+**都正常通过**。`go vet ./...` 不受影响（只分析、不执行）。
+
+**触发条件只有一条：由 `go.exe` 亲自启动的那个二进制。** 下面这些都逐项排除过：
+
+| 猜过的原因 | 实测结果 |
+|---|---|
+| 文件在 `%TEMP%` 里所以被拦 | ❌ 同一个 exe 放进 `%TEMP%\go-build998877\b001\`，脚本启动**正常** |
+| `go-build*` 目录名或层级的问题 | ❌ 同上，正常 |
+| 新文件写盘后要等云端裁决 | ❌ 编译完 0 / 5 / 20 秒后执行**都正常** |
+| 二进制内容（capture 链接了 net/tls，11.7MB） | ❌ **同一个文件**换个启动者就能跑 |
+| **`go.exe` 作为启动者** | ✅ **100% 复现被拦** |
+
+也就是说，同一份 `capture.test.exe`，`go.exe` 启动必被拦、脚本启动必通过。
+SAC 内部为什么区分加载者**没有查到确证** —— 这一条标为未知，不要当成结论。
+
+事件日志里的原始记录（策略 ID `{0283ac0f-fff1-49ae-ada1-8a933130cad6}` 就是 SAC 内置那条）：
+
+```powershell
+Get-WinEvent -LogName 'Microsoft-Windows-CodeIntegrity/Operational' -MaxEvents 200 |
+  Where-Object { $_.Message -like '*go.exe*' } | Select-Object TimeCreated, Id, Message
+```
+
+状态可以在这儿确认（`1` = 强制开启，`2` = 评估期，`0` = 关闭）：
+
+```powershell
+Get-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Control\CI\Policy' |
+  Select-Object VerifiedAndReputablePolicyState, SAC_PreviousState, SAC_EnforcementReason
+```
+
+**「换个临时目录」为什么没用**：微软官方 FAQ 明确写了 SAC **没有单应用白名单**，
+所以换 `GOTMPDIR`、加安全中心排除项、给二进制自签名统统无效（自签名证书不在
+Trusted Root Program 里，SAC 不认）。本文档旧版本写过"换 `GOTMPDIR` 即可绕开"，
+**已被实测证伪**：`GOTMPDIR=$PWD/.tmpbuild` 那次同样被拦，事件日志里有记录。
+
+**处理方式一：关掉智能应用控制**（根治，但**本机提示为不可逆**）
+
+Windows 安全中心 → 应用和浏览器控制 → 智能应用控制设置 → 关闭。
+
+点「关闭」后本机弹出的确认框原文是：
+
+> 如果关闭智能应用控制，则无法重新打开或切换到评估模式，
+> 除非转到 Windows 恢复选项并重置此电脑。
+
+即**在这台机器上这条路是单向的**，代价是以后想用回来得重置电脑（重装 Windows、
+丢掉已安装的软件）。微软官方 FAQ 另有"近期更新允许在不全新安装的情况下重新启用"的说法，
+与本机提示**相互矛盾**，且**无法在不越过这条不可逆线的条件下验证** —— 因此以本机提示为准，
+不要拿官方 FAQ 去赌。关闭后 `go test` / `go run` / IDE 里的测试按钮确实都会恢复正常。
+
+另外，**切到「评估」也是不拦任何东西的**（评估期只观察、不阻止），而且
+「评估 ↔ 打开」之间是可逆的 —— 本机就是评估期结束后被系统自动切成强制模式的
+（`SAC_PreviousState = 2` → `VerifiedAndReputablePolicyState = 1`）。
+但它会被系统再次自动升级回强制，属**临时缓解**，不是根治。
+
+**处理方式二：先编译、再由脚本启动**（不动系统设置，已实测跑通 capture 全部 3 个用例）
+
+```bash
+TMPD="$TEMP/tvtest"; mkdir -p "$TMPD"
+go test -c -o "$TMPD/capture.test.exe" ./internal/capture/
+(cd internal/capture && "$TMPD/capture.test.exe")
+```
+
+`cd` 到包目录是**必须**的 —— 测试样本用相对路径 `../../testdata/...` 读，
+cwd 不对会全部报「打不开样本」。
+局限：任何直接敲的 `go test` / `go run`，以及 IDE 的测试集成，仍走 `go.exe` 启动，
+照样被拦；这条路只在"手动跑一遍"时管用。
+
+**能不能让自己的 exe 变成"受信任"，从根上不再被拦？**
+
+能，但**只对"编译流程可控的固定产物"有效，对本项目的开发循环基本没用**。
+
+SAC 只认两条路：① 微软云信誉服务明确判定为安全；② 用**受信任提供商**签发的证书签名。
+自己刚编译出来的二进制既没有信誉、也不可能自带签名，所以默认被拦。
+
+**自签名不算。** 这条有明确依据 —— Eric Lawrence（Chrome/Edge 安全团队）2026-04 写得很直白：
+
+> Signature verification in Smart App Control is based on the Code Integrity platform in Windows…
+> your certificate chain chains to a public Certificate Authority root that is included in
+> Microsoft's Trusted Root Certificates program. Signatures from certificates that chain to a root
+> **outside** of Microsoft's program (**e.g. one that chains to a root the user or admin trusted via
+> certmgr.msc or Group Policy**) will not be considered valid.
+
+也就是说，网上那些"用 `New-SelfSignedCertificate` 签个自签名证书、再把根证书塞进
+`certmgr.msc` 的受信任根就能骗过 SAC"的教程（本机搜到的论坛做法），**与微软官方口径直接冲突**：
+微软文档写的是 "Code can be signed with any certificate, but Smart App Control only considers
+certificates issued by **trusted providers**"，微软员工在开发者问答里的回答也是
+"Self-signed certs **will not work**"。本文档采信官方口径，**不把自签名当可行方案**。
+
+要签名就得买：微软官方现在推荐 **Microsoft Trusted Signing**（原 Azure Code Signing），
+或传统 CA 的代码签名证书（OV 级别一年数千元，且 2023-06 起私钥必须在硬件令牌/HSM 上）。
+证书要用 **RSA** —— 微软英文文档写 "does not currently support ECC"，丹麦语版页面却写已支持 ECC，
+不同语言版本口径不一致，**用 RSA 最稳**。
+
+**但对最痛的场景，签名在原理上就赶不上：**
+
+| 场景 | 签名有用吗 |
+|---|---|
+| `go test` | ❌ go **自己**编译出临时二进制并**立即执行**，中间没有任何地方能插入签名步骤 |
+| `go run` | ❌ 同上 |
+| `tv-capture.exe`（固定产物、编译流程可控） | ✅ 能签，而且**只对"发给别人"有意义**（自己机器上它本来就能跑） |
+
+结论：**想让别人双击 `tv-capture.exe` 时不被 SAC 拦，签名有意义；想让自己本机
+`go test` 不弹窗，签名帮不上 —— 它赶不上那个时机。**
+
+顺带排除一条流传的说法：**"开开发人员模式就能豁免 SAC"不成立** ——
+微软员工在开发者问答里的原话是 "Developer Mode doesn't exempt you from it"。
 
 ## 回归样本
 
@@ -118,6 +223,7 @@ meta + 一条携带完整 300 根历史的 `timescale_update` + 一条 `du` + �
 | 菜单里按 `Ctrl+C` 程序直接没了 | 回到菜单后 SIGINT 已经交还给系统（`main.go` 里 `stop()` 在刷盘之后才调用），此时 Ctrl+C 就是退出程序 |
 | 「分析」里的 `重复N行` 亮了 | 说明日文件被手工改过或被别的工具合并过。正常写入（整体重写 + 原子改名）下同一时间戳不可能出现两次 —— 这是**报警**，不是统计（见 [design.md](design.md) 的「写入语义」） |
 | 「分析」里的缺口看着很大 | 先看是不是休市造成：工作日 12 根 / 最大断档 1时5分、周六约 60 根都是正常形态（见 [design.md](design.md) 的附录） |
+| `go test` / `go run` 报 `An Application Control policy has blocked this file`，同时右下角弹「此应用的一部分已被阻止」 | 智能应用控制拦了 **`go.exe` 启动的**那个二进制，与代码无关。为什么只拦它、以及两种处理方式，见本文档「本机环境：智能应用控制会拦 go test / go run」一节 |
 
 ## 改代码时的注意
 

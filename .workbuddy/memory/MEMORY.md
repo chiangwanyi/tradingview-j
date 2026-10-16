@@ -59,8 +59,40 @@
   两边各写一份解析迟早会漂移，表现成"文件里 288 行、分析说 287 根"，用户没法判断信谁。
 - **测试禁止无头浏览器**（用户明确要求：慢、且中断不可见）。替代 = 假 CDP 服务端。
   `go test ./...` 全离线可跑，人工联调由用户自己开浏览器做。
-  本机跑 capture 包测试可能需要 `GOTMPDIR=$PWD/.tmpbuild`（系统临时目录被
-  Application Control 策略拦过：`fork/exec ... blocked this file`）。
+- **本机智能应用控制（SAC）会拦 `go test ./internal/capture/` 与 `go run .`**（2026-10-16 定位）。
+  报 `fork/exec ...: An Application Control policy has blocked this file`，右下角同时弹
+  「此应用的一部分已被阻止」（截图为 `capture.test.exe`）。触发条件**只剩一条：由 `go.exe`
+  亲自启动的那个二进制**；已逐项排除：路径（同一 exe 放 `%TEMP%\go-build998877\b001\`
+  由脚本启动**正常**）、目录名与层级、写盘后时间窗口（0/5/20 秒后执行都正常）、
+  文件内容与大小（**同一份二进制**换个启动者就能跑）。`store`/`tvproto`/`config`/`ingest`/
+  `wsclient`/`cdp`/`logx` 和主包的测试**都不受影响**，`go vet` 也不受影响（只分析不执行）。
+  SAC 内部为何区分加载者**没有查到确证，标为未知**。
+  **旧笔记"换 `GOTMPDIR=$PWD/.tmpbuild` 即可绕开"是错的，已实测证伪**（该路径同样被拦，
+  CodeIntegrity 事件日志里有记录）。SAC **没有单应用白名单** → 换目录、安全中心排除项、
+  自签名统统无效（自签名不在 Trusted Root Program，SAC 不认）。两条出路：
+  三条出路：① `go test -c -o <临时目录>` + `cd <包目录>` 手动启动（已跑通 capture 全部 3 个用例；
+  `cd` 到包目录是必须的，但 IDE 测试按钮与直接敲的 `go test` 仍会被拦）；
+  ② 切到「评估」——评估期不拦任何东西，且「评估 ↔ 打开」可逆（本机就是被系统从评估期自动切成
+  强制的），缺点是会被系统再次自动升级回强制，属**临时缓解**；
+  ③ 关掉 SAC —— **代价很大，见下一条**。
+- **在本机「关闭 SAC」是单向的，不要赌**：本机确认框原文是「如果关闭智能应用控制，则无法重新
+  打开或切换到评估模式，除非转到 Windows 恢复选项并重置此电脑」（2026-10-16 用户截图）。
+  微软官方 FAQ 另有"近期更新允许在不全新安装的情况下重新启用"的说法，**与本机提示冲突**，
+  两者无法在不越过这条不可逆线的条件下验证 → **一律以本机提示为准**。
+  教训：不能把"查到的官方说法"当成"在用户这台机器上成立"，动手前应先让用户点开确认框看一眼
+  （这次我就是先说了"可逆"，用户截图推翻，及时叫停）。
+- **让 exe "受信任"以绕开 SAC：能，但对本项目的开发循环没用。** SAC 只认 ① 微软云信誉
+  ② **受信任提供商**签发的证书。**自签名无效** —— Eric Lawrence（Chrome/Edge 安全团队，
+  2026-04）明确写："signatures from certificates that chain to a root outside of Microsoft's
+  program (e.g. one that chains to a root the user or admin trusted via certmgr.msc or Group Policy)
+  will not be considered valid"；微软员工 Q&A 也说 "Self-signed certs will not work"。
+  **网上"自签名 + 装到 certmgr 受信任根即可"的教程与官方口径冲突，不要采信。**
+  要签就买（官方推荐 Microsoft Trusted Signing，原 Azure Code Signing；传统 OV 证书一年数千元，
+  2023-06 起私钥须在硬件令牌/HSM）且要用 **RSA**（英文文档说不支持 ECC，丹麦语版说支持，
+  口径不一致 → 用 RSA 最稳）。
+  **关键：`go test` / `go run` 场景签名在原理上赶不上** —— go 自己编译临时二进制并立即执行，
+  中间没有插入签名步骤的时机。签名只对**固定产物**（如 `tv-capture.exe`）且**发给别人**时有意义。
+  另：网上"开开发人员模式可豁免 SAC"**不成立**（微软员工原话 "Developer Mode doesn't exempt you from it"）。
 
 ## 关键事实（实测，别忘）
 
