@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>数据分析 · tradingview-j</title>
+<link rel="icon" href="data:,">
+<script>
+// 样式起来之前先把主题类挂上，否则深色模式下会闪一下白底
+try { if (localStorage.getItem('tvj-theme') === 'dark') document.documentElement.classList.add('dark'); } catch (e) {}
+</script>
+<link rel="stylesheet" href="/static/style.css">
+<script src="/static/vendor/tailwind.js"></script>
+<style type="text/tailwindcss">
+/* 调色板本身定义在 style.css 的 :root / html.dark 里（纯 CSS 变量），
+   这里只用 @theme inline 把它们注册成 Tailwind 的颜色名 —— 这样：
+     · 深色模式只需要换一遍变量值，不用给每个类补 dark: 变体；
+     · 即使某个颜色名没被任何工具类用到，样式表里那两个变量也一定存在，
+        style.css 里的 .card / .tbl 不会因为「变量被摇掉了」而变成透明。 */
+@custom-variant dark (&:where(.dark, .dark *));
+@theme inline {
+  --color-bg: var(--bg);            --color-panel: var(--panel);     --color-panel2: var(--panel2);
+  --color-line: var(--line);        --color-line2: var(--line2);
+  --color-ink: var(--ink);          --color-muted: var(--muted);     --color-faint: var(--faint);
+  --color-accent: var(--accent);    --color-accentbg: var(--accentbg); --color-accentbd: var(--accentbd);
+  --color-ok: var(--ok);            --color-okbg: var(--okbg);
+  --color-warn: var(--warn);        --color-warnbg: var(--warnbg);   --color-warnbd: var(--warnbd);
+  --color-bad: var(--bad);          --color-badbg: var(--badbg);     --color-badbd: var(--badbd);
+  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", "PingFang SC", sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, "Courier New", monospace;
+}
+</style>
+</head>
+<body class="bg-bg font-sans text-ink antialiased">
+<div id="app" v-cloak>
+
+  <!-- ── 顶栏 ─────────────────────────────────────────────────────── -->
+  <header class="sticky top-0 z-20 border-b border-line bg-bg">
+    <div class="mx-auto flex max-w-[1440px] flex-wrap items-center gap-x-4 gap-y-2 px-5 py-2.5">
+      <div class="min-w-0">
+        <h1 class="text-[15px] font-semibold leading-tight">数据分析</h1>
+        <p class="truncate font-mono text-[11.5px] leading-tight text-faint" :title="meta.root">{{ meta.root }}</p>
+      </div>
+      <div class="ml-auto flex items-center gap-2">
+        <span v-if="loading" class="text-[12px] text-muted">扫描中…</span>
+        <span v-else-if="snapshot" class="text-[11.5px] text-faint" :title="'这次扫描花了 ' + meta.scanMs + ' 毫秒'">{{ snapshot }}</span>
+        <button class="btn" type="button" @click="load" :disabled="loading">重新扫描</button>
+        <button class="btn" type="button" @click="toggleDark" :title="dark ? '切到浅色' : '切到深色'">{{ dark ? '浅色' : '深色' }}</button>
+      </div>
+    </div>
+  </header>
+
+  <main class="mx-auto max-w-[1440px] px-5 pb-16 pt-4">
+
+    <!-- ── 拉取失败 ─────────────────────────────────────────────────── -->
+    <section v-if="err" class="alert alert-bad mb-4">
+      <p class="text-[13px] font-medium">读不到统计数据：{{ err }}</p>
+      <p class="mt-1 text-[12px] opacity-80">服务可能已经停了。回到程序窗口重新选一次「网页版分析」即可。</p>
+    </section>
+
+    <div v-if="!rep" class="py-20 text-center text-[13px] text-muted">正在读取…</div>
+
+    <template v-if="rep">
+
+      <!-- ── 总览 ──────────────────────────────────────────────────── -->
+      <section class="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+        <div class="card px-3.5 py-3">
+          <div class="stat-lbl">标的</div>
+          <div class="stat-val">{{ num(totals.symbols) }}</div>
+        </div>
+        <div class="card px-3.5 py-3">
+          <div class="stat-lbl">日文件</div>
+          <div class="stat-val">{{ num(totals.days) }}</div>
+        </div>
+        <div class="card px-3.5 py-3">
+          <div class="stat-lbl">K 线根数</div>
+          <div class="stat-val">{{ num(totals.bars) }}</div>
+        </div>
+        <div class="card px-3.5 py-3">
+          <div class="stat-lbl">占用磁盘</div>
+          <div class="stat-val">{{ bytes(totals.bytes) }}</div>
+        </div>
+        <div class="card px-3.5 py-3">
+          <div class="stat-lbl">一根 K 线</div>
+          <div class="stat-val">{{ meta.step }}<span class="ml-1 text-[12px] font-normal text-muted">秒</span></div>
+        </div>
+        <div class="card px-3.5 py-3">
+          <div class="stat-lbl">时区</div>
+          <div class="stat-val-sm" :title="meta.tz">{{ meta.tz }}</div>
+        </div>
+      </section>
+
+      <!-- ── 时间跨度 + 口径 ────────────────────────────────────────── -->
+      <section class="mb-4 flex flex-wrap items-start gap-3">
+        <div v-if="span" class="card min-w-[240px] flex-1 px-3.5 py-3">
+          <div class="stat-lbl">时间跨度</div>
+          <div class="mt-1 font-mono text-[13px]">{{ stamp(span.firstT) }}</div>
+          <div class="font-mono text-[13px] text-muted">~ {{ stamp(span.lastT) }}</div>
+        </div>
+        <details class="card flex-1 basis-[420px] px-3.5 py-3">
+          <summary class="cursor-pointer select-none text-[12.5px] font-medium">
+            统计口径
+            <span class="ml-1 font-normal text-faint">（和终端菜单 2 用的是同一份代码，数字一定一样）</span>
+          </summary>
+          <ul class="mt-2 space-y-1 text-[12px] leading-relaxed text-muted">
+            <li><b class="text-ink">根数</b> = 该日文件里的 K 线行数（同一时间戳只算一根）。</li>
+            <li><b class="text-ink">缺口</b> = 首根与尾根之间按 {{ meta.step }} 秒推算应当有多少根，减去实有根数。期货每日结算休市、周末休市都会留下缺口，那是正常形态，不是丢数据。</li>
+            <li><b class="text-ink">最大断档</b> = 相邻两根之间最大的间隔（拖图时跳过了范围，或交易所休市）。</li>
+            <li><b class="text-ink">坏行 / 重复行</b> = 解析不了的行数 / 同一时间戳出现多次的行数。正常写入是「整体重写 + 原子改名」，重复行应当恒为 0 —— 一旦不为 0，说明文件被手工改过或被别的工具合并过。</li>
+          </ul>
+        </details>
+      </section>
+
+      <!-- ── 备注与告警 ────────────────────────────────────────────── -->
+      <section v-if="alerts.length" class="mb-4 space-y-2">
+        <div v-for="(a, i) in alerts" :key="'a' + i" class="alert" :class="a.cls">
+          <p class="text-[12.5px]">{{ a.text }}</p>
+        </div>
+      </section>
+
+      <!-- ── 空数据 ────────────────────────────────────────────────── -->
+      <section v-if="!folders.length" class="card px-5 py-14 text-center">
+        <p class="text-[14px] font-medium">{{ meta.exists ? '数据目录里还没有任何 K 线。' : '数据目录还不存在。' }}</p>
+        <p class="mt-2 text-[12.5px] text-muted">先回到程序窗口选 1 启动抓取，然后在 TradingView 图表上拖一拖，数据就会落到这个目录里。</p>
+        <p class="mt-1 font-mono text-[12px] text-faint">{{ meta.root }}</p>
+      </section>
+
+      <template v-if="folders.length">
+
+        <!-- ── 工具条 ──────────────────────────────────────────────── -->
+        <section class="mb-3 flex flex-wrap items-center gap-x-4 gap-y-2">
+          <input class="inp max-w-[240px]" type="search" v-model.trim="q" placeholder="筛选标的或日期，如 2026-10 / MES">
+          <label class="flex cursor-pointer select-none items-center gap-2 text-[12.5px] text-muted">
+            <input type="checkbox" v-model="onlyIssues">
+            只看异常（坏行 / 重复 / 读不了）
+          </label>
+          <label class="flex cursor-pointer select-none items-center gap-2 text-[12.5px] text-muted">
+            <input type="checkbox" v-model="onlyGap">
+            只看有缺口
+          </label>
+          <span class="text-[12px] text-faint">筛出 {{ shownFolderCount }} / {{ folders.length }} 个标的</span>
+          <button class="btn ml-auto" type="button" @click="allOpen = !allOpen">{{ allOpen ? '全部折叠' : '全部展开' }}</button>
+        </section>
+
+        <!-- ── 每个标的 ────────────────────────────────────────────── -->
+        <section v-for="f in shownFolders" :key="f.folder" class="mb-4">
+          <div class="card">
+            <header class="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-line px-4 py-2.5">
+              <button class="toggler" type="button" @click="toggleFolder(f.folder)" :title="isOpen(f.folder) ? '折叠' : '展开'">
+                <svg class="h-3 w-3" :class="isOpen(f.folder) ? 'rotate-90' : ''" viewBox="0 0 12 12" aria-hidden="true">
+                  <path d="M4 2l4 4-4 4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"></path>
+                </svg>
+              </button>
+              <h2 class="font-mono text-[13.5px] font-semibold">{{ f.symbol }}</h2>
+              <span v-if="f.known && !sameName(f)" class="badge badge-accent" title="数据存在这个文件夹里">目录 {{ f.folder }}/</span>
+              <span v-else-if="!f.known" class="badge badge-warn" title="_symbols.json 里没有登记这个文件夹，标的按文件夹名显示">未登记</span>
+              <span v-if="f.skipped || f.dupes" class="badge badge-bad">坏 {{ num(f.skipped) }} / 重复 {{ num(f.dupes) }}</span>
+
+              <div class="ml-auto flex flex-wrap items-center gap-x-4 gap-y-1 text-[12px] text-muted">
+                <span>{{ num(f.days) }} 天 · {{ num(f.bars) }} 根 · {{ bytes(f.bytes) }}</span>
+                <span v-if="f.hasTime" class="font-mono text-faint">{{ stamp(f.firstT) }} ~ {{ stamp(f.lastT) }}</span>
+              </div>
+            </header>
+
+            <div v-if="isOpen(f.folder)" class="overflow-x-auto">
+              <table class="tbl">
+                <thead>
+                  <tr>
+                    <th class="sortable" :class="sortCls('date')" @click="sortBy('date')">日期{{ arrow('date') }}</th>
+                    <th class="sortable text-right" :class="sortCls('bars')" @click="sortBy('bars')">根数{{ arrow('bars') }}</th>
+                    <th class="text-right">首根</th>
+                    <th class="text-right">尾根</th>
+                    <th class="sortable text-right" :class="sortCls('missing')" @click="sortBy('missing')">缺口{{ arrow('missing') }}</th>
+                    <th class="sortable text-right" :class="sortCls('maxGap')" @click="sortBy('maxGap')">最大断档{{ arrow('maxGap') }}</th>
+                    <th class="sortable text-right" :class="sortCls('bytes')" @click="sortBy('bytes')">文件{{ arrow('bytes') }}</th>
+                    <th>备注</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="d in filesOf(f)" :key="d.date" :class="rowCls(d)">
+                    <td class="font-mono">{{ d.date }}</td>
+                    <td class="text-right font-mono" :title="'文件里 ' + num(d.rows) + ' 行数据'">{{ num(d.bars) }}</td>
+                    <td class="text-right font-mono text-muted">{{ d.bars ? clock(d.firstT) : '—' }}</td>
+                    <td class="text-right font-mono text-muted">{{ d.bars ? clock(d.lastT) : '—' }}</td>
+                    <td class="text-right font-mono" :class="d.missing ? 'text-warn' : 'text-faint'"
+                        :title="'首尾之间应当有 ' + num(d.span) + ' 根'">{{ d.missing ? num(d.missing) : '—' }}</td>
+                    <td class="text-right font-mono" :class="d.maxGap > meta.step ? 'text-muted' : 'text-faint'">
+                      {{ d.bars > 1 ? gap(d.maxGap) : '—' }}
+                    </td>
+                    <td class="text-right font-mono text-muted">{{ bytes(d.bytes) }}</td>
+                    <td>
+                      <span v-if="d.err" class="badge badge-bad" :title="d.err">读不了</span>
+                      <span v-if="d.skipped" class="badge badge-bad">坏 {{ num(d.skipped) }} 行</span>
+                      <span v-if="d.dupes" class="badge badge-bad">重复 {{ num(d.dupes) }} 行</span>
+                      <span v-if="!d.err && !d.skipped && !d.dupes" class="text-faint">—</span>
+                    </td>
+                  </tr>
+                  <tr v-if="!filesOf(f).length">
+                    <td colspan="8" class="empty-cell text-center text-faint">
+                      {{ f.files.length ? '都被筛选条件滤掉了' : '这个文件夹里没有 CSV' }}
+                    </td>
+                  </tr>
+                </tbody>
+                <tfoot v-if="filesOf(f).length">
+                  <tr>
+                    <td class="text-muted">小计</td>
+                    <td class="text-right font-mono font-semibold">{{ num(sumOf(f).bars) }}</td>
+                    <td colspan="2"></td>
+                    <td class="text-right font-mono">{{ num(sumOf(f).missing) }}</td>
+                    <td></td>
+                    <td class="text-right font-mono">{{ bytes(sumOf(f).bytes) }}</td>
+                    <td></td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <!-- ── 按日期合计（只有一个标的时没有信息量） ─────────────── -->
+        <section v-if="folders.length > 1" class="mb-4">
+          <div class="card">
+            <header class="border-b border-line px-4 py-2.5">
+              <h2 class="text-[13.5px] font-semibold">全部标的按日期合计</h2>
+              <p class="text-[12px] text-muted">同一个交易日，所有标的加起来一共抓了多少根</p>
+            </header>
+            <div class="overflow-x-auto">
+              <table class="tbl">
+                <thead>
+                  <tr>
+                    <th>日期</th>
+                    <th class="text-right">有数据的标的</th>
+                    <th class="text-right">根数</th>
+                    <th class="text-right">平均每标的</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="r in byDate" :key="r.date">
+                    <td class="font-mono">{{ r.date }}</td>
+                    <td class="text-right font-mono">{{ num(r.symbols) }}</td>
+                    <td class="text-right font-mono">{{ num(r.bars) }}</td>
+                    <td class="text-right font-mono text-muted">{{ num(avg(r)) }}</td>
+                  </tr>
+                  <tr v-if="!byDate.length">
+                    <td colspan="4" class="empty-cell text-center text-faint">都被筛选条件滤掉了</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+      </template>
+
+      <footer class="mt-8 text-center text-[11.5px] text-faint">
+        <p>tradingview-j v{{ meta.version }} · 只读快照，页面上的任何操作都不会改动数据目录里的文件</p>
+        <p class="mt-1">刷新页面或点「重新扫描」会重新读一遍磁盘</p>
+      </footer>
+    </template>
+  </main>
+</div>
+
+<script src="/static/vendor/vue.global.prod.js"></script>
+<script src="/static/app.js"></script>
+</body>
+</html>

@@ -8,6 +8,7 @@
   "rawDir": "raw",
   "saveRawFrames": true,
   "csvHeader": true,
+  "webPort": 8765,
   "flushSeconds": 1,
   "attachPollSeconds": 3,
   "retrySeconds": 5,

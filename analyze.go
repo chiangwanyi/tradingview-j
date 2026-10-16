@@ -149,20 +149,7 @@ func printByDate(lg *logx.Logger, res *store.ScanResult) {
 }
 
 func globalRange(res *store.ScanResult, loc *time.Location) (string, string, bool) {
-	var first, last int64
-	ok := false
-	for _, f := range res.Folders {
-		if !f.HasTime {
-			continue
-		}
-		if !ok || f.FirstT < first {
-			first = f.FirstT
-		}
-		if !ok || f.LastT > last {
-			last = f.LastT
-		}
-		ok = true
-	}
+	first, last, ok := res.GlobalRange()
 	if !ok {
 		return "", "", false
 	}

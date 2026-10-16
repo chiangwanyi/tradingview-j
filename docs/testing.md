@@ -30,6 +30,7 @@ go test ./internal/cdp/       # 端点发现 / 命令与事件 / 超时 / 断线
 go test ./internal/wsclient/  # 握手 / 大帧 / 分片 / ping-pong
 go test ./internal/config/    # 配置生成 / 缺键补齐 / 非法值回退
 go test ./internal/logx/      # 状态行原地刷新 / 中文按显示宽度擦除 / 重定向不留回车
+go test ./internal/webreport/ # 网页版的 JSON 形状 / 静态资源 / 端口回退 / 只读
 go test .                     # 菜单报表排版（表头是中文、数据行是 ASCII，列宽必须一致）
 ```
 
@@ -44,6 +45,37 @@ go test .                     # 菜单报表排版（表头是中文、数据行
 表头是中文（`日期`、`最大断档`）、数据行几乎全是 ASCII，
 一旦有人把「按显示宽度补齐」换成 `fmt` 的 `%-12s` 或 `len()`，中文列会当场少算一半宽度、
 整张表往左串行 —— 而那种歪斜在代码里看不出来，只有盯着终端才发现。
+
+### 网页版分析（菜单 3）的测试
+
+三层，全部离线：
+
+1. **`report_test.go`** —— `Build` 是纯函数（只读入参、不碰磁盘、不看时钟），
+   拿手工构造的 `store.ScanResult` 就能断言：合计、时间跨度、标的映射、日文件数字、
+   按日期合计，以及 **notes / 读不了的错误原样透传**。
+   另有一条专门钉「空结果必须序列化成 `[]` 而不是 `null`」—— 前端直接 `.length`，
+   `null` 会让模板当场报错。
+2. **`server_test.go`** —— 起 `httptest`，真造一个数据目录（含一份 `_symbols.json`
+   和一份 `.tmp` 干扰文件），然后：断言 `/api/analysis` 的数字与 `store.Scan` 一致
+   （3 根 / 缺口 1 / 断档 600 秒 / `.tmp` 不算数据）；断言首页与四个静态资源都取得到；
+   断言未知路径是 404；断言端口被占用时**换端口并置 `Moved`**；
+   最后 —— **分析前后目录快照逐项对比**，证明网页版一个字节都没动。
+3. **`frontend_test.go`** —— 让 node 跑 `testdata/format.test.cjs`：
+   把 `app.js` 里 createApp 之前的那段纯函数切出来 eval，逐条断言
+   `num` / `bytes` / `gap` 与 **`report_test.go` 里那张期望值表完全一致**，
+   外加筛选口径、排序（不原地改数组、同值按日期兜底）、告警文案。
+   没有 node 就 `t.Skip` —— 这是交叉校验，不该变成所有人都必须装 node 的理由。
+   手工跑：`node internal/webreport/testdata/format.test.cjs`。
+
+> 前端还有一类问题这三层都测不到：**页面到底有没有渲染出来**。
+> 实测踩过一次 —— `meta.ready` 这个标志忘了在拿到数据时置上，
+> 接口 200、DOM 里能查到数据、「快照时间」也显示出来了，但整块内容被 `v-if` 挡住，
+> 页面永远停在「正在读取…」。修法是不再另设标志，模板直接用 `rep` 本身判断。
+> 这类只认「真浏览器里量出来的几何和 computed style」，
+> 用 Edge/Chrome 的 `--headless=new --remote-debugging-port` + 一个几十行的 CDP 脚本
+> （Node 22 自带 `WebSocket`，零安装）跑一次即可：断言栅格列数、字号、颜色、
+> 行数（`94 个日文件 + 47 行按日期合计 = 141`）、排序/筛选/折叠/深色模式的真实效果。
+> 这是**开发时的一次性验证**，不进 `go test`（那条线仍然禁止浏览器）。
 
 ### 本机环境：智能应用控制会拦 `go test` / `go run`
 
@@ -238,3 +270,15 @@ meta + 一条携带完整 300 根历史的 `timescale_update` + 一条 `du` + �
   已用 `.gitattributes`（`*.cmd text eol=crlf`）钉死。改这个文件务必按 CRLF 写。
 - **菜单只能有一个 stdin reader**：菜单读缓冲 reader、「按回车继续」又直接读 `os.Stdin` 的话，
   缓冲层里攒着的字符会被绕过去，表现成「按一次回车跳过两项」（`menu.go`）。
+- **网页版不许有「算数字」的代码**：根数/缺口/断档只能在 Go 里算（`store.Scan`），
+  `app.js` 只做排版。改了 `num` / `bytes` / `gap` 就必须同步改
+  `internal/webreport/testdata/format.test.cjs` 的期望值（那张表是照抄 `report_test.go` 的），
+  否则 `go test ./internal/webreport/` 会红 —— 这是刻意的，两边都改才算改对。
+- **改完 `internal/webreport/static/` 下的任何文件都要重新 `go build`**：
+  `//go:embed` 是**编译期**快照，不重新构建的话 exe 里还是旧页面，
+  而浏览器这边看起来「我明明改了」（这种现象最费时间）。
+- **网页版必须只读、只监听 `127.0.0.1`**：它和菜单 2 一样走 `store.Scan`；
+  不要给它加任何能改数据或触发动作的接口（见 [design.md](design.md) 的「网页版分析」）。
+- **不要在 Go 里重写一遍前端排版**：终端报表（`analyze.go`）和网页的排版是两套，
+  但**统计量只有一份**。想让两边长得一样时，加的是「把同一个数字显示得更清楚」的约定，
+  不是把终端的字符串塞进 JSON。

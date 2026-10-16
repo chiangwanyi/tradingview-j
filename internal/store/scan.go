@@ -204,6 +204,28 @@ func scanDay(path string, loc *time.Location, step int64) DayStat {
 	return d
 }
 
+// GlobalRange 返回所有标的合起来的时间跨度（最早的 FirstT、最晚的 LastT）。
+//
+// 放在这里而不是让调用方各算一遍：终端的「分析」和网页版都要这一行，
+// 两处各写一份聚合逻辑，迟早会有一处忘了跳过没有时间信息的日文件
+// （比如整份文件读不了、Bars=0 的那种），于是同一个数据目录在两个界面上
+// 显示出不同的跨度 —— 这种不一致用户没法自查。
+func (r *ScanResult) GlobalRange() (first, last int64, ok bool) {
+	for _, f := range r.Folders {
+		if !f.HasTime {
+			continue
+		}
+		if !ok || f.FirstT < first {
+			first = f.FirstT
+		}
+		if !ok || f.LastT > last {
+			last = f.LastT
+		}
+		ok = true
+	}
+	return first, last, ok
+}
+
 // ByDate 把所有标的的数据按日期合并，得到「这一天一共多少根」。
 func (r *ScanResult) ByDate() []DateTotal {
 	type acc struct {

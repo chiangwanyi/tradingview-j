@@ -6,15 +6,22 @@
 解出 5 分钟 K 线，写成 CSV。形态是**一个 Go 程序**：
 
 - 产物 `tv-capture.exe`（根目录；`go build -o tv-capture.exe .` 或双击 `build.cmd`）。
-- **入口是菜单式**（v1.1.0 起）：`1 启动抓取` / `2 分析已抓取的数据` / `3 退出`。
-  抓取中 Ctrl+C = 刷盘 + 打印统计 + **回到菜单**（不退出程序）。
-- **没有任何 JavaScript**：只被动监听，不需要页面注入，也不需要扩展，所以"必须保留的 JS"是零。
+- **入口是菜单式**：v1.1.0 起是 `1 启动抓取`/`2 分析已抓取的数据`/`3 退出`；
+  **v1.2.0 起变成四项**：`1 启动抓取` / `2 分析已抓取的数据（终端）` / `3 网页版分析` / `4 退出`
+  （退出键从 3 挪到 4，`q/quit/exit` 仍然可用）。抓取和网页服务都是 **Ctrl+C 停 → 回到菜单**。
+- **抓取链路上没有任何 JavaScript**：只被动监听，不需要页面注入，也不需要扩展。
+  唯一的 JS 是 v1.2.0 新增的菜单 3 网页版界面（`internal/webreport/static/`）：
+  零构建 Vue 3 + Tailwind 浏览器版，两个库用 `//go:embed static` 内嵌进 exe ——
+  仍然不需要 npm、不需要联网、产物仍然只有一个 exe。
 - **配置只有 `config.json`**（exe 同目录），**不接受任何命令行参数** —— 使用方式是双击。
   相对路径（outDir/rawDir）相对 **exe 所在目录**展开，因为双击时 cwd 不可靠。
+  `webPort`（默认 8765）是菜单 3 的监听端口，占用时自动换端口并**在终端里说明**。
 - **零第三方依赖**，`go.mod` 里没有 require；WebSocket 客户端自写在 `internal/wsclient`。
-- 结构：`main.go`（横幅+菜单分发）+ `menu.go`（菜单与输入）+ `analyze.go`（选项 2 的排版）
-  + `internal/{config,cdp,wsclient,tvproto,ingest,store,rawlog,capture,logx}`
-  （`store/scan.go` 是只读扫描）+ `internal/wstest`（测试专用假 WS 服务端）
+- 结构：`main.go`（横幅+菜单分发）+ `menu.go`（菜单与输入）+ `analyze.go`（选项 2 的终端排版）
+  + `web.go`（选项 3：起本地网页服务、开浏览器、等 Ctrl+C）
+  + `internal/{config,cdp,wsclient,tvproto,ingest,store,rawlog,capture,logx,webreport}`
+  （`store/scan.go` 是只读扫描；`webreport` = JSON 接口 + 内嵌前端）
+  + `internal/wstest`（测试专用假 WS 服务端）
   + `testdata/`（两份真实抓包裁剪的回归样本：`real-capture.ndjson` 普通样本、
   `mixed-symbols.ndjson` 品种串味回归样本）。
 - **文档分工（2026-10-16 起）**：`README.md` 只放项目介绍与上手（特性 / 前置条件 / 快速开始 /
@@ -55,6 +62,14 @@
   stdin EOF → 菜单直接退出，不转圈。
 - **"分析"这条路径必须只读**：走 `store.Scan`，**不要**用 `store.Store`（它 Open 就建目录、
   会往 `_symbols.json` 里分配标的目录名）。测试用「扫描前后目录快照一致」钉住。
+  **网页版（菜单 3）同理，而且走的就是同一个 `store.Scan`** —— 它只把结果换成 JSON。
+- **菜单 3 网页版的两条硬约束**（v1.2.0 定下）：
+  ① **统计量只在 Go 里算**，`app.js` 只做排版。若在 JS 里重算一遍口径，
+  两个界面给出不同根数时用户无法裁决。反过来，**显示格式**（千分位 / `1时5分` / KB-MB）
+  确实写了两份，靠 `internal/webreport/testdata/format.test.cjs` 逐条对着 `report_test.go`
+  的期望值断言（`go test ./internal/webreport/` 会调 node 跑它，没 node 则 skip）。
+  ② **服务只绑 `127.0.0.1`，且没有任何能改数据 / 触发动作的接口**（只有 `/api/analysis` + 内嵌静态）。
+  ③ 改 `internal/webreport/static/` 下任何文件都要**重新 `go build`** —— `//go:embed` 是编译期快照。
 - **统计口径与落盘共用一份代码**：`store.readDayFile` / `parseRow` / `readIndexFile`。
   两边各写一份解析迟早会漂移，表现成"文件里 288 行、分析说 287 根"，用户没法判断信谁。
 - **测试禁止无头浏览器**（用户明确要求：慢、且中断不可见）。替代 = 假 CDP 服务端。

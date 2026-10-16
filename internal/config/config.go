@@ -39,6 +39,11 @@ type Config struct {
 	// ---- CSV ----
 	CSVHeader bool `json:"csvHeader"` // 是否写表头行 time,open,high,low,close,volume
 
+	// ---- 网页版分析 ----
+	// 「3 网页版分析」起的那个本地服务监听哪个端口。0 = 让系统随便给一个空闲端口。
+	// 给一个固定值是刻意的：端口固定了地址就能收藏，不然每次都要回终端抄一遍。
+	WebPort int `json:"webPort"`
+
 	// ---- 节奏（秒）----
 	FlushSeconds      float64 `json:"flushSeconds"`      // CSV 落盘间隔
 	AttachPollSeconds float64 `json:"attachPollSeconds"` // 轮询标签页的间隔
@@ -67,6 +72,7 @@ func Defaults() Config {
 		RawDir:            "raw",
 		SaveRawFrames:     true,
 		CSVHeader:         true,
+		WebPort:           8765,
 		FlushSeconds:      1,
 		AttachPollSeconds: 3,
 		RetrySeconds:      5,
@@ -190,6 +196,11 @@ func (c *Config) normalize() []string {
 	}
 	if c.MaxFrameMB <= 0 {
 		c.MaxFrameMB = d.MaxFrameMB
+	}
+	// webPort 允许 0（让系统随便给一个空闲端口），只挡住明显写错的值
+	if c.WebPort < 0 || c.WebPort > 65535 {
+		fix("webPort", c.WebPort, d.WebPort, true)
+		c.WebPort = d.WebPort
 	}
 	return notes
 }

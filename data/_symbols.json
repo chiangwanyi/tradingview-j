@@ -1,0 +1,14 @@
+{
+  "version": 1,
+  "symbols": {
+    "CME_MINI:MES1!": {
+      "folder": "CME_MINI_MES1!"
+    },
+    "CME_MINI:MNQ1!": {
+      "folder": "CME_MINI_MNQ1!"
+    },
+    "NASDAQ:NDX": {
+      "folder": "NASDAQ_NDX"
+    }
+  }
+}

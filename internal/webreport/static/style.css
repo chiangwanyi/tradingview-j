@@ -1,0 +1,175 @@
+/* 只放 Tailwind 表达不了、或者刻意不想被工具类改的东西。
+ *
+ * 分层陷阱：Tailwind 4 把所有东西都塞进 @layer theme/base/components/utilities，
+ * 而**没有 @layer 的普通 CSS 永远赢过分层 CSS**。所以这里一旦写了 padding，
+ * 模板里再写 p-0 / py-5 就再也改不动它（工具类会「静默失效」）。
+ * 规矩：这个文件里出现的类如果还要和工具类组合，就不许写那一维属性。
+ *   · .card 不含 padding —— 内边距一律由模板上的 px-3.5 py-3 决定；
+ *   · .tbl 里的单元格内边距走 .tbl（想加高的空行用 .empty-cell）。
+ */
+
+/* ── 调色板：深色模式只换一遍变量值，不留任何 dark: 变体 ───────────────
+   放在这里（而不是 Tailwind 的 @theme 里）是为了让底色在 Tailwind 编译完成
+   之前就已经生效 —— 否则开页会闪一下白。@theme inline 只是把这些变量
+   注册成 tailwind 的颜色名（bg-panel / text-ink 之类）。 */
+:root {
+  --bg: #f6f6f4;        --panel: #ffffff;      --panel2: #f1f0ec;
+  --line: #e5e2da;      --line2: #d3cfc4;
+  --ink: #26251f;       --muted: #6c6a62;      --faint: #97948b;
+  --accent: #185fa5;    --accentbg: #e8f1fb;   --accentbd: #b6d4f4;
+  --ok: #0f6e56;        --okbg: #e3f5ee;
+  --warn: #8a5209;      --warnbg: #fbeeda;     --warnbd: #f0d9a8;
+  --bad: #a32d2d;       --badbg: #fcebeb;      --badbd: #f4c9c9;
+}
+
+/* 用 html.dark（0,1,1）压过 :root（0,1,0）；光写 .dark 是同优先级，得靠源码顺序赌 */
+html.dark {
+  --bg: #191816;        --panel: #232220;      --panel2: #2b2a26;
+  --line: #383631;      --line2: #4a4842;
+  --ink: #eceae4;       --muted: #a7a49c;      --faint: #7d7a72;
+  --accent: #7cb0e6;    --accentbg: #1c2a39;   --accentbd: #34506e;
+  --ok: #63c39f;        --okbg: #142a22;
+  --warn: #e0b063;      --warnbg: #2e2517;     --warnbd: #4d3f24;
+  --bad: #e58b8b;       --badbg: #2f1c1c;     --badbd: #543030;
+}
+
+/* ── 基准 ────────────────────────────────────────────────────────────
+   Tailwind 的 preflight 统一了字体族、清了 margin，但**不动 font-size**，
+   浏览器默认 16px。不写这一行，从终端界面迁过来的一整套字号会整体大一圈。 */
+html {
+  background: var(--bg);
+  color-scheme: light;
+}
+html.dark { color-scheme: dark; }
+
+body {
+  font-size: 14px;
+  line-height: 1.65;
+}
+
+/* Tailwind 的浏览器版要等它扫完 DOM 才注入样式，中间有一段
+   「内容已经可见、但没有任何样式」的窗口。先藏起来，等两帧再淡入。 */
+#app { opacity: 0; }
+#app.ready { opacity: 1; transition: opacity .12s ease; }
+
+[v-cloak] { display: none; }
+
+input[type="checkbox"] { accent-color: var(--accent); }
+
+/* ── 组件 ─────────────────────────────────────────────────────────── */
+
+.card {
+  border: 1px solid var(--line);
+  background: var(--panel);
+  border-radius: 12px;
+}
+
+.alert {
+  border: 1px solid;
+  border-radius: 10px;
+  padding: 10px 14px;
+}
+.alert-warn { border-color: var(--warnbd); background: var(--warnbg); color: var(--warn); }
+.alert-bad { border-color: var(--badbd); background: var(--badbg); color: var(--bad); }
+
+.inp {
+  width: 100%;
+  padding: 6px 11px;
+  border: 1px solid var(--line2);
+  border-radius: 8px;
+  background: var(--panel);
+  color: var(--ink);
+  font-size: 13px;
+}
+.inp::placeholder { color: var(--faint); }
+.inp:focus { outline: 2px solid var(--accentbd); outline-offset: -1px; border-color: var(--accent); }
+
+.btn {
+  padding: 5px 12px;
+  border: 1px solid var(--line2);
+  border-radius: 8px;
+  background: var(--panel);
+  color: var(--ink);
+  font-size: 12.5px;
+  line-height: 1.6;
+  cursor: pointer;
+}
+.btn:hover { background: var(--panel2); }
+.btn:disabled { opacity: .5; cursor: default; }
+
+.badge {
+  display: inline-block;
+  padding: 1px 7px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  font-size: 11.5px;
+  line-height: 1.6;
+  white-space: nowrap;
+}
+.badge-accent { border-color: var(--accentbd); background: var(--accentbg); color: var(--accent); }
+.badge-warn { border-color: var(--warnbd); background: var(--warnbg); color: var(--warn); }
+.badge-bad { border-color: var(--badbd); background: var(--badbg); color: var(--bad); }
+
+.stat-lbl { font-size: 12px; color: var(--muted); }
+.stat-val {
+  margin-top: 1px;
+  font-size: 17px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.4;
+}
+.stat-val-sm {
+  margin-top: 3px;
+  font-size: 13px;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.toggler {
+  padding: 2px;
+  border: 0;
+  background: none;
+  color: var(--muted);
+  cursor: pointer;
+  line-height: 0;
+}
+.toggler:hover { color: var(--ink); }
+.toggler svg { transition: transform .12s ease; }
+.toggler svg.rotate-90 { transform: rotate(90deg); }
+
+.tbl {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12.5px;
+}
+.tbl th {
+  padding: 7px 10px;
+  border-bottom: 1px solid var(--line);
+  color: var(--muted);
+  font-weight: 500;
+  text-align: left;
+  white-space: nowrap;
+}
+.tbl td {
+  padding: 5px 10px;
+  border-bottom: 1px solid var(--line);
+  vertical-align: top;
+}
+.tbl tbody tr:last-child td { border-bottom: 0; }
+.tbl tbody tr:hover td { background: var(--panel2); }
+.tbl tfoot td {
+  padding: 6px 10px;
+  border-top: 1px solid var(--line2);
+  background: var(--panel2);
+}
+.tbl .empty-cell { padding: 26px 10px; }
+
+.sortable { cursor: pointer; user-select: none; }
+.sortable:hover { color: var(--ink); }
+.sorted { color: var(--ink); font-weight: 600; }
+
+/* 有坏行/重复行/读不了的日文件整行染色，扫一眼就能找到 */
+.tbl tr.row-issue td { background: var(--badbg); }
+.tbl tr.row-issue:hover td { background: var(--badbd); }

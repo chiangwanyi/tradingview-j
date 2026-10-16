@@ -49,11 +49,11 @@ func waitEnter(prompt string) {
 	readLine()
 }
 
-// menu 是程序的主循环。只有选 3 才返回，返回的退出码交给 main。
+// menu 是程序的主循环。只有选 4 才返回，返回的退出码交给 main。
 func menu(lg *logx.Logger, baseDir string) int {
 	for {
 		printMenu(lg)
-		fmt.Print("  请选择 [1/2/3]（直接回车重画菜单）：")
+		fmt.Print("  请选择 [1/2/3/4]（直接回车重画菜单）：")
 		line, ok := readLine()
 		if !ok {
 			fmt.Println()
@@ -67,22 +67,26 @@ func menu(lg *logx.Logger, baseDir string) int {
 		case "2":
 			runAnalyze(lg, baseDir)
 			waitEnter("\n  按回车键返回菜单…")
-		case "3", "q", "quit", "exit":
+		case "3":
+			// runWeb 自己等 Ctrl+C 停下来，回菜单前不用再等一次回车
+			runWeb(lg, baseDir)
+		case "4", "q", "quit", "exit":
 			lg.Plain("  已退出。")
 			return 0
 		case "":
 			// 空回车：重画一遍菜单就好
 		default:
-			lg.Warn("这个选项不认识：%q（请输入 1、2 或 3）", strings.TrimSpace(line))
+			lg.Warn("这个选项不认识：%q（请输入 1、2、3 或 4）", strings.TrimSpace(line))
 		}
 	}
 }
 
 func printMenu(lg *logx.Logger) {
 	lg.Rule(72)
-	// 两个标签在显示宽度上都是 16 列（中文一个字占两列），所以描述从同一列开始。
+	// 三个标签在显示宽度上都是 20 列（中文一个字占两列），所以描述从同一列开始。
 	lg.Plain("  1  启动抓取            %s", "等 Chrome + 图表页，把 5 分钟 K 线录成 CSV")
 	lg.Plain("  2  分析已抓取的数据    %s", "只读统计：每个标的每天多少根、缺口在哪")
-	lg.Plain("  3  退出")
+	lg.Plain("  3  网页版分析          %s", "同一份统计结果放进浏览器，可排序筛选")
+	lg.Plain("  4  退出")
 	lg.Rule(72)
 }
