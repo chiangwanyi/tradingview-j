@@ -173,7 +173,8 @@ type Order struct {
 	FillPrice   float64 `json:"fillPrice,omitempty"`
 }
 
-// Trade 是一笔成交（= 一次挂单被触发）。不做手续费/滑点，所以成交价就是挂单价。
+// Trade 是一笔成交（= 一次挂单被触发）。不做手续费/滑点；成交价通常等于挂单价，
+// 只有开盘就跳过挂单价（跳空）时取开盘价 —— 见 instance.go 的 fillPriceFor。
 type Trade struct {
 	ID          string  `json:"id"`
 	OrderID     string  `json:"orderId"`

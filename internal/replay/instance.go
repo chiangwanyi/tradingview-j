@@ -294,8 +294,12 @@ func (inst *Instance) deleteAnnotation(id string) error {
 
 // placeOrder 校验并挂一张单。
 //
-// 没有「初始资金」这个概念：这里只记数量、成交价和盈亏，能不能买得起不判。
+// 没有「初始资金」这个概念：这里只记数量、价格和盈亏，能不能买得起不判。
 // 也不支持止损/止盈类型 —— 用户想止损就自己挂一张 stop 单，规则和手动挂单完全一样。
+//
+// 这里**不校验「这个方向该用哪种单」**：挂反了（比如把止损买挂在现价下方）在真实市场里
+// 等于一张已经触发的市价单，撮合时按开盘价成交（见 fillPriceFor），不会凭空拿到更好的价格。
+// 界面上的右键菜单会按方向自动选单型，手填价格的下单框允许用户自己决定。
 func (inst *Instance) placeOrder(by, side, kind string, price, qty float64) (Order, error) {
 	if side != "buy" && side != "sell" {
 		return Order{}, fmt.Errorf("买卖方向只能是 buy / sell，收到 %q", side)
@@ -361,7 +365,9 @@ func finitePositive(v float64) bool {
 // 撮合方式（刻意做得很朴素，都写在文档里）：
 //   - 限价买：本根最低价 <= 挂单价 -> 成交；限价卖：最高价 >= 挂单价 -> 成交
 //   - 止损买：本根最高价 >= 挂单价 -> 成交；止损卖：最低价 <= 挂单价 -> 成交
-//   - **成交价 = 挂单价**（忽略滑点与跳空），数量按挂单数量一次成交
+//   - **成交价由 fillPriceFor 定**：正常情况下就是挂单价，开盘就跳过挂单价时取开盘价
+//     （跳空白捡便宜是这类回放工具最容易出错的地方）
+//   - 数量按挂单数量一次成交，不做部分成交
 //   - 只撮合「上一根或更早」挂的单：本根挂的单从下一根开始参与，避免用已经收完的
 //     K 线的最高最低价倒推成交
 func (inst *Instance) advance(ds *DataSource) (Bar, []Trade, error) {
@@ -385,8 +391,8 @@ func (inst *Instance) advance(ds *DataSource) (Bar, []Trade, error) {
 		o.Status = OrderFilled
 		o.FilledAt = bar.Time
 		o.FilledIndex = inst.Cursor
-		o.FillPrice = o.Price
-		tr := inst.applyFill(*o, bar.Time)
+		o.FillPrice = fillPriceFor(*o, bar)
+		tr := inst.applyFill(*o, o.FillPrice, bar.Time)
 		inst.Trades = append(inst.Trades, tr)
 		inst.RealizedPnl += tr.RealizedPnl
 		fills = append(fills, tr)
@@ -396,6 +402,9 @@ func (inst *Instance) advance(ds *DataSource) (Bar, []Trade, error) {
 }
 
 // orderTriggered 判断一张挂单是否被这根 K 线触发。
+//
+// 四种组合正好是两对镜像：触发看的是**价格往哪个方向穿过挂单价**，
+// 限价单和止损单对方向的要求完全相反 —— 这也是右键菜单要按方向选单型的根源。
 func orderTriggered(o Order, b Bar) bool {
 	switch o.Kind {
 	case KindLimit:
@@ -412,11 +421,43 @@ func orderTriggered(o Order, b Bar) bool {
 	return false
 }
 
+// fillPriceFor 决定成交价：挂单价，或者**开盘价**（开盘就已经越过挂单价时）。
+//
+// 触发判定用的是整根 K 线的最高/最低价，但成交价不能一律取挂单价：开盘就跳过挂单价时，
+// 那一笔真实成交发生在**开盘那一刻**，不是挂单价。按挂单价成交等于凭空占便宜，
+// 止损买单最明显（跳空高开 106，还用 102.5 买到）。
+//
+// 取 min 还是 max 由「价格从哪边穿过来」决定：
+//
+//	限价买 / 止损卖 -> min(挂单价, 开盘价)   价格向下穿过，开盘更低就先成交在开盘
+//	限价卖 / 止损买 -> max(挂单价, 开盘价)   价格向上穿过，开盘更高就先成交在开盘
+//
+// 这两行同时把两类单的区别说清楚了：限价单拿到的是**不比挂单价差**的价（等价格过来），
+// 止损单拿到的是**不比挂单价好**的价（价格跑了才追）。把方向写反，就成了「无风险套利」。
+func fillPriceFor(o Order, b Bar) float64 {
+	if b.Open <= 0 { // 理论上不会发生（CSV 每根都有开盘价），兜底成挂单价
+		return o.Price
+	}
+	if o.Side == "buy" {
+		if o.Kind == KindLimit {
+			return math.Min(o.Price, b.Open)
+		}
+		return math.Max(o.Price, b.Open)
+	}
+	if o.Kind == KindLimit {
+		return math.Max(o.Price, b.Open)
+	}
+	return math.Min(o.Price, b.Open)
+}
+
 // applyFill 把一次成交记进持仓，返回成交流水。
+//
+// price 是**实际成交价**（通常等于挂单价，跳空时是开盘价，见 fillPriceFor）——
+// 持仓成本和盈亏都按它算，不能拿挂单价顶替。
 //
 // 平均成本法：同向加仓摊平成本；反向先平掉能平的部分（实现盈亏 = (成交价-均价)*平掉的数量*方向），
 // 平完还有剩余就是反手开仓，新仓均价 = 本次成交价。
-func (inst *Instance) applyFill(o Order, t string) Trade {
+func (inst *Instance) applyFill(o Order, price float64, t string) Trade {
 	signed := o.Quantity
 	if o.Side == "sell" {
 		signed = -o.Quantity
@@ -428,7 +469,7 @@ func (inst *Instance) applyFill(o Order, t string) Trade {
 	case pos == 0 || (pos > 0) == (signed > 0):
 		total := math.Abs(pos) + math.Abs(signed)
 		if total > 0 {
-			inst.Position.AveragePrice = (math.Abs(pos)*inst.Position.AveragePrice + math.Abs(signed)*o.Price) / total
+			inst.Position.AveragePrice = (math.Abs(pos)*inst.Position.AveragePrice + math.Abs(signed)*price) / total
 		}
 		inst.Position.Quantity = pos + signed
 	default:
@@ -437,14 +478,14 @@ func (inst *Instance) applyFill(o Order, t string) Trade {
 		if pos < 0 {
 			dir = -1
 		}
-		realized = (o.Price - inst.Position.AveragePrice) * closeQty * dir
+		realized = (price - inst.Position.AveragePrice) * closeQty * dir
 		next := pos + signed
 		if math.Abs(next) < 1e-9 {
 			next = 0
 			inst.Position.AveragePrice = 0
 		} else if (next > 0) != (pos > 0) {
 			// 反手：剩余仓位是本次新开的，成本就是本次成交价
-			inst.Position.AveragePrice = o.Price
+			inst.Position.AveragePrice = price
 		}
 		inst.Position.Quantity = next
 	}
@@ -456,7 +497,7 @@ func (inst *Instance) applyFill(o Order, t string) Trade {
 		Time:        t,
 		Side:        o.Side,
 		Kind:        o.Kind,
-		Price:       o.Price,
+		Price:       price,
 		Quantity:    o.Quantity,
 		RealizedPnl: realized,
 	}

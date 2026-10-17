@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 
+import { orderKindFor, orderKindLabel } from '@/components/chart/orders'
 import { drawChart, themeOf, type HoverState } from '@/components/chart/render'
 import { ChartScale, TIME_AXIS_HEIGHT, formatAxisTime, formatPrice, snapToTick } from '@/components/chart/scale'
 import { closedTrades } from '@/components/chart/trades'
@@ -42,6 +43,10 @@ const ctrlDown = ref(false)
  *
  * 菜单只提供「按这个价格挂单 / 复制这个价格」，所以价格必须在打开那一刻就定死，
  * 不能等点击时再从鼠标位置算一遍 —— 手一抖价格就变了。
+ *
+ * 单型（限价/止损）也不让用户选：由**这个价格相对现价的方向**算出来
+ * （见 `chart/orders.ts` 的 `orderKindFor`）。现有价才有方向，所以菜单里先把现价写出来，
+ * 用户一眼就能看出「我这一下是在现价上方还是下方、买到的是哪种单」。
  */
 const menu = ref<{ x: number; y: number; price: number } | null>(null)
 /** 复制价格/挂单成功后的一句轻提示（1.4 秒自己消失） */
@@ -459,15 +464,48 @@ function onDoubleClick(): void {
 
 // ---------------- 右键小菜单 ----------------
 
+/**
+ * 现价 = 游标所在（最后一根已揭示）K 线的收盘价。
+ *
+ * 为什么是它、而不是鼠标下面那根 K 线的收盘价：挂单类型是按「挂单价相对**下单那一刻的市价**」
+ * 定的，而复盘里「下单那一刻」永远是游标那根（后端 `placeOrder` 也拿 `currentBar()` 做基准）。
+ * 鼠标可以停在一百根之前的历史价位上，那个价格不是现在的市价。
+ */
+const lastPrice = computed(() => store.currentBar?.close ?? 0)
+
+const lastPriceText = computed(() =>
+  lastPrice.value > 0 ? formatPrice(lastPrice.value, store.priceDecimals) : '—',
+)
+
 /** 菜单里那句价格：三位小数（BTCUSDT 0.1 一跳）也不会被截成两位 */
 const menuPriceText = computed(() => (menu.value ? formatPrice(menu.value.price, store.priceDecimals) : ''))
+
+/** 菜单价格在现价的哪一侧 —— 只用来给菜单写一句话，判定本身在 orderKindFor 里 */
+const menuSideText = computed(() => {
+  const m = menu.value
+  if (!m || !(lastPrice.value > 0)) return ''
+  if (m.price > lastPrice.value) return '高于现价'
+  if (m.price < lastPrice.value) return '低于现价'
+  return '等于现价'
+})
+
+/**
+ * 两个按钮各自的单型。菜单价格在打开那一刻就固定了，所以这两个值也是固定的：
+ * 现价下方 → 买限价 / 卖止损；现价上方 → 买止损 / 卖限价。
+ */
+const buyKind = computed<OrderKind>(() =>
+  menu.value ? orderKindFor('buy', menu.value.price, lastPrice.value) : 'limit',
+)
+const sellKind = computed<OrderKind>(() =>
+  menu.value ? orderKindFor('sell', menu.value.price, lastPrice.value) : 'limit',
+)
 
 /** 靠边右键时把菜单挪回画布内，别一半露在窗口外面 */
 const menuStyle = computed(() => {
   const m = menu.value
   if (!m) return {}
-  const w = 226
-  const h = 112
+  const w = 236
+  const h = 142
   return {
     left: `${Math.max(4, Math.min(m.x, size.value.width - w - 4))}px`,
     top: `${Math.max(4, Math.min(m.y, size.value.height - h - 4))}px`,
@@ -491,7 +529,11 @@ function showToast(text: string): void {
   }, 1400)
 }
 
-function menuOrder(side: Side, kind: OrderKind): void {
+/**
+ * 下单。单型**在这里再算一次**（不是从模板传进来）：按钮文案和执行必须是同一个判定，
+ * 否则将来改文案时很容易出现「写着限价、发出去是止损」。
+ */
+function menuOrder(side: Side): void {
   const m = menu.value
   if (!m) return
   if (!store.canOperate) {
@@ -499,9 +541,12 @@ function menuOrder(side: Side, kind: OrderKind): void {
     menu.value = null
     return
   }
+  const kind = orderKindFor(side, m.price, lastPrice.value)
   store.placeOrder(side, kind, m.price, store.orderQuantity)
   menu.value = null
-  showToast(`已挂 ${side === 'buy' ? '买入' : '卖出'}${kind === 'limit' ? '限价' : '止损'} ${formatPrice(m.price, store.priceDecimals)}`)
+  showToast(
+    `已挂 ${side === 'buy' ? '买入' : '卖出'}${orderKindLabel(kind)} ${formatPrice(m.price, store.priceDecimals)}`,
+  )
 }
 
 async function menuCopy(): Promise<void> {
@@ -949,6 +994,7 @@ defineExpose({ requestDraw })
       右键小菜单：价格在打开那一刻就算好（吸附到最小跳动），三项动作都基于这个价格。
       菜单自身要 stop 掉 pointerdown —— 否则画布的 pointerdown 会先把菜单关掉，
       click 就永远到不了按钮上。
+      单型跟着「价格在现价的哪一侧」走：下方 = 买限价 / 卖止损，上方 = 买止损 / 卖限价。
     -->
     <div
       v-if="menu"
@@ -957,23 +1003,37 @@ defineExpose({ requestDraw })
       @pointerdown.stop
       @contextmenu.stop.prevent
     >
+      <div class="flex items-center justify-between gap-2 border-b border-line px-3 pb-1 text-[11px] text-faint">
+        <span>现价 <span class="tnum text-dim">{{ lastPriceText }}</span></span>
+        <span>{{ menuSideText }}</span>
+      </div>
       <button
         type="button"
-        class="flex w-full items-center gap-2 px-3 py-1.5 text-left hover:bg-elev disabled:cursor-not-allowed disabled:opacity-40"
+        class="mt-1 flex w-full items-center gap-2 px-3 py-1.5 text-left hover:bg-elev disabled:cursor-not-allowed disabled:opacity-40"
         :disabled="!store.canOperate"
-        @click="menuOrder('buy', 'limit')"
+        :title="
+          buyKind === 'limit'
+            ? '价格低于现价：等回落到这个价位才买（限价买）'
+            : '价格高于现价：涨到这个价位才追多（止损买）'
+        "
+        @click="menuOrder('buy')"
       >
         <span class="h-0 w-0 border-x-[4px] border-b-[6px] border-x-transparent border-b-emerald-500" />
-        买入 {{ store.orderQuantity }} 手 {{ menuPriceText }} 限价
+        买入 {{ store.orderQuantity }} 手 {{ menuPriceText }} {{ orderKindLabel(buyKind) }}
       </button>
       <button
         type="button"
         class="flex w-full items-center gap-2 px-3 py-1.5 text-left hover:bg-elev disabled:cursor-not-allowed disabled:opacity-40"
         :disabled="!store.canOperate"
-        @click="menuOrder('sell', 'stop')"
+        :title="
+          sellKind === 'limit'
+            ? '价格高于现价：等涨到这个价位才卖（限价卖）'
+            : '价格低于现价：跌破这个价位才卖（止损卖）'
+        "
+        @click="menuOrder('sell')"
       >
         <span class="h-0 w-0 border-x-[4px] border-t-[6px] border-x-transparent border-t-red-500" />
-        卖出 {{ store.orderQuantity }} 手 {{ menuPriceText }} 止损
+        卖出 {{ store.orderQuantity }} 手 {{ menuPriceText }} {{ orderKindLabel(sellKind) }}
       </button>
       <div class="my-1 h-px bg-line" />
       <button
