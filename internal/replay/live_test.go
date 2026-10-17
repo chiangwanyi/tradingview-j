@@ -32,7 +32,7 @@ func liveOpts(stateDir string) Options {
 		DataRoot: filepath.Join("..", "..", "data"),
 		DistDir:  filepath.Join("..", "..", "web", "dist"),
 		StateDir: stateDir,
-		Version:  "0.3.0",
+		Version:  "0.4.0",
 		Location: time.Local,
 		Log:      func(f string, a ...any) { os.Stdout.WriteString("    [srv] " + fmt.Sprintf(f, a...) + "\n") },
 	}

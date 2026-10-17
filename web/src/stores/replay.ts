@@ -70,6 +70,11 @@ export const useReplayStore = defineStore('replay', () => {
   applyTheme(theme.value)
   /** 是否显示 EMA20（纯显示开关，跟后端无关） */
   const showEma = ref(true)
+  /**
+   * 下单数量，是**界面状态**：底部下单框和画布右键菜单共用同一个数，
+   * 所以右键菜单里的「买入 N 手」永远和你在下单框里填的一致。
+   */
+  const orderQuantity = ref(1)
 
   const bars = computed(() => instance.value?.bars ?? [])
   const cursor = computed(() => instance.value?.cursor ?? 0)
@@ -104,11 +109,9 @@ export const useReplayStore = defineStore('replay', () => {
   }
 
   function send(msg: ClientMessage): boolean {
-    if (!socket.send(msg)) {
-      noteError('还没连上服务端（看一下菜单 4 的窗口是不是还开着）')
-      return false
-    }
-    return true
+    // 连不上就静默失败：顶栏的「已断开（正在自动重连）」已经把状态说清楚了，
+    // 再弹一个提示框纯属噪音（而且崩的是 WS，不是用户点错了什么）。
+    return socket.send(msg)
   }
 
   function handleMessage(msg: ServerMessage): void {
@@ -381,6 +384,7 @@ export const useReplayStore = defineStore('replay', () => {
     selectedAnnotation,
     theme,
     showEma,
+    orderQuantity,
     tick,
     priceDecimals,
     // 派生

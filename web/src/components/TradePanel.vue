@@ -25,17 +25,17 @@ function pnlClass(v: number): string {
 <template>
   <div class="flex h-full min-h-0 flex-col">
     <!-- 累计已实现盈亏放在左边「持仓」那一列（同一个数字只在一处显示） -->
-    <div class="flex items-center justify-between px-2 py-1 text-[10px] text-faint">
+    <div class="flex items-center justify-between px-2 py-1 text-[11px] text-faint">
       <span>成交记录 {{ trades.length }} 笔</span>
       <span>盈亏 = 平掉那部分实现的</span>
     </div>
 
-    <div v-if="trades.length === 0" class="px-2 text-[10px] text-faint">
+    <div v-if="trades.length === 0" class="px-2 text-[11px] text-faint">
       还没有成交。挂一张单，然后点「下一根」让它有机会被触发。
     </div>
 
     <div v-else class="min-h-0 flex-1 overflow-auto">
-      <table class="w-full text-[10px]">
+      <table class="w-full text-[11px]">
         <thead class="sticky top-0 bg-elev text-faint">
           <tr class="text-left">
             <th class="px-2 py-1 font-normal">时间</th>

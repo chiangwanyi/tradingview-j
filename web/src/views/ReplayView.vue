@@ -56,37 +56,37 @@ onMounted(() => {
 
 <template>
   <div class="flex h-screen flex-col bg-surface text-ink">
-    <header class="flex h-10 shrink-0 items-center gap-3 border-b border-line bg-panel px-3">
-      <span class="text-sm font-semibold tracking-wide">看盘 · 复盘</span>
-      <span class="text-[10px] text-faint">v{{ store.me?.version ?? '' }}</span>
+    <header class="flex h-11 shrink-0 items-center gap-3 border-b border-line bg-panel px-3">
+      <span class="text-[15px] font-semibold tracking-wide">看盘 · 复盘</span>
+      <span class="text-[11px] text-faint">v{{ store.me?.version ?? '' }}</span>
 
-      <span class="flex items-center gap-1.5 text-[11px] text-dim">
+      <span class="flex items-center gap-1.5 text-[12px] text-dim">
         <span class="h-1.5 w-1.5 rounded-full" :class="statusColor" />
         {{ statusText }}
       </span>
 
-      <span v-if="store.me" class="rounded bg-elev px-1.5 py-0.5 text-[10px] text-dim">
+      <span v-if="store.me" class="rounded bg-elev px-1.5 py-0.5 text-[11px] text-dim">
         {{ store.me.name }}
         <span v-if="store.isOperator" class="text-emerald-600 dark:text-emerald-400">（操作者）</span>
         <span v-else-if="store.instance" class="text-faint">（观众）</span>
       </span>
 
-      <div v-if="store.instance" class="flex min-w-0 items-center gap-2 text-[11px] text-dim">
+      <div v-if="store.instance" class="flex min-w-0 items-center gap-2 text-[12px] text-dim">
         <span class="h-4 w-px bg-line" />
         <span class="truncate font-medium text-ink">{{ store.instance.symbol }}</span>
-        <span class="tnum text-[10px] text-faint">{{ store.instance.anchor }}</span>
-        <span class="text-[10px] text-faint">{{ cursorText }}</span>
-        <span class="tnum text-[10px] text-faint">tick {{ store.tick }}</span>
-        <span v-if="store.instance.bot" class="rounded bg-sky-600/20 px-1.5 text-[10px] text-sky-600 dark:text-sky-300">
+        <span class="tnum text-[11px] text-faint">{{ store.instance.anchor }}</span>
+        <span class="text-[11px] text-faint">{{ cursorText }}</span>
+        <span class="tnum text-[11px] text-faint">tick {{ store.tick }}</span>
+        <span v-if="store.instance.bot" class="rounded bg-sky-600/20 px-1.5 text-[11px] text-sky-600 dark:text-sky-300">
           机器人演示中
         </span>
       </div>
-      <div v-else class="text-[11px] text-faint">没有进入实例</div>
+      <div v-else class="text-[12px] text-faint">没有进入实例</div>
 
       <div class="ml-auto flex items-center gap-2">
         <button
           type="button"
-          class="rounded border border-line px-2 py-1 text-[11px] text-dim hover:border-accent hover:text-accent"
+          class="rounded border border-line px-2 py-1 text-[12px] text-dim hover:border-accent hover:text-accent"
           :title="`切换到${themeLabel}模式`"
           @click="store.toggleTheme()"
         >
@@ -96,7 +96,7 @@ onMounted(() => {
         <button
           v-if="store.instance"
           type="button"
-          class="rounded border border-line px-2 py-1 text-[11px] text-dim hover:border-accent hover:text-accent"
+          class="rounded border border-line px-2 py-1 text-[12px] text-dim hover:border-accent hover:text-accent"
           @click="store.leaveInstance()"
         >
           离开
@@ -117,7 +117,7 @@ onMounted(() => {
       <div
         v-if="store.lastError"
         :key="store.errorKey"
-        class="absolute right-2 bottom-2 z-50 max-w-md rounded border border-red-300 bg-red-50/95 px-3 py-2 text-xs text-red-800 shadow-lg dark:border-red-700 dark:bg-red-950/95 dark:text-red-100"
+        class="absolute right-2 bottom-2 z-50 max-w-md rounded border border-red-300 bg-red-50/95 px-3 py-2 text-[13px] text-red-800 shadow-lg dark:border-red-700 dark:bg-red-950/95 dark:text-red-100"
       >
         <div class="flex items-start gap-3">
           <span class="flex-1">{{ store.lastError }}</span>

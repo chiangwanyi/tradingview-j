@@ -35,7 +35,7 @@ const hasMoreHint = computed(() => {
   return `已加载 ${inst.bars.length + inst.hiddenBars} 根，数据目录里没有更晚的了`
 })
 
-const btn = 'rounded border border-line px-2 py-1 text-[11px] transition disabled:cursor-not-allowed disabled:opacity-40'
+const btn = 'rounded border border-line px-2 py-1 text-[12px] transition disabled:cursor-not-allowed disabled:opacity-40'
 const btnIdle = 'bg-panel text-dim hover:border-accent hover:text-accent'
 </script>
 
@@ -73,7 +73,7 @@ const btnIdle = 'bg-panel text-dim hover:border-accent hover:text-accent'
       />
     </div>
 
-    <span class="text-[10px] text-faint">Ctrl 吸附 OHLC</span>
+    <span class="text-[11px] text-faint">Ctrl 吸附 OHLC</span>
 
     <div class="h-4 w-px bg-line" />
 
@@ -90,7 +90,7 @@ const btnIdle = 'bg-panel text-dim hover:border-accent hover:text-accent'
 
     <button
       type="button"
-      class="rounded bg-emerald-600 px-3 py-1 text-[11px] font-medium text-white hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-40"
+      class="rounded bg-emerald-600 px-3 py-1 text-[12px] font-medium text-white hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-40"
       :disabled="!canEdit || !store.instance || (store.instance?.bars.length ?? 0) === 0"
       title="揭示下一根 K 线（会按这根的最高/最低价撮合挂单）"
       @click="store.step()"
@@ -126,13 +126,13 @@ const btnIdle = 'bg-panel text-dim hover:border-accent hover:text-accent'
     <button
       v-else
       type="button"
-      class="rounded bg-sky-600 px-2 py-1 text-[11px] text-white hover:bg-sky-500"
+      class="rounded bg-sky-600 px-2 py-1 text-[12px] text-white hover:bg-sky-500"
       @click="store.stopBot()"
     >
       停止机器人
     </button>
 
-    <div class="ml-auto flex items-center gap-3 text-[10px] text-dim">
+    <div class="ml-auto flex items-center gap-3 text-[11px] text-dim">
       <span v-if="store.instance">
         操作权：<b :class="store.isOperator ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'">
           {{ operator || '无人' }}

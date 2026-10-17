@@ -11,8 +11,8 @@ import type { Bar } from '@/types/protocol'
  * 不上报后端；但标注的最终坐标一律是「时间字符串 + 价格」，由后端校验后广播回来。
  */
 
-export const PRICE_AXIS_WIDTH = 78
-export const TIME_AXIS_HEIGHT = 22
+export const PRICE_AXIS_WIDTH = 86
+export const TIME_AXIS_HEIGHT = 24
 export const PLOT_TOP = 10
 export const PLOT_LEFT = 10
 
@@ -203,9 +203,14 @@ export class ChartScale {
     this.fitPrice(true)
   }
 
-  /** 时间轴刻度间隔（多少根一个标签），按「标签至少 96px 不重叠」来挑 */
+  /**
+   * 时间轴刻度间隔（多少根一个标签）。
+   *
+   * 标签现在是完整日期时间「周五 2026-10-16 09:35」，比以前的「09:35」长一倍多，
+   * 所以留白从 96px 抬到 180px —— 否则相邻两个标签会叠在一起。
+   */
   timeTickStep(): number {
-    const wanted = Math.ceil(96 / this.barWidth)
+    const wanted = Math.ceil(180 / this.barWidth)
     for (const step of [1, 2, 3, 4, 6, 12, 24, 48, 96, 288, 576]) {
       if (step >= wanted) return step
     }
@@ -267,6 +272,36 @@ export function formatPrice(v: number, decimals = 2): string {
 
 export function formatTick(tick: number): string {
   return tick.toFixed(decimalsForTick(tick)).replace(/0+$/, '').replace(/\.$/, '')
+}
+
+/**
+ * 把任意价格吸附到「这个标的上真实存在的报价」。
+ *
+ * MES 一跳 0.25，那么光标只能落在 6484.00 / 6484.25 / 6484.50 / 6484.75，
+ * 绝不会出现 6484.12 —— 鼠标停在两根刻度之间时，取**最近**的那个合法价。
+ *
+ * 没拿到 tick（还没进实例）时退化为两位小数，和加载时的四舍五入保持同一把尺子。
+ */
+export function snapToTick(price: number, tick: number): number {
+  if (!(tick > 0)) return roundTo(price, 2)
+  return roundTo(Math.round(price / tick) * tick, decimalsForTick(tick))
+}
+
+const WEEKDAYS = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'] as const
+
+/**
+ * "2026-10-16 09:35" -> "周五 2026-10-16 09:35"。
+ *
+ * 星期几用**本地日历**算（年/月/日直接喂给 Date，不经过时区换算），
+ * 所以不依赖字符串里的时间部分，也不会因为 UTC 偏移把日期算前一天。
+ */
+export function formatAxisTime(time: string): string {
+  const y = Number(time.slice(0, 4))
+  const m = Number(time.slice(5, 7))
+  const d = Number(time.slice(8, 10))
+  if (!(y > 1970) || !(m >= 1 && m <= 12) || !(d >= 1 && d <= 31)) return time
+  const wd = WEEKDAYS[new Date(y, m - 1, d).getDay()]
+  return wd ? `${wd} ${time}` : time
 }
 
 export function formatSigned(v: number, decimals = 2): string {

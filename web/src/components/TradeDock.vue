@@ -20,7 +20,7 @@ const collapsed = ref(false)
 
 const tabClass = (key: 'trade' | 'log') =>
   [
-    'rounded-t px-3 py-1 text-[11px] transition',
+    'rounded-t px-3 py-1 text-[12px] transition',
     tab.value === key && !collapsed.value
       ? 'bg-elev text-ink shadow-[inset_0_1px_0_var(--c-line)]'
       : 'text-dim hover:text-ink',
@@ -46,17 +46,17 @@ const summary = computed(() => {
         <span class="text-faint">({{ store.log.length }})</span>
       </button>
 
-      <span class="ml-auto truncate text-[10px] text-faint">{{ summary }}</span>
+      <span class="ml-auto truncate text-[11px] text-faint">{{ summary }}</span>
       <button
         type="button"
-        class="ml-2 rounded border border-line px-1.5 py-0.5 text-[10px] text-dim hover:border-accent hover:text-accent"
+        class="ml-2 rounded border border-line px-1.5 py-0.5 text-[11px] text-dim hover:border-accent hover:text-accent"
         @click="collapsed = !collapsed"
       >
         {{ collapsed ? '展开面板 ▲' : '收起面板 ▼' }}
       </button>
     </div>
 
-    <div v-show="!collapsed" class="h-[11.5rem] border-t border-line">
+    <div v-show="!collapsed" class="h-[12.75rem] border-t border-line">
       <OrderPanel v-show="tab === 'trade'" />
       <EventLog v-show="tab === 'log'" />
     </div>

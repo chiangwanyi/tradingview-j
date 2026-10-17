@@ -189,8 +189,8 @@ B 比 A 多两件事：真实 `web/dist`（顺带验了静态托管）、真实�
 ```powershell
 # 1) 产物名带版本；2) exe 属性里有版本；3) 程序自己认这个版本
 dir tv-capture-v*.exe
-(Get-Item .\tv-capture-v0.2.0.exe).VersionInfo | Select-Object FileVersion,ProductVersion,ProductName
-.\tv-capture-v0.2.0.exe     # 横幅第一行应当是 tradingview-j  v0.2.0
+(Get-Item .\tv-capture-v0.4.0.exe).VersionInfo | Select-Object FileVersion,ProductVersion,ProductName
+.\tv-capture-v0.4.0.exe     # 横幅第一行应当是 tradingview-j  v0.2.0
 ```
 
 ### 本机环境：智能应用控制会拦 `go test` / `go run`

@@ -80,8 +80,9 @@ web/
 │  ├─ router/index.ts      一条路由：/ → ReplayView
 │  ├─ views/ReplayView.vue 页面骨架（页头 / 画布 / 底部 Tab 条）
 │  └─ components/
-│     ├─ chart/scale.ts    坐标变换（时间索引 ⇄ 像素、价格 ⇄ 像素）+ 刻度
-│     ├─ chart/render.ts   Canvas 绘制（K 线、EMA20、挂单线、十字光标）+ 两套 ChartTheme
+│     ├─ chart/scale.ts    坐标变换（时间索引 ⇄ 像素、价格 ⇄ 像素）+ 刻度 + tick 吸附 + 轴上时间文案
+│     ├─ chart/trades.ts   成交流水 → 「开仓均价 → 平仓价」线段（纯函数，只读）
+│     ├─ chart/render.ts   Canvas 绘制（K 线、EMA20、挂单/成本线、成交三角、十字光标）+ 两套 ChartTheme
 │     ├─ ChartPanel.vue    Canvas + SVG 容器与全部指针交互（平移 / 缩放 / 画 / 拖 / 吸附）
 │     ├─ ChartToolbar.vue  工具选择、颜色、EMA20 开关、步进、接管、机器人
 │     ├─ InstancesMenu.vue 右上角折叠面板：标的、随机/指定时间建实例、实例列表与删除
@@ -108,6 +109,7 @@ web/
 | 操作 | 本地立即做 | 等后端确认 |
 |---|---|---|
 | 缩放 / 平移 / 十字光标 | ✅ 全部本地 | 不发消息 |
+| 右键菜单算价格 / 复制到剪贴板 | ✅ 全部本地 | 不发消息（挂单那两项才发） |
 | 步进、下单、撤单、切工具选择后的落笔 | ❌ | ✅ |
 | 画标注（拖动中） | ✅ 虚线预览 | ✅ 松手后由后端重算并广播定稿 |
 | 拖动已有标注 | ✅ 跟随指针 | ✅ 松手后发 `annotation_move` |
@@ -172,10 +174,27 @@ web/
 内联脚本里的键名必须和 `THEME_KEY` 一致。
 
 **tick**：`store.tick` 来自 `instance.tick`（Go 侧从 `data/_symbols.json` 读，缺失时走
-`store.DefaultTick` 的兜底表）。它决定两件事：
+`store.DefaultTick` 的兜底表）。它决定三件事：
 ① 价格轴刻度步长抬到它的整数倍（`niceTicks`，不会出现这个标的没有的价）；
-② 显示小数位（`decimalsForTick`，最少 2 位 —— 价格已经四舍五入到两位，只留一位会显示错）。
+② **十字光标与右键菜单的价格吸附到它的整数倍**（`snapToTick`，MES 只能是 .00/.25/.50/.75）；
+③ 显示小数位（`decimalsForTick`，最少 2 位 —— 价格已经四舍五入到两位，只留一位会显示错）。
 下单框的 `step` 也用它。
+
+**画布上的交易痕迹**（v1.2）：`render.ts` 里画三样东西，**都画在 Canvas 上，不是标注** ——
+所以它们不能选中、不能拖动、不能删除：
+
+| 画什么 | 数据来源 | 何时出现 |
+|---|---|---|
+| 成本线（贯穿全宽 + 左边标签「多 N @ 价 · 已实现 P」） | `instance.position` / `realizedPnl` | `position.side !== 'flat'` |
+| 成交三角（买上 / 卖下，尖顶住成交价） | `instance.trades` | 有成交就有 |
+| 开平连线（虚线，开仓均价 → 平仓价） | `chart/trades.ts` 的 `closedTrades()` | 有平仓段就有 |
+
+配对规则跟后端 `applyFill` 的**平均成本法**一致（加仓摊平、反向平多少、反手成本 = 本笔价）；
+`pnl` 直接用 `Trade.realizedPnl`，前端不算钱。
+
+**右键菜单**（`ChartPanel.vue`）：`@contextmenu` 在按下那一刻把 `priceAtY` 吸附到 tick 并存进
+`menu`，三项动作都基于这个定死的价格。「N 手」读的是 `store.orderQuantity` —— 和底部下单框
+是同一个数。菜单自身 `@pointerdown.stop`，否则画布的 pointerdown 会先把它关掉。
 
 **布局**：`ReplayView.vue` = 顶栏（状态 / 当前实例 / 主题 / 标的与实例 / 离开）+ 工具条 +
 画布 + `TradeDock`（底部 Tab）。左右两条常驻栏都去掉了，目的是把空间让给画布；

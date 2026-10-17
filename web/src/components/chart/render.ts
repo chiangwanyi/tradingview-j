@@ -1,11 +1,16 @@
-import type { Order } from '@/types/protocol'
+import type { Order, Position, Trade } from '@/types/protocol'
 
+import type { ClosedTrade } from './trades'
 import {
   ChartScale,
+  clamp,
   decimalsForTick,
+  formatAxisTime,
   formatPrice,
+  formatSigned,
   formatTick,
   niceTicks,
+  snapToTick,
   type ChartLayout,
 } from './scale'
 
@@ -52,6 +57,15 @@ export interface ChartTheme {
   orderBuyBox: string
   orderSellBox: string
   orderText: string
+  /** 持仓成本线（多头 / 空头各一色）+ 标签 */
+  posLong: string
+  posShort: string
+  posLongBox: string
+  posShortBox: string
+  posText: string
+  /** 成交标记：买入三角 / 卖出三角 / 「开仓→平仓」连线 */
+  tradeBuy: string
+  tradeSell: string
   /** 选中标注的虚线框 */
   selection: string
 }
@@ -77,6 +91,13 @@ export const DARK_THEME: ChartTheme = {
   orderBuyBox: 'rgba(30, 64, 175, 0.9)',
   orderSellBox: 'rgba(124, 45, 18, 0.9)',
   orderText: '#e2e8f0',
+  posLong: 'rgba(34, 197, 94, 0.9)',
+  posShort: 'rgba(239, 68, 68, 0.9)',
+  posLongBox: 'rgba(6, 78, 59, 0.92)',
+  posShortBox: 'rgba(127, 29, 29, 0.92)',
+  posText: '#f1f5f9',
+  tradeBuy: '#4ade80',
+  tradeSell: '#f87171',
   selection: '#cbd5e1',
 }
 
@@ -101,6 +122,13 @@ export const LIGHT_THEME: ChartTheme = {
   orderBuyBox: 'rgba(37, 99, 235, 0.95)',
   orderSellBox: 'rgba(180, 83, 9, 0.95)',
   orderText: '#ffffff',
+  posLong: 'rgba(21, 128, 61, 0.9)',
+  posShort: 'rgba(185, 28, 28, 0.9)',
+  posLongBox: '#15803d',
+  posShortBox: '#b91c1c',
+  posText: '#ffffff',
+  tradeBuy: '#15803d',
+  tradeSell: '#b91c1c',
   selection: '#334155',
 }
 
@@ -122,16 +150,24 @@ export interface DrawInput {
   hover: HoverState | null
   symbol: string
   orders: Order[]
+  trades: Trade[]
+  /** 已经配好对的「开仓 → 平仓」（见 chart/trades.ts），画连线用 */
+  closed: ClosedTrade[]
+  position: Position
+  realizedPnl: number
   showEma: boolean
   /** 最小跳动，来自 _symbols.json（0.25 / 0.1 / 0.01…） */
   tick: number
 }
 
-const MONO = '11px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace'
-const MONO_BOLD = '600 11px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace'
+const MONO = '12px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace'
+const MONO_BOLD = '600 12px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace'
+/** 价格轴/时间轴上那种实心小标签的高度（12px 字放进去不挤） */
+const AXIS_LABEL_H = 18
 
 export function drawChart(input: DrawInput): void {
-  const { ctx, scale, theme, hover, symbol, orders, showEma, tick } = input
+  const { ctx, scale, theme, hover, symbol, orders, trades, closed, position, realizedPnl, showEma, tick } =
+    input
   const { width, height } = scale
   const layout: ChartLayout = scale.layout
   const decimals = decimalsForTick(tick)
@@ -155,11 +191,14 @@ export function drawChart(input: DrawInput): void {
 
   drawGrid(ctx, scale, theme, priceTicks)
   drawCandles(ctx, scale, theme, showEma)
+  // 成交标记压在 K 线上面：复盘时要一眼看到「哪里开、哪里平」
+  drawTradeMarks(ctx, scale, theme, trades, closed)
   drawOrders(ctx, scale, theme, orders)
+  drawPositionLine(ctx, scale, theme, position, realizedPnl, decimals)
   drawLastPrice(ctx, scale, theme, decimals)
   drawAxes(ctx, scale, theme, priceTicks, decimals, tick)
   drawWatermark(ctx, layout, theme, symbol)
-  if (hover && hover.inside) drawCrosshair(ctx, scale, theme, hover, decimals)
+  if (hover && hover.inside) drawCrosshair(ctx, scale, theme, hover, decimals, tick)
 
   ctx.restore()
 }
@@ -304,9 +343,114 @@ function drawOrders(
     const textWidth = ctx.measureText(label).width
     const boxX = plot.right - textWidth - 8
     ctx.fillStyle = isBuy ? theme.orderBuyBox : theme.orderSellBox
-    ctx.fillRect(boxX - 3, y - 8, textWidth + 6, 15)
+    ctx.fillRect(boxX - 4, y - 9, textWidth + 8, AXIS_LABEL_H)
     ctx.fillStyle = theme.orderText
     ctx.fillText(label, boxX, y + 0.5)
+  }
+}
+
+/**
+ * 未平仓持仓：一条横线贯穿整个价格区，标出**成本价**和**已实现盈亏**。
+ *
+ * 多头绿、空头红（深色主题是亮绿/亮红，浅色主题压暗一档，白底上才看得清）。
+ * 标签贴左边：右边留给挂单标签（也是同一行的矩形块），两者不会叠在一起。
+ */
+function drawPositionLine(
+  ctx: CanvasRenderingContext2D,
+  scale: ChartScale,
+  theme: ChartTheme,
+  position: Position,
+  realizedPnl: number,
+  decimals: number,
+): void {
+  if (!position || position.side === 'flat' || !(position.averagePrice > 0)) return
+  const { plot } = scale.layout
+  const y = Math.round(scale.yOf(position.averagePrice)) + 0.5
+  if (y < plot.top || y > plot.bottom) return
+
+  const long = position.side === 'long'
+  const qty = long ? position.quantity : -position.quantity
+
+  ctx.strokeStyle = long ? theme.posLong : theme.posShort
+  ctx.lineWidth = 1.4
+  ctx.beginPath()
+  ctx.moveTo(plot.left, y)
+  ctx.lineTo(plot.right, y)
+  ctx.stroke()
+
+  const label =
+    `${long ? '多' : '空'} ${Math.abs(qty)} @ ${formatPrice(position.averagePrice, decimals)}` +
+    ` · 已实现 ${formatSigned(realizedPnl, decimals)}`
+  ctx.font = MONO_BOLD
+  const w = ctx.measureText(label).width + 12
+  ctx.fillStyle = long ? theme.posLongBox : theme.posShortBox
+  ctx.fillRect(plot.left + 2, y - 9, w, 18)
+  ctx.fillStyle = theme.posText
+  ctx.textAlign = 'left'
+  ctx.textBaseline = 'middle'
+  ctx.fillText(label, plot.left + 8, y + 0.5)
+}
+
+/**
+ * 成交标记：每笔成交一个三角（买 = 上三角、卖 = 下三角），
+ * 再加一条「开仓均价 → 平仓价」的连线 —— 一眼看出这一仓是赚是亏、拿了多久。
+ *
+ * 全部画在 Canvas 上（不是 SVG 标注），所以**不能选中、不能拖动、不能删除**。
+ */
+function drawTradeMarks(
+  ctx: CanvasRenderingContext2D,
+  scale: ChartScale,
+  theme: ChartTheme,
+  trades: Trade[],
+  closed: ClosedTrade[],
+): void {
+  if (trades.length === 0) return
+  const { plot } = scale.layout
+
+  // 先画连线，三角形压在上面
+  for (const c of closed) {
+    const i1 = scale.indexOfTime(c.openTime)
+    const i2 = scale.indexOfTime(c.closeTime)
+    if (i1 === undefined || i2 === undefined) continue
+    ctx.strokeStyle = c.side === 'long' ? theme.tradeBuy : theme.tradeSell
+    ctx.globalAlpha = 0.7
+    ctx.lineWidth = 1.2
+    ctx.setLineDash([4, 3])
+    ctx.beginPath()
+    ctx.moveTo(scale.xOf(i1), scale.yOf(c.openPrice))
+    ctx.lineTo(scale.xOf(i2), scale.yOf(c.closePrice))
+    ctx.stroke()
+    ctx.setLineDash([])
+    ctx.globalAlpha = 1
+  }
+
+  const half = 5
+  const tall = 7
+  for (const t of trades) {
+    const i = scale.indexOfTime(t.time)
+    if (i === undefined) continue
+    const x = scale.xOf(i)
+    const y = scale.yOf(t.price)
+    if (y < plot.top - tall || y > plot.bottom + tall) continue
+
+    ctx.beginPath()
+    if (t.side === 'buy') {
+      // 上三角：尖朝上顶住成交价，身子在价格下方
+      ctx.moveTo(x, y - 1)
+      ctx.lineTo(x - half, y + tall)
+      ctx.lineTo(x + half, y + tall)
+    } else {
+      // 下三角：尖朝下顶住成交价，身子在价格上方
+      ctx.moveTo(x, y + 1)
+      ctx.lineTo(x - half, y - tall)
+      ctx.lineTo(x + half, y - tall)
+    }
+    ctx.closePath()
+    ctx.fillStyle = t.side === 'buy' ? theme.tradeBuy : theme.tradeSell
+    ctx.fill()
+    ctx.strokeStyle = theme.bg
+    ctx.lineWidth = 1
+    ctx.stroke()
   }
 }
 
@@ -349,7 +493,7 @@ function drawAxisBox(
 ): void {
   const { plot } = scale.layout
   ctx.font = MONO_BOLD
-  const h = 16
+  const h = AXIS_LABEL_H
   ctx.fillStyle = bg
   ctx.fillRect(plot.right + 1, y - h / 2, scale.width - plot.right - 2, h)
   ctx.fillStyle = fg
@@ -385,23 +529,23 @@ function drawAxes(
     ctx.fillText(`tick ${formatTick(tick)}`, plot.right + 5, scale.height - 3)
   }
 
-  // 时间轴
+  // 时间轴：**完整日期时间**「周五 2026-10-16 09:35」。
+  // 只写 09:35 看不出是哪一天，复盘跨了好几天的行情时特别容易看错。
   const step = scale.timeTickStep()
   const { from, to } = scale.visibleRange()
   const first = Math.ceil(from / step) * step
   ctx.textAlign = 'center'
   ctx.textBaseline = 'top'
-  let prevDate = ''
   for (let i = first; i <= to; i += step) {
     const b = scale.bars[i]
     if (!b) continue
     const x = scale.xOf(i)
-    if (x < plot.left + 20 || x > plot.right - 20) continue
-    const date = b.time.slice(0, 10)
-    const label = date !== prevDate ? b.time.slice(5, 16) : b.time.slice(11, 16)
-    prevDate = date
+    const label = formatAxisTime(b.time)
+    const half = ctx.measureText(label).width / 2 + 4
+    // 贴边的那两个标签会各被裁掉一半，干脆不画
+    if (x - half < plot.left || x + half > plot.right) continue
     ctx.fillStyle = theme.textDim
-    ctx.fillText(label, x, timeAxis.top + 4)
+    ctx.fillText(label, x, timeAxis.top + 5)
   }
 }
 
@@ -428,11 +572,18 @@ function drawCrosshair(
   theme: ChartTheme,
   hover: HoverState,
   decimals: number,
+  tick: number,
 ): void {
   const { plot, timeAxis } = scale.layout
   const b = scale.bars[hover.index]
   if (!b) return
   const x = Math.round(scale.xOf(hover.index)) + 0.5
+
+  // 光标的价格**吸附到最小跳动**：MES 只能停在 xxxx.00/.25/.50/.75，
+  // 不会出现 6484.12 这种这个标的根本不存在的报价。横线也跟着这条价格走，
+  // 所以看到标签上的数字，就是横线所在位置的真实价格。
+  const price = snapToTick(scale.priceAtY(hover.y), tick)
+  const y = clamp(scale.yOf(price), plot.top, plot.bottom)
 
   ctx.strokeStyle = theme.crosshair
   ctx.lineWidth = 1
@@ -440,30 +591,21 @@ function drawCrosshair(
   ctx.beginPath()
   ctx.moveTo(x, plot.top)
   ctx.lineTo(x, plot.bottom)
-  ctx.moveTo(plot.left, Math.round(hover.y) + 0.5)
-  ctx.lineTo(plot.right, Math.round(hover.y) + 0.5)
+  ctx.moveTo(plot.left, Math.round(y) + 0.5)
+  ctx.lineTo(plot.right, Math.round(y) + 0.5)
   ctx.stroke()
   ctx.setLineDash([])
 
   // 价格标签
-  if (hover.y >= plot.top && hover.y <= plot.bottom) {
-    drawAxisBox(
-      ctx,
-      scale,
-      formatPrice(scale.priceAtY(hover.y), decimals),
-      Math.round(hover.y),
-      theme.crossBoxBg,
-      theme.crossBoxText,
-    )
-  }
+  drawAxisBox(ctx, scale, formatPrice(price, decimals), Math.round(y), theme.crossBoxBg, theme.crossBoxText)
 
-  // 时间标签
+  // 时间标签（同样给完整日期时间，和刻度标签一个格式）
   ctx.font = MONO
-  const label = b.time.slice(5, 16)
+  const label = formatAxisTime(b.time)
   const w = ctx.measureText(label).width + 10
   const boxX = Math.min(Math.max(x - w / 2, plot.left), scale.width - w - 2)
   ctx.fillStyle = theme.crossBoxBg
-  ctx.fillRect(boxX, timeAxis.top + 2, w, 16)
+  ctx.fillRect(boxX, timeAxis.top + 2, w, AXIS_LABEL_H)
   ctx.fillStyle = theme.crossBoxText
   ctx.textAlign = 'center'
   ctx.textBaseline = 'top'

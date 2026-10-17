@@ -2,9 +2,10 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 
 import { drawChart, themeOf, type HoverState } from '@/components/chart/render'
-import { ChartScale, TIME_AXIS_HEIGHT, formatPrice } from '@/components/chart/scale'
+import { ChartScale, TIME_AXIS_HEIGHT, formatAxisTime, formatPrice, snapToTick } from '@/components/chart/scale'
+import { closedTrades } from '@/components/chart/trades'
 import { useReplayStore } from '@/stores/replay'
-import type { Bar, Point } from '@/types/protocol'
+import type { Bar, OrderKind, Point, Side } from '@/types/protocol'
 
 /**
  * 画布 = Canvas（K 线/指标/挂单价线/十字光标）+ SVG（标注图形）。
@@ -35,6 +36,17 @@ const size = ref({ width: 0, height: 0 })
 const viewTick = ref(0)
 const hover = ref<HoverState | null>(null)
 const ctrlDown = ref(false)
+
+/**
+ * 右键小菜单：位置（画布内的本地像素）+ **已经吸附到最小跳动**的价格。
+ *
+ * 菜单只提供「按这个价格挂单 / 复制这个价格」，所以价格必须在打开那一刻就定死，
+ * 不能等点击时再从鼠标位置算一遍 —— 手一抖价格就变了。
+ */
+const menu = ref<{ x: number; y: number; price: number } | null>(null)
+/** 复制价格/挂单成功后的一句轻提示（1.4 秒自己消失） */
+const toast = ref('')
+let toastTimer = 0
 
 interface ChartPoint {
   time: string
@@ -97,13 +109,19 @@ function draw(): void {
   const ctx = el.getContext('2d')
   if (!ctx) return
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
+  const inst = store.instance
+  const trades = inst?.trades ?? []
   drawChart({
     ctx,
     scale,
     theme: theme.value,
     hover: hover.value,
-    symbol: store.instance?.symbol ?? '',
-    orders: store.instance?.orders ?? [],
+    symbol: inst?.symbol ?? '',
+    orders: inst?.orders ?? [],
+    trades,
+    closed: closedTrades(trades),
+    position: inst?.position ?? { quantity: 0, side: 'flat', averagePrice: 0 },
+    realizedPnl: inst?.realizedPnl ?? 0,
     showEma: store.showEma,
     tick: store.tick,
   })
@@ -162,6 +180,20 @@ watch(
 
 watch(
   () => store.instance?.orders,
+  () => requestDraw(),
+)
+
+// 成交/平仓会改变画布上的三角与连线，也要立刻重画
+watch(
+  () => store.instance?.trades,
+  () => requestDraw(),
+)
+watch(
+  () => store.instance?.position,
+  () => requestDraw(),
+)
+watch(
+  () => store.instance?.realizedPnl,
   () => requestDraw(),
 )
 
@@ -260,6 +292,7 @@ function localPoint(ev: { clientX: number; clientY: number }): { x: number; y: n
 }
 
 function onPointerDown(ev: PointerEvent): void {
+  menu.value = null
   if (!store.instance) return
   const p = localPoint(ev)
   if (!p) return
@@ -405,6 +438,7 @@ function onPointerLeave(): void {
 }
 
 function onWheel(ev: WheelEvent): void {
+  menu.value = null
   if (!store.instance) return
   ev.preventDefault()
   const p = localPoint(ev)
@@ -422,6 +456,92 @@ function onDoubleClick(): void {
   scale.resetPrice()
   requestDraw()
 }
+
+// ---------------- 右键小菜单 ----------------
+
+/** 菜单里那句价格：三位小数（BTCUSDT 0.1 一跳）也不会被截成两位 */
+const menuPriceText = computed(() => (menu.value ? formatPrice(menu.value.price, store.priceDecimals) : ''))
+
+/** 靠边右键时把菜单挪回画布内，别一半露在窗口外面 */
+const menuStyle = computed(() => {
+  const m = menu.value
+  if (!m) return {}
+  const w = 226
+  const h = 112
+  return {
+    left: `${Math.max(4, Math.min(m.x, size.value.width - w - 4))}px`,
+    top: `${Math.max(4, Math.min(m.y, size.value.height - h - 4))}px`,
+    width: `${w}px`,
+  }
+})
+
+function onContextMenu(ev: MouseEvent): void {
+  ev.preventDefault()
+  if (!store.instance) return
+  const p = localPoint(ev)
+  if (!p) return
+  menu.value = { x: p.x, y: p.y, price: snapToTick(scale.priceAtY(p.y), store.tick) }
+}
+
+function showToast(text: string): void {
+  toast.value = text
+  if (toastTimer) window.clearTimeout(toastTimer)
+  toastTimer = window.setTimeout(() => {
+    toast.value = ''
+  }, 1400)
+}
+
+function menuOrder(side: Side, kind: OrderKind): void {
+  const m = menu.value
+  if (!m) return
+  if (!store.canOperate) {
+    showToast('现在只能看：先「接管」操作权再下单')
+    menu.value = null
+    return
+  }
+  store.placeOrder(side, kind, m.price, store.orderQuantity)
+  menu.value = null
+  showToast(`已挂 ${side === 'buy' ? '买入' : '卖出'}${kind === 'limit' ? '限价' : '止损'} ${formatPrice(m.price, store.priceDecimals)}`)
+}
+
+async function menuCopy(): Promise<void> {
+  const m = menu.value
+  if (!m) return
+  const text = formatPrice(m.price, store.priceDecimals)
+  const ok = await copyText(text)
+  menu.value = null
+  showToast(ok ? `已复制 ${text}` : '复制失败：浏览器不允许访问剪贴板')
+}
+
+/** 剪贴板：优先 Clipboard API，非安全上下文（http + 非 localhost）退回老办法 */
+async function copyText(text: string): Promise<boolean> {
+  try {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(text)
+      return true
+    }
+  } catch {
+    // 落到下面的兜底
+  }
+  try {
+    const ta = document.createElement('textarea')
+    ta.value = text
+    ta.style.position = 'fixed'
+    ta.style.top = '-1000px'
+    ta.style.opacity = '0'
+    document.body.appendChild(ta)
+    ta.select()
+    const ok = document.execCommand('copy')
+    document.body.removeChild(ta)
+    return ok
+  } catch {
+    return false
+  }
+}
+
+onBeforeUnmount(() => {
+  if (toastTimer) window.clearTimeout(toastTimer)
+})
 
 // ---------------- 提交 ----------------
 
@@ -519,6 +639,7 @@ function onKeyDown(ev: KeyboardEvent): void {
     drag = emptyDrag()
     endPointerCapture()
     store.selectedAnnotation = null
+    menu.value = null
     requestDraw()
     return
   }
@@ -556,7 +677,7 @@ function measureText(text: string): number {
     measureCtx = c.getContext('2d')
   }
   if (!measureCtx) return text.length * 12
-  measureCtx.font = '12px system-ui, "Microsoft YaHei", sans-serif'
+  measureCtx.font = '13px "Segoe UI", system-ui, "Microsoft YaHei", sans-serif'
   return measureCtx.measureText(text).width
 }
 
@@ -650,8 +771,9 @@ const priceHint = computed(() => {
   if (!h) return ''
   const bar = scale.bars[h.index]
   if (!bar) return ''
-  const p = scale.priceAtY(h.y)
-  return `${bar.time}   ${formatPrice(p, store.priceDecimals)}`
+  // 和十字光标同一个口径：价格先吸附到最小跳动，再显示
+  const p = snapToTick(scale.priceAtY(h.y), store.tick)
+  return `${formatAxisTime(bar.time)}   ${formatPrice(p, store.priceDecimals)}`
 })
 
 defineExpose({ requestDraw })
@@ -667,7 +789,7 @@ defineExpose({ requestDraw })
     @pointermove="onPointerMove"
     @pointerleave="onPointerLeave"
     @dblclick="onDoubleClick"
-    @contextmenu.prevent
+    @contextmenu="onContextMenu"
   >
     <canvas ref="canvas" class="absolute inset-0 block h-full w-full" />
 
@@ -740,8 +862,8 @@ defineExpose({ requestDraw })
             :x="s.x1 + 1"
             :y="s.y1 + 1"
             :fill="s.color"
-            font-size="12"
-            font-family='system-ui, "Microsoft YaHei", sans-serif'
+            font-size="13"
+            font-family='"Segoe UI", system-ui, "Microsoft YaHei", sans-serif'
             dominant-baseline="middle"
           >
             {{ s.text }}
@@ -779,8 +901,8 @@ defineExpose({ requestDraw })
             :x="ghost.x1 + 1"
             :y="ghost.y1 + 1"
             :fill="ghost.color"
-            font-size="12"
-            font-family='system-ui, "Microsoft YaHei", sans-serif'
+            font-size="13"
+            font-family='"Segoe UI", system-ui, "Microsoft YaHei", sans-serif'
             dominant-baseline="middle"
             opacity="0.8"
           >
@@ -804,23 +926,71 @@ defineExpose({ requestDraw })
       以前贴在 bottom-1，正好压在时间标签上，一眼全是重影。
     -->
     <div
-      class="pointer-events-none absolute right-2 flex items-baseline gap-3 text-[10px] text-faint"
+      class="pointer-events-none absolute right-2 flex items-baseline gap-3 text-[12px] text-faint"
       :style="{ bottom: `${TIME_AXIS_HEIGHT + 4}px` }"
     >
       <span v-if="priceHint" class="tnum text-dim">{{ priceHint }}</span>
-      <span>滚轮缩放时间 · Shift+滚轮缩放价格 · 拖动平移 · 双击重置价格</span>
+      <span>滚轮缩放 · Shift+滚轮缩放价格 · 拖动平移 · 双击重置价格 · 右键挂单/复制价格</span>
     </div>
     <div
       v-if="snapLabel"
-      class="pointer-events-none absolute top-2 left-2 rounded bg-elev px-2 py-1 text-[11px] text-amber-600 ring-1 ring-line dark:text-amber-300"
+      class="pointer-events-none absolute top-2 left-2 rounded bg-elev px-2 py-1 text-[12px] text-amber-600 ring-1 ring-line dark:text-amber-300"
     >
       {{ snapLabel }}
     </div>
     <div
       v-if="store.instance && !store.instance.bars.length"
-      class="absolute inset-0 flex items-center justify-center text-sm text-dim"
+      class="absolute inset-0 flex items-center justify-center text-[15px] text-dim"
     >
       这个实例还没有 K 线
+    </div>
+
+    <!--
+      右键小菜单：价格在打开那一刻就算好（吸附到最小跳动），三项动作都基于这个价格。
+      菜单自身要 stop 掉 pointerdown —— 否则画布的 pointerdown 会先把菜单关掉，
+      click 就永远到不了按钮上。
+    -->
+    <div
+      v-if="menu"
+      class="absolute z-40 overflow-hidden rounded border border-line bg-panel py-1 text-[12px] text-ink shadow-2xl"
+      :style="menuStyle"
+      @pointerdown.stop
+      @contextmenu.stop.prevent
+    >
+      <button
+        type="button"
+        class="flex w-full items-center gap-2 px-3 py-1.5 text-left hover:bg-elev disabled:cursor-not-allowed disabled:opacity-40"
+        :disabled="!store.canOperate"
+        @click="menuOrder('buy', 'limit')"
+      >
+        <span class="h-0 w-0 border-x-[4px] border-b-[6px] border-x-transparent border-b-emerald-500" />
+        买入 {{ store.orderQuantity }} 手 {{ menuPriceText }} 限价
+      </button>
+      <button
+        type="button"
+        class="flex w-full items-center gap-2 px-3 py-1.5 text-left hover:bg-elev disabled:cursor-not-allowed disabled:opacity-40"
+        :disabled="!store.canOperate"
+        @click="menuOrder('sell', 'stop')"
+      >
+        <span class="h-0 w-0 border-x-[4px] border-t-[6px] border-x-transparent border-t-red-500" />
+        卖出 {{ store.orderQuantity }} 手 {{ menuPriceText }} 止损
+      </button>
+      <div class="my-1 h-px bg-line" />
+      <button
+        type="button"
+        class="flex w-full items-center gap-2 px-3 py-1.5 text-left hover:bg-elev"
+        @click="menuCopy"
+      >
+        <span class="h-2 w-2 shrink-0 rounded-[2px] border border-current opacity-60" />
+        复制价格 {{ menuPriceText }}
+      </button>
+    </div>
+
+    <div
+      v-if="toast"
+      class="pointer-events-none absolute top-2 left-1/2 -translate-x-1/2 rounded bg-elev px-3 py-1 text-[12px] text-ink shadow-lg ring-1 ring-line"
+    >
+      {{ toast }}
     </div>
   </div>
 </template>

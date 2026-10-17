@@ -65,7 +65,18 @@ body {
   margin: 0;
   background: var(--c-surface);
   color: var(--c-ink);
-  font-family: system-ui, -apple-system, 'Microsoft YaHei', sans-serif;
+  /*
+   * 字体：Windows 上先吃 "Segoe UI"（西文/数字形状最规矩），中文落到雅黑；
+   * macOS 走 -apple-system / 苹方。行高给 1.5 —— 复盘的表格、日志都是密排小字，
+   * 行距太挤会黏成一团。
+   */
+  font-family:
+    'Segoe UI', 'Inter', system-ui, -apple-system, 'PingFang SC', 'HarmonyOS Sans SC', 'Microsoft YaHei',
+    sans-serif;
+  font-size: 13px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
 }
 
 * {

@@ -122,11 +122,11 @@ function actionClass(action: string): string {
 
 <template>
   <div class="flex h-full flex-col">
-    <div class="flex items-center gap-2 px-2 py-1 text-[10px] text-faint">
+    <div class="flex items-center gap-2 px-2 py-1 text-[11px] text-faint">
       <span>服务端广播 · 共 {{ store.log.length }} 条</span>
       <span class="ml-auto">多用户按处理顺序广播</span>
     </div>
-    <div ref="box" class="min-h-0 flex-1 overflow-auto px-2 font-mono text-[10px] leading-5">
+    <div ref="box" class="min-h-0 flex-1 overflow-auto px-2 font-mono text-[11px] leading-5">
       <div v-if="rows.length === 0" class="text-faint">
         还没有操作。步进一根、画一个标注或挂一张单试试。
       </div>

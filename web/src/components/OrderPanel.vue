@@ -23,7 +23,6 @@ const store = useReplayStore()
 const side = ref<Side>('buy')
 const kind = ref<OrderKind>('limit')
 const price = ref<number>(0)
-const quantity = ref<number>(1)
 const manualPrice = ref(false)
 
 const inst = computed(() => store.instance)
@@ -68,8 +67,8 @@ function useCurrentPrice(): void {
 
 function submit(): void {
   if (!inst.value || !store.canOperate) return
-  if (!(price.value > 0) || !(quantity.value > 0)) return
-  store.placeOrder(side.value, kind.value, price.value, quantity.value)
+  if (!(price.value > 0) || !(store.orderQuantity > 0)) return
+  store.placeOrder(side.value, kind.value, price.value, store.orderQuantity)
 }
 
 const openOrders = computed(() => (inst.value?.orders ?? []).filter((o) => o.status === 'open'))
@@ -95,14 +94,14 @@ function pnlClass(v: number): string {
 }
 
 const inputClass =
-  'w-full rounded border border-line bg-surface px-1.5 py-1 text-[11px] text-ink tnum focus:border-accent focus:outline-none'
+  'w-full rounded border border-line bg-surface px-1.5 py-1 text-[12px] text-ink tnum focus:border-accent focus:outline-none'
 </script>
 
 <template>
   <div class="flex h-full min-h-0 divide-x divide-line">
     <!-- 下单 -->
-    <div class="flex w-[15.5rem] shrink-0 flex-col gap-1.5 p-2">
-      <div class="flex items-center justify-between text-[11px]">
+    <div class="flex w-[16.5rem] shrink-0 flex-col gap-1.5 p-2">
+      <div class="flex items-center justify-between text-[12px]">
         <span class="font-semibold">下单</span>
         <span class="tnum text-dim">现价 {{ priceText }}</span>
       </div>
@@ -120,7 +119,7 @@ const inputClass =
 
       <div class="grid grid-cols-2 gap-1.5">
         <label class="block">
-          <span class="text-[10px] text-faint">价格（跳动 {{ step }}）</span>
+          <span class="text-[11px] text-faint">价格（跳动 {{ step }}）</span>
           <input
             v-model.number="price"
             type="number"
@@ -130,18 +129,18 @@ const inputClass =
           />
         </label>
         <label class="block">
-          <span class="text-[10px] text-faint">数量</span>
-          <input v-model.number="quantity" type="number" min="0.01" step="1" :class="inputClass" />
+          <span class="text-[11px] text-faint">数量</span>
+          <input v-model.number="store.orderQuantity" type="number" min="0.01" step="1" :class="inputClass" />
         </label>
       </div>
 
       <div class="flex items-center gap-2">
-        <button type="button" class="text-[10px] text-accent hover:underline" @click="useCurrentPrice">
+        <button type="button" class="text-[11px] text-accent hover:underline" @click="useCurrentPrice">
           用现价
         </button>
         <button
           type="button"
-          class="ml-auto rounded bg-amber-600 px-3 py-1 text-[11px] font-medium text-white hover:bg-amber-500 disabled:cursor-not-allowed disabled:opacity-40"
+          class="ml-auto rounded bg-amber-600 px-3 py-1 text-[12px] font-medium text-white hover:bg-amber-500 disabled:cursor-not-allowed disabled:opacity-40"
           :disabled="!store.canOperate || !inst"
           @click="submit"
         >
@@ -150,17 +149,18 @@ const inputClass =
       </div>
 
       <!--
-        这两列加起来只有 184px 高，左边这列没有滚动条 —— 说明文字只留一行。
+        这两列加起来只有 200px 出头高（字号上调后从 184px 抬到 204px），
+        左边这列没有滚动条 —— 说明文字只留一行。
         完整规则（限价买 low<=价、限价卖 high>=价、止损相反、不计手续费/滑点）在
         docs/复盘设计.md 的「模拟交易」一节，界面上放不下也不必放。
       -->
-      <div class="mt-auto truncate text-[10px] leading-4 text-faint" title="限价买：最低价 ≤ 挂单价；限价卖：最高价 ≥ 挂单价；止损单相反。无资金/手续费/滑点。">
+      <div class="mt-auto truncate text-[11px] leading-4 text-faint" title="限价买：最低价 ≤ 挂单价；限价卖：最高价 ≥ 挂单价；止损单相反。无资金/手续费/滑点。">
         规则见 docs/复盘设计.md · 不计手续费/滑点
       </div>
     </div>
 
     <!-- 持仓 + 挂单 -->
-    <div class="flex w-[16.5rem] shrink-0 flex-col gap-1 overflow-auto p-2 text-[11px]">
+    <div class="flex w-[17.5rem] shrink-0 flex-col gap-1 overflow-auto p-2 text-[12px]">
       <div class="flex justify-between">
         <span class="text-dim">持仓</span>
         <span class="tnum" :class="pnlClass(position.side === 'flat' ? 0 : position.side === 'long' ? 1 : -1)">
@@ -180,13 +180,13 @@ const inputClass =
         </span>
       </div>
 
-      <div class="mt-1 flex items-center justify-between border-t border-line pt-1 text-[10px] text-faint">
+      <div class="mt-1 flex items-center justify-between border-t border-line pt-1 text-[11px] text-faint">
         <span>挂单中 {{ openOrders.length }}</span>
         <span>最近 {{ historyOrders.length }}</span>
       </div>
 
-      <div v-if="openOrders.length === 0" class="text-[10px] text-faint">没有挂单</div>
-      <div v-for="o in openOrders" :key="o.id" class="flex items-center gap-1.5 text-[10px]">
+      <div v-if="openOrders.length === 0" class="text-[11px] text-faint">没有挂单</div>
+      <div v-for="o in openOrders" :key="o.id" class="flex items-center gap-1.5 text-[11px]">
         <span :class="o.side === 'buy' ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'">
           {{ sideLabel(o.side) }}{{ orderLabel(o.kind) }}
         </span>
@@ -202,7 +202,7 @@ const inputClass =
         </button>
       </div>
 
-      <div v-for="o in historyOrders" :key="o.id" class="flex items-center gap-1.5 text-[10px] text-faint">
+      <div v-for="o in historyOrders" :key="o.id" class="flex items-center gap-1.5 text-[11px] text-faint">
         <span>{{ sideLabel(o.side) }}{{ orderLabel(o.kind) }}</span>
         <span class="tnum">{{ o.price.toFixed(store.priceDecimals) }}</span>
         <span class="ml-auto">{{ o.status === 'filled' ? '已成交' : '已撤销' }}</span>
