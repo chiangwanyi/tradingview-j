@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 
-import { DARK_THEME, drawChart, type HoverState } from '@/components/chart/render'
-import { ChartScale, formatPrice } from '@/components/chart/scale'
+import { drawChart, themeOf, type HoverState } from '@/components/chart/render'
+import { ChartScale, TIME_AXIS_HEIGHT, formatPrice } from '@/components/chart/scale'
 import { useReplayStore } from '@/stores/replay'
 import type { Bar, Point } from '@/types/protocol'
 
@@ -21,6 +21,11 @@ import type { Bar, Point } from '@/types/protocol'
 
 const store = useReplayStore()
 
+/** 画布配色跟着主题走：两套配色都在 render.ts 里，这里只选一套 */
+const theme = computed(() => themeOf(store.theme))
+/** 标注文字块的底色：深色用半透明深底，浅色用半透明白底 */
+const labelBg = computed(() => (theme.value.mode === 'light' ? 'rgba(255, 255, 255, 0.86)' : 'rgba(11, 17, 32, 0.72)'))
+
 const host = ref<HTMLDivElement | null>(null)
 const canvas = ref<HTMLCanvasElement | null>(null)
 const scale = new ChartScale()
@@ -30,7 +35,6 @@ const size = ref({ width: 0, height: 0 })
 const viewTick = ref(0)
 const hover = ref<HoverState | null>(null)
 const ctrlDown = ref(false)
-const showEma = ref(true)
 
 interface ChartPoint {
   time: string
@@ -96,11 +100,12 @@ function draw(): void {
   drawChart({
     ctx,
     scale,
-    theme: DARK_THEME,
+    theme: theme.value,
     hover: hover.value,
     symbol: store.instance?.symbol ?? '',
     orders: store.instance?.orders ?? [],
-    showEma: showEma.value,
+    showEma: store.showEma,
+    tick: store.tick,
   })
 }
 
@@ -159,6 +164,10 @@ watch(
   () => store.instance?.orders,
   () => requestDraw(),
 )
+
+// 换主题要立刻重画（Canvas 的像素不会跟着 CSS 变量变）
+watch(() => store.theme, () => requestDraw())
+watch(() => store.showEma, () => requestDraw())
 
 // ---------------- 坐标换算 ----------------
 
@@ -642,7 +651,7 @@ const priceHint = computed(() => {
   const bar = scale.bars[h.index]
   if (!bar) return ''
   const p = scale.priceAtY(h.y)
-  return `${bar.time}   ${formatPrice(p, 2)}`
+  return `${bar.time}   ${formatPrice(p, store.priceDecimals)}`
 })
 
 defineExpose({ requestDraw })
@@ -684,7 +693,7 @@ defineExpose({ requestDraw })
           :width="Math.abs(s.x2 - s.x1) + 8"
           :height="Math.abs(s.y2 - s.y1) + 8"
           fill="none"
-          stroke="#e2e8f0"
+          :stroke="theme.selection"
           stroke-width="1"
           stroke-dasharray="3 3"
           opacity="0.7"
@@ -722,8 +731,7 @@ defineExpose({ requestDraw })
             :y="s.y1 - 9"
             :width="s.textWidth + 8"
             height="18"
-            fill="#0b1120"
-            fill-opacity="0.72"
+            :fill="labelBg"
             :stroke="s.selected ? s.color : 'transparent'"
             stroke-width="1"
             rx="2"
@@ -779,23 +787,38 @@ defineExpose({ requestDraw })
             {{ ghost.text }}
           </text>
         </template>
-        <circle v-if="ghost.snapped" :cx="ghost.x2" :cy="ghost.y2" r="4" fill="none" stroke="#fff" stroke-width="1" />
+        <circle
+          v-if="ghost.snapped"
+          :cx="ghost.x2"
+          :cy="ghost.y2"
+          r="4"
+          fill="none"
+          :stroke="theme.selection"
+          stroke-width="1"
+        />
       </g>
     </svg>
 
-    <div class="pointer-events-none absolute bottom-1 left-2 flex gap-3 text-[10px] text-slate-500">
+    <!--
+      提示文字放在时间轴**上方**（bottom = 时间轴高度 + 4px）。
+      以前贴在 bottom-1，正好压在时间标签上，一眼全是重影。
+    -->
+    <div
+      class="pointer-events-none absolute right-2 flex items-baseline gap-3 text-[10px] text-faint"
+      :style="{ bottom: `${TIME_AXIS_HEIGHT + 4}px` }"
+    >
+      <span v-if="priceHint" class="tnum text-dim">{{ priceHint }}</span>
       <span>滚轮缩放时间 · Shift+滚轮缩放价格 · 拖动平移 · 双击重置价格</span>
-      <span v-if="priceHint">{{ priceHint }}</span>
     </div>
     <div
       v-if="snapLabel"
-      class="pointer-events-none absolute top-2 left-2 rounded bg-slate-800/90 px-2 py-1 text-[11px] text-amber-300"
+      class="pointer-events-none absolute top-2 left-2 rounded bg-elev px-2 py-1 text-[11px] text-amber-600 ring-1 ring-line dark:text-amber-300"
     >
       {{ snapLabel }}
     </div>
     <div
       v-if="store.instance && !store.instance.bars.length"
-      class="absolute inset-0 flex items-center justify-center text-sm text-slate-400"
+      class="absolute inset-0 flex items-center justify-center text-sm text-dim"
     >
       这个实例还没有 K 线
     </div>

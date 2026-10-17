@@ -28,7 +28,26 @@ import type {
 /** 画布上当前选中的工具。缩放/平移不属于工具，任何工具下都能用。 */
 export type ChartTool = 'select' | 'line' | 'rect' | 'text'
 
+/** 界面配色。只影响显示（画布配色 + 页面语义色），跟后端无关。 */
+export type ThemeMode = 'light' | 'dark'
+
 const MAX_LOG = 200
+const THEME_KEY = 'tv-replay-theme'
+
+function readTheme(): ThemeMode {
+  try {
+    const saved = localStorage.getItem(THEME_KEY)
+    if (saved === 'light' || saved === 'dark') return saved
+  } catch {
+    // 某些隐私模式下 localStorage 会直接抛，忽略即可（大不了不记住）
+  }
+  return 'dark'
+}
+
+function applyTheme(mode: ThemeMode): void {
+  // 挂在 <html> 上，style.css 里的 [data-theme='light'] 靠它切换 CSS 变量
+  document.documentElement.dataset.theme = mode
+}
 
 export const useReplayStore = defineStore('replay', () => {
   const socket = new ReplaySocket(defaultSocketUrl())
@@ -47,6 +66,10 @@ export const useReplayStore = defineStore('replay', () => {
   const tool = ref<ChartTool>('select')
   const color = ref('#f59e0b')
   const selectedAnnotation = ref<string | null>(null)
+  const theme = ref<ThemeMode>(readTheme())
+  applyTheme(theme.value)
+  /** 是否显示 EMA20（纯显示开关，跟后端无关） */
+  const showEma = ref(true)
 
   const bars = computed(() => instance.value?.bars ?? [])
   const cursor = computed(() => instance.value?.cursor ?? 0)
@@ -62,6 +85,14 @@ export const useReplayStore = defineStore('replay', () => {
     return inst.operator || ''
   })
   const openOrders = computed(() => (instance.value?.orders ?? []).filter((o) => o.status === 'open'))
+  /** 当前标的的最小跳动；没进实例时是 0（画布按两位小数兜底） */
+  const tick = computed(() => instance.value?.tick ?? 0)
+  /** 价格显示小数位：由最小跳动决定，至少两位 */
+  const priceDecimals = computed(() => {
+    const t = tick.value
+    if (!(t > 0)) return 2
+    return Math.min(6, Math.max(2, Math.ceil(-Math.log10(t) - 1e-9)))
+  })
 
   function noteError(message: string): void {
     lastError.value = message
@@ -226,6 +257,20 @@ export const useReplayStore = defineStore('replay', () => {
     socket.connect()
   }
 
+  function setTheme(mode: ThemeMode): void {
+    theme.value = mode
+    applyTheme(mode)
+    try {
+      localStorage.setItem(THEME_KEY, mode)
+    } catch {
+      // 记不住就算了，不影响本次使用
+    }
+  }
+
+  function toggleTheme(): void {
+    setTheme(theme.value === 'dark' ? 'light' : 'dark')
+  }
+
   function refresh(): void {
     send({ type: 'list_symbols' })
     send({ type: 'list_instances' })
@@ -334,6 +379,10 @@ export const useReplayStore = defineStore('replay', () => {
     tool,
     color,
     selectedAnnotation,
+    theme,
+    showEma,
+    tick,
+    priceDecimals,
     // 派生
     bars,
     cursor,
@@ -345,6 +394,8 @@ export const useReplayStore = defineStore('replay', () => {
     openOrders,
     // 动作
     connect,
+    setTheme,
+    toggleTheme,
     refresh,
     createInstance,
     joinInstance,

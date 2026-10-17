@@ -2,8 +2,9 @@
 
 本仓库的**前端应用**，与根目录的 Go 抓取工具同仓共处。
 
-当前状态：**复盘第一版已实现**（K 线回放 + 标注 + 模拟交易 + 多人观看）。
-没有画好看的界面 —— 这一版只保证功能对、口径对。
+当前状态：**v1.1（对应程序 0.3.0）已实现** —— K 线回放、标注、模拟交易、多人观看、
+浅色/深色两套配色、价格轴按标的 tick 走、实例存档（关掉程序再进来还在）。
+界面是「能用、看得清」的程度，没有做视觉设计 —— 每一版只保证功能对、口径对。
 
 ## 它和根目录那个 Go 程序是什么关系
 
@@ -36,8 +37,13 @@
 | Vite | 8 | 构建与开发服务器 |
 | ESLint 10 + Prettier 3 | | flat config，格式交给 Prettier |
 
-**画图不用图表库**：Canvas 2D 画 K 线 / EMA / BarCount / 挂单线 / 十字光标，
+**画图不用图表库**：Canvas 2D 画 K 线 / EMA20 / 挂单线 / 十字光标，
 SVG 画标注并承接命中测试（hover、点击、拖动）。两层共用同一套坐标变换（`chart/scale.ts`）。
+
+**配色分两处**：页面（顶栏、面板、输入框）吃 `style.css` 里的语义色 CSS 变量，
+`data-theme` 一换全变；画布（K 线、网格、轴）是 Canvas 像素，不跟 CSS 变量走，
+所以 `chart/render.ts` 里有两套 `ChartTheme`，换主题要靠重画。两处都必须改到，
+否则症状是「页面变白了、K 线还是黑的」。
 
 ## 常用命令
 
@@ -66,20 +72,21 @@ web/
 ├─ src/
 │  ├─ main.ts              装配：pinia → router → mount
 │  ├─ App.vue              只放 <RouterView />
-│  ├─ style.css            Tailwind 入口 + 满高 + 滚动条
+│  ├─ style.css            Tailwind 入口 + 两套配色的语义色 + 满高 + 滚动条
 │  ├─ types/protocol.ts    与 Go 侧 internal/replay/protocol.go 一一对应的消息类型
 │  ├─ net/socket.ts        ReplaySocket：连接 / 自动重连 / 按 type 分发
 │  ├─ stores/index.ts      pinia 实例
 │  ├─ stores/replay.ts     唯一的业务 store（连接状态、实例、事件日志、操作动作）
 │  ├─ router/index.ts      一条路由：/ → ReplayView
-│  ├─ views/ReplayView.vue 页面骨架（页头 / 左栏 / 中间画布 / 右栏 / 底部日志）
+│  ├─ views/ReplayView.vue 页面骨架（页头 / 画布 / 底部 Tab 条）
 │  └─ components/
 │     ├─ chart/scale.ts    坐标变换（时间索引 ⇄ 像素、价格 ⇄ 像素）+ 刻度
-│     ├─ chart/render.ts   Canvas 绘制（K 线、EMA20、BarCount、挂单线、十字光标）
+│     ├─ chart/render.ts   Canvas 绘制（K 线、EMA20、挂单线、十字光标）+ 两套 ChartTheme
 │     ├─ ChartPanel.vue    Canvas + SVG 容器与全部指针交互（平移 / 缩放 / 画 / 拖 / 吸附）
-│     ├─ ChartToolbar.vue  工具选择、步进、机器人、缩放按钮
-│     ├─ InstancePanel.vue 标的列表、随机/指定时间建实例、实例切换与删除
-│     ├─ OrderPanel.vue    限价/止损下单、挂单列表、撤单、持仓与盈亏
+│     ├─ ChartToolbar.vue  工具选择、颜色、EMA20 开关、步进、接管、机器人
+│     ├─ InstancesMenu.vue 右上角折叠面板：标的、随机/指定时间建实例、实例列表与删除
+│     ├─ TradeDock.vue     底部停靠区：模拟交易 / 操作记录 两个 Tab，可整体收起
+│     ├─ OrderPanel.vue    三列横排：下单 / 持仓与挂单 / 成交流水
 │     ├─ TradePanel.vue    成交流水
 │     └─ EventLog.vue      后端广播的事件流（谁做了什么）
 └─ dist/                   构建产物（已 gitignore）
@@ -127,8 +134,17 @@ web/
 **Tailwind v4 是 CSS-first。** 没有 `tailwind.config.js`，别去建，建了不会被读取。
 要定义主题色、字号、自定义变体时，在 `src/style.css` 里加 `@theme` / `@custom-variant` 块。
 
-**涨红跌绿。** 中国口径，和欧美相反。当前是 `render.ts` 里 `DARK_THEME` 的两个常量
-（`up: '#ef4444'` / `down: '#22c55e'`），改配色只改这里，别在组件里散落硬编码颜色。
+**涨跌色在 `render.ts` 的 `DARK_THEME` / `LIGHT_THEME` 里，改配色只改那里**，别在组件里散落颜色。
+当前口径（v1.1 明确要求，**注意方向：绿涨红跌**）：
+
+| | 阳线 | 阴线 |
+|---|---|---|
+| 深色 | 绿实心 `#22c55e` | 红实心 `#ef4444` |
+| 浅色 | 白填充 + 黑框 `#111827` | 全黑 |
+
+浅色用「空心 / 实心」而不是红绿，是因为白底上纯红纯绿刺眼、红绿色弱看着一样。
+要整体翻成「红涨绿跌」（中国习惯），把两张表的 up/down 换一下、并且**两套都换**——
+只换深色会出现「切一下主题涨跌就反了」，那比配色不好看严重得多。
 
 **`@` 是 `src/` 的别名**，改的话两处必须同步：`vite.config.ts` 的 `resolve.alias` 和
 `tsconfig.app.json` 的 `paths`。只改一处会「构建能过、编辑器报红」或者反过来。
@@ -144,10 +160,31 @@ web/
 （`instanceId`、`annotationId`、`orderId`、`placedIndex`…），没有缩写。
 字段名对不上不会报错，只会表现成"某个面板一直是空的"。
 
+## 主题、tick 与布局（v1.1）
+
+**主题**：`stores/replay.ts` 里的 `theme`（`'light' | 'dark'`）→ 写进
+`document.documentElement.dataset.theme` + 存 `localStorage['tv-replay-theme']`。
+`style.css` 用 `:root` / `:root[data-theme='light']` 两套变量，组件只写语义类
+（`bg-panel` / `text-ink` / `border-line` / `text-dim` / `text-faint` / `bg-accent`…）。
+`@custom-variant dark` 已经把 `dark:` 接到 `data-theme` 上 —— 个别必须分主题的细节可以写
+`dark:`，它跟的是**用户选的主题**，不是系统偏好。
+`index.html` 里有一小段内联脚本，在样式生效前先把 `data-theme` 挂上（否则上次选浅色会先闪一下深色）。
+内联脚本里的键名必须和 `THEME_KEY` 一致。
+
+**tick**：`store.tick` 来自 `instance.tick`（Go 侧从 `data/_symbols.json` 读，缺失时走
+`store.DefaultTick` 的兜底表）。它决定两件事：
+① 价格轴刻度步长抬到它的整数倍（`niceTicks`，不会出现这个标的没有的价）；
+② 显示小数位（`decimalsForTick`，最少 2 位 —— 价格已经四舍五入到两位，只留一位会显示错）。
+下单框的 `step` 也用它。
+
+**布局**：`ReplayView.vue` = 顶栏（状态 / 当前实例 / 主题 / 标的与实例 / 离开）+ 工具条 +
+画布 + `TradeDock`（底部 Tab）。左右两条常驻栏都去掉了，目的是把空间让给画布；
+实例面板点开才占地方，底部 Tab 条可整体收起。
+
 ## 还没做的事
 
-- 界面美化、布局响应式、暗色/亮色切换（现在只有一套深色）
-- 指标只到 EMA20 + BarCount（需求就是这么写的），没有成交量面板
+- 视觉设计、响应式（窄屏只是能挤着用，没有专门适配）
+- 指标只有 EMA20（BarCount 副图已移除，后续版本再考虑别的），没有成交量面板
 - 标注只有线段 / 矩形 / 文字，没有箭头、斐波那契、测量工具
-- 复盘状态不持久化：刷新页面会重建连接，标注和挂单在服务端内存里（服务重启即清空）
+- 存档是整体快照：实例特别多、K 线特别长时会变慢（见 `../internal/replay/persist.go`）
 - 前端没有自动化测试：靠 `type-check` / `lint` / `build` 三道 + 手工两标签页演练

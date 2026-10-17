@@ -51,8 +51,14 @@ func TestOpenWithExplicitAnchor(t *testing.T) {
 			t.Fatalf("K 线没有按时间升序：%s >= %s", inst.Bars[i-1].Time, inst.Bars[i].Time)
 		}
 	}
-	if inst.Bars[0].BarCount != 1 || inst.Bars[inst.Cursor].BarCount != inst.Cursor+1 {
-		t.Fatalf("BarCount 不是从 1 开始按序递增")
+	// 价格一律只有两位小数（CSV 里的浮点噪声在加载时就被抹平了）
+	for _, b := range inst.Bars {
+		if math.Abs(b.Close*100-math.Round(b.Close*100)) > 1e-9 {
+			t.Fatalf("%s 的收盘价没有修到两位小数：%v", b.Time, b.Close)
+		}
+	}
+	if inst.Tick <= 0 {
+		t.Fatalf("实例应当带上最小跳动（tick），实际 %v", inst.Tick)
 	}
 	if inst.hiddenBars() == 0 {
 		t.Fatalf("向后应当预加载了隐藏 K 线")

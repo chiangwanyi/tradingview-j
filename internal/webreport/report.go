@@ -38,12 +38,12 @@ func tzLabel(loc *time.Location) string {
 
 // Report 是喂给网页的一次扫描快照。
 type Report struct {
-	Meta   Meta        `json:"meta"`
-	Totals Totals      `json:"totals"`
-	Span   *Span       `json:"span,omitempty"`
-	Notes  []string    `json:"notes"` // store.Scan 记下的异常情况，原样透传
-	Folders []Folder   `json:"folders"`
-	ByDate []DateTotal `json:"byDate"`
+	Meta    Meta        `json:"meta"`
+	Totals  Totals      `json:"totals"`
+	Span    *Span       `json:"span,omitempty"`
+	Notes   []string    `json:"notes"` // store.Scan 记下的异常情况，原样透传
+	Folders []Folder    `json:"folders"`
+	ByDate  []DateTotal `json:"byDate"`
 }
 
 // Meta 是「这份快照是在什么口径下扫出来的」。
@@ -112,18 +112,18 @@ type Folder struct {
 // 什么时候反常一眼就能认出来。
 type Day struct {
 	Date     string `json:"date"`
-	Bars     int    `json:"bars"`     // 解析出来的根数（同一时间戳只算一根）
-	Rows     int    `json:"rows"`     // 文件里的数据行数（不含表头）
-	Skipped  int    `json:"skipped"`  // 坏行
-	Dupes    int    `json:"dupes"`    // 重复时间戳的行
+	Bars     int    `json:"bars"`    // 解析出来的根数（同一时间戳只算一根）
+	Rows     int    `json:"rows"`    // 文件里的数据行数（不含表头）
+	Skipped  int    `json:"skipped"` // 坏行
+	Dupes    int    `json:"dupes"`   // 重复时间戳的行
 	FirstT   int64  `json:"firstT"`
 	LastT    int64  `json:"lastT"`
 	Bytes    int64  `json:"bytes"`
-	Gaps     []Gap  `json:"gaps"`     // 时间断档（缺失区间的起止时刻），按时间递增
-	Expect   []int  `json:"expect"`   // 这一天按星期几应当有多少根
-	BarsOff  bool   `json:"barsOff"`  // 根数不在 expect 里
-	Mismatch bool   `json:"mismatch"` // 同一天各标的的根数不完全相同
-	Anomaly  bool   `json:"anomaly"`  // 异常（根数不符 / 坏行 / 重复行 / 读不了），判定在 store 里
+	Gaps     []Gap  `json:"gaps"`          // 时间断档（缺失区间的起止时刻），按时间递增
+	Expect   []int  `json:"expect"`        // 这一天按星期几应当有多少根
+	BarsOff  bool   `json:"barsOff"`       // 根数不在 expect 里
+	Mismatch bool   `json:"mismatch"`      // 同一天各标的的根数不完全相同
+	Anomaly  bool   `json:"anomaly"`       // 异常（根数不符 / 坏行 / 重复行 / 读不了），判定在 store 里
 	Err      string `json:"err,omitempty"` // 非空 = 这份文件没统计到
 }
 

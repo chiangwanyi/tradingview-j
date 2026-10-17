@@ -50,6 +50,9 @@ type Config struct {
 	// ReplayDistDir 是前端构建产物（web/dist）相对 exe 目录的位置。
 	// 开发期用 npm run dev 时不需要它；要用菜单 4 直接打开页面才需要先 npm run build。
 	ReplayDistDir string `json:"replayDistDir"`
+	// ReplayStateDir 是复盘实例的本地存档目录（replay-instances.json）。
+	// 有了它，关掉服务再打开，实例、游标、标注、挂单、成交都还在。
+	ReplayStateDir string `json:"replayStateDir"`
 
 	// ---- 节奏（秒）----
 	FlushSeconds      float64 `json:"flushSeconds"`      // CSV 落盘间隔
@@ -82,6 +85,7 @@ func Defaults() Config {
 		WebPort:           8765,
 		ReplayPort:        8790,
 		ReplayDistDir:     "web/dist",
+		ReplayStateDir:    "state",
 		FlushSeconds:      1,
 		AttachPollSeconds: 3,
 		RetrySeconds:      5,
@@ -114,9 +118,10 @@ func duration(sec, def float64) time.Duration {
 }
 
 // OutPath / RawPath 把相对目录按基准目录展开
-func (c Config) OutPath() string        { return resolve(c.BaseDir, c.OutDir) }
-func (c Config) RawPath() string        { return resolve(c.BaseDir, c.RawDir) }
-func (c Config) ReplayDistPath() string { return resolve(c.BaseDir, c.ReplayDistDir) }
+func (c Config) OutPath() string         { return resolve(c.BaseDir, c.OutDir) }
+func (c Config) RawPath() string         { return resolve(c.BaseDir, c.RawDir) }
+func (c Config) ReplayDistPath() string  { return resolve(c.BaseDir, c.ReplayDistDir) }
+func (c Config) ReplayStatePath() string { return resolve(c.BaseDir, c.ReplayStateDir) }
 
 func resolve(base, dir string) string {
 	if dir == "" {
@@ -218,6 +223,9 @@ func (c *Config) normalize() []string {
 	}
 	if c.ReplayDistDir == "" {
 		c.ReplayDistDir = d.ReplayDistDir
+	}
+	if c.ReplayStateDir == "" {
+		c.ReplayStateDir = d.ReplayStateDir
 	}
 	return notes
 }

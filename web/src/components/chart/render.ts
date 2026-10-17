@@ -2,48 +2,110 @@ import type { Order } from '@/types/protocol'
 
 import {
   ChartScale,
-  decimalsForStep,
+  decimalsForTick,
   formatPrice,
+  formatTick,
   niceTicks,
   type ChartLayout,
 } from './scale'
 
 /**
- * Canvas 上画的东西：网格、坐标轴、K 线、EMA20、BarCount、挂单价线、十字光标。
+ * Canvas 上画的东西：网格、坐标轴、K 线、EMA20、挂单价线、十字光标。
  *
  * 标注不在这里画 —— 标注是 SVG 图层（便于命中测试与拖动），见 ChartPanel.vue。
  * 两层的坐标换算都来自同一个 ChartScale，不会出现「图形和 K 线对不上」。
+ *
+ * 两套配色（深色 / 浅色）都在这个文件里，组件只传一个 `theme` 进来：
+ *
+ *   深色：阳线绿、阴线红（实心）
+ *   浅色：阳线**白填充 + 黑边框/影线**、阴线**全黑**（空心 vs 实心的经典画法，
+ *         打印出来也分得清；纯红绿在白底上偏刺眼，且红绿色弱看着一样）
  */
 
-export interface ChartTheme {
-  bg: string
-  grid: string
-  axis: string
-  text: string
-  textDim: string
-  up: string
-  down: string
-  flat: string
-  ema: string
-  crosshair: string
-  panelBg: string
-  panelBorder: string
+/** 一根 K 线的描边与填充分开给：浅色模式靠「空心/实心」区分涨跌。 */
+export interface CandleColors {
+  stroke: string
+  fill: string
 }
 
-/** 深色看盘配色。涨红跌绿是中国市场的约定，与欧美相反，这里按中国口径。 */
+export interface ChartTheme {
+  mode: 'light' | 'dark'
+  bg: string
+  grid: string
+  axisLine: string
+  text: string
+  textDim: string
+  crosshair: string
+  up: CandleColors
+  down: CandleColors
+  flat: CandleColors
+  ema: string
+  /** 现价标签（价格轴上的实心小块） */
+  lastBoxBg: string
+  lastBoxText: string
+  /** 十字光标的价格标签 */
+  crossBoxBg: string
+  crossBoxText: string
+  /** 挂单线 + 标签 */
+  orderBuy: string
+  orderSell: string
+  orderBuyBox: string
+  orderSellBox: string
+  orderText: string
+  /** 选中标注的虚线框 */
+  selection: string
+}
+
 export const DARK_THEME: ChartTheme = {
+  mode: 'dark',
   bg: '#0b1120',
-  grid: '#1e293b',
-  axis: '#1f2a3c',
+  grid: '#1b2637',
+  axisLine: '#1f2a3c',
   text: '#cbd5e1',
   textDim: '#7c8ba1',
-  up: '#ef4444',
-  down: '#22c55e',
-  flat: '#94a3b8',
-  ema: '#fbbf24',
   crosshair: '#64748b',
-  panelBg: '#0e1626',
-  panelBorder: '#1e293b',
+  up: { stroke: '#22c55e', fill: '#22c55e' },
+  down: { stroke: '#ef4444', fill: '#ef4444' },
+  flat: { stroke: '#94a3b8', fill: '#94a3b8' },
+  ema: '#fbbf24',
+  lastBoxBg: '#22c55e',
+  lastBoxText: '#04130a',
+  crossBoxBg: '#334155',
+  crossBoxText: '#e2e8f0',
+  orderBuy: 'rgba(96, 165, 250, 0.85)',
+  orderSell: 'rgba(251, 146, 60, 0.85)',
+  orderBuyBox: 'rgba(30, 64, 175, 0.9)',
+  orderSellBox: 'rgba(124, 45, 18, 0.9)',
+  orderText: '#e2e8f0',
+  selection: '#cbd5e1',
+}
+
+export const LIGHT_THEME: ChartTheme = {
+  mode: 'light',
+  bg: '#ffffff',
+  grid: '#e8eef6',
+  axisLine: '#cbd5e1',
+  text: '#0f172a',
+  textDim: '#475569',
+  crosshair: '#64748b',
+  up: { stroke: '#111827', fill: '#ffffff' },
+  down: { stroke: '#111827', fill: '#111827' },
+  flat: { stroke: '#6b7280', fill: '#ffffff' },
+  ema: '#b45309',
+  lastBoxBg: '#111827',
+  lastBoxText: '#ffffff',
+  crossBoxBg: '#475569',
+  crossBoxText: '#ffffff',
+  orderBuy: 'rgba(37, 99, 235, 0.85)',
+  orderSell: 'rgba(217, 119, 6, 0.85)',
+  orderBuyBox: 'rgba(37, 99, 235, 0.95)',
+  orderSellBox: 'rgba(180, 83, 9, 0.95)',
+  orderText: '#ffffff',
+  selection: '#334155',
+}
+
+export function themeOf(mode: 'light' | 'dark'): ChartTheme {
+  return mode === 'light' ? LIGHT_THEME : DARK_THEME
 }
 
 export interface HoverState {
@@ -61,57 +123,45 @@ export interface DrawInput {
   symbol: string
   orders: Order[]
   showEma: boolean
+  /** 最小跳动，来自 _symbols.json（0.25 / 0.1 / 0.01…） */
+  tick: number
 }
 
 const MONO = '11px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace'
 const MONO_BOLD = '600 11px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace'
 
 export function drawChart(input: DrawInput): void {
-  const { ctx, scale, theme, hover, symbol, orders, showEma } = input
+  const { ctx, scale, theme, hover, symbol, orders, showEma, tick } = input
   const { width, height } = scale
   const layout: ChartLayout = scale.layout
+  const decimals = decimalsForTick(tick)
 
   ctx.save()
   ctx.clearRect(0, 0, width, height)
   ctx.fillStyle = theme.bg
   ctx.fillRect(0, 0, width, height)
+
   if (scale.bars.length === 0) {
     ctx.fillStyle = theme.textDim
     ctx.font = MONO
     ctx.textAlign = 'center'
     ctx.textBaseline = 'middle'
-    ctx.fillText('还没有数据：先在左侧选一个标的、建一个实例', width / 2, height / 2)
+    ctx.fillText('还没有数据：点右上角「标的与实例」建一个实例', width / 2, height / 2)
     ctx.restore()
     return
   }
 
-  drawPanels(ctx, layout, theme)
-  const priceTicks = niceTicks(scale.priceMin, scale.priceMax, 6)
-  const priceStep =
-    priceTicks.length > 1 ? Math.abs(priceTicks[1] - priceTicks[0]) : (scale.priceMax - scale.priceMin) / 6
-  const decimals = decimalsForStep(priceStep)
+  const priceTicks = niceTicks(scale.priceMin, scale.priceMax, 6, tick)
 
   drawGrid(ctx, scale, theme, priceTicks)
   drawCandles(ctx, scale, theme, showEma)
-  drawBarCount(ctx, scale, theme)
-  drawOrders(ctx, scale, orders)
+  drawOrders(ctx, scale, theme, orders)
   drawLastPrice(ctx, scale, theme, decimals)
-  drawAxes(ctx, scale, theme, priceTicks, decimals)
+  drawAxes(ctx, scale, theme, priceTicks, decimals, tick)
   drawWatermark(ctx, layout, theme, symbol)
   if (hover && hover.inside) drawCrosshair(ctx, scale, theme, hover, decimals)
 
   ctx.restore()
-}
-
-function drawPanels(ctx: CanvasRenderingContext2D, layout: ChartLayout, theme: ChartTheme): void {
-  ctx.fillStyle = theme.panelBg
-  ctx.fillRect(layout.panel.left, layout.panel.top, layout.panel.width, layout.panel.height)
-  ctx.strokeStyle = theme.panelBorder
-  ctx.lineWidth = 1
-  ctx.beginPath()
-  ctx.moveTo(layout.panel.left, layout.panel.top + 0.5)
-  ctx.lineTo(layout.panel.right, layout.panel.top + 0.5)
-  ctx.stroke()
 }
 
 function drawGrid(
@@ -120,7 +170,7 @@ function drawGrid(
   theme: ChartTheme,
   ticks: number[],
 ): void {
-  const { plot, panel } = scale.layout
+  const { plot, timeAxis } = scale.layout
   ctx.strokeStyle = theme.grid
   ctx.lineWidth = 1
   ctx.beginPath()
@@ -138,15 +188,16 @@ function drawGrid(
     const x = Math.round(scale.xOf(i)) + 0.5
     if (x < plot.left || x > plot.right) continue
     ctx.moveTo(x, plot.top)
-    ctx.lineTo(x, panel.bottom)
+    ctx.lineTo(x, plot.bottom)
   }
   ctx.stroke()
-  // 指标区底线
-  ctx.strokeStyle = theme.panelBorder
-  const baseY = Math.round(panel.bottom) + 0.5
+
+  // 价格区与时间轴之间的分隔线
+  ctx.strokeStyle = theme.axisLine
+  const baseY = Math.round(timeAxis.top) + 0.5
   ctx.beginPath()
-  ctx.moveTo(panel.left, baseY)
-  ctx.lineTo(panel.right, baseY)
+  ctx.moveTo(plot.left, baseY)
+  ctx.lineTo(plot.right, baseY)
   ctx.stroke()
 }
 
@@ -166,27 +217,37 @@ function drawCandles(
     const x = scale.xOf(i)
     const up = b.close > b.open
     const down = b.close < b.open
-    const color = up ? theme.up : down ? theme.down : theme.flat
+    const c = up ? theme.up : down ? theme.down : theme.flat
 
-    ctx.strokeStyle = color
-    ctx.fillStyle = color
+    ctx.strokeStyle = c.stroke
+    ctx.fillStyle = c.fill
     ctx.lineWidth = 1
 
+    // 影线
     const yHigh = scale.yOf(b.high)
     const yLow = scale.yOf(b.low)
+    const xCenter = Math.round(x) + 0.5
     ctx.beginPath()
-    ctx.moveTo(Math.round(x) + 0.5, yHigh)
-    ctx.lineTo(Math.round(x) + 0.5, yLow)
+    ctx.moveTo(xCenter, yHigh)
+    ctx.lineTo(xCenter, yLow)
     ctx.stroke()
 
+    // 实体：先填后描边。浅色模式的「白填充 + 黑边框」就是靠这两步得到的；
+    // 深色模式填充色和描边色相同，看起来是实心块。
     const yOpen = scale.yOf(b.open)
     const yClose = scale.yOf(b.close)
     const top = Math.min(yOpen, yClose)
     const h = Math.max(1, Math.abs(yClose - yOpen))
-    if (bodyWidth <= 1.6) {
-      ctx.fillRect(Math.round(x), top, 1, h)
+    if (bodyWidth <= 2.5) {
+      // 太窄了：描边会把实体整个糊掉，直接填一格
+      ctx.fillRect(Math.round(x), Math.round(top), Math.max(1, Math.round(bodyWidth)), Math.round(h))
     } else {
-      ctx.fillRect(Math.round(x - half), Math.round(top), Math.round(bodyWidth), Math.round(h))
+      const bx = Math.round(x - half)
+      const bw = Math.max(1, Math.round(bodyWidth))
+      const by = Math.round(top)
+      const bh = Math.round(h)
+      ctx.fillRect(bx, by, bw, bh)
+      ctx.strokeRect(bx + 0.5, by + 0.5, bw - 1, Math.max(1, bh - 1))
     }
   }
 
@@ -213,46 +274,12 @@ function drawCandles(
   ctx.stroke()
 }
 
-function drawBarCount(ctx: CanvasRenderingContext2D, scale: ChartScale, theme: ChartTheme): void {
-  const { panel } = scale.layout
-  const { from, to } = scale.visibleRange()
-  const max = scale.panelMax()
-
-  ctx.strokeStyle = 'rgba(56, 189, 248, 0.75)'
-  ctx.lineWidth = 1.2
-  ctx.beginPath()
-  let started = false
-  let prevY = 0
-  for (let i = from; i <= to; i += 1) {
-    const b = scale.bars[i]
-    if (!b) continue
-    const x = scale.xOf(i)
-    const y = scale.yOfBarCount(b.barCount, max)
-    if (!started) {
-      ctx.moveTo(x, y)
-      started = true
-    } else {
-      // 阶梯线：先横再竖，才能看出「每根加一」
-      ctx.lineTo(x, prevY)
-      ctx.lineTo(x, y)
-    }
-    prevY = y
-  }
-  ctx.stroke()
-
-  ctx.fillStyle = theme.textDim
-  ctx.font = MONO
-  ctx.textAlign = 'left'
-  ctx.textBaseline = 'top'
-  ctx.fillText('BarCount', panel.left + 4, panel.top + 4)
-  const last = scale.bars[scale.bars.length - 1]
-  if (last) {
-    ctx.textAlign = 'right'
-    ctx.fillText(String(last.barCount), panel.right - 2, panel.top + 4)
-  }
-}
-
-function drawOrders(ctx: CanvasRenderingContext2D, scale: ChartScale, orders: Order[]): void {
+function drawOrders(
+  ctx: CanvasRenderingContext2D,
+  scale: ChartScale,
+  theme: ChartTheme,
+  orders: Order[],
+): void {
   const { plot } = scale.layout
   const open = orders.filter((o) => o.status === 'open')
   if (open.length === 0) return
@@ -264,7 +291,7 @@ function drawOrders(ctx: CanvasRenderingContext2D, scale: ChartScale, orders: Or
     const y = Math.round(scale.yOf(o.price)) + 0.5
     if (y < plot.top || y > plot.bottom) continue
     const isBuy = o.side === 'buy'
-    ctx.strokeStyle = isBuy ? 'rgba(96, 165, 250, 0.8)' : 'rgba(251, 146, 60, 0.8)'
+    ctx.strokeStyle = isBuy ? theme.orderBuy : theme.orderSell
     ctx.lineWidth = 1
     ctx.setLineDash(o.kind === 'stop' ? [5, 4] : [])
     ctx.beginPath()
@@ -276,9 +303,9 @@ function drawOrders(ctx: CanvasRenderingContext2D, scale: ChartScale, orders: Or
     const label = `${isBuy ? '买' : '卖'}${o.kind === 'limit' ? '限价' : '止损'} ${o.quantity}`
     const textWidth = ctx.measureText(label).width
     const boxX = plot.right - textWidth - 8
-    ctx.fillStyle = isBuy ? 'rgba(30, 64, 175, 0.85)' : 'rgba(124, 45, 18, 0.85)'
+    ctx.fillStyle = isBuy ? theme.orderBuyBox : theme.orderSellBox
     ctx.fillRect(boxX - 3, y - 8, textWidth + 6, 15)
-    ctx.fillStyle = '#e2e8f0'
+    ctx.fillStyle = theme.orderText
     ctx.fillText(label, boxX, y + 0.5)
   }
 }
@@ -295,7 +322,8 @@ function drawLastPrice(
   const { plot } = scale.layout
   if (y < plot.top || y > plot.bottom) return
 
-  const color = last.close >= last.open ? theme.up : theme.down
+  const up = last.close >= last.open
+  const color = up ? theme.up.stroke : theme.down.stroke
   ctx.strokeStyle = color
   ctx.globalAlpha = 0.55
   ctx.setLineDash([3, 3])
@@ -306,7 +334,9 @@ function drawLastPrice(
   ctx.setLineDash([])
   ctx.globalAlpha = 1
 
-  drawAxisBox(ctx, scale, formatPrice(last.close, decimals), y, color)
+  // 标签底色跟着涨跌色走，但文字色单独给：浅色模式是「黑底白字」，
+  // 深色模式是「绿底深字」，两者都保证对比度。
+  drawAxisBox(ctx, scale, formatPrice(last.close, decimals), y, up ? theme.lastBoxBg : color, theme.lastBoxText)
 }
 
 function drawAxisBox(
@@ -315,13 +345,14 @@ function drawAxisBox(
   text: string,
   y: number,
   bg: string,
+  fg: string,
 ): void {
   const { plot } = scale.layout
   ctx.font = MONO_BOLD
   const h = 16
   ctx.fillStyle = bg
   ctx.fillRect(plot.right + 1, y - h / 2, scale.width - plot.right - 2, h)
-  ctx.fillStyle = '#0b1120'
+  ctx.fillStyle = fg
   ctx.textAlign = 'left'
   ctx.textBaseline = 'middle'
   ctx.fillText(text, plot.right + 5, y + 0.5)
@@ -333,8 +364,9 @@ function drawAxes(
   theme: ChartTheme,
   ticks: number[],
   decimals: number,
+  tick: number,
 ): void {
-  const { plot, panel } = scale.layout
+  const { plot, timeAxis } = scale.layout
   ctx.font = MONO
   ctx.fillStyle = theme.textDim
   ctx.textAlign = 'left'
@@ -343,6 +375,14 @@ function drawAxes(
     const y = scale.yOf(v)
     if (y < plot.top - 2 || y > plot.bottom + 2) continue
     ctx.fillText(formatPrice(v, decimals), plot.right + 5, y)
+  }
+
+  // 最小跳动：写在价格轴最下面（时间轴那一行的右侧空位），不占行情区
+  if (tick > 0) {
+    ctx.textAlign = 'left'
+    ctx.textBaseline = 'bottom'
+    ctx.fillStyle = theme.textDim
+    ctx.fillText(`tick ${formatTick(tick)}`, plot.right + 5, scale.height - 3)
   }
 
   // 时间轴
@@ -361,7 +401,7 @@ function drawAxes(
     const label = date !== prevDate ? b.time.slice(5, 16) : b.time.slice(11, 16)
     prevDate = date
     ctx.fillStyle = theme.textDim
-    ctx.fillText(label, x, panel.bottom + 5)
+    ctx.fillText(label, x, timeAxis.top + 4)
   }
 }
 
@@ -373,7 +413,7 @@ function drawWatermark(
 ): void {
   if (!symbol) return
   ctx.save()
-  ctx.globalAlpha = 0.06
+  ctx.globalAlpha = theme.mode === 'light' ? 0.07 : 0.06
   ctx.fillStyle = theme.text
   ctx.font = '700 28px system-ui, "Microsoft YaHei", sans-serif'
   ctx.textAlign = 'center'
@@ -389,7 +429,7 @@ function drawCrosshair(
   hover: HoverState,
   decimals: number,
 ): void {
-  const { plot, panel } = scale.layout
+  const { plot, timeAxis } = scale.layout
   const b = scale.bars[hover.index]
   if (!b) return
   const x = Math.round(scale.xOf(hover.index)) + 0.5
@@ -399,7 +439,7 @@ function drawCrosshair(
   ctx.setLineDash([4, 4])
   ctx.beginPath()
   ctx.moveTo(x, plot.top)
-  ctx.lineTo(x, panel.bottom)
+  ctx.lineTo(x, plot.bottom)
   ctx.moveTo(plot.left, Math.round(hover.y) + 0.5)
   ctx.lineTo(plot.right, Math.round(hover.y) + 0.5)
   ctx.stroke()
@@ -407,7 +447,14 @@ function drawCrosshair(
 
   // 价格标签
   if (hover.y >= plot.top && hover.y <= plot.bottom) {
-    drawAxisBox(ctx, scale, formatPrice(scale.priceAtY(hover.y), decimals), Math.round(hover.y), '#334155')
+    drawAxisBox(
+      ctx,
+      scale,
+      formatPrice(scale.priceAtY(hover.y), decimals),
+      Math.round(hover.y),
+      theme.crossBoxBg,
+      theme.crossBoxText,
+    )
   }
 
   // 时间标签
@@ -415,19 +462,20 @@ function drawCrosshair(
   const label = b.time.slice(5, 16)
   const w = ctx.measureText(label).width + 10
   const boxX = Math.min(Math.max(x - w / 2, plot.left), scale.width - w - 2)
-  ctx.fillStyle = '#334155'
-  ctx.fillRect(boxX, panel.bottom + 2, w, 16)
-  ctx.fillStyle = '#e2e8f0'
+  ctx.fillStyle = theme.crossBoxBg
+  ctx.fillRect(boxX, timeAxis.top + 2, w, 16)
+  ctx.fillStyle = theme.crossBoxText
   ctx.textAlign = 'center'
   ctx.textBaseline = 'top'
-  ctx.fillText(label, boxX + w / 2, panel.bottom + 4)
+  ctx.fillText(label, boxX + w / 2, timeAxis.top + 4)
 
-  // OHLC 图例
+  // OHLC 图例（顶部一行）
+  const upColor = b.close >= b.open ? theme.up.stroke : theme.down.stroke
   const parts: Array<[string, string, string]> = [
-    ['开', formatPrice(b.open, decimals), b.close >= b.open ? theme.up : theme.down],
+    ['开', formatPrice(b.open, decimals), upColor],
     ['高', formatPrice(b.high, decimals), theme.text],
     ['低', formatPrice(b.low, decimals), theme.text],
-    ['收', formatPrice(b.close, decimals), b.close >= b.open ? theme.up : theme.down],
+    ['收', formatPrice(b.close, decimals), upColor],
   ]
   let lx = plot.left + 6
   ctx.textAlign = 'left'

@@ -9,9 +9,9 @@ import (
 // newTradingInstance 造一条可控的行情：三根 5 分钟 K 线，价格都写得明明白白。
 func newTradingInstance() *Instance {
 	bars := []Bar{
-		{Time: "2026-01-05 09:00", Open: 100, High: 101, Low: 99, Close: 100, BarCount: 1},
-		{Time: "2026-01-05 09:05", Open: 100, High: 102, Low: 98, Close: 101, BarCount: 2},
-		{Time: "2026-01-05 09:10", Open: 101, High: 103, Low: 97, Close: 102, BarCount: 3},
+		{Time: "2026-01-05 09:00", Open: 100, High: 101, Low: 99, Close: 100},
+		{Time: "2026-01-05 09:05", Open: 100, High: 102, Low: 98, Close: 101},
+		{Time: "2026-01-05 09:10", Open: 101, High: 103, Low: 97, Close: 102},
 	}
 	return &Instance{ID: "ins-t", Symbol: testSymbol, Folder: testFolder, Bars: bars, Cursor: 0, Operator: "human"}
 }

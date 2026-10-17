@@ -39,7 +39,8 @@ type Instance struct {
 	ID     string
 	Symbol string
 	Folder string
-	Anchor string // 锚点 K 线的时间字符串
+	Tick   float64 // 最小跳动（来自 _symbols.json），价格轴按它定小数位
+	Anchor string  // 锚点 K 线的时间字符串
 
 	Bars   []Bar
 	Cursor int
@@ -160,7 +161,9 @@ func (inst *Instance) resolvePoint(p Point, snap bool) (Point, int, error) {
 	if snap {
 		price = nearestOHLC(bar, price)
 	}
-	return Point{Time: bar.Time, Price: price}, idx, nil
+	// 价格统一修到两位小数：和 K 线、价格轴、下单框显示的值一致，
+	// 否则一条标注可能是 30061.499999999996，图上和面板里对不上。
+	return Point{Time: bar.Time, Price: roundPrice(price)}, idx, nil
 }
 
 // diffsCloser 判断 target 更靠近 a 还是 b（都是 "yyyy-MM-dd HH:MM"）。
@@ -311,7 +314,7 @@ func (inst *Instance) placeOrder(by, side, kind string, price, qty float64) (Ord
 		ID:          inst.nextOrderID(),
 		Side:        side,
 		Kind:        kind,
-		Price:       price,
+		Price:       roundPrice(price),
 		Quantity:    qty,
 		Status:      OrderOpen,
 		PlacedAt:    bar.Time,
@@ -527,6 +530,7 @@ func (inst *Instance) snapshot(members []Member) InstanceDTO {
 		Folder:        inst.Folder,
 		Anchor:        inst.Anchor,
 		Cursor:        cursor,
+		Tick:          inst.Tick,
 		Bars:          bars,
 		HiddenBars:    inst.hiddenBars(),
 		HasMore:       inst.hasMore(),

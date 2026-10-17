@@ -17,8 +17,6 @@ export interface Bar {
   volume: number
   /** 前 19 根没有值（Go 里是 *float64，序列化成 null） */
   ema20: number | null
-  /** 从本次加载的第一根起算的序号，从 1 开始 */
-  barCount: number
 }
 
 export interface Point {
@@ -96,6 +94,8 @@ export interface InstanceDetail {
   folder: string
   anchor: string
   cursor: number
+  /** 最小跳动（来自 _symbols.json），价格轴用它定小数位 */
+  tick: number
   bars: Bar[]
   hiddenBars: number
   hasMore: boolean
@@ -136,6 +136,8 @@ export interface SymbolInfo {
   days: number
   firstDate: string
   lastDate: string
+  /** 最小跳动：0.25 / 0.1 / 0.01（写在 _symbols.json 里，缺省按标的名兜底） */
+  tick: number
 }
 
 export interface You {
@@ -272,5 +274,8 @@ export const ACTION = {
   botStopped: 'bot_stopped',
 } as const
 
-/** 标注颜色：默认给一个中性色，工具条上可选。 */
-export const ANNOTATION_COLORS = ['#f59e0b', '#38bdf8', '#f472b6', '#a3e635'] as const
+/**
+ * 标注颜色。这四个是「深浅两套配色下都看得清」的中间调：
+ * 换主题时标注颜色不跟着变（它已经存到服务端了），所以不能选深色专用的荧光色。
+ */
+export const ANNOTATION_COLORS = ['#f59e0b', '#0ea5e9', '#ec4899', '#65a30d'] as const

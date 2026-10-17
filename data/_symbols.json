@@ -2,19 +2,24 @@
   "version": 1,
   "symbols": {
     "BINANCE:BTCUSDT.P": {
-      "folder": "BINANCE_BTCUSDT.P"
+      "folder": "BINANCE_BTCUSDT.P",
+      "tick": 0.1
     },
     "CME_MINI:MES1!": {
-      "folder": "CME_MINI_MES1!"
+      "folder": "CME_MINI_MES1!",
+      "tick": 0.25
     },
     "CME_MINI:MNQ1!": {
-      "folder": "CME_MINI_MNQ1!"
+      "folder": "CME_MINI_MNQ1!",
+      "tick": 0.25
     },
     "COMEX_MINI:MGC1!": {
-      "folder": "COMEX_MINI_MGC1!"
+      "folder": "COMEX_MINI_MGC1!",
+      "tick": 0.1
     },
     "NYMEX:CL1!": {
-      "folder": "NYMEX_CL1!"
+      "folder": "NYMEX_CL1!",
+      "tick": 0.01
     }
   }
 }

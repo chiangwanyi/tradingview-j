@@ -92,7 +92,7 @@ function detail(ev: ReplayEvent): string {
       const p = ev.payload as OrdersPayload
       const last = p.orders[p.orders.length - 1]
       if (!last) return ''
-      return `${last.side === 'buy' ? '买' : '卖'}${last.kind === 'limit' ? '限价' : '止损'} ${last.price} × ${last.quantity} (${last.status})`
+      return `${last.side === 'buy' ? '买' : '卖'}${last.kind === 'limit' ? '限价' : '止损'} ${last.price.toFixed(store.priceDecimals)} × ${last.quantity} (${last.status})`
     }
     case ACTION.controlChanged: {
       const p = ev.payload as ControlChangedPayload
@@ -112,29 +112,30 @@ function detail(ev: ReplayEvent): string {
 }
 
 function actionClass(action: string): string {
-  if (action === ACTION.barAdvanced) return 'text-emerald-300'
-  if (action.startsWith('annotation')) return 'text-amber-300'
-  if (action.startsWith('order')) return 'text-sky-300'
-  if (action === ACTION.controlChanged) return 'text-fuchsia-300'
-  return 'text-slate-400'
+  if (action === ACTION.barAdvanced) return 'text-emerald-600 dark:text-emerald-400'
+  if (action.startsWith('annotation')) return 'text-amber-600 dark:text-amber-400'
+  if (action.startsWith('order')) return 'text-sky-600 dark:text-sky-400'
+  if (action === ACTION.controlChanged) return 'text-fuchsia-600 dark:text-fuchsia-400'
+  return 'text-dim'
 }
 </script>
 
 <template>
   <div class="flex h-full flex-col">
-    <div class="flex items-center gap-2 border-b border-slate-800 px-3 py-1.5">
-      <span class="text-xs font-semibold tracking-wide text-slate-300">操作记录</span>
-      <span class="text-[10px] text-slate-500">服务端广播 · 共 {{ store.log.length }} 条</span>
-      <span class="ml-auto text-[10px] text-slate-600">多用户按处理顺序广播</span>
+    <div class="flex items-center gap-2 px-2 py-1 text-[10px] text-faint">
+      <span>服务端广播 · 共 {{ store.log.length }} 条</span>
+      <span class="ml-auto">多用户按处理顺序广播</span>
     </div>
-    <div ref="box" class="min-h-0 flex-1 overflow-auto px-3 py-1 font-mono text-[10px] leading-5">
-      <div v-if="rows.length === 0" class="text-slate-600">还没有操作。步进一根、画一个标注或挂一张单试试。</div>
+    <div ref="box" class="min-h-0 flex-1 overflow-auto px-2 font-mono text-[10px] leading-5">
+      <div v-if="rows.length === 0" class="text-faint">
+        还没有操作。步进一根、画一个标注或挂一张单试试。
+      </div>
       <div v-for="ev in rows" :key="ev.seq" class="flex gap-2">
-        <span class="w-8 shrink-0 text-right text-slate-600">{{ ev.seq }}</span>
-        <span class="w-14 shrink-0 text-slate-500">{{ clock(ev.at) }}</span>
-        <span class="w-16 shrink-0 truncate text-slate-400" :title="ev.by">{{ ev.by }}</span>
+        <span class="w-7 shrink-0 text-right text-faint">{{ ev.seq }}</span>
+        <span class="w-14 shrink-0 text-faint">{{ clock(ev.at) }}</span>
+        <span class="w-16 shrink-0 truncate text-dim" :title="ev.by">{{ ev.by }}</span>
         <span class="w-16 shrink-0" :class="actionClass(ev.action)">{{ actionLabel(ev.action) }}</span>
-        <span class="min-w-0 flex-1 truncate text-slate-500" :title="detail(ev)">{{ detail(ev) }}</span>
+        <span class="min-w-0 flex-1 truncate text-dim" :title="detail(ev)">{{ detail(ev) }}</span>
       </div>
     </div>
   </div>

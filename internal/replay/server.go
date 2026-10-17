@@ -25,6 +25,7 @@ import (
 type Options struct {
 	DataRoot string         // config.OutPath()
 	DistDir  string         // config.ReplayDistPath()，通常是 <exe>/web/dist
+	StateDir string         // config.ReplayStatePath()，实例存档目录；空 = 不持久化
 	Version  string         // 显示在 welcome 里
 	Location *time.Location // 空则本机时区
 	Log      func(format string, args ...any)
@@ -151,6 +152,11 @@ func Start(opts Options, port int) (*Server, error) {
 		opts.Location = time.Local
 	}
 	hub := NewHub(NewDataSource(opts.DataRoot, opts.Location), opts.Version, opts.Log)
+	// 恢复上次的实例。读不了只会打一行日志，不影响服务起来。
+	// 必须在开始接连接之前做，否则第一条 list_instances 会拿到空列表。
+	if err := hub.EnablePersistence(opts.StateDir); err != nil {
+		hub.Logf("[replay] 实例持久化没启用：%v", err)
+	}
 
 	ln, moved, err := listen(port)
 	if err != nil {

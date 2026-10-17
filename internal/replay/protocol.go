@@ -117,6 +117,9 @@ type Point struct {
 
 // Bar 是送给前端的一根 K 线。ema20 在 Go 里算好，前端只负责画 ——
 // 指标口径只有一份，不会出现「终端和网页算出两条 EMA」。
+//
+// 价格在加载时已经四舍五入到两位小数（CSV 里有 89.97000000000001 这种浮点噪声，
+// 直接下发会让价格轴和提示里冒出一串尾巴）。
 type Bar struct {
 	Time   string  `json:"time"`
 	Open   float64 `json:"open"`
@@ -125,8 +128,7 @@ type Bar struct {
 	Close  float64 `json:"close"`
 	Volume float64 `json:"volume"`
 	// Ema20 在前 19 根还没有值，序列化成 null（前端据此断开折线）
-	Ema20    *float64 `json:"ema20"`
-	BarCount int      `json:"barCount"` // 从本次加载的第一根起算的序号，从 1 开始
+	Ema20 *float64 `json:"ema20"`
 }
 
 // Annotation 是画在画布上的一个图形。三种都用「起点/终点」表示，
@@ -235,6 +237,7 @@ type InstanceDTO struct {
 	Folder        string       `json:"folder"`
 	Anchor        string       `json:"anchor"`
 	Cursor        int          `json:"cursor"`
+	Tick          float64      `json:"tick"` // 最小跳动，价格轴按它定小数位
 	Bars          []Bar        `json:"bars"`
 	HiddenBars    int          `json:"hiddenBars"` // 已加载但还没揭示的根数
 	HasMore       bool         `json:"hasMore"`    // 数据目录里还有没有更晚的日文件
@@ -324,6 +327,9 @@ type SymbolInfo struct {
 	Days      int    `json:"days"`
 	FirstDate string `json:"firstDate"`
 	LastDate  string `json:"lastDate"`
+	// Tick 是最小跳动（0.25 / 0.1 / 0.01…），来自 _symbols.json，缺省按标的名兜底。
+	// 前端用它决定价格轴与提示的小数位。
+	Tick float64 `json:"tick"`
 }
 
 // ---------------- 广播负载 ----------------

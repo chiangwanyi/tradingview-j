@@ -1,6 +1,60 @@
 @import 'tailwindcss';
 
-/* 复盘是全屏看盘界面：根节点撑满，滚动条压暗一点，别在深色画布旁边闪一条亮白。 */
+/*
+ * 两套配色，靠 <html data-theme="light|dark"> 切换。
+ *
+ * 用的是 CSS 变量 + @theme 的语义色（surface / panel / line / ink / dim / faint）：
+ * 组件里只写 `bg-panel text-ink border-line`，不再出现 slate-950 这种具体色号 ——
+ * 否则加浅色模式时要在几百个类名后面各补一个 dark: 变体，迟早漏一个。
+ *
+ * 画布本身不用这里的变量：Canvas 的配色在 components/chart/render.ts 里
+ * （两套 ChartTheme），因为它要的粒度更细（K 线描边/填充、轴框底色…）。
+ */
+
+@theme {
+  --color-surface: var(--c-surface);
+  --color-panel: var(--c-panel);
+  --color-elev: var(--c-elev);
+  --color-line: var(--c-line);
+  --color-ink: var(--c-ink);
+  --color-dim: var(--c-dim);
+  --color-faint: var(--c-faint);
+  --color-accent: var(--c-accent);
+  --color-accent-soft: var(--c-accent-soft);
+}
+
+/*
+ * Tailwind 默认的 dark: 变体看的是「系统深色偏好」，而这里的主题是**用户点出来的**，
+ * 跟着 <html data-theme> 走。这条把两者接上，个别还需要分主题的细节就能直接写 dark:。
+ */
+@custom-variant dark (&:where([data-theme='dark'], [data-theme='dark'] *));
+
+:root {
+  color-scheme: dark;
+  --c-surface: #0b1120;
+  --c-panel: #0e1626;
+  --c-elev: #16233a;
+  --c-line: #1e293b;
+  --c-ink: #e2e8f0;
+  --c-dim: #94a3b8;
+  --c-faint: #64748b;
+  --c-accent: #38bdf8;
+  --c-accent-soft: #0b3a56;
+}
+
+:root[data-theme='light'] {
+  color-scheme: light;
+  --c-surface: #f1f5f9;
+  --c-panel: #ffffff;
+  --c-elev: #eef2f7;
+  --c-line: #d7e0ea;
+  --c-ink: #0f172a;
+  --c-dim: #475569;
+  --c-faint: #64748b;
+  --c-accent: #0369a1;
+  --c-accent-soft: #e0f2fe;
+}
+
 html,
 body,
 #app {
@@ -9,12 +63,18 @@ body,
 
 body {
   margin: 0;
-  background: #020617;
-  color: #e2e8f0;
+  background: var(--c-surface);
+  color: var(--c-ink);
   font-family: system-ui, -apple-system, 'Microsoft YaHei', sans-serif;
 }
 
 * {
   scrollbar-width: thin;
-  scrollbar-color: #334155 transparent;
+  scrollbar-color: var(--c-line) transparent;
+}
+
+/* 数字用等宽：价格、时间、盈亏对齐才看得清 */
+.tnum {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-variant-numeric: tabular-nums;
 }

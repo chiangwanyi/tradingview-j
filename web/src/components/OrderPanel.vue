@@ -2,16 +2,20 @@
 import { computed, ref, watch } from 'vue'
 
 import { formatSigned } from '@/components/chart/scale'
+import TradePanel from '@/components/TradePanel.vue'
 import { useReplayStore } from '@/stores/replay'
 import type { OrderKind, Side } from '@/types/protocol'
 
 /**
- * 模拟交易面板：挂单、撤单、持仓与盈亏。
+ * 模拟交易（底部「模拟交易」Tab 的内容）。
  *
  * 语义刻意保持简单（需求如此）：
  *   - 没有初始资金、没有保证金、没有手续费和滑点，只看盈亏数字和流水；
  *   - 没有止损/止盈类型 —— 想止损就挂一张 stop 单，和手动挂单完全一样；
  *   - 成交判断在后端：新揭示的那根 K 线的最高/最低价碰到挂单价就按挂单价成交。
+ *
+ * 布局是**横排三列**（下单 / 持仓与挂单 / 成交）：底部面板只有约 180px 高，
+ * 纵向堆叠放不下，横过来正好一眼看全。
  */
 
 const store = useReplayStore()
@@ -24,11 +28,20 @@ const manualPrice = ref(false)
 
 const inst = computed(() => store.instance)
 const currentPrice = computed(() => store.currentBar?.close ?? 0)
+const priceText = computed(() =>
+  currentPrice.value ? currentPrice.value.toFixed(store.priceDecimals) : '—',
+)
 const position = computed(() => inst.value?.position ?? { quantity: 0, side: 'flat', averagePrice: 0 })
 const positionText = computed(() => {
   const p = position.value
   if (p.side === 'flat') return '空仓'
-  return `${p.side === 'long' ? '多' : '空'} ${Math.abs(p.quantity)} @ ${p.averagePrice.toFixed(2)}`
+  return `${p.side === 'long' ? '多' : '空'} ${Math.abs(p.quantity)} @ ${p.averagePrice.toFixed(store.priceDecimals)}`
+})
+
+/** 跳动用交易的 tick（没有就按两位小数） */
+const step = computed(() => {
+  const t = store.tick
+  return t > 0 ? String(t) : '0.01'
 })
 
 // 换实例、或者行情往前走而用户没手动改过价格时，价格框跟着现价
@@ -61,7 +74,10 @@ function submit(): void {
 
 const openOrders = computed(() => (inst.value?.orders ?? []).filter((o) => o.status === 'open'))
 const historyOrders = computed(() =>
-  (inst.value?.orders ?? []).filter((o) => o.status !== 'open').slice(-8).reverse(),
+  (inst.value?.orders ?? [])
+    .filter((o) => o.status !== 'open')
+    .slice(-12)
+    .reverse(),
 )
 
 function orderLabel(kindValue: string): string {
@@ -71,112 +87,114 @@ function orderLabel(kindValue: string): string {
 function sideLabel(sideValue: string): string {
   return sideValue === 'buy' ? '买' : '卖'
 }
+
+function pnlClass(v: number): string {
+  if (v > 0) return 'text-emerald-600 dark:text-emerald-400'
+  if (v < 0) return 'text-red-600 dark:text-red-400'
+  return 'text-dim'
+}
+
+const inputClass =
+  'w-full rounded border border-line bg-surface px-1.5 py-1 text-[11px] text-ink tnum focus:border-accent focus:outline-none'
 </script>
 
 <template>
-  <div class="flex h-full flex-col">
-    <div class="flex items-center justify-between border-b border-slate-800 px-3 py-2">
-      <span class="text-xs font-semibold tracking-wide text-slate-300">模拟交易</span>
-      <span class="font-mono text-[11px] text-slate-400">
-        现价 {{ currentPrice ? currentPrice.toFixed(2) : '—' }}
-      </span>
-    </div>
+  <div class="flex h-full min-h-0 divide-x divide-line">
+    <!-- 下单 -->
+    <div class="flex w-[15.5rem] shrink-0 flex-col gap-1.5 p-2">
+      <div class="flex items-center justify-between text-[11px]">
+        <span class="font-semibold">下单</span>
+        <span class="tnum text-dim">现价 {{ priceText }}</span>
+      </div>
 
-    <div class="border-b border-slate-800 px-3 py-2 text-[11px]">
-      <div class="flex justify-between">
-        <span class="text-slate-400">持仓</span>
-        <span class="font-mono" :class="position.side === 'flat' ? 'text-slate-400' : position.side === 'long' ? 'text-red-400' : 'text-emerald-400'">
-          {{ positionText }}
-        </span>
-      </div>
-      <div class="mt-1 flex justify-between">
-        <span class="text-slate-400">已实现盈亏</span>
-        <span
-          class="font-mono"
-          :class="(inst?.realizedPnl ?? 0) > 0 ? 'text-red-400' : (inst?.realizedPnl ?? 0) < 0 ? 'text-emerald-400' : 'text-slate-400'"
-        >
-          {{ formatSigned(inst?.realizedPnl ?? 0) }}
-        </span>
-      </div>
-      <div class="mt-1 flex justify-between">
-        <span class="text-slate-400">浮动盈亏</span>
-        <span
-          class="font-mono"
-          :class="(inst?.unrealizedPnl ?? 0) > 0 ? 'text-red-400' : (inst?.unrealizedPnl ?? 0) < 0 ? 'text-emerald-400' : 'text-slate-400'"
-        >
-          {{ formatSigned(inst?.unrealizedPnl ?? 0) }}
-        </span>
-      </div>
-      <div class="mt-1 text-[10px] text-slate-500">无初始资金 · 不计手续费/滑点/点差</div>
-    </div>
-
-    <div class="space-y-2 border-b border-slate-800 p-3" :class="store.canOperate ? '' : 'opacity-60'">
-      <div class="grid grid-cols-2 gap-2">
-        <select v-model="side" class="rounded border border-slate-700 bg-slate-900 px-2 py-1 text-xs text-slate-200">
+      <div class="grid grid-cols-2 gap-1.5">
+        <select v-model="side" :class="inputClass">
           <option value="buy">买入 / 做多</option>
           <option value="sell">卖出 / 做空</option>
         </select>
-        <select v-model="kind" class="rounded border border-slate-700 bg-slate-900 px-2 py-1 text-xs text-slate-200">
+        <select v-model="kind" :class="inputClass">
           <option value="limit">限价单</option>
           <option value="stop">止损单</option>
         </select>
       </div>
-      <div class="grid grid-cols-2 gap-2">
+
+      <div class="grid grid-cols-2 gap-1.5">
         <label class="block">
-          <span class="text-[10px] text-slate-500">价格</span>
+          <span class="text-[10px] text-faint">价格（跳动 {{ step }}）</span>
           <input
             v-model.number="price"
             type="number"
-            step="0.25"
-            class="w-full rounded border border-slate-700 bg-slate-900 px-2 py-1 font-mono text-xs text-slate-200"
+            :step="step"
+            :class="inputClass"
             @input="manualPrice = true"
           />
         </label>
         <label class="block">
-          <span class="text-[10px] text-slate-500">数量</span>
-          <input
-            v-model.number="quantity"
-            type="number"
-            min="0.01"
-            step="1"
-            class="w-full rounded border border-slate-700 bg-slate-900 px-2 py-1 font-mono text-xs text-slate-200"
-          />
+          <span class="text-[10px] text-faint">数量</span>
+          <input v-model.number="quantity" type="number" min="0.01" step="1" :class="inputClass" />
         </label>
       </div>
+
       <div class="flex items-center gap-2">
-        <button type="button" class="text-[10px] text-sky-400 hover:text-sky-300" @click="useCurrentPrice">
+        <button type="button" class="text-[10px] text-accent hover:underline" @click="useCurrentPrice">
           用现价
         </button>
         <button
           type="button"
-          class="ml-auto rounded bg-amber-600 px-3 py-1 text-xs font-medium text-white hover:bg-amber-500 disabled:cursor-not-allowed disabled:bg-slate-700"
+          class="ml-auto rounded bg-amber-600 px-3 py-1 text-[11px] font-medium text-white hover:bg-amber-500 disabled:cursor-not-allowed disabled:opacity-40"
           :disabled="!store.canOperate || !inst"
           @click="submit"
         >
           挂单
         </button>
       </div>
-      <div class="text-[10px] text-slate-500">
-        限价买单在最低价 ≤ 挂单价时成交；卖单在最高价 ≥ 挂单价时成交。止损单相反。
+
+      <!--
+        这两列加起来只有 184px 高，左边这列没有滚动条 —— 说明文字只留一行。
+        完整规则（限价买 low<=价、限价卖 high>=价、止损相反、不计手续费/滑点）在
+        docs/复盘设计.md 的「模拟交易」一节，界面上放不下也不必放。
+      -->
+      <div class="mt-auto truncate text-[10px] leading-4 text-faint" title="限价买：最低价 ≤ 挂单价；限价卖：最高价 ≥ 挂单价；止损单相反。无资金/手续费/滑点。">
+        规则见 docs/复盘设计.md · 不计手续费/滑点
       </div>
     </div>
 
-    <div class="min-h-0 flex-1 overflow-auto">
-      <div class="px-3 pt-2 text-[11px] text-slate-400">挂单中（{{ openOrders.length }}）</div>
-      <div v-if="openOrders.length === 0" class="px-3 py-1 text-[10px] text-slate-600">没有挂单</div>
-      <div
-        v-for="o in openOrders"
-        :key="o.id"
-        class="flex items-center gap-2 border-b border-slate-800/60 px-3 py-1.5 text-[11px]"
-      >
-        <span :class="o.side === 'buy' ? 'text-red-400' : 'text-emerald-400'">
+    <!-- 持仓 + 挂单 -->
+    <div class="flex w-[16.5rem] shrink-0 flex-col gap-1 overflow-auto p-2 text-[11px]">
+      <div class="flex justify-between">
+        <span class="text-dim">持仓</span>
+        <span class="tnum" :class="pnlClass(position.side === 'flat' ? 0 : position.side === 'long' ? 1 : -1)">
+          {{ positionText }}
+        </span>
+      </div>
+      <div class="flex justify-between">
+        <span class="text-dim">已实现盈亏</span>
+        <span class="tnum" :class="pnlClass(inst?.realizedPnl ?? 0)">
+          {{ formatSigned(inst?.realizedPnl ?? 0) }}
+        </span>
+      </div>
+      <div class="flex justify-between">
+        <span class="text-dim">浮动盈亏</span>
+        <span class="tnum" :class="pnlClass(inst?.unrealizedPnl ?? 0)">
+          {{ formatSigned(inst?.unrealizedPnl ?? 0) }}
+        </span>
+      </div>
+
+      <div class="mt-1 flex items-center justify-between border-t border-line pt-1 text-[10px] text-faint">
+        <span>挂单中 {{ openOrders.length }}</span>
+        <span>最近 {{ historyOrders.length }}</span>
+      </div>
+
+      <div v-if="openOrders.length === 0" class="text-[10px] text-faint">没有挂单</div>
+      <div v-for="o in openOrders" :key="o.id" class="flex items-center gap-1.5 text-[10px]">
+        <span :class="o.side === 'buy' ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'">
           {{ sideLabel(o.side) }}{{ orderLabel(o.kind) }}
         </span>
-        <span class="font-mono text-slate-300">{{ o.price.toFixed(2) }}</span>
-        <span class="text-slate-500">×{{ o.quantity }}</span>
+        <span class="tnum">{{ o.price.toFixed(store.priceDecimals) }}</span>
+        <span class="text-faint">×{{ o.quantity }}</span>
         <button
           type="button"
-          class="ml-auto text-[10px] text-slate-500 hover:text-red-400 disabled:text-slate-700"
+          class="ml-auto text-faint hover:text-red-500 disabled:opacity-40"
           :disabled="!store.canOperate"
           @click="store.cancelOrder(o.id)"
         >
@@ -184,22 +202,16 @@ function sideLabel(sideValue: string): string {
         </button>
       </div>
 
-      <div class="px-3 pt-3 text-[11px] text-slate-400">最近订单</div>
-      <div v-if="historyOrders.length === 0" class="px-3 py-1 text-[10px] text-slate-600">还没有已结束的订单</div>
-      <div v-for="o in historyOrders" :key="o.id" class="border-b border-slate-800/60 px-3 py-1.5 text-[10px]">
-        <div class="flex items-center gap-2">
-          <span :class="o.side === 'buy' ? 'text-red-400' : 'text-emerald-400'">
-            {{ sideLabel(o.side) }}{{ orderLabel(o.kind) }}
-          </span>
-          <span class="font-mono text-slate-300">{{ o.price.toFixed(2) }}</span>
-          <span class="ml-auto" :class="o.status === 'filled' ? 'text-sky-300' : 'text-slate-500'">
-            {{ o.status === 'filled' ? '已成交' : '已撤销' }}
-          </span>
-        </div>
-        <div class="mt-0.5 font-mono text-slate-600">
-          {{ o.placedAt }}{{ o.filledAt ? ` → ${o.filledAt}` : '' }}
-        </div>
+      <div v-for="o in historyOrders" :key="o.id" class="flex items-center gap-1.5 text-[10px] text-faint">
+        <span>{{ sideLabel(o.side) }}{{ orderLabel(o.kind) }}</span>
+        <span class="tnum">{{ o.price.toFixed(store.priceDecimals) }}</span>
+        <span class="ml-auto">{{ o.status === 'filled' ? '已成交' : '已撤销' }}</span>
       </div>
+    </div>
+
+    <!-- 成交 -->
+    <div class="min-w-0 flex-1">
+      <TradePanel />
     </div>
   </div>
 </template>

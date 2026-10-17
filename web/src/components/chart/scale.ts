@@ -11,48 +11,36 @@ import type { Bar } from '@/types/protocol'
  * 不上报后端；但标注的最终坐标一律是「时间字符串 + 价格」，由后端校验后广播回来。
  */
 
-export const PRICE_AXIS_WIDTH = 66
+export const PRICE_AXIS_WIDTH = 78
 export const TIME_AXIS_HEIGHT = 22
-export const PLOT_TOP = 12
+export const PLOT_TOP = 10
 export const PLOT_LEFT = 10
-export const PANEL_HEIGHT = 52
-export const PANEL_GAP = 10
 
 export interface ChartLayout {
   width: number
   height: number
-  /** 价格区 */
+  /** 价格区（K 线、EMA、挂单线都画在这里） */
   plot: { left: number; top: number; right: number; bottom: number; width: number; height: number }
-  /** BarCount 指标区 */
-  panel: { left: number; top: number; right: number; bottom: number; width: number; height: number }
+  /** 底部时间轴（不画任何行情，只放时间标签） */
+  timeAxis: { top: number; height: number }
 }
 
 export function computeLayout(width: number, height: number): ChartLayout {
   const left = PLOT_LEFT
   const right = Math.max(left + 60, width - PRICE_AXIS_WIDTH)
-  const panelBottom = Math.max(PLOT_TOP + 90, height - TIME_AXIS_HEIGHT)
-  const panelTop = panelBottom - PANEL_HEIGHT
-  const plotTop = PLOT_TOP
-  const plotBottom = Math.max(plotTop + 40, panelTop - PANEL_GAP)
+  const bottom = Math.max(PLOT_TOP + 40, height - TIME_AXIS_HEIGHT)
   return {
     width,
     height,
     plot: {
       left,
-      top: plotTop,
+      top: PLOT_TOP,
       right,
-      bottom: plotBottom,
+      bottom,
       width: Math.max(1, right - left),
-      height: Math.max(1, plotBottom - plotTop),
+      height: Math.max(1, bottom - PLOT_TOP),
     },
-    panel: {
-      left,
-      top: panelTop,
-      right,
-      bottom: panelBottom,
-      width: Math.max(1, right - left),
-      height: Math.max(1, panelBottom - panelTop),
-    },
+    timeAxis: { top: bottom, height: TIME_AXIS_HEIGHT },
   }
 }
 
@@ -223,53 +211,62 @@ export class ChartScale {
     }
     return 576
   }
-
-  /** BarCount 指标区的最大值（可见范围内） */
-  panelMax(): number {
-    const { from, to } = this.visibleRange()
-    let max = 1
-    for (let i = from; i <= to; i += 1) {
-      const b = this.bars[i]
-      if (b && b.barCount > max) max = b.barCount
-    }
-    return Math.ceil(max * 1.08)
-  }
-
-  yOfBarCount(v: number, max: number): number {
-    const h = this.layout.panel.height
-    return this.layout.panel.bottom - (v / Math.max(1, max)) * h
-  }
 }
 
-/** 价格轴刻度：1/2/5 序列，保证标签是好读的数 */
-export function niceTicks(min: number, max: number, count: number): number[] {
-  const span = max - min
-  if (!(span > 0) || !Number.isFinite(span)) return [min]
-  const raw = span / count
+/** 1 / 2 / 5 序列里挑一个「够大」的步长，保证标签是好读的数 */
+function niceStep(raw: number): number {
   const mag = 10 ** Math.floor(Math.log10(raw))
   const norm = raw / mag
-  let step: number
-  if (norm >= 5) step = 10 * mag
-  else if (norm >= 2) step = 5 * mag
-  else if (norm >= 1) step = 2 * mag
-  else step = mag
+  if (norm >= 5) return 10 * mag
+  if (norm >= 2) return 5 * mag
+  if (norm >= 1) return 2 * mag
+  return mag
+}
+
+/**
+ * 价格轴刻度。
+ *
+ * tick > 0 时步长会被抬到它的整数倍：MNQ（0.25 一跳）的刻度就是 0.25 / 0.5 / 1，
+ * 不会出现 0.3 这种在这个标的上根本不存在的价格。
+ */
+export function niceTicks(min: number, max: number, count: number, tick = 0): number[] {
+  const span = max - min
+  if (!(span > 0) || !Number.isFinite(span)) return [min]
+  let step = niceStep(span / count)
+  if (tick > 0 && step > tick) {
+    step = Math.ceil(step / tick - 1e-9) * tick
+  }
   const first = Math.ceil(min / step) * step
   const out: number[] = []
   for (let v = first; v <= max + step * 0.001 && out.length < 40; v += step) {
-    out.push(Math.abs(v) < step * 1e-9 ? 0 : v)
+    out.push(Math.abs(v) < step * 1e-9 ? 0 : roundTo(v, decimalsForTick(tick)))
   }
   return out
 }
 
-/** 根据刻度间隔决定显示几位小数（0.25 一跳的期货要两位，整数报价不要小数） */
-export function decimalsForStep(step: number): number {
-  if (!(step > 0)) return 2
-  const d = Math.ceil(-Math.log10(step))
-  return clamp(d, 0, 4)
+function roundTo(v: number, decimals: number): number {
+  const f = 10 ** decimals
+  return Math.round(v * f) / f
+}
+
+/**
+ * 最小 tick 需要几位小数。
+ *
+ * 下限是 2：加载时价格已经四舍五入到两位小数（89.97000000000001 -> 89.97），
+ * 只留一位会把 89.97 显示成 90.0，反而看不出真实报价。
+ */
+export function decimalsForTick(tick: number): number {
+  if (!(tick > 0)) return 2
+  const needed = Math.ceil(-Math.log10(tick) - 1e-9)
+  return clamp(Math.max(2, needed), 2, 6)
 }
 
 export function formatPrice(v: number, decimals = 2): string {
   return v.toFixed(decimals)
+}
+
+export function formatTick(tick: number): string {
+  return tick.toFixed(decimalsForTick(tick)).replace(/0+$/, '').replace(/\.$/, '')
 }
 
 export function formatSigned(v: number, decimals = 2): string {

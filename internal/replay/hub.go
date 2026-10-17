@@ -46,6 +46,11 @@ type Hub struct {
 	instanceSeq int
 	usedNames   map[string]bool
 	closed      bool
+
+	// 持久化（persist.go）：statePath 为空 = 不落盘（单元测试就是这么跑的）
+	statePath string
+	stateDone chan struct{}
+	dirty     bool
 }
 
 func NewHub(ds *DataSource, version string, logf func(format string, args ...any)) *Hub {
@@ -60,6 +65,7 @@ func NewHub(ds *DataSource, version string, logf func(format string, args ...any
 		log:       logf,
 		rnd:       rand.New(rand.NewSource(time.Now().UnixNano())),
 		usedNames: map[string]bool{},
+		stateDone: make(chan struct{}),
 	}
 }
 
@@ -232,6 +238,7 @@ func (h *Hub) handleCreate(c *Client, req Request) {
 
 	h.instances[inst.ID] = inst
 	h.order = append(h.order, inst.ID)
+	h.markDirtyLocked()
 	h.log("[replay] %s 新建实例 %s（%s @ %s，%d 根已加载）", c.Name, inst.ID, inst.Symbol, inst.Anchor, len(inst.Bars))
 
 	h.sendStateLocked(c, inst)
@@ -578,14 +585,18 @@ func (h *Hub) deleteLocked(inst *Instance) {
 			h.reply(c, DeletedMsg{Type: MsgDeleted, InstanceID: inst.ID})
 		}
 	}
+	h.markDirtyLocked()
 	h.broadcastInstancesLocked()
 	h.log("[replay] 实例 %s 已删除", inst.ID)
 }
 
-// Close 停掉所有机器人与连接（服务退出时调用）。
+// Close 停掉所有机器人与连接（服务退出时调用），最后把状态写一次盘。
 func (h *Hub) Close() {
 	h.mu.Lock()
-	defer h.mu.Unlock()
+	if h.closed {
+		h.mu.Unlock()
+		return
+	}
 	h.closed = true
 	for _, inst := range h.instances {
 		if inst.botStop != nil {
@@ -598,12 +609,23 @@ func (h *Hub) Close() {
 		}
 	}
 	h.clients = map[string]*Client{}
+	done := h.stateDone
+	h.mu.Unlock()
+
+	// 先让定时器退出，再同步写一次：Ctrl+C 之后不该丢最后几秒的动作。
+	if done != nil {
+		close(done)
+	}
+	h.flushState()
 }
 
 // ---------------- 广播 ----------------
 
 func (h *Hub) broadcastInstanceLocked(inst *Instance, action string, payload any, by string) {
 	ev := inst.appendEvent(by, action, payload)
+	// 广播 = 这个实例的状态变了（步进、标注、下单、操作权、成员）。落盘就打在这里，
+	// 免得每个 do* 方法各记一次、漏一个就静默丢数据。
+	h.markDirtyLocked()
 	data, err := json.Marshal(EventMsg{
 		Type:       MsgEvent,
 		InstanceID: inst.ID,

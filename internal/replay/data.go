@@ -63,6 +63,7 @@ func (ds *DataSource) Catalog() ([]SymbolInfo, error) {
 			Days:      e.Days,
 			FirstDate: e.FirstDate,
 			LastDate:  e.LastDate,
+			Tick:      e.Tick,
 		})
 	}
 	return out, nil
@@ -123,6 +124,7 @@ func (ds *DataSource) Open(symbol, anchorTime string, history, forwardDays int, 
 	inst := &Instance{
 		Symbol:   info.Symbol,
 		Folder:   info.Folder,
+		Tick:     info.Tick,
 		dayFiles: files,
 	}
 	var notes []string
@@ -135,7 +137,7 @@ func (ds *DataSource) Open(symbol, anchorTime string, history, forwardDays int, 
 	// 从前向后攒历史：先把锚点日「到锚点为止」的部分放进来，再往前面加整日，直到够 bars 根。
 	rows := anchorRow
 	bars := make([]Bar, 0, history+8)
-	bars = append(bars, rowsToBars(rows[:rowIdx+1], 0)...)
+	bars = append(bars, rowsToBars(rows[:rowIdx+1])...)
 	for d := dayIdx - 1; d >= 0 && len(bars) < history; d-- {
 		prev, rs, err := store.ReadDayRows(filepath.Join(dir, files[d]), ds.Loc)
 		if err != nil {
@@ -148,7 +150,7 @@ func (ds *DataSource) Open(symbol, anchorTime string, history, forwardDays int, 
 		if len(prev) == 0 {
 			continue
 		}
-		bars = append(rowsToBars(prev, 0), bars...)
+		bars = append(rowsToBars(prev), bars...)
 	}
 	cursorTime := rows[rowIdx].Time
 
@@ -162,17 +164,13 @@ func (ds *DataSource) Open(symbol, anchorTime string, history, forwardDays int, 
 		if rs.Bad > 0 {
 			notes = append(notes, fmt.Sprintf("%s 有 %d 行解析不了（已跳过）", files[d], rs.Bad))
 		}
-		bars = append(bars, rowsToBars(next, 0)...)
+		bars = append(bars, rowsToBars(next)...)
 	}
 	inst.nextDay = minInt(dayIdx+forwardDays+1, len(files))
 
 	// 同一根 K 线可能出现两次（日文件边界被手工改过）：按时间去掉后来的那份，
 	// 保证 time 在实例里是**唯一**的 —— 协议就用它当标识。
 	bars = dedupeBars(bars)
-
-	for i := range bars {
-		bars[i].BarCount = i + 1
-	}
 	computeEMA(bars)
 
 	cursor := 0
@@ -266,8 +264,8 @@ func (inst *Instance) ensureFuture(ds *DataSource) error {
 			continue
 		}
 		next := make([]Bar, 0, len(rows))
-		for i, r := range rows {
-			next = append(next, toBar(r, len(inst.Bars)+i+1))
+		for _, r := range rows {
+			next = append(next, toBar(r))
 		}
 		// 日文件之间理论上不会重叠；真重叠了就去重（以后来的为准，与落盘的覆盖语义一致）。
 		for _, b := range next {
@@ -290,22 +288,25 @@ func (inst *Instance) ensureFuture(ds *DataSource) error {
 // 小工具
 // ---------------------------------------------------------------------------
 
-func toBar(r store.TimeBar, count int) Bar {
+// toBar 把 CSV 的一行变成协议里的一根 K 线。
+//
+// **价格在这里四舍五入到两位小数**：CSV 里会出现 89.97000000000001 这种浮点噪声，
+// 原样下发会让价格轴、十字光标提示、下单框里冒出一串尾巴。成交量不处理（它本来就是整数）。
+func toBar(r store.TimeBar) Bar {
 	return Bar{
-		Time:     r.Time,
-		Open:     r.O,
-		High:     r.H,
-		Low:      r.L,
-		Close:    r.C,
-		Volume:   r.V,
-		BarCount: count,
+		Time:   r.Time,
+		Open:   roundPrice(r.O),
+		High:   roundPrice(r.H),
+		Low:    roundPrice(r.L),
+		Close:  roundPrice(r.C),
+		Volume: r.V,
 	}
 }
 
-func rowsToBars(rows []store.TimeBar, offset int) []Bar {
+func rowsToBars(rows []store.TimeBar) []Bar {
 	out := make([]Bar, 0, len(rows))
-	for i, r := range rows {
-		out = append(out, toBar(r, offset+i+1))
+	for _, r := range rows {
+		out = append(out, toBar(r))
 	}
 	return out
 }
@@ -391,7 +392,8 @@ func minInt(a, b int) int {
 	return b
 }
 
-// roundPrice 只用于机器人下单时把价格修整齐，避免出现 30013.2500000001 这种尾数。
+// roundPrice 把价格修整齐到两位小数（保留给下单、标注、加载三处共用）。
+// 它也是「CSV 里 89.97000000000001 到了界面上变成 89.97」的唯一实现。
 func roundPrice(p float64) float64 {
 	if p == 0 || math.IsNaN(p) {
 		return p

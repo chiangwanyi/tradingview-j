@@ -220,7 +220,7 @@ func TestExpectedBarsByWeekday(t *testing.T) {
 		{"2026-10-23", []int{276}},      // 周五
 		{"2026-10-24", []int{72, 60}},   // 周六：冬令时 6 小时 / 夏令时 5 小时
 		{"2026-10-25", []int{0}},        // 周日：休市
-		{"不是日期", nil},                 // 认不出来就不判，不误报
+		{"不是日期", nil},                   // 认不出来就不判，不误报
 	}
 	for _, c := range cases {
 		got := ExpectedBars(c.date, cst)

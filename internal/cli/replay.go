@@ -7,7 +7,6 @@ package cli
 // 标注、挂单、成交都记在服务端内存里，不写回 CSV，也不碰数据目录。
 
 import (
-	"fmt"
 	"time"
 
 	"tradingview-j/internal/replay"
@@ -20,12 +19,14 @@ func (a *App) runReplay() int {
 	}
 	root := cfg.OutPath()
 	dist := cfg.ReplayDistPath()
+	state := cfg.ReplayStatePath()
 
 	a.Log.Rule(72)
 	a.Log.Plain("  复盘 · 数据目录 %s", root)
 	a.Log.Plain("  前端产物 %s", dist)
+	a.Log.Plain("  实例存档 %s", state)
 	a.Log.Plain("  一根 K 线 %d 秒 · 时区 %s（和 CSV 里的时间列一致）", cfg.IntervalSeconds, time.Local)
-	a.Log.Plain("  只读数据目录：标注、挂单、成交只存在服务端内存里，不写回 CSV")
+	a.Log.Plain("  只读数据目录：标注、挂单、成交只存在服务端（外加一份实例存档），不写回 CSV")
 	a.Log.Plain("  多人连接时只有一人能操作，其余人观看；操作可随时交还或接管")
 	a.Log.Rule(72)
 
@@ -40,6 +41,7 @@ func (a *App) runReplay() int {
 	srv, err := replay.Start(replay.Options{
 		DataRoot: root,
 		DistDir:  dist,
+		StateDir: state,
 		Version:  a.Version,
 		Location: time.Local,
 		Log:      func(format string, args ...any) { a.Log.Info(format, args...) },
@@ -66,6 +68,7 @@ func (a *App) runReplay() int {
 	if err := srv.Close(); err != nil {
 		a.Log.Warn("关闭服务时出错：%v", err)
 	}
-	fmt.Println("  复盘服务已停止（实例与标注都在内存里，已随服务结束）")
+	a.Log.Plain("  复盘服务已停止。实例、标注、挂单、成交都写进了 %s", state)
+	a.Log.Plain("  下次选 4 进来还在列表里（操作者不保存，谁进来谁重新拿操作权）")
 	return 0
 }

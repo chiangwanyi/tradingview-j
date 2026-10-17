@@ -91,8 +91,8 @@ type ScanResult struct {
 	Skipped int
 	Dupes   int
 	// 下面两个是跨标的的聚合，和 Folders 里的逐日标记同源，只是给界面做个总数。
-	BarsOff      int // 根数与该星期应有根数不符的日文件数
-	MismatchDays int // 各标的根数不完全一致的天数
+	BarsOff      int      // 根数与该星期应有根数不符的日文件数
+	MismatchDays int      // 各标的根数不完全一致的天数
 	Notes        []string // 异常情况（读不了之类的），由调用方原样打出来
 }
 

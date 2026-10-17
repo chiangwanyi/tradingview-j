@@ -64,7 +64,7 @@ func TestWebSocketEndToEnd(t *testing.T) {
 		t.Fatalf("快照应当只含已揭示的 K 线：bars=%d cursor=%v", len(bars), inst["cursor"])
 	}
 	first := bars[0].(map[string]any)
-	for _, k := range []string{"time", "open", "high", "low", "close", "volume", "ema20", "barCount"} {
+	for _, k := range []string{"time", "open", "high", "low", "close", "volume", "ema20"} {
 		if _, ok := first[k]; !ok {
 			t.Fatalf("K 线缺少字段 %q：%v", k, first)
 		}

@@ -59,9 +59,10 @@ type Store struct {
 
 	mu       sync.Mutex
 	days     map[string]*day
-	folders  map[string]string // symbol -> folder
-	taken    map[string]string // lower(folder) -> symbol
-	accepted map[string]int64  // folder -> Add 调用次数（含覆盖）
+	folders  map[string]string  // symbol -> folder
+	taken    map[string]string  // lower(folder) -> symbol
+	ticks    map[string]float64 // symbol -> 最小跳动（来自 _symbols.json，写回时保留）
+	accepted map[string]int64   // folder -> Add 调用次数（含覆盖）
 	idxDirty bool
 }
 
@@ -87,6 +88,7 @@ func Open(opts Options) (*Store, error) {
 		days:     map[string]*day{},
 		folders:  map[string]string{},
 		taken:    map[string]string{},
+		ticks:    map[string]float64{},
 		accepted: map[string]int64{},
 	}
 	if err := os.MkdirAll(opts.Root, 0o755); err != nil {
@@ -105,8 +107,12 @@ func (s *Store) logf(format string, args ...any) {
 // ---------------- 标的 -> 文件夹 ----------------
 
 type symRec struct {
-	Folder  string `json:"folder"`
-	Created int64  `json:"created,omitempty"`
+	Folder string `json:"folder"`
+	// Tick 是这个标的的最小跳动（0.25 / 0.1 / 0.01…）。它由用户直接写进
+	// _symbols.json（复盘的价格轴要用它决定小数位），抓取这边**原样保留**：
+	// 写索引时从 s.ticks 里带回去，否则抓一次就把用户填的值抹掉了。
+	Tick    float64 `json:"tick,omitempty"`
+	Created int64   `json:"created,omitempty"`
 }
 
 type symbolIndex struct {
@@ -139,6 +145,9 @@ func (s *Store) loadIndex() {
 	idx, err := readIndexFile(s.opts.Root)
 	if err == nil {
 		for sym, rec := range idx.Symbols {
+			if rec.Tick > 0 {
+				s.ticks[sym] = rec.Tick
+			}
 			if rec.Folder == "" {
 				continue
 			}
@@ -224,10 +233,11 @@ func shortHash(s string) string {
 	return hex.EncodeToString(sum[:])[:6]
 }
 
+// saveIndexLocked 写 _symbols.json。调用方必须已经持有 s.mu（见 Flush）。
 func (s *Store) saveIndexLocked() error {
 	idx := symbolIndex{Version: 1, Symbols: map[string]symRec{}}
 	for sym, folder := range s.folders {
-		idx.Symbols[sym] = symRec{Folder: folder}
+		idx.Symbols[sym] = symRec{Folder: folder, Tick: s.ticks[sym]}
 	}
 	buf, err := json.MarshalIndent(idx, "", "  ")
 	if err != nil {

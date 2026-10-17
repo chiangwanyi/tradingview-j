@@ -21,11 +21,11 @@ import (
 
 // TimeBar 是 CSV 的一行：时间保持明文，同时带上解析出来的时间戳（排序用）。
 type TimeBar struct {
-	Time      string  // 原始文本，形如 "2026-10-16 12:00"
-	T         int64   // 解析后的 Unix 秒（只用于排序/比较，不进协议）
+	Time       string // 原始文本，形如 "2026-10-16 12:00"
+	T          int64  // 解析后的 Unix 秒（只用于排序/比较，不进协议）
 	O, H, L, C float64
-	V         float64
-	HasVolume bool
+	V          float64
+	HasVolume  bool
 }
 
 // CatalogEntry 是「复盘选标的」用的名录项。
@@ -38,6 +38,42 @@ type CatalogEntry struct {
 	Days      int
 	FirstDate string // 最早一天（文件名）
 	LastDate  string // 最晚一天（文件名）
+	// Tick 是最小跳动：优先取 _symbols.json 里登记的（用户手填），
+	// 没登记就按标的名兜底（见 DefaultTick）。价格轴用它定小数位。
+	Tick float64
+}
+
+// FallbackTick 是认不出标的时的最小跳动。
+//
+// 取 0.01 是因为 CSV 里的价格本来就只有两位小数（加载时还会再四舍五入到两位），
+// 这个值不会把一个真实的报价「量化掉」。
+const FallbackTick = 0.01
+
+// tickRules 是「没在 _symbols.json 里登记时不至于抓瞎」的兜底表。
+//
+// 顺序有意义：先匹配更具体的（MNQ/MES 是 0.25，MGC/BTCUSDT 是 0.1），最后才是 CL。
+// 匹配方式是「标的名里包含这个片段」，所以 "CME_MINI:MNQ1!" 也能命中 MNQ。
+var tickRules = []struct {
+	key  string
+	tick float64
+}{
+	{"MNQ", 0.25},
+	{"MES", 0.25},
+	{"MGC", 0.1},
+	{"BTCUSDT", 0.1},
+	{"CL", 0.01},
+}
+
+// DefaultTick 按标的名猜一个最小跳动。**只在 _symbols.json 没登记 tick 时使用**，
+// 用户手填的值永远优先（那是唯一权威）。
+func DefaultTick(symbol string) float64 {
+	up := strings.ToUpper(symbol)
+	for _, r := range tickRules {
+		if strings.Contains(up, r.key) {
+			return r.tick
+		}
+	}
+	return FallbackTick
 }
 
 // readDayRows 把一份日文件读成按时间升序的行，保留时间文本。
@@ -112,10 +148,18 @@ func Catalog(root string) ([]CatalogEntry, error) {
 		return nil, err
 	}
 	symbolOf := map[string]string{}
+	tickByFolder := map[string]float64{}
+	tickBySymbol := map[string]float64{}
 	if idx, err := readIndexFile(root); err == nil {
 		for sym, rec := range idx.Symbols {
 			if rec.Folder != "" {
 				symbolOf[rec.Folder] = sym
+			}
+			if rec.Tick > 0 {
+				tickBySymbol[sym] = rec.Tick
+				if rec.Folder != "" {
+					tickByFolder[rec.Folder] = rec.Tick
+				}
 			}
 		}
 	}
@@ -132,12 +176,20 @@ func Catalog(root string) ([]CatalogEntry, error) {
 		if !ok {
 			sym = e.Name()
 		}
+		tick := tickByFolder[e.Name()]
+		if tick <= 0 {
+			tick = tickBySymbol[sym]
+		}
+		if tick <= 0 {
+			tick = DefaultTick(sym)
+		}
 		out = append(out, CatalogEntry{
 			Symbol:    sym,
 			Folder:    e.Name(),
 			Days:      len(files),
 			FirstDate: strings.TrimSuffix(files[0], filepath.Ext(files[0])),
 			LastDate:  strings.TrimSuffix(files[len(files)-1], filepath.Ext(files[len(files)-1])),
+			Tick:      tick,
 		})
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Folder < out[j].Folder })

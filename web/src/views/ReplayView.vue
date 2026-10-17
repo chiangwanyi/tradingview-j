@@ -3,14 +3,15 @@ import { computed, onMounted } from 'vue'
 
 import ChartPanel from '@/components/ChartPanel.vue'
 import ChartToolbar from '@/components/ChartToolbar.vue'
-import EventLog from '@/components/EventLog.vue'
-import InstancePanel from '@/components/InstancePanel.vue'
-import OrderPanel from '@/components/OrderPanel.vue'
-import TradePanel from '@/components/TradePanel.vue'
+import InstancesMenu from '@/components/InstancesMenu.vue'
+import TradeDock from '@/components/TradeDock.vue'
 import { useReplayStore } from '@/stores/replay'
 
 /**
- * 复盘主界面：左边标的与实例，中间画布，右边交易，底部操作记录。
+ * 复盘主界面：一条顶栏 + 画布占满 + 底部 Tab（模拟交易 / 操作记录）。
+ *
+ * 布局是 v1.1 调整过的：左侧那一栏「标的与实例」搬进了右上角的折叠面板，
+ * 右侧的交易栏搬到了底部 Tab —— 两处都只为了同一个目标：**把空间让给画布**。
  *
  * 整个应用只有这一页。实例是服务端概念，这里只负责「进入/退出/观看」，
  * 关掉标签页不会删除实例（下次连上还在列表里）。
@@ -46,44 +47,56 @@ const cursorText = computed(() => {
   return `第 ${inst.cursor + 1} 根 / 已加载 ${inst.bars.length} 根`
 })
 
+const themeLabel = computed(() => (store.theme === 'dark' ? '浅色' : '深色'))
+
 onMounted(() => {
   store.connect()
 })
 </script>
 
 <template>
-  <div class="flex h-screen flex-col bg-slate-950 text-slate-100">
-    <header class="flex shrink-0 items-center gap-3 border-b border-slate-800 px-3 py-2">
+  <div class="flex h-screen flex-col bg-surface text-ink">
+    <header class="flex h-10 shrink-0 items-center gap-3 border-b border-line bg-panel px-3">
       <span class="text-sm font-semibold tracking-wide">看盘 · 复盘</span>
-      <span class="text-[10px] text-slate-600">v{{ store.me?.version ?? '' }}</span>
+      <span class="text-[10px] text-faint">v{{ store.me?.version ?? '' }}</span>
 
-      <span class="flex items-center gap-1.5 text-[11px] text-slate-400">
+      <span class="flex items-center gap-1.5 text-[11px] text-dim">
         <span class="h-1.5 w-1.5 rounded-full" :class="statusColor" />
         {{ statusText }}
       </span>
 
-      <span v-if="store.me" class="rounded bg-slate-800 px-1.5 py-0.5 text-[10px] text-slate-300">
+      <span v-if="store.me" class="rounded bg-elev px-1.5 py-0.5 text-[10px] text-dim">
         {{ store.me.name }}
-        <span v-if="store.isOperator" class="text-emerald-400">（操作者）</span>
-        <span v-else-if="store.instance" class="text-slate-500">（观众）</span>
+        <span v-if="store.isOperator" class="text-emerald-600 dark:text-emerald-400">（操作者）</span>
+        <span v-else-if="store.instance" class="text-faint">（观众）</span>
       </span>
 
-      <div v-if="store.instance" class="flex min-w-0 items-center gap-2 text-[11px] text-slate-400">
-        <span class="h-4 w-px bg-slate-700" />
-        <span class="truncate font-medium text-slate-200">{{ store.instance.symbol }}</span>
-        <span class="font-mono text-[10px] text-slate-500">{{ store.instance.anchor }}</span>
-        <span class="text-[10px] text-slate-500">{{ cursorText }}</span>
-        <span v-if="store.instance.bot" class="rounded bg-sky-600/20 px-1.5 text-[10px] text-sky-300">
+      <div v-if="store.instance" class="flex min-w-0 items-center gap-2 text-[11px] text-dim">
+        <span class="h-4 w-px bg-line" />
+        <span class="truncate font-medium text-ink">{{ store.instance.symbol }}</span>
+        <span class="tnum text-[10px] text-faint">{{ store.instance.anchor }}</span>
+        <span class="text-[10px] text-faint">{{ cursorText }}</span>
+        <span class="tnum text-[10px] text-faint">tick {{ store.tick }}</span>
+        <span v-if="store.instance.bot" class="rounded bg-sky-600/20 px-1.5 text-[10px] text-sky-600 dark:text-sky-300">
           机器人演示中
         </span>
       </div>
-      <div v-else class="text-[11px] text-slate-600">没有进入实例</div>
+      <div v-else class="text-[11px] text-faint">没有进入实例</div>
 
       <div class="ml-auto flex items-center gap-2">
         <button
+          type="button"
+          class="rounded border border-line px-2 py-1 text-[11px] text-dim hover:border-accent hover:text-accent"
+          :title="`切换到${themeLabel}模式`"
+          @click="store.toggleTheme()"
+        >
+          {{ themeLabel }}
+        </button>
+        <InstancesMenu />
+        <button
           v-if="store.instance"
           type="button"
-          class="rounded border border-slate-700 px-2 py-1 text-[11px] text-slate-300 hover:border-slate-500"
+          class="rounded border border-line px-2 py-1 text-[11px] text-dim hover:border-accent hover:text-accent"
           @click="store.leaveInstance()"
         >
           离开
@@ -91,37 +104,28 @@ onMounted(() => {
       </div>
     </header>
 
-    <div class="flex min-h-0 flex-1">
-      <aside class="w-64 shrink-0 overflow-hidden border-r border-slate-800">
-        <InstancePanel />
-      </aside>
-
-      <main class="flex min-w-0 flex-1 flex-col">
-        <ChartToolbar />
-        <div class="min-h-0 flex-1 bg-slate-950">
-          <ChartPanel />
-        </div>
-      </main>
-
-      <aside class="flex w-72 shrink-0 flex-col border-l border-slate-800">
-        <div class="min-h-0 flex-1 overflow-hidden"><OrderPanel /></div>
-        <div class="h-56 shrink-0 overflow-hidden border-t border-slate-800"><TradePanel /></div>
-      </aside>
-    </div>
-
-    <footer class="h-40 shrink-0 border-t border-slate-800">
-      <EventLog />
-    </footer>
-
-    <div
-      v-if="store.lastError"
-      :key="store.errorKey"
-      class="fixed right-3 bottom-3 z-50 max-w-md rounded border border-red-700 bg-red-950/95 px-3 py-2 text-xs text-red-100 shadow-lg"
-    >
-      <div class="flex items-start gap-3">
-        <span class="flex-1">{{ store.lastError }}</span>
-        <button type="button" class="text-red-300 hover:text-white" @click="store.clearError()">关闭</button>
+    <main class="relative flex min-h-0 flex-1 flex-col">
+      <ChartToolbar />
+      <div class="min-h-0 flex-1">
+        <ChartPanel />
       </div>
-    </div>
+
+      <!--
+        错误提示贴着画布右下角（不是窗口右下角）：底部现在有交易栏，
+        fixed 到 bottom-3 会被它整个盖住，报错了也看不见。
+      -->
+      <div
+        v-if="store.lastError"
+        :key="store.errorKey"
+        class="absolute right-2 bottom-2 z-50 max-w-md rounded border border-red-300 bg-red-50/95 px-3 py-2 text-xs text-red-800 shadow-lg dark:border-red-700 dark:bg-red-950/95 dark:text-red-100"
+      >
+        <div class="flex items-start gap-3">
+          <span class="flex-1">{{ store.lastError }}</span>
+          <button type="button" class="text-red-500 hover:opacity-70" @click="store.clearError()">关闭</button>
+        </div>
+      </div>
+    </main>
+
+    <TradeDock />
   </div>
 </template>
