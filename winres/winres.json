@@ -4,7 +4,7 @@
       "0000": {
         "info": {
           "0409": {
-            "FileDescription": "TradingView 图表页 K 线旁路抓取（5 分钟 → CSV）",
+            "FileDescription": "TradingView 5 分钟 K 线：旁路抓取 · 终端/网页分析 · 逐根复盘",
             "InternalName": "tv-capture",
             "ProductName": "tradingview-j",
             "Comments": "这个文件里刻意没有版本号：版本只从根目录 VERSION 来，构建时由 build.cmd 用 --file-version/--product-version 注入（见 README 的「版本号」一节）。JSON 不支持注释，所以理由写在这里。"

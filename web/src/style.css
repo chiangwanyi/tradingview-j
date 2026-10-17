@@ -1,1 +1,20 @@
 @import 'tailwindcss';
+
+/* 复盘是全屏看盘界面：根节点撑满，滚动条压暗一点，别在深色画布旁边闪一条亮白。 */
+html,
+body,
+#app {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: #020617;
+  color: #e2e8f0;
+  font-family: system-ui, -apple-system, 'Microsoft YaHei', sans-serif;
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #334155 transparent;
+}

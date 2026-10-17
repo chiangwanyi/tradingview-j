@@ -348,16 +348,29 @@ func readDayFile(path string, loc *time.Location) (map[int64]Bar, RowStat, error
 	}
 }
 
-// parseRow 解析一行 CSV。前 4 列（OHLC）必须都能解析；
-// 第 5 列成交量允许为空 —— 有些品种的帧里没有成交量，写出来就是一列空值，
-// 读回来不能因此把整行丢掉。
+// parseRow 解析一行 CSV，只要时间戳（落盘/统计用）。
 func parseRow(rec []string, loc *time.Location) (Bar, bool) {
-	if len(rec) < 5 {
+	tb, ok := parseTimeRow(rec, loc)
+	if !ok {
 		return Bar{}, false
 	}
-	ts, err := time.ParseInLocation(timeLayout, strings.TrimSpace(rec[0]), loc)
+	return Bar{T: tb.T, O: tb.O, H: tb.H, L: tb.L, C: tb.C, V: tb.V, HasVolume: tb.HasVolume}, true
+}
+
+// parseTimeRow 解析一行 CSV，并保留时间列的原始文本（复盘用它当唯一标识）。
+//
+// 前 4 列（OHLC）必须都能解析；第 5 列成交量允许为空 —— 有些品种的帧里没有成交量，
+// 写出来就是一列空值，读回来不能因此把整行丢掉。
+//
+// 落盘、统计、复盘三条路径都走这一个函数：时间格式或列义一变，三处同时跟上。
+func parseTimeRow(rec []string, loc *time.Location) (TimeBar, bool) {
+	if len(rec) < 5 {
+		return TimeBar{}, false
+	}
+	text := strings.TrimSpace(rec[0])
+	ts, err := time.ParseInLocation(timeLayout, text, loc)
 	if err != nil {
-		return Bar{}, false
+		return TimeBar{}, false
 	}
 	vals := make([]float64, 0, 5)
 	for i := 1; i <= 5 && i < len(rec); i++ {
@@ -366,22 +379,22 @@ func parseRow(rec []string, loc *time.Location) (Bar, bool) {
 			if i == 5 {
 				break
 			}
-			return Bar{}, false
+			return TimeBar{}, false
 		}
 		f, err := strconv.ParseFloat(raw, 64)
 		if err != nil {
-			return Bar{}, false
+			return TimeBar{}, false
 		}
 		vals = append(vals, f)
 	}
 	if len(vals) < 4 {
-		return Bar{}, false
+		return TimeBar{}, false
 	}
-	b := Bar{T: ts.Unix(), O: vals[0], H: vals[1], L: vals[2], C: vals[3]}
+	tb := TimeBar{Time: text, T: ts.Unix(), O: vals[0], H: vals[1], L: vals[2], C: vals[3]}
 	if len(vals) == 5 {
-		b.V, b.HasVolume = vals[4], true
+		tb.V, tb.HasVolume = vals[4], true
 	}
-	return b, true
+	return tb, true
 }
 
 // Flush 把所有脏的日文件重写一遍。

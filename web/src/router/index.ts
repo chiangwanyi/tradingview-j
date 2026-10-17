@@ -3,14 +3,14 @@ import { createRouter, createWebHistory } from 'vue-router'
 import type { RouteRecordRaw } from 'vue-router'
 
 /**
- * 当前只有一个用于验证项目能跑起来的页面。
- * 页面设计从零开始，所以路由表保持最小 —— 以后加页面在这里追加即可。
+ * 第一版只有复盘这一页。实例、图表、标注、交易都在同一页里切换视图，
+ * 用路由拆开反而会把「当前实例」这种服务端状态切碎，所以保持一条路由。
  */
 const routes: RouteRecordRaw[] = [
   {
     path: '/',
-    name: 'home',
-    component: () => import('@/views/HomeView.vue'),
+    name: 'replay',
+    component: () => import('@/views/ReplayView.vue'),
   },
 ]
 

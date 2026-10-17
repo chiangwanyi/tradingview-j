@@ -44,6 +44,13 @@ type Config struct {
 	// 给一个固定值是刻意的：端口固定了地址就能收藏，不然每次都要回终端抄一遍。
 	WebPort int `json:"webPort"`
 
+	// ---- 复盘（菜单 4）----
+	// ReplayPort 是复盘服务的端口（HTTP 与 WebSocket 同一个端口）。
+	ReplayPort int `json:"replayPort"`
+	// ReplayDistDir 是前端构建产物（web/dist）相对 exe 目录的位置。
+	// 开发期用 npm run dev 时不需要它；要用菜单 4 直接打开页面才需要先 npm run build。
+	ReplayDistDir string `json:"replayDistDir"`
+
 	// ---- 节奏（秒）----
 	FlushSeconds      float64 `json:"flushSeconds"`      // CSV 落盘间隔
 	AttachPollSeconds float64 `json:"attachPollSeconds"` // 轮询标签页的间隔
@@ -73,6 +80,8 @@ func Defaults() Config {
 		SaveRawFrames:     true,
 		CSVHeader:         true,
 		WebPort:           8765,
+		ReplayPort:        8790,
+		ReplayDistDir:     "web/dist",
 		FlushSeconds:      1,
 		AttachPollSeconds: 3,
 		RetrySeconds:      5,
@@ -105,8 +114,9 @@ func duration(sec, def float64) time.Duration {
 }
 
 // OutPath / RawPath 把相对目录按基准目录展开
-func (c Config) OutPath() string { return resolve(c.BaseDir, c.OutDir) }
-func (c Config) RawPath() string { return resolve(c.BaseDir, c.RawDir) }
+func (c Config) OutPath() string        { return resolve(c.BaseDir, c.OutDir) }
+func (c Config) RawPath() string        { return resolve(c.BaseDir, c.RawDir) }
+func (c Config) ReplayDistPath() string { return resolve(c.BaseDir, c.ReplayDistDir) }
 
 func resolve(base, dir string) string {
 	if dir == "" {
@@ -197,10 +207,17 @@ func (c *Config) normalize() []string {
 	if c.MaxFrameMB <= 0 {
 		c.MaxFrameMB = d.MaxFrameMB
 	}
-	// webPort 允许 0（让系统随便给一个空闲端口），只挡住明显写错的值
+	// webPort / replayPort 允许 0（让系统随便给一个空闲端口），只挡住明显写错的值
 	if c.WebPort < 0 || c.WebPort > 65535 {
 		fix("webPort", c.WebPort, d.WebPort, true)
 		c.WebPort = d.WebPort
+	}
+	if c.ReplayPort < 0 || c.ReplayPort > 65535 {
+		fix("replayPort", c.ReplayPort, d.ReplayPort, true)
+		c.ReplayPort = d.ReplayPort
+	}
+	if c.ReplayDistDir == "" {
+		c.ReplayDistDir = d.ReplayDistDir
 	}
 	return notes
 }

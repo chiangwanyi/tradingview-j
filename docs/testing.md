@@ -32,6 +32,7 @@ go test ./internal/config/     # 配置生成 / 缺键补齐 / 非法值回退
 go test ./internal/logx/       # 状态行原地刷新 / 中文按显示宽度擦除 / 重定向不留回车
 go test ./internal/termreport/ # 终端报表排版（中文表头列宽一致，菜单 2）
 go test ./internal/webreport/  # 网页版的 JSON 形状 / 静态资源 / 端口回退 / 只读（含前端格式化交叉校验）
+go test ./internal/replay/     # 复盘：窗口加载 / 撮合与盈亏 / 标注吸附 / 广播隔离 / 机器人 / 真 WS 握手
 go test .                      # 版本号机制的四个落点（VERSION / 兜底值 / build.cmd / winres）
 ```
 
@@ -106,6 +107,53 @@ go test .                      # 版本号机制的四个落点（VERSION / 兜�
 > 模板语法错、指令写错、引用了不存在的方法，都会在这里当场报出来。
 > 这一步既没被 `go test` 覆盖，也是「页面全白」最常见的来源。
 
+### 复盘（菜单 4）的测试
+
+`internal/replay` 的设计是**把状态机与网络分开**：`Instance` 不知道有 socket 存在，
+所有动作都落在纯方法上（`advance` / `addAnnotation` / `placeOrder` / `snapshot`）。
+所以测试、机器人、真实用户走的是**同一段代码**，没有"测试专用的捷径"。
+
+| 文件 | 钉住的事 |
+|---|---|
+| `data_test.go` | 标的目录（名字取 `_symbols.json`、空文件夹跳过）；指定时间必须**正好**是一根 K 线；随机锚点同一个 `seed` 出同一根（可复现）；EMA20 前 19 根是 `null`、第 20 根是 SMA、之后按 2/21 平滑；预载窗口走完自动读下一天的日文件；走到数据末尾就停 |
+| `trading_test.go` | 限价买 `low <= price`、限价卖 `high >= price`、止损买 `high >= price`、止损卖 `low <= price`；**成交价恒等于挂单价**（不模拟滑点）；**当根挂的单不参加当根撮合**；均价成本、平仓已实现盈亏、反手重开；非法单与撤单 |
+| `annotation_test.go` | 吸附规则与前端逐字一致（开盘价优先、严格更近才替换）；指到**还没出现**的 K 线直接拒绝；认不出的时间落到最近的已揭示 K 线；文字去空白 + 200 字上限；移动/删除/编号自增 |
+| `hub_test.go` | **实例隔离**（A 的步进不许出现在 B 的消息里）；观众发操作会收到**明确报错**而不是静默丢弃；离开/接管/删除的权限；机器人能步进+标注+下单，能启动能停，且**有人在操作时抢不走控制权** |
+| `ws_test.go` | 真握手：`httptest` 起服务、校验 `Sec-WebSocket-Accept`、发**带掩码**的客户端帧、收**不带掩码**的服务端帧（含 16 位长度）、ping/pong、非本机 `Origin` 被拒 |
+| `dist_test.go` | **前端产物配得上**：`index.html` 引用的每个 `/assets/*` 都要能被静态路由取到、类型对、带长缓存；未知路径回退首页且不长缓存；没有 `dist` 时给的是"怎么构建"的说明页而不是白屏 |
+| `smoke_test.go` | 默认 `t.Skip`，设了 `REPLAY_WS` 才对**真跑起来的进程**跑一遍 |
+
+几条值得单独说的：
+
+- **`TestSnapshotOnlyExposesRevealedBars` 是"不许剧透"的唯一防线**：快照里
+  `len(bars)` 必须恒等于 `cursor+1`。写错了就是前端能从开发者工具里直接看到未来行情，
+  而这种 bug 在界面上完全看不出来（多出来的几根正好在视口右侧外面）。
+- **`TestOrderPlacedThisBarWaitsNextBar`** 防的是"看到收盘价再补一张单"：
+  挂单若参加当根撮合，回放就变成开卷考试。规则是 `PlacedIndex < Cursor` 才参与撮合。
+- **吸附规则两份实现（前端预览 / 后端定稿）必须同口径**：前端在拖动时自己算一遍是为了
+  立刻给反馈，后端算错了表现成"松手后图形跳一下"。两边都不许改单边。
+- **`TestInstancesAreIsolated`** 是架构要求（前端只收当前实例的广播）的落点，
+  不是"顺手测一下"：广播函数只发给 `InstanceID` 匹配的连接，这条用例红了两处就都错了。
+- **`TestFrontendDistIsServed` 抓到过一个只在 Windows 上出现的真 bug**：静态路由里原来用
+  `filepath.Clean("/" + r.URL.Path)` 清理 URL，而 `filepath` 在 Windows 上会把
+  `/assets/x.js` 变成 `\assets\x.js` —— 于是后面 `HasPrefix(clean, "/assets/")`
+  **永远不成立**，长缓存头静默失效。页面照常能用（`os.Stat` 用反斜杠也没问题），
+  所以只有这条断言 `Cache-Control` 的用例能发现它。**URL 路径一律用 `path`，
+  落盘路径才用 `filepath`**（现在是 `path.Clean` + `filepath.FromSlash`）。
+
+```bash
+# 对着正在运行的服务（菜单 4）做冒烟 —— 用真实数据目录、真实端口、真实进程
+go run .
+REPLAY_WS=ws://127.0.0.1:8790/ws go test ./internal/replay/ -run TestSmoke -v
+```
+
+它跑的是：welcome → 列标的 → 随机建实例（断言 `bars` 与 `cursor` 对得上）→ 步进 →
+在最后一根上画个矩形（吸附）→ 挂一张限价单 → 启动机器人并等它产生动作 → 停。
+凡是"合成测试数据能过、真实数据过不去"的问题（真实标的名、真实时间跨度、大日文件加载）
+都在这一条里暴露。**画布渲染不在这里覆盖** —— 那要浏览器，本仓库不用无头浏览器；
+前端的三道是 `npm run type-check` / `npm run lint` / `npm run build`，
+交互本身靠 [docs/复盘设计.md](复盘设计.md) 最后一节那套**手工两标签页**演练（一人操作、其余观看）。
+
 ### 版本号机制的测试
 
 `version_test.go`（根包）全是读文件，不启动任何东西。它盯的是**「只有一个来源」这件事本身**，
@@ -127,8 +175,8 @@ go test .                      # 版本号机制的四个落点（VERSION / 兜�
 ```powershell
 # 1) 产物名带版本；2) exe 属性里有版本；3) 程序自己认这个版本
 dir tv-capture-v*.exe
-(Get-Item .\tv-capture-v0.1.0.exe).VersionInfo | Select-Object FileVersion,ProductVersion,ProductName
-.\tv-capture-v0.1.0.exe     # 横幅第一行应当是 tradingview-j  v0.1.0
+(Get-Item .\tv-capture-v0.2.0.exe).VersionInfo | Select-Object FileVersion,ProductVersion,ProductName
+.\tv-capture-v0.2.0.exe     # 横幅第一行应当是 tradingview-j  v0.2.0
 ```
 
 ### 本机环境：智能应用控制会拦 `go test` / `go run`
@@ -298,7 +346,7 @@ meta + 一条携带完整 300 根历史的 `timescale_update` + 一条 `du` + �
 | 现象 | 原因与位置 |
 |---|---|
 | 菜单里按回车没反应 | 设计如此：回车 = 重画菜单（`internal/cli/menu.go`）。要开始抓就按 **1** |
-| 抓完之后窗口直接关了 | 只有选 **3** 才退出（`internal/cli/menu.go` 的 `App.menu`）。若确实退出了，看上一段日志里的报错 |
+| 抓完之后窗口直接关了 | 只有选 **5** 才退出（`internal/cli/menu.go` 的 `App.menu`，现在是五选一）。若确实退出了，看上一段日志里的报错 |
 | 一直打印「还没发现 Chrome 调试端点」 | 「前置条件」里那个开关没勾，或 Chrome 没开（`internal/cdp` 的端点发现） |
 | 连上了但没弹 Allow 框、随后报「连接已关闭」 | 上一次的授权被拒了，重新连一次并在浏览器里点 Allow |
 | 找到页面但提示「接不进这个页面」 | **该标签页上开着开发者工具** —— 一个标签页同时只能有一个调试会话，关掉 DevTools 即可 |
@@ -318,6 +366,12 @@ meta + 一条携带完整 300 根历史的 `timescale_update` + 一条 `du` + �
 | 跑 `build.cmd` 时冒出 `'xxx' is not recognized as an internal or external command`，而且相邻的 `echo` 整行消失（输出的中文本身却是对的） | 脚本里混进了**中文 / 任何多字节字符**：cmd.exe 按字节偏移回读批处理，多字节字符让偏移和解码后的字符错位，一行的尾段就被当成新命令执行了。这个文件必须纯 ASCII（日志写英文），由 `version_test.go` 的 `TestBuildCmdIsAsciiAndCRLF` 拦 |
 | `go test .` 报「build.cmd 里找不到 …」 | 构建脚本被改动了，版本号机制的某一步没了。这是刻意的断言，看 `version_test.go` 里那条用例的说明 |
 | `go test` / `go run` 报 `An Application Control policy has blocked this file`，同时右下角弹「此应用的一部分已被阻止」 | 智能应用控制拦了 **`go.exe` 启动的**那个二进制，与代码无关。为什么只拦它、以及两种处理方式，见本文档「本机环境：智能应用控制会拦 go test / go run」一节 |
+| 菜单 4 打开是一片「前端还没构建」的说明页 | 托管的是**构建产物** `web/dist`，先 `cd web && npm install && npm run build`。程序启动时也会在终端提示这件事（`internal/cli/replay.go` 里查 `replay.DistExists`） |
+| 改了前端代码，刷新页面没变化 | 同上：静态文件是 `dist` 里的快照，要重新 `npm run build`。开发期改用 `cd web && npm run dev`（5173 端口，`/ws` 转给 8790） |
+| 第二个标签页进来点了没反应 | **设计如此**：一人操作、其余观看。页头会显示当前操作者是谁；要操作就点「接管」（`internal/replay/hub.go` 的 `requireOperatorLocked`） |
+| 点「下一根」提示「现在由 human 操作…」 | 你开的是观众标签页。操作者关掉页面会自动释放操作权，也可以让他点「交还」 |
+| dev 模式（5173）连不上 WebSocket | `web/vite.config.ts` 的 `/ws` 代理写死了 8790。菜单 4 的端口被占会自动换端口，换了就要同步改这里（终端会提示） |
+| 复盘里的标注/挂单在重启后全没了 | 设计如此：**只存在服务端内存**，不写回 CSV（数据目录整个是只读的）。见 [复盘设计.md](复盘设计.md) 的「已知限制」 |
 
 ## 改代码时的注意
 
@@ -382,6 +436,25 @@ meta + 一条携带完整 300 根历史的 `timescale_update` + 一条 `du` + �
   而浏览器这边看起来「我明明改了」（这种现象最费时间）。
 - **网页版必须只读、只监听 `127.0.0.1`**：它和菜单 2 一样走 `store.Scan`；
   不要给它加任何能改数据或触发动作的接口（见 [design.md](design.md) 的「网页版分析」）。
+- **复盘（菜单 4）也不许写数据目录**：它读 CSV 用 `store.ReadDayRows` / `store.Catalog`
+  （`internal/store/timebar.go`，和抓取共用同一个行解析器），写盘的那套 `store.Store`
+  一行都不许碰 —— 那条路径一 Open 就会建目录、写 `_symbols.json`。
+- **复盘的状态只在内存里**：实例、标注、挂单、成交随进程结束就没了。不要"顺手加个持久化"，
+  那会把一个只读工具变成要维护数据库的工具；真要留存，先想清楚版本兼容。
+- **广播只发给当前实例的成员**：`broadcastInstanceLocked` 的筛选条件是
+  `c.InstanceID == inst.ID`，别图省事发给所有连接。多用户测试时的要求是「只能一人操作、
+  其余观看」，看到了**别人的实例**的数据是另一个层面的错。
+- **标注坐标永远是 `{time, price}`**，别存像素、别存索引：索引会随窗口平移/缩放变，
+  时间字符串才是 CSV 里那列的原文（也是唯一的唯一标识）。前端的拖动预览可以自己算一版，
+  但**定稿必须由后端重算再广播**回来。
+- **前端的账不许自己算**：成交、持仓、已实现/未实现盈亏全部来自后端广播；
+  `web/src` 里没有一处按价格自己乘出来的盈亏。改撮合规则只改 `internal/replay/instance.go`。
+- **`web/dist` 不是 `//go:embed`**：Go 不能跨目录 embed，所以复盘服务是**运行期**从磁盘读
+  `replayDistDir`。好处是改前端不用重编 exe，代价是**必须 `npm run build`**，
+  并且发布时要连同 `web/dist` 一起带走（否则页面是那张"还没构建"的说明页）。
+- **URL 路径用 `path`，磁盘路径用 `filepath`**：`filepath.Clean` 在 Windows 上会把
+  `/assets/x.js` 变成 `\assets\x.js`，任何 `HasPrefix(..., "/assets/")` 都会静默失效
+  （踩过一次：静态资源的长缓存头从来没设上过，页面却完全正常）。
 - **不要在 Go 里重写一遍前端排版**：终端报表（`internal/termreport`）和网页的排版是两套，
   但**统计量只有一份**。想让两边长得一样时，加的是「把同一个数字显示得更清楚」的约定，
   不是把终端的字符串塞进 JSON。
