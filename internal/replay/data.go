@@ -5,9 +5,13 @@ package replay
 // 加载策略（为什么不一次读全）：一个标的有 800 多个日文件、90 多万根 K 线，
 // 全部读进内存要几十 MB，而一次复盘只会看锚点附近那几百根。所以：
 //
-//   1. 以锚点那天为中心，**向前**收集 bars 根（默认 400）作为可见历史；
-//   2. **向后**预加载 forwardDays 天（默认 5）作为「已加载但没揭示」的部分；
-//   3. 游标走到预加载末尾时，再按日文件顺序续读（ensureFuture），一次最多补几天。
+//   1. 锚点那天**整日**收进来，游标停在锚点上（锚点之后的部分是「已加载但没揭示」）；
+//   2. 以锚点为中心**向前**收集，直到已揭示的根数够 bars 根（默认 400）作为可见历史；
+//   3. **向后**预加载 forwardDays 天（默认 5）作为「已加载但没揭示」的部分；
+//   4. 游标走到预加载末尾时，再按日文件顺序续读（ensureFuture），一次最多补几天。
+//
+// 第 1 条是 0.5.1 修的 bug：以前锚点那天只收到锚点为止（rows[:rowIdx+1]），
+// 于是「下一根」会直接跳到第二天 00:00 —— 锚点当天 12:00 之后的几百根全被跳过。
 //
 // 随机锚点会避开首尾各一天（首日没有历史、尾日没有未来），这样「随机加载某个时间点
 // 及之前的 K 线」才真的能步进起来。
@@ -134,11 +138,18 @@ func (ds *DataSource) Open(symbol, anchorTime string, history, forwardDays int, 
 		return nil, err
 	}
 
-	// 从前向后攒历史：先把锚点日「到锚点为止」的部分放进来，再往前面加整日，直到够 bars 根。
+	// 从前向后攒历史：锚点日**整日**先放进来（锚点之后的那些根留在内存里、不进快照），
+	// 再往前面加整日，直到**已揭示**的根数够 bars 根。
+	//
+	// 这里的「整日」不能省：以前只放到锚点为止，步进时 Bars[Cursor+1] 就变成了第二天日文件的
+	// 第一根（00:00），锚点当天剩下的几十上百根全被跳过 —— 用户点「下一根」看到的是隔夜的
+	// 00:00，而不是真正的下一根。所以判「够不够 history」也要按已揭示根数（revealed）算，
+	// 不能按 len(bars) 算：锚点靠凌晨时整日那两百多根大多还没揭示，按 len 算会提前停止往前补。
 	rows := anchorRow
-	bars := make([]Bar, 0, history+8)
-	bars = append(bars, rowsToBars(rows[:rowIdx+1])...)
-	for d := dayIdx - 1; d >= 0 && len(bars) < history; d-- {
+	bars := make([]Bar, 0, history+8+len(rows))
+	bars = append(bars, rowsToBars(rows)...)
+	revealed := rowIdx + 1
+	for d := dayIdx - 1; d >= 0 && revealed < history; d-- {
 		prev, rs, err := store.ReadDayRows(filepath.Join(dir, files[d]), ds.Loc)
 		if err != nil {
 			notes = append(notes, fmt.Sprintf("%s 读不了（%v）", files[d], err))
@@ -151,6 +162,7 @@ func (ds *DataSource) Open(symbol, anchorTime string, history, forwardDays int, 
 			continue
 		}
 		bars = append(rowsToBars(prev), bars...)
+		revealed += len(prev)
 	}
 	cursorTime := rows[rowIdx].Time
 

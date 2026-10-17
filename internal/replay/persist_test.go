@@ -7,8 +7,10 @@ package replay
 // 断言的是「用户重启后看到的东西」：游标、标注、挂单、操作权、实例编号、日文件定位。
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -155,6 +157,148 @@ func TestDeletedInstanceStaysDeleted(t *testing.T) {
 		t.Fatalf("删掉的实例又回来了：%v", list)
 	}
 	hub2.Close()
+}
+
+// 0.5.0 存下来的实例，Bars 在「锚点日最后一根 -> 第二天第一根」之间缺了一整段。
+// 恢复时必须按日文件补齐（改加载逻辑救不了已经存下来的实例），而且：
+//   - 游标还停在用户原来那根上；
+//   - 挂单的 PlacedIndex 跟着重算（补齐后下标全变了）；
+//   - 补回来的第一根就是锚点当天锚点的下一根，不是第二天的 00:00。
+func TestRestoreRepairsMissingAnchorDayTail(t *testing.T) {
+	root := writeTestData(t, 4) // 每天 09:00 ~ 11:00，25 根
+	stateDir := t.TempDir()
+
+	// 1. 用当前（已修好）的代码建一个实例，拿到一份完整的存档
+	hub := newPersistentHub(t, root, stateDir)
+	a := newFakeClient(t, hub)
+	id := createInstance(t, hub, a, "2026-01-06 10:00")
+	hub.flushState()
+	hub.Close()
+
+	// 2. 把存档改回 0.5.0 的样子：删掉「锚点当天锚点之后的那些根」
+	path := filepath.Join(stateDir, stateFileName)
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("读存档失败：%v", err)
+	}
+	var sf stateFile
+	if err := json.Unmarshal(raw, &sf); err != nil {
+		t.Fatalf("解析存档失败：%v", err)
+	}
+	if len(sf.Instances) != 1 {
+		t.Fatalf("存档里应当只有 1 个实例，实际 %d 个", len(sf.Instances))
+	}
+	p := &sf.Instances[0]
+
+	anchorIdx := -1
+	for i := range p.Bars {
+		if p.Bars[i].Time == p.Anchor {
+			anchorIdx = i
+			break
+		}
+	}
+	if anchorIdx < 0 {
+		t.Fatalf("存档里找不到锚点 %s", p.Anchor)
+	}
+	cut := anchorIdx + 1
+	for cut < len(p.Bars) && barDate(p.Bars[cut].Time) == barDate(p.Anchor) {
+		cut++
+	}
+	tail := cut - (anchorIdx + 1)
+	if tail == 0 {
+		t.Fatal("造数据失败：锚点之后当天还有 K 线，才能模拟这个缺口")
+	}
+	p.Bars = append(p.Bars[:anchorIdx+1:anchorIdx+1], p.Bars[cut:]...)
+
+	// 模拟「老版本里已经往后翻了几根」：游标在新位置，挂单也记着当时（错位）的下标
+	p.Cursor = anchorIdx + 3
+	jumped := p.Bars[p.Cursor].Time
+	p.Orders = append(p.Orders, Order{
+		ID: "o1", Side: "buy", Kind: KindLimit, Price: 100, Quantity: 1,
+		Status: OrderOpen, PlacedAt: jumped, PlacedIndex: p.Cursor, FilledIndex: -1,
+	})
+	buf, err := json.Marshal(sf)
+	if err != nil {
+		t.Fatalf("序列化失败：%v", err)
+	}
+	if err := os.WriteFile(path, buf, 0o644); err != nil {
+		t.Fatalf("写存档失败：%v", err)
+	}
+	barsBefore := len(p.Bars)
+
+	// 3. 重启：缺口应当被补齐
+	hub2 := newPersistentHub(t, root, stateDir)
+	defer hub2.Close()
+	hub2.mu.Lock()
+	inst := hub2.instances[id]
+	hub2.mu.Unlock()
+	if inst == nil {
+		t.Fatal("实例没有被恢复")
+	}
+	if len(inst.Bars) != barsBefore+tail {
+		t.Fatalf("缺口没补齐：补前 %d 根，补后 %d 根（应当多 %d 根）", barsBefore, len(inst.Bars), tail)
+	}
+	if got := inst.Bars[inst.Cursor].Time; got != jumped {
+		t.Fatalf("游标应当还停在 %s，实际 %s", jumped, got)
+	}
+	want, ok := expectedNextBar(t, root, testFolder, p.Anchor)
+	if !ok {
+		t.Fatal("锚点之后应当还有 K 线")
+	}
+	if got := inst.Bars[anchorIdx+1].Time; got != want {
+		t.Fatalf("锚点的下一根应当是 %s，实际 %s", want, got)
+	}
+	for i := 1; i < len(inst.Bars); i++ {
+		if inst.Bars[i-1].Time >= inst.Bars[i].Time {
+			t.Fatalf("补齐后不是升序：%s >= %s", inst.Bars[i-1].Time, inst.Bars[i].Time)
+		}
+	}
+	if len(inst.Orders) != 1 {
+		t.Fatalf("挂单应当还在，实际 %d 张", len(inst.Orders))
+	}
+	if o := inst.Orders[0]; inst.Bars[o.PlacedIndex].Time != o.PlacedAt {
+		t.Fatalf("挂单下标没有跟着重算：PlacedIndex=%d 指向 %s，挂单时间是 %s",
+			o.PlacedIndex, inst.Bars[o.PlacedIndex].Time, o.PlacedAt)
+	}
+	repaired := false
+	for _, n := range inst.notes {
+		if strings.Contains(n, "补上了") {
+			repaired = true
+		}
+	}
+	if !repaired {
+		t.Fatalf("补了缺口却没在 notes 里说清楚：%v", inst.notes)
+	}
+}
+
+// 健康的存档（0.5.1 之后建的）恢复时必须原封不动 —— 修复逻辑不能每次都重读日文件。
+func TestRestoreLeavesHealthyArchiveAlone(t *testing.T) {
+	root := writeTestData(t, 3)
+	stateDir := t.TempDir()
+
+	hub := newPersistentHub(t, root, stateDir)
+	a := newFakeClient(t, hub)
+	id := createInstance(t, hub, a, "2026-01-06 10:00")
+	hub.flushState()
+	hub.Close()
+
+	hub2 := newPersistentHub(t, root, stateDir)
+	defer hub2.Close()
+	hub2.mu.Lock()
+	inst := hub2.instances[id]
+	hub2.mu.Unlock()
+	if inst == nil {
+		t.Fatal("实例没有被恢复")
+	}
+	for _, n := range inst.notes {
+		if strings.Contains(n, "补上了") {
+			t.Fatalf("健康的存档不该被改动：%v", inst.notes)
+		}
+	}
+	// 紧邻的下一根本来就是对的，不该被动过
+	if got := inst.Bars[inst.Cursor+1].Time; got != "2026-01-06 10:05" {
+		t.Fatalf("锚点的下一根应当是 2026-01-06 10:05，实际 %s", got)
+	}
 }
 
 func TestBrokenStateFileDoesNotCrash(t *testing.T) {

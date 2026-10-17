@@ -292,3 +292,63 @@ func evPayloadString(ev map[string]any, key string) string {
 	s, _ := p[key].(string)
 	return s
 }
+
+// 网页上点【下一根 →】走的就是这条路：create_instance -> step -> bar_advanced 广播。
+// 所以这里不去看实例内部字段，而是从广播里取 bar.time —— 和界面显示的是同一个值。
+//
+// 0.5.1 修的 bug 在这条测试里表现为：锚点 09:30，点下一根拿到的是第二天的 09:00。
+func TestStepRequestReturnsAdjacentNextBar(t *testing.T) {
+	hub, root := newTestHub(t, 5) // 每天 09:00 ~ 11:00，25 根
+	a := newFakeClient(t, hub)
+	a.waitFor(MsgWelcome)
+
+	cases := []struct {
+		name string
+		req  map[string]any
+	}{
+		{"指定时间加载", map[string]any{
+			"type": "create_instance", "symbol": testSymbol, "time": "2026-01-06 09:30", "bars": 40, "forwardDays": 1,
+		}},
+		{"随机加载（种子 7）", map[string]any{
+			"type": "create_instance", "symbol": testSymbol, "time": "", "bars": 40, "forwardDays": 1, "seed": 7,
+		}},
+		{"随机加载（种子 21）", map[string]any{
+			"type": "create_instance", "symbol": testSymbol, "time": "", "bars": 40, "forwardDays": 1, "seed": 21,
+		}},
+	}
+	for _, tc := range cases {
+		a.drain()
+		a.send(hub, tc.req)
+		st := a.waitFor(MsgInstanceState)
+		inst := st["instance"].(map[string]any)
+		id, _ := inst["id"].(string)
+		anchor, _ := inst["anchor"].(string)
+		bars, _ := inst["bars"].([]any)
+		if id == "" || anchor == "" || len(bars) == 0 {
+			t.Fatalf("%s：实例状态不完整：%v", tc.name, inst)
+		}
+		// 快照只含已揭示的 K 线，最后一根就是锚点
+		last, _ := bars[len(bars)-1].(map[string]any)["time"].(string)
+		if last != anchor {
+			t.Fatalf("%s：快照最后一根应当是锚点 %s，实际 %s", tc.name, anchor, last)
+		}
+
+		want, ok := expectedNextBar(t, root, testFolder, anchor)
+		if !ok {
+			t.Fatalf("%s：锚点 %s 之后应当还有 K 线", tc.name, anchor)
+		}
+		a.send(hub, map[string]any{"type": "step", "instanceId": id})
+		ev := a.waitAction(ActBarAdvanced)
+		payload, ok := ev["payload"].(map[string]any)
+		if !ok {
+			t.Fatalf("%s：bar_advanced 没有 payload：%v", tc.name, ev)
+		}
+		bar, ok := payload["bar"].(map[string]any)
+		if !ok {
+			t.Fatalf("%s：payload 里没有 bar：%v", tc.name, payload)
+		}
+		if got, _ := bar["time"].(string); got != want {
+			t.Fatalf("%s：锚点 %s 点【下一根】应当返回 %s，实际返回 %s", tc.name, anchor, want, got)
+		}
+	}
+}

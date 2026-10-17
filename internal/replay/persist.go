@@ -269,6 +269,13 @@ func (h *Hub) loadStateLocked(path string) error {
 		inst.botInterval = 0
 		inst.deleted = false
 		h.reindexLocked(inst)
+		// 0.5.0 建出来的实例，存档里锚点日之后缺一整段（见 repairDayGapsLocked）。
+		// 补齐后最后一根的日期可能变了，所以要再定位一次「下一份要读的日文件」。
+		if h.repairDayGapsLocked(inst) {
+			h.reindexLocked(inst)
+			h.markDirtyLocked()
+			h.log("[replay] 实例 %s 的存档缺口已按日文件补齐（锚点 %s）", inst.ID, inst.Anchor)
+		}
 		h.instances[inst.ID] = inst
 		h.order = append(h.order, inst.ID)
 		restored++
@@ -314,4 +321,87 @@ func barDate(t string) string {
 		return t[:10]
 	}
 	return t
+}
+
+// repairDayGapsLocked 修 0.5.0 存档里的「锚点日尾巴丢了」。
+//
+// 0.5.0 建实例时锚点那天只收到锚点为止，所以存档里的 Bars 在「锚点日最后一根 →
+// 第二天第一根」之间缺了一整段：点【下一根】会从 12:00 直接跳到第二天 00:00。
+// 这跟本次修的是同一个 bug —— 光改加载逻辑救不了**已经存下来的**实例，得在这里补。
+//
+// 判据很硬：相邻两根跨日、而前一根在自己那天的日文件里**还有后续行**，就是缺口。
+// 补法是按日文件把存档覆盖的日期范围整段重读（几百根、十来个文件，恢复时才走一次）。
+//
+// 重建之后**下标全变了**，所以游标和挂单一律按时间重新定位 —— 时间字符串才是这套协议里
+// 唯一稳定的标识（PlacedAt / FilledAt 本来就存着，等于白送两个锚点）。
+// 标注只用时间当横坐标、成交只存时间，都不用动。
+func (h *Hub) repairDayGapsLocked(inst *Instance) bool {
+	if len(inst.Bars) < 2 || len(inst.dayFiles) == 0 {
+		return false
+	}
+	dir := filepath.Join(h.ds.Root, inst.Folder)
+
+	missing := false
+	for i := 1; i < len(inst.Bars) && !missing; i++ {
+		prev := inst.Bars[i-1].Time
+		if barDate(prev) == barDate(inst.Bars[i].Time) {
+			continue // 同一天里不连续是正常的（CME 每天 05:00 那个结算断档）
+		}
+		name := barDate(prev) + ".csv"
+		if indexOfFile(inst.dayFiles, name) < 0 {
+			continue
+		}
+		rows, _, err := store.ReadDayRows(filepath.Join(dir, name), h.ds.Loc)
+		if err != nil {
+			continue
+		}
+		for j := range rows {
+			if rows[j].Time == prev && j+1 < len(rows) {
+				missing = true
+				break
+			}
+		}
+	}
+	if !missing {
+		return false
+	}
+
+	first, last := barDate(inst.Bars[0].Time), barDate(inst.Bars[len(inst.Bars)-1].Time)
+	var bars []Bar
+	for _, name := range inst.dayFiles {
+		d := strings.TrimSuffix(name, filepath.Ext(name))
+		if d < first || d > last {
+			continue
+		}
+		rows, _, err := store.ReadDayRows(filepath.Join(dir, name), h.ds.Loc)
+		if err != nil {
+			continue
+		}
+		bars = append(bars, rowsToBars(rows)...)
+	}
+	bars = dedupeBars(bars)
+	if len(bars) == 0 {
+		return false
+	}
+	cursor, ok := indexOfTimeIn(bars, inst.Bars[inst.Cursor].Time)
+	if !ok {
+		// 连游标那根都对不上：宁可不动，也不要悄悄把用户挪到别的位置
+		return false
+	}
+	computeEMA(bars)
+	for i := range inst.Orders {
+		o := &inst.Orders[i]
+		if j, ok := indexOfTimeIn(bars, o.PlacedAt); ok {
+			o.PlacedIndex = j
+		}
+		if o.FilledAt == "" {
+			o.FilledIndex = -1
+		} else if j, ok := indexOfTimeIn(bars, o.FilledAt); ok {
+			o.FilledIndex = j
+		}
+	}
+	inst.Bars = bars
+	inst.Cursor = cursor
+	inst.notes = append(inst.notes, "从存档恢复时补上了旧版本留下的缺口：锚点当天剩下的 K 线已按日文件补齐")
+	return true
 }
