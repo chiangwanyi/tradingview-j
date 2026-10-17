@@ -1,6 +1,9 @@
 {
   "version": 1,
   "symbols": {
+    "BINANCE:BTCUSDT.P": {
+      "folder": "BINANCE_BTCUSDT.P"
+    },
     "CME_MINI:MES1!": {
       "folder": "CME_MINI_MES1!"
     },
