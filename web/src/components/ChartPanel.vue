@@ -170,15 +170,20 @@ watch(
   },
 )
 
-// 新增一根 K 线：跟着走，别让用户每次手动拖
+// 新增一根 K 线：**只追加渲染，不动视图**。
+//
+// 旧版这里调了 scrollToTail() + fitPrice(true)，于是每点一次「下一根」整屏 K 线就向左滑一格，
+// 正在看的那段历史、画在上面的标注全都跟着跑掉 —— 这里把自动移动彻底去掉：
+// scroll / barWidth / priceMin / priceMax 一概不碰。已有 K 线的下标没变、scroll 没变，
+// xOf() 算出来的像素位置就逐点相同；新 K 线只是按自己的下标画在右侧
+// （落在可见区外就先看不见，等用户自己拖过去）。
 watch(
   () => store.bars.length,
-  (next, prev) => {
+  () => {
     scale.setBars(store.bars)
-    if (next > prev) {
-      scale.scrollToTail()
-      scale.fitPrice(true)
-    }
+    // 追加时 maxScroll 只会变大，clampScroll 不会动到现有位置；
+    // 但数据被整体替换（重连后重新对齐）时 bars 可能变短，越界的 scroll 得拉回来。
+    scale.clampScroll()
     requestDraw()
   },
 )

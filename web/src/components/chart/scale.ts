@@ -183,13 +183,18 @@ export class ChartScale {
     this.scroll = clamp(this.scroll, minScroll, maxScroll)
   }
 
-  /** 让最后一根出现在右侧偏内一点的位置 */
+  /**
+   * 让最后一根出现在右侧偏内一点的位置。
+   *
+   * **只给 `resetView()` 用**（首次进入实例 / 换实例时的初始取景）。
+   * 加载新 K 线时绝不能调它：那会把整屏 K 线向左推，用户正在看的历史就跑掉了。
+   */
   scrollToTail(): void {
     this.scroll = this.bars.length - 1 - this.visibleBarSpan * 0.88
     this.clampScroll()
   }
 
-  /** 重置视图：合适的时间密度 + 自动价格轴 + 贴住末端 */
+  /** 重置视图：合适的时间密度 + 自动价格轴 + 贴住末端（换实例才用，加载新 K 线不用） */
   resetView(): void {
     const targetBars = 140
     this.barWidth = clamp(this.plotWidth / targetBars, 3, 16)
