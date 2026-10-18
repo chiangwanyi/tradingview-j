@@ -11,24 +11,15 @@ import (
 	"fmt"
 	"math"
 	"sort"
-	"strings"
 	"time"
 )
 
 // ErrNoMoreBars 表示数据目录里已经没有更晚的 K 线了。
 var ErrNoMoreBars = errors.New("数据已经到最后一根 K 线了")
 
-// 标注类型。
 const (
-	AnnLine = "line"
-	AnnRect = "rect"
-	AnnText = "text"
-)
-
-const (
-	maxAnnotationText = 200 // 文字标注最多 200 个字符（防止一条消息塞进几十 KB）
-	maxEventsKept     = 500 // 每个实例保留多少条操作记录
-	eventsInSnapshot  = 100 // 快照里带多少条
+	maxEventsKept    = 500 // 每个实例保留多少条操作记录
+	eventsInSnapshot = 100 // 快照里带多少条
 )
 
 // Instance 是一个复盘实例的全部状态。
@@ -204,44 +195,29 @@ func nearestOHLC(b Bar, price float64) float64 {
 // ---------------------------------------------------------------------------
 
 // addAnnotation 校验并加入一个标注。
-func (inst *Instance) addAnnotation(by, kind string, start, end Point, text, color string, snap bool) (Annotation, error) {
-	switch kind {
-	case AnnLine, AnnRect, AnnText:
-	default:
-		return Annotation{}, fmt.Errorf("不认识的标注类型 %q（只支持 line / rect / text）", kind)
-	}
-	if kind == AnnText {
-		text = strings.TrimSpace(text)
-		if n := len([]rune(text)); n == 0 {
-			return Annotation{}, errors.New("文字标注不能为空")
-		} else if n > maxAnnotationText {
-			text = string([]rune(text)[:maxAnnotationText])
-		}
+//
+// 五种图形都要求两个端点（趋势线/射线/箭头线是线的两端，矩形是对角，斐波那契是价格区间），
+// 两个端点都必须落在已揭示的 K 线上 —— 标注是画在历史上的，指向一根还不存在的 K 线
+// 既没意义，也会提前泄露后面的行情。
+func (inst *Instance) addAnnotation(by, kind string, start, end Point, style AnnotationStyle, snap bool) (Annotation, error) {
+	if !isDrawKind(kind) {
+		return Annotation{}, fmt.Errorf("不认识的标注类型 %q（只支持 trend / ray / rect / arrow / fib）", kind)
 	}
 	s, _, err := inst.resolvePoint(start, snap)
 	if err != nil {
 		return Annotation{}, err
 	}
-	var e Point
-	if kind != AnnText {
-		e, _, err = inst.resolvePoint(end, snap)
-		if err != nil {
-			return Annotation{}, err
-		}
+	e, _, err := inst.resolvePoint(end, snap)
+	if err != nil {
+		return Annotation{}, err
 	}
 
-	// 固定色由前端传；没传就给一个中性色。后端不解释颜色语义，只限制长度，
-	// 免得一条消息里塞进一段 CSS。
-	if color == "" || len(color) > 32 {
-		color = "#f59e0b"
-	}
 	a := Annotation{
 		ID:        inst.nextAnnotationID(),
 		Kind:      kind,
 		Start:     s,
 		End:       e,
-		Text:      text,
-		Color:     color,
+		Style:     sanitizeStyle(kind, style),
 		Snapped:   snap,
 		CreatedBy: by,
 		CreatedAt: time.Now().Unix(),
@@ -250,8 +226,11 @@ func (inst *Instance) addAnnotation(by, kind string, start, end Point, text, col
 	return a, nil
 }
 
-// moveAnnotation 把已有标注整体挪到新的端点。
-// 端点仍然走 resolvePoint：移动后的标注也必须在已揭示的 K 线范围内。
+// moveAnnotation 把已有标注挪到新的端点。
+//
+// 「整体移动」和「只动起点/终点」是同一条路：前端算好两个端点各自的新位置发过来，
+// 后端只管校验 —— 只动一个端点时，另一个原样发回。
+// **样式不跟着移动变**：样式在画下去那一刻就定了。
 func (inst *Instance) moveAnnotation(by, id string, start, end Point, snap bool) (Annotation, error) {
 	for i := range inst.Annotations {
 		if inst.Annotations[i].ID != id {
@@ -262,14 +241,12 @@ func (inst *Instance) moveAnnotation(by, id string, start, end Point, snap bool)
 		if err != nil {
 			return Annotation{}, err
 		}
-		a.Start = s
-		if a.Kind != AnnText {
-			e, _, err := inst.resolvePoint(end, snap)
-			if err != nil {
-				return Annotation{}, err
-			}
-			a.End = e
+		e, _, err := inst.resolvePoint(end, snap)
+		if err != nil {
+			return Annotation{}, err
 		}
+		a.Start = s
+		a.End = e
 		a.Snapped = snap
 		return *a, nil
 	}

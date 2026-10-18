@@ -24,17 +24,55 @@ export interface Point {
   price: number
 }
 
-export type AnnotationKind = 'line' | 'rect' | 'text'
+/**
+ * 五种绘图工具。字符串就是协议里的 `kind`，和后端 annotation.go 的常量一一对应。
+ *
+ * 它们全部用「起点 + 终点」两个点描述：趋势线/射线/箭头线是线的两端，
+ * 矩形是两个对角点，斐波那契回撤是价格区间的两端。
+ */
+export type AnnotationKind = 'trend' | 'ray' | 'rect' | 'arrow' | 'fib'
+
+/** 线型（只有两种：点线在 1px 上和虚线看不出区别） */
+export type DashStyle = 'solid' | 'dashed'
+
+/** 斐波那契回撤的一条水平线。ratio 只认 -1 / 0 / 1 / 2，由后端固定住。 */
+export interface FibLevel {
+  ratio: number
+  color: string
+}
+
+/**
+ * 图形样式。**它是画下去那一刻从模板抄过来的快照**：之后改模板、删模板，
+ * 已经画好的图形不会跟着变。
+ */
+export interface AnnotationStyle {
+  color: string
+  width: number
+  dash: DashStyle
+  fill?: string
+  fillOpacity?: number
+  levels?: FibLevel[]
+}
 
 export interface Annotation {
   id: string
   kind: string
   start: Point
   end: Point
-  text?: string
+  style?: AnnotationStyle
+  /** 0.5.2 及以前的单一颜色，只在读旧存档时出现；新标注只用 style.color */
   color?: string
   snapped: boolean
   createdBy: string
+  createdAt: number
+}
+
+/** 一个工具下面的一套样式预设（全局的，不属于某个实例）。 */
+export interface Template {
+  id: string
+  kind: string
+  name: string
+  style: AnnotationStyle
   createdAt: number
 }
 
@@ -202,6 +240,16 @@ export interface PongMessage {
   type: 'pong'
 }
 
+/**
+ * 模板全量列表。模板很少（每个工具几条），所以后端任何一次改动都广播整份列表。
+ * `lastSavedId` 是刚存下来的那一条：新建时 id 由后端分配，靠它把新模板立刻选上。
+ */
+export interface TemplatesMessage {
+  type: 'templates'
+  templates: Template[]
+  lastSavedId?: string
+}
+
 export type ServerMessage =
   | WelcomeMessage
   | ErrorMessage
@@ -212,6 +260,7 @@ export type ServerMessage =
   | LeftMessage
   | DeletedMessage
   | PongMessage
+  | TemplatesMessage
 
 // ---------------- 广播负载 ----------------
 
@@ -275,7 +324,15 @@ export const ACTION = {
 } as const
 
 /**
- * 标注颜色。这四个是「深浅两套配色下都看得清」的中间调：
- * 换主题时标注颜色不跟着变（它已经存到服务端了），所以不能选深色专用的荧光色。
+ * 调色板：模板编辑器里的快捷色块。挑的都是「深浅两套配色下都看得清」的中间调 ——
+ * 图形里存的是十六进制颜色，换主题时颜色不跟着变（它已经存到服务端了）。
  */
-export const ANNOTATION_COLORS = ['#f59e0b', '#0ea5e9', '#ec4899', '#65a30d'] as const
+export const ANNOTATION_COLORS = [
+  '#f59e0b',
+  '#0ea5e9',
+  '#ec4899',
+  '#65a30d',
+  '#a855f7',
+  '#ef4444',
+  '#e5e7eb',
+] as const

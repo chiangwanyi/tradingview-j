@@ -16,9 +16,9 @@ func TestAnnotationSnapsToNearestOHLC(t *testing.T) {
 		{100.2, 100}, // 离开盘价最近
 	}
 	for _, c := range cases {
-		a, err := inst.addAnnotation("human", AnnLine,
+		a, err := inst.addAnnotation("human", AnnTrend,
 			Point{Time: "2026-01-05 09:00", Price: c.price},
-			Point{Time: "2026-01-05 09:00", Price: c.price}, "", "", true)
+			Point{Time: "2026-01-05 09:00", Price: c.price}, AnnotationStyle{}, true)
 		if err != nil {
 			t.Fatalf("加标注失败：%v", err)
 		}
@@ -36,7 +36,7 @@ func TestAnnotationKeepsPriceWhenNotSnapped(t *testing.T) {
 	inst.Cursor = 2
 	a, err := inst.addAnnotation("human", AnnRect,
 		Point{Time: "2026-01-05 09:00", Price: 100.37},
-		Point{Time: "2026-01-05 09:10", Price: 102.71}, "", "", false)
+		Point{Time: "2026-01-05 09:10", Price: 102.71}, AnnotationStyle{}, false)
 	if err != nil {
 		t.Fatalf("加标注失败：%v", err)
 	}
@@ -50,9 +50,9 @@ func TestAnnotationKeepsPriceWhenNotSnapped(t *testing.T) {
 
 func TestAnnotationCannotTargetFutureBar(t *testing.T) {
 	inst := newTradingInstance() // cursor = 0
-	_, err := inst.addAnnotation("human", AnnLine,
+	_, err := inst.addAnnotation("human", AnnTrend,
 		Point{Time: "2026-01-05 09:10", Price: 102},
-		Point{Time: "2026-01-05 09:10", Price: 103}, "", "", false)
+		Point{Time: "2026-01-05 09:10", Price: 103}, AnnotationStyle{}, false)
 	if err == nil {
 		t.Fatal("画在还没出现的 K 线上应当报错")
 	}
@@ -64,46 +64,100 @@ func TestAnnotationCannotTargetFutureBar(t *testing.T) {
 func TestAnnotationUnknownTimeSnapsToNearestBar(t *testing.T) {
 	inst := newTradingInstance()
 	inst.Cursor = 2
-	a, err := inst.addAnnotation("human", AnnText,
-		Point{Time: "2026-01-05 09:07", Price: 101}, Point{}, "看看这里", "", false)
+	a, err := inst.addAnnotation("human", AnnArrow,
+		Point{Time: "2026-01-05 09:07", Price: 101},
+		Point{Time: "2026-01-05 09:07", Price: 102}, AnnotationStyle{}, false)
 	if err != nil {
 		t.Fatalf("加标注失败：%v", err)
 	}
 	if a.Start.Time != "2026-01-05 09:05" && a.Start.Time != "2026-01-05 09:10" {
 		t.Fatalf("应当落到相邻的 K 线上，实际 %s", a.Start.Time)
 	}
-	if a.Kind != AnnText || a.Text != "看看这里" {
-		t.Fatalf("文字标注内容不对：%+v", a)
+	if a.Kind != AnnArrow {
+		t.Fatalf("类型不对：%+v", a)
 	}
 }
 
-func TestAnnotationTextIsTruncatedAndValidated(t *testing.T) {
+// 五种图形都要能画：这是「工具集」的硬约束，加一种忘了加进白名单会在这里断掉。
+func TestAllFiveKindsAreDrawable(t *testing.T) {
 	inst := newTradingInstance()
-	long := strings.Repeat("字", maxAnnotationText+50)
-	a, err := inst.addAnnotation("human", AnnText,
-		Point{Time: "2026-01-05 09:00", Price: 100}, Point{}, long, "", false)
-	if err != nil {
-		t.Fatalf("加标注失败：%v", err)
+	inst.Cursor = 2
+	for _, kind := range drawKinds {
+		a, err := inst.addAnnotation("human", kind,
+			Point{Time: "2026-01-05 09:00", Price: 100},
+			Point{Time: "2026-01-05 09:05", Price: 101}, AnnotationStyle{}, false)
+		if err != nil {
+			t.Fatalf("%s 应当能画：%v", kind, err)
+		}
+		if a.Style.Width < minLineWidth || a.Style.Width > maxLineWidth {
+			t.Fatalf("%s 的线宽没被补成合法值：%v", kind, a.Style.Width)
+		}
 	}
-	if n := len([]rune(a.Text)); n != maxAnnotationText {
-		t.Fatalf("文字应当截断到 %d 个字，实际 %d", maxAnnotationText, n)
+	for _, kind := range []string{"text", "circle", ""} {
+		if _, err := inst.addAnnotation("human", kind,
+			Point{Time: "2026-01-05 09:00", Price: 100},
+			Point{Time: "2026-01-05 09:05", Price: 101}, AnnotationStyle{}, false); err == nil {
+			t.Fatalf("%q 不该被接受", kind)
+		}
 	}
-	if _, err := inst.addAnnotation("human", AnnText,
-		Point{Time: "2026-01-05 09:00", Price: 100}, Point{}, "   ", "", false); err == nil {
-		t.Fatal("空文字应当报错")
+}
+
+func TestStyleIsSanitized(t *testing.T) {
+	// 非法颜色 → 出厂色；线宽越界 → 夹到 [1,6]；乱写的线型 → 实线
+	got := sanitizeStyle(AnnTrend, AnnotationStyle{Color: "rgb(1,2,3)", Width: 99, Dash: "dotted"})
+	if got.Color != defaultColor {
+		t.Fatalf("非法颜色应当回落到 %s，实际 %s", defaultColor, got.Color)
 	}
-	if _, err := inst.addAnnotation("human", "circle",
-		Point{Time: "2026-01-05 09:00", Price: 100}, Point{}, "", "", false); err == nil {
-		t.Fatal("不认识的类型应当报错")
+	if got.Width != maxLineWidth {
+		t.Fatalf("线宽应当夹到 %v，实际 %v", maxLineWidth, got.Width)
+	}
+	if got.Dash != DashSolid {
+		t.Fatalf("不认识的线型应当回落成实线，实际 %s", got.Dash)
+	}
+	if got := sanitizeStyle(AnnTrend, AnnotationStyle{Width: 0.1}); got.Width != minLineWidth {
+		t.Fatalf("线宽下限是 %v，实际 %v", minLineWidth, got.Width)
+	}
+	if got := sanitizeStyle(AnnTrend, AnnotationStyle{Color: "#0EA5E9", Width: 2.5, Dash: DashDashed}); got.Color != "#0EA5E9" || got.Width != 2.5 || got.Dash != DashDashed {
+		t.Fatalf("合法样式不该被改：%+v", got)
+	}
+}
+
+// 斐波那契永远恰好四条水平，比例固定 -1/0/1/2，顺序固定；
+// 前端只调颜色，比例和后端算出来的一致 —— 两边就不会画出不一样的四条线。
+func TestFibLevelsAreFixed(t *testing.T) {
+	// 少给、乱给、重复给，都要被补齐成标准的四条
+	in := []FibLevel{
+		{Ratio: 0.5, Color: "#123456"}, // 不认识的比例，丢掉
+		{Ratio: 2, Color: "red"},       // 比例对、颜色非法，回落到出厂色
+		{Ratio: -1, Color: "#abcdef"},  // 保留
+	}
+	got := sanitizeStyle(AnnFib, AnnotationStyle{Levels: in}).Levels
+	if len(got) != len(fibRatios) {
+		t.Fatalf("应当固定 %d 条水平，实际 %d 条：%+v", len(fibRatios), len(got), got)
+	}
+	for i, r := range fibRatios {
+		if got[i].Ratio != r {
+			t.Fatalf("第 %d 条比例应当是 %v，实际 %v", i, r, got[i].Ratio)
+		}
+		if !validColor(got[i].Color) {
+			t.Fatalf("第 %d 条颜色不合法：%s", i, got[i].Color)
+		}
+	}
+	if got[0].Color != "#abcdef" {
+		t.Fatalf("-1 那条的自定义颜色应当保留，实际 %s", got[0].Color)
+	}
+	if got[3].Color != levelColorByRatio[2] {
+		t.Fatalf("颜色非法的水平应当回落到出厂色，实际 %s", got[3].Color)
 	}
 }
 
 func TestAnnotationMoveAndDelete(t *testing.T) {
 	inst := newTradingInstance()
 	inst.Cursor = 2
-	a, err := inst.addAnnotation("human", AnnLine,
+	a, err := inst.addAnnotation("human", AnnTrend,
 		Point{Time: "2026-01-05 09:00", Price: 100},
-		Point{Time: "2026-01-05 09:05", Price: 101}, "", "", false)
+		Point{Time: "2026-01-05 09:05", Price: 101},
+		AnnotationStyle{Color: "#0ea5e9", Width: 3, Dash: DashDashed}, false)
 	if err != nil {
 		t.Fatalf("加标注失败：%v", err)
 	}
@@ -111,14 +165,21 @@ func TestAnnotationMoveAndDelete(t *testing.T) {
 		t.Fatalf("id 应当从 a1 开始，实际 %s", a.ID)
 	}
 
+	// 只移动终点：起点原样发回。样式不许跟着变。
 	moved, err := inst.moveAnnotation("human", a.ID,
-		Point{Time: "2026-01-05 09:10", Price: 102.2},
+		a.Start,
 		Point{Time: "2026-01-05 09:10", Price: 103.3}, true)
 	if err != nil {
 		t.Fatalf("移动失败：%v", err)
 	}
-	if moved.Start.Time != "2026-01-05 09:10" || moved.Start.Price != 102 {
-		t.Fatalf("移动后应当吸附到 09:10 的 OHLC：%+v", moved.Start)
+	if moved.End.Time != "2026-01-05 09:10" || !moved.Snapped {
+		t.Fatalf("终点应当吸附到 09:10 的 OHLC：%+v", moved.End)
+	}
+	if moved.Start.Time != a.Start.Time {
+		t.Fatalf("只动终点时起点不该动：%+v", moved.Start)
+	}
+	if moved.Style.Color != a.Style.Color || moved.Style.Width != a.Style.Width || moved.Style.Dash != a.Style.Dash {
+		t.Fatalf("移动不该改样式：期望 %+v，实际 %+v", a.Style, moved.Style)
 	}
 
 	if err := inst.deleteAnnotation(a.ID); err != nil {
@@ -140,8 +201,9 @@ func TestAnnotationIDsIncrement(t *testing.T) {
 	inst := newTradingInstance()
 	inst.Cursor = 1
 	for i := 0; i < 3; i++ {
-		a, err := inst.addAnnotation("human", AnnText,
-			Point{Time: "2026-01-05 09:00", Price: 100}, Point{}, "x", "", false)
+		a, err := inst.addAnnotation("human", AnnRay,
+			Point{Time: "2026-01-05 09:00", Price: 100},
+			Point{Time: "2026-01-05 09:00", Price: 101}, AnnotationStyle{}, false)
 		if err != nil {
 			t.Fatalf("加标注失败：%v", err)
 		}
@@ -149,5 +211,26 @@ func TestAnnotationIDsIncrement(t *testing.T) {
 		if a.ID != want {
 			t.Fatalf("第 %d 个标注 id 应当是 %s，实际 %s", i+1, want, a.ID)
 		}
+	}
+}
+
+// 旧存档里的 line 要变成 trend、text 要丢掉 —— 这是「升级不炸」的那条线。
+func TestAnnotationLegacyMigration(t *testing.T) {
+	inst := &Instance{Annotations: []Annotation{
+		{ID: "a1", Kind: "line", LegacyColor: "#38bdf8", Start: Point{Time: "2026-01-05 09:00", Price: 100}},
+		{ID: "a2", Kind: "text", Start: Point{Time: "2026-01-05 09:00", Price: 100}},
+		{ID: "a3", Kind: AnnRect, Start: Point{Time: "2026-01-05 09:00", Price: 100}},
+	}}
+	if dropped := migrateAnnotations(inst); dropped != 1 {
+		t.Fatalf("应当丢掉 1 条文字标注，实际 %d 条", dropped)
+	}
+	if len(inst.Annotations) != 2 {
+		t.Fatalf("应当剩 2 条，实际 %d 条", len(inst.Annotations))
+	}
+	if a := inst.Annotations[0]; a.Kind != AnnTrend || a.Style.Color != "#38bdf8" {
+		t.Fatalf("line 应当变成 trend 并继承旧颜色：%+v", a)
+	}
+	if a := inst.Annotations[1]; a.Kind != AnnRect || a.Style.Fill == "" || a.Style.Width <= 0 {
+		t.Fatalf("矩形应当补齐填充色与线宽：%+v", a)
 	}
 }

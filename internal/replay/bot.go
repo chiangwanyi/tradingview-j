@@ -23,7 +23,7 @@ const (
 	botMaxOpenOrders     = 12
 )
 
-var botTexts = []string{"支撑", "阻力", "假突破", "缩量", "放量", "这里很关键", "等待确认"}
+var botColors = []string{"#f59e0b", "#0ea5e9", "#ec4899", "#65a30d"}
 
 func (h *Hub) handleBotStart(c *Client, req Request) {
 	inst, ok := h.instanceLocked(c, req)
@@ -151,15 +151,10 @@ func (h *Hub) botAddAnnotationLocked(inst *Instance) {
 	start := Point{Time: sa.Time, Price: roundPrice(randomPriceIn(h.rnd, sa))}
 	end := Point{Time: sb.Time, Price: roundPrice(randomPriceIn(h.rnd, sb))}
 
-	kinds := []string{AnnLine, AnnRect, AnnText}
+	kinds := []string{AnnTrend, AnnRay, AnnRect, AnnArrow, AnnFib}
 	kind := kinds[h.rnd.Intn(len(kinds))]
-	text := ""
-	if kind == AnnText {
-		text = botTexts[h.rnd.Intn(len(botTexts))]
-		end = Point{}
-	}
 	snap := h.rnd.Intn(2) == 0
-	if _, err := h.doAddAnnotationLocked(inst, "bot", kind, start, end, text, botColor(kind), snap); err != nil {
+	if _, err := h.doAddAnnotationLocked(inst, "bot", kind, start, end, botStyle(h.rnd, kind), snap); err != nil {
 		h.log("[replay] 机器人加标注失败：%v", err)
 	}
 }
@@ -171,11 +166,8 @@ func (h *Hub) botMoveAnnotationLocked(inst *Instance) {
 	a := inst.Annotations[h.rnd.Intn(len(inst.Annotations))]
 	bar := inst.Bars[h.randomRevealedIndexLocked(inst)]
 	start := Point{Time: bar.Time, Price: roundPrice(randomPriceIn(h.rnd, bar))}
-	end := Point{}
-	if a.Kind != AnnText {
-		bar2 := inst.Bars[h.randomRevealedIndexLocked(inst)]
-		end = Point{Time: bar2.Time, Price: roundPrice(randomPriceIn(h.rnd, bar2))}
-	}
+	bar2 := inst.Bars[h.randomRevealedIndexLocked(inst)]
+	end := Point{Time: bar2.Time, Price: roundPrice(randomPriceIn(h.rnd, bar2))}
 	if _, err := h.doMoveAnnotationLocked(inst, "bot", a.ID, start, end, false); err != nil {
 		h.log("[replay] 机器人移动标注失败：%v", err)
 	}
@@ -285,13 +277,29 @@ func randomPriceIn(rnd interface{ Float64() float64 }, b Bar) float64 {
 	return lo + rnd.Float64()*(hi-lo)
 }
 
-func botColor(kind string) string {
-	switch kind {
-	case AnnRect:
-		return "#f59e0b"
-	case AnnText:
-		return "#e5e7eb"
-	default:
-		return "#38bdf8"
+// botStyle 给机器人随机挑一个样式：颜色随机、偶尔虚线、偶尔细一点。
+// 目的是让演示里的图形看起来不是同一个模板画的 —— 顺便把「每条图形各带一份样式」
+// 这条路走一遍（真人画图时样式来自模板，机器人不需要模板）。
+func botStyle(rnd interface {
+	Intn(int) int
+	Float64() float64
+}, kind string) AnnotationStyle {
+	style := defaultStyle(kind)
+	style.Color = botColors[rnd.Intn(len(botColors))]
+	style.Width = 1 + math.Round(rnd.Float64()*2*10)/10 // 1.0 ~ 3.0
+	if rnd.Intn(3) == 0 {
+		style.Dash = DashDashed
 	}
+	if kind == AnnRect {
+		style.Fill = style.Color
+	}
+	if kind == AnnFib {
+		// 四条水平各自换色，但没有一条是重复的
+		levels := defaultFibLevels()
+		for i := range levels {
+			levels[i].Color = botColors[(i+rnd.Intn(len(botColors)))%len(botColors)]
+		}
+		style.Levels = levels
+	}
+	return style
 }

@@ -30,6 +30,9 @@ const (
 	ReqAnnAdd        = "annotation_add"
 	ReqAnnMove       = "annotation_move"
 	ReqAnnDelete     = "annotation_delete"
+	ReqListTemplates = "list_templates"
+	ReqSaveTemplate  = "save_template"
+	ReqDelTemplate   = "delete_template"
 	ReqOrderPlace    = "order_place"
 	ReqOrderCancel   = "order_cancel"
 	ReqBotStart      = "bot_start"
@@ -55,15 +58,19 @@ type Request struct {
 	InstanceID string `json:"instanceId"`
 
 	// annotation_add / annotation_move
-	Kind  string `json:"kind"` // line | rect | text
-	Start *Point `json:"start"`
-	End   *Point `json:"end"`
-	Text  string `json:"text"`
-	Color string `json:"color"`
-	Snap  bool   `json:"snap"` // true = 端点吸附到该 K 线的 OHLC（前端按住 Ctrl）
+	Kind  string           `json:"kind"` // trend | ray | rect | arrow | fib
+	Start *Point           `json:"start"`
+	End   *Point           `json:"end"`
+	Style *AnnotationStyle `json:"style"` // 只在 annotation_add 里用；画下去那一刻的快照
+	Snap  bool             `json:"snap"`  // true = 端点吸附到该 K 线的 OHLC（前端按住 Ctrl）
 
 	// annotation_move / annotation_delete
 	AnnotationID string `json:"annotationId"`
+
+	// save_template
+	Template *Template `json:"template"`
+	// delete_template
+	TemplateID string `json:"templateId"`
 
 	// order_place
 	Side     string  `json:"side"` // buy | sell
@@ -90,6 +97,7 @@ const (
 	MsgLeft          = "left"
 	MsgDeleted       = "deleted"
 	MsgPong          = "pong"
+	MsgTemplates     = "templates"
 )
 
 // 广播的动作名（Event.Action）。
@@ -131,18 +139,64 @@ type Bar struct {
 	Ema20 *float64 `json:"ema20"`
 }
 
-// Annotation 是画在画布上的一个图形。三种都用「起点/终点」表示，
-// 文字只用 Start（锚在文字左下角），End 留零值。
+// Annotation 是画在画布上的一个图形。五种图形都用「起点/终点」两个点表示：
+// 趋势线/射线/箭头线是两点连成的一条线，矩形用两个对角点，斐波那契回撤用两点的
+// 价格区间摊开四条水平线（见 FibLevel）。
 type Annotation struct {
-	ID        string `json:"id"`
-	Kind      string `json:"kind"` // line | rect | text
-	Start     Point  `json:"start"`
-	End       Point  `json:"end"`
-	Text      string `json:"text,omitempty"`
-	Color     string `json:"color,omitempty"`
-	Snapped   bool   `json:"snapped"` // 端点吸附过 OHLC（界面上画小圆点提示）
-	CreatedBy string `json:"createdBy"`
-	CreatedAt int64  `json:"createdAt"`
+	ID    string          `json:"id"`
+	Kind  string          `json:"kind"` // trend | ray | rect | arrow | fib
+	Start Point           `json:"start"`
+	End   Point           `json:"end"`
+	Style AnnotationStyle `json:"style"`
+	Snapped   bool        `json:"snapped"` // 端点吸附过 OHLC（界面上画小圆点提示）
+	CreatedBy string      `json:"createdBy"`
+	CreatedAt int64       `json:"createdAt"`
+
+	// LegacyColor 是 0.5.2 及以前唯一的颜色字段（那时候没有模板，整条线一个颜色）。
+	// 只在读旧存档时有用：迁移时并进 Style.Color 后清空，所以新标注的 JSON 里没有它。
+	LegacyColor string `json:"color,omitempty"`
+}
+
+// ---------------- 样式与模板 ----------------
+
+// 线型。只有两种：实线、虚线（点线在 1px 上跟虚线看不出差别，不做）。
+const (
+	DashSolid  = "solid"
+	DashDashed = "dashed"
+)
+
+// FibLevel 是斐波那契回撤的一条水平线。
+//
+// Ratio 是「相对起点到终点这段价格区间」的倍数：0 = 起点价格、1 = 终点价格、
+// -1 = 起点再往下（或往上）一个区间、2 = 终点再往外一个区间。四条线永远是水平的、
+// 互相平行 —— 用户只能调颜色，不能单独拖某一条（见 buildFigure 的注释）。
+type FibLevel struct {
+	Ratio float64 `json:"ratio"`
+	Color string  `json:"color"`
+}
+
+// AnnotationStyle 是一个图形自己的样式。
+//
+// 它是**画下去那一刻从模板复制过来的快照**：之后再改模板、删模板，已经画好的图形不变。
+// 这也是把它存进 Annotation 而不是只存 templateId 的原因 —— 否则模板一改，
+// 昨天画在盘面上的所有线一起变色。
+type AnnotationStyle struct {
+	Color       string     `json:"color"` // 线条 / 矩形边框颜色
+	Width       float64    `json:"width"` // 线宽（屏幕像素）
+	Dash        string     `json:"dash"`  // solid | dashed
+	Fill        string     `json:"fill,omitempty"`        // 矩形填充色，空 = 只画边框
+	FillOpacity float64    `json:"fillOpacity,omitempty"` // 矩形填充不透明度 0~1
+	Levels      []FibLevel `json:"levels,omitempty"`      // 斐波那契的四个水平（只有 fib 用）
+}
+
+// Template 是一个工具下面的一套样式预设。模板是**全局的**（不属于某个实例）：
+// 换个标的复盘，还是那几条常用的线。
+type Template struct {
+	ID        string          `json:"id"`
+	Kind      string          `json:"kind"` // trend | ray | rect | arrow | fib
+	Name      string          `json:"name"`
+	Style     AnnotationStyle `json:"style"`
+	CreatedAt int64           `json:"createdAt"`
 }
 
 // 订单状态。
@@ -319,6 +373,17 @@ type DeletedMsg struct {
 
 type PongMsg struct {
 	Type string `json:"type"`
+}
+
+// TemplatesMsg 是模板全量列表。模板很少（每个工具几条），所以任何一次改动都
+// 直接把整份列表广播给所有人，前端不用维护增量合并。
+//
+// LastSavedID 是「这次刚存下来的是哪一条」：新建模板时 id 由后端分配，
+// 前端靠它把刚建好的那条立刻选上（不然只能按名字猜）。
+type TemplatesMsg struct {
+	Type        string     `json:"type"`
+	Templates   []Template `json:"templates"`
+	LastSavedID string     `json:"lastSavedId,omitempty"`
 }
 
 // SymbolInfo 是选标的时的一项（来自数据目录，不读文件内容）。

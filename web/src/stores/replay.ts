@@ -7,6 +7,7 @@ import type {
   AnnotationKind,
   AnnotationPayload,
   AnnotationDeletedPayload,
+  AnnotationStyle,
   BarAdvancedPayload,
   ClientMessage,
   ControlChangedPayload,
@@ -22,11 +23,32 @@ import type {
   ServerMessage,
   Side,
   SymbolInfo,
+  Template,
   You,
 } from '@/types/protocol'
 
-/** 画布上当前选中的工具。缩放/平移不属于工具，任何工具下都能用。 */
-export type ChartTool = 'select' | 'line' | 'rect' | 'text'
+/** 画布上当前的工作模式。缩放/平移不属于工具，任何模式下都能用。 */
+export type ChartTool = 'select' | 'modify' | 'trend' | 'ray' | 'rect' | 'arrow' | 'fib'
+
+/** 五种绘图工具（不含指针/修改）。模板、样式、绘制规则都按它分类。 */
+export type DrawTool = 'trend' | 'ray' | 'rect' | 'arrow' | 'fib'
+
+export const DRAW_TOOLS: DrawTool[] = ['trend', 'ray', 'rect', 'arrow', 'fib']
+
+/** 工具名。界面上的中文只在这里写一次。 */
+export const TOOL_LABEL: Record<ChartTool, string> = {
+  select: '指针',
+  modify: '修改',
+  trend: '趋势线',
+  ray: '射线',
+  rect: '矩形',
+  arrow: '箭头线',
+  fib: '斐波那契',
+}
+
+export function isDrawTool(tool: ChartTool): tool is DrawTool {
+  return tool !== 'select' && tool !== 'modify'
+}
 
 /** 界面配色。只影响显示（画布配色 + 页面语义色），跟后端无关。 */
 export type ThemeMode = 'light' | 'dark'
@@ -64,8 +86,15 @@ export const useReplayStore = defineStore('replay', () => {
 
   // 界面状态（只影响显示，不属于业务状态，所以不发给后端）
   const tool = ref<ChartTool>('select')
-  const color = ref('#f59e0b')
   const selectedAnnotation = ref<string | null>(null)
+  /**
+   * 标注模板：后端存的全量列表 + 「每个工具上次用的是哪一条」。
+   *
+   * 模板本身在后端（改一次存一次盘，换台机器/重启后还在）；
+   * 选中的是哪一条是纯界面状态，只记在内存里 —— 它不值得进协议。
+   */
+  const templates = ref<Template[]>([])
+  const activeTemplate = ref<Record<string, string>>({})
   const theme = ref<ThemeMode>(readTheme())
   applyTheme(theme.value)
   /** 是否显示 EMA20（纯显示开关，跟后端无关） */
@@ -152,6 +181,14 @@ export const useReplayStore = defineStore('replay', () => {
         log.value = []
         break
       case 'pong':
+        break
+      case 'templates':
+        templates.value = msg.templates ?? []
+        if (msg.lastSavedId) {
+          // 新建的模板立刻用上：id 是后端分配的，只有这条消息知道它
+          const saved = templates.value.find((t) => t.id === msg.lastSavedId)
+          if (saved) activeTemplate.value = { ...activeTemplate.value, [saved.kind]: saved.id }
+        }
         break
       default:
         break
@@ -244,6 +281,7 @@ export const useReplayStore = defineStore('replay', () => {
   function resync(): void {
     send({ type: 'list_symbols' })
     send({ type: 'list_instances' })
+    send({ type: 'list_templates' })
     const id = instance.value?.id
     if (id) send({ type: 'join_instance', instanceId: id })
   }
@@ -311,11 +349,42 @@ export const useReplayStore = defineStore('replay', () => {
     send({ type: 'release_control', instanceId: instance.value.id })
   }
 
+  // ---------------- 标注模板 ----------------
+
+  function templatesFor(kind: DrawTool): Template[] {
+    return templates.value.filter((t) => t.kind === kind)
+  }
+
+  /**
+   * 当前该用哪条模板：上次选的那条（还在的话），否则第一条。
+   * 返回 null 只可能发生在「后端一条模板都没有」时 —— 那种情况下画布会用出厂样式兜底。
+   */
+  function templateFor(kind: DrawTool): Template | null {
+    const list = templatesFor(kind)
+    const id = activeTemplate.value[kind]
+    return list.find((t) => t.id === id) ?? list[0] ?? null
+  }
+
+  function selectTemplate(kind: DrawTool, id: string): void {
+    activeTemplate.value = { ...activeTemplate.value, [kind]: id }
+  }
+
+  /** 新建（不带 id）或就地修改（带 id）。后端存完会广播整份列表回来。 */
+  function saveTemplate(input: { id?: string; kind: DrawTool; name: string; style: AnnotationStyle }): void {
+    send({ type: 'save_template', template: input })
+  }
+
+  function deleteTemplate(id: string): void {
+    send({ type: 'delete_template', templateId: id })
+  }
+
+  // ---------------- 标注 ----------------
+
   function addAnnotation(input: {
     kind: AnnotationKind
     start: Point
-    end?: Point
-    text?: string
+    end: Point
+    style: AnnotationStyle
     snap: boolean
   }): void {
     if (!instance.value) return
@@ -325,13 +394,16 @@ export const useReplayStore = defineStore('replay', () => {
       kind: input.kind,
       start: input.start,
       end: input.end,
-      text: input.text,
-      color: color.value,
+      style: input.style,
       snap: input.snap,
     })
   }
 
-  function moveAnnotation(id: string, start: Point, end: Point | undefined, snap: boolean): void {
+  /**
+   * 移动标注：**整体移动和只动一个端点走同一条消息** —— 两个端点各自的新位置都在这里，
+   * 只动一个时另一个原样传回。后端校验完广播回来，界面上的图形永远来自广播。
+   */
+  function moveAnnotation(id: string, start: Point, end: Point, snap: boolean): void {
     if (!instance.value) return
     send({
       type: 'annotation_move',
@@ -380,8 +452,9 @@ export const useReplayStore = defineStore('replay', () => {
     lastError,
     errorKey,
     tool,
-    color,
     selectedAnnotation,
+    templates,
+    activeTemplate,
     theme,
     showEma,
     orderQuantity,
@@ -408,6 +481,11 @@ export const useReplayStore = defineStore('replay', () => {
     step,
     takeControl,
     releaseControl,
+    templatesFor,
+    templateFor,
+    selectTemplate,
+    saveTemplate,
+    deleteTemplate,
     addAnnotation,
     moveAnnotation,
     deleteAnnotation,

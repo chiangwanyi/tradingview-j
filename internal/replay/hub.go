@@ -51,6 +51,11 @@ type Hub struct {
 	statePath string
 	stateDone chan struct{}
 	dirty     bool
+
+	// 标注模板（templates.go）：和实例存档同一个目录，但另一个文件
+	templates []Template
+	tplSeq    int
+	tplPath   string
 }
 
 func NewHub(ds *DataSource, version string, logf func(format string, args ...any)) *Hub {
@@ -66,6 +71,10 @@ func NewHub(ds *DataSource, version string, logf func(format string, args ...any
 		rnd:       rand.New(rand.NewSource(time.Now().UnixNano())),
 		usedNames: map[string]bool{},
 		stateDone: make(chan struct{}),
+		// 出厂模板先放在内存里：没配状态目录（测试）或第一次运行都有得用。
+		// EnablePersistence 会拿磁盘上的文件覆盖它。
+		templates: defaultTemplates(),
+		tplSeq:    len(defaultTemplates()),
 	}
 }
 
@@ -168,6 +177,12 @@ func (h *Hub) Handle(c *Client, raw []byte) {
 		h.handleAnnotationMove(c, req)
 	case ReqAnnDelete:
 		h.handleAnnotationDelete(c, req)
+	case ReqListTemplates:
+		h.handleListTemplates(c)
+	case ReqSaveTemplate:
+		h.handleSaveTemplate(c, req)
+	case ReqDelTemplate:
+		h.handleDeleteTemplate(c, req)
 	case ReqOrderPlace:
 		h.handleOrderPlace(c, req)
 	case ReqOrderCancel:
@@ -348,15 +363,15 @@ func (h *Hub) handleAnnotationAdd(c *Client, req Request) {
 		h.fail(c, req, "缺少 start（标注端点必须指向一根 K 线）")
 		return
 	}
-	end := Point{}
-	if req.Kind != AnnText {
-		if req.End == nil {
-			h.fail(c, req, "线/矩形需要 start 和 end 两个端点")
-			return
-		}
-		end = *req.End
+	if req.End == nil {
+		h.fail(c, req, "缺少 end（五种图形都用两个端点：线的两端 / 矩形对角 / 斐波那契的价格区间）")
+		return
 	}
-	if _, err := h.doAddAnnotationLocked(inst, c.Name, req.Kind, *req.Start, end, req.Text, req.Color, req.Snap); err != nil {
+	style := AnnotationStyle{}
+	if req.Style != nil {
+		style = *req.Style
+	}
+	if _, err := h.doAddAnnotationLocked(inst, c.Name, req.Kind, *req.Start, *req.End, style, req.Snap); err != nil {
 		h.fail(c, req, err.Error())
 	}
 }
@@ -373,11 +388,11 @@ func (h *Hub) handleAnnotationMove(c *Client, req Request) {
 		h.fail(c, req, "缺少 start")
 		return
 	}
-	end := Point{}
-	if req.End != nil {
-		end = *req.End
+	if req.End == nil {
+		h.fail(c, req, "缺少 end（移动整体和只移动一个端点走同一条消息，两端都要发）")
+		return
 	}
-	if _, err := h.doMoveAnnotationLocked(inst, c.Name, req.AnnotationID, *req.Start, end, req.Snap); err != nil {
+	if _, err := h.doMoveAnnotationLocked(inst, c.Name, req.AnnotationID, *req.Start, *req.End, req.Snap); err != nil {
 		h.fail(c, req, err.Error())
 	}
 }
@@ -446,8 +461,8 @@ func (h *Hub) doStepLocked(inst *Instance, by string) error {
 	return nil
 }
 
-func (h *Hub) doAddAnnotationLocked(inst *Instance, by, kind string, start, end Point, text, color string, snap bool) (Annotation, error) {
-	a, err := inst.addAnnotation(by, kind, start, end, text, color, snap)
+func (h *Hub) doAddAnnotationLocked(inst *Instance, by, kind string, start, end Point, style AnnotationStyle, snap bool) (Annotation, error) {
+	a, err := inst.addAnnotation(by, kind, start, end, style, snap)
 	if err != nil {
 		return Annotation{}, err
 	}

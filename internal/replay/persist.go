@@ -153,6 +153,10 @@ func (h *Hub) EnablePersistence(dir string) error {
 	h.statePath = filepath.Join(dir, stateFileName)
 	path := h.statePath
 	err := h.loadStateLocked(path)
+	// 模板和实例存档同目录（另一个文件）：模板跟实例无关，读不到也不影响服务起来。
+	// 放在 statePath 之后是因为它要靠这个目录；放在 err 判断之前是因为存档读坏了
+	// 也不该把模板一起丢掉。
+	h.loadTemplatesLocked(filepath.Join(dir, templatesFileName))
 	h.mu.Unlock()
 	if err != nil {
 		// 读坏了不是致命错误：实例从空的开始，把原因说清楚就行，
@@ -263,6 +267,11 @@ func (h *Hub) loadStateLocked(path string) error {
 			continue
 		}
 		inst := p.toInstance()
+		// 旧版本（0.5.2 及以前）的标注类型和样式要迁到新模型上，见 migrateAnnotations。
+		if dropped := migrateAnnotations(inst); dropped > 0 {
+			h.log("[replay] 实例 %s：%d 条旧版文字标注已丢弃（新版只有五种线/面工具）", inst.ID, dropped)
+			h.markDirtyLocked()
+		}
 		// 操作权是「这次进程里谁在操作」，不跟着状态文件走
 		inst.Operator = ""
 		inst.botStop = nil
@@ -287,6 +296,24 @@ func (h *Hub) loadStateLocked(path string) error {
 		h.log("[replay] 已从 %s 恢复 %d 个实例（游标、标注、挂单、成交都在）", path, restored)
 	}
 	return nil
+}
+
+// migrateAnnotations 把 0.5.2 及以前的标注迁到新模型：
+// line（线段）→ trend（趋势线，本来就是同一个东西），样式按类型补齐；
+// text（文字）没有对应物（新版只有五种线/面工具），丢掉并返回丢掉了几条。
+func migrateAnnotations(inst *Instance) int {
+	kept := inst.Annotations[:0]
+	dropped := 0
+	for i := range inst.Annotations {
+		a := inst.Annotations[i]
+		if a.normalize() {
+			kept = append(kept, a)
+		} else {
+			dropped++
+		}
+	}
+	inst.Annotations = kept
+	return dropped
 }
 
 // reindexLocked 重新拿到日文件列表，并把「下一个要读的日文件」定位到最后一根 K 线之后。

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from 'vue'
 
-import { useReplayStore } from '@/stores/replay'
+import { TOOL_LABEL, useReplayStore, type ChartTool } from '@/stores/replay'
 import { ACTION } from '@/types/protocol'
 import type {
   AnnotationPayload,
@@ -80,8 +80,9 @@ function detail(ev: ReplayEvent): string {
     case ACTION.annotationMoved: {
       const p = ev.payload as AnnotationPayload
       const a = p.annotation
-      const kind = a.kind === 'rect' ? '矩形' : a.kind === 'line' ? '线段' : '文字'
-      return `${kind} ${a.id}${a.snapped ? ' · 已吸附' : ''}${a.text ? ` · ${a.text}` : ''}`
+      // 类型名只在 store 的 TOOL_LABEL 里写一次；这里遇到不认识的 kind 就原样显示
+      const kind = TOOL_LABEL[a.kind as ChartTool] ?? a.kind
+      return `${kind} ${a.id}${a.snapped ? ' · 已吸附' : ''}`
     }
     case ACTION.annotationDeleted: {
       const p = ev.payload as { annotationId: string }

@@ -1,11 +1,12 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 
+import { buildFigure, resolveStyle, type Figure, type FigureView } from '@/components/chart/annotations'
 import { orderKindFor, orderKindLabel } from '@/components/chart/orders'
 import { drawChart, themeOf, type HoverState } from '@/components/chart/render'
 import { ChartScale, TIME_AXIS_HEIGHT, formatAxisTime, formatPrice, snapToTick } from '@/components/chart/scale'
 import { closedTrades } from '@/components/chart/trades'
-import { useReplayStore } from '@/stores/replay'
+import { TOOL_LABEL, isDrawTool, useReplayStore, type DrawTool } from '@/stores/replay'
 import type { Bar, OrderKind, Point, Side } from '@/types/protocol'
 
 /**
@@ -15,18 +16,22 @@ import type { Bar, OrderKind, Point, Side } from '@/types/protocol'
  *   - K 线一次几百根、每帧重画，Canvas 最快；
  *   - 标注要能被指针命中、能拖、能选中，SVG 元素天然有 hit-test，不用自己写拾取算法。
  *
- * 「前端预览、后端定稿」的做法（需求第 10 条）：
- *   拖动/绘制过程中只更新本地 draft（虚线幽灵图形），松手时把**时间+价格**发往后端；
- *   后端校验、吸附、编号后再广播回来，界面上的正式图形永远来自后端广播。
- *   所以即使后端拒绝了（比如画到未来的 K 线上），幽灵图形一消失，界面上什么都不会留下。
+ * 四种模式（`store.tool`），指针行为完全不同：
+ *
+ *   - 指针 `select`：只缩放/平移，不碰标注；
+ *   - 修改 `modify`：点选标注、拖端点改端点、拖线身整体移动、Del 删除；
+ *   - 五种绘图工具：**两次单击** —— 第 1 次定起点进入预览，移动鼠标找终点，第 2 次定稿。
+ *     （不再是按住拖动：拖动手势在触控板和大图上都容易画歪，两次单击可以慢慢找位置。）
+ *
+ * 「前端预览、后端定稿」没变：绘制过程只更新本地的 `pending`，第 2 次单击才把
+ * **时间 + 价格 + 样式**发往后端；后端校验、编号后广播回来，界面上的正式图形永远
+ * 来自广播。所以后端拒绝时幽灵图形一消失，界面上什么都不会留下。
  */
 
 const store = useReplayStore()
 
 /** 画布配色跟着主题走：两套配色都在 render.ts 里，这里只选一套 */
 const theme = computed(() => themeOf(store.theme))
-/** 标注文字块的底色：深色用半透明深底，浅色用半透明白底 */
-const labelBg = computed(() => (theme.value.mode === 'light' ? 'rgba(255, 255, 255, 0.86)' : 'rgba(11, 17, 32, 0.72)'))
 
 const host = ref<HTMLDivElement | null>(null)
 const canvas = ref<HTMLCanvasElement | null>(null)
@@ -37,6 +42,7 @@ const size = ref({ width: 0, height: 0 })
 const viewTick = ref(0)
 const hover = ref<HoverState | null>(null)
 const ctrlDown = ref(false)
+const shiftDown = ref(false)
 
 /**
  * 右键小菜单：位置（画布内的本地像素）+ **已经吸附到最小跳动**的价格。
@@ -58,27 +64,30 @@ interface ChartPoint {
   price: number
 }
 
-interface DraftState {
-  kind: 'line' | 'rect' | 'text'
+/** 两次单击绘制的中间状态：第 1 次单击已定起点，`end` 跟着鼠标走。 */
+interface PendingShape {
+  kind: DrawTool
   start: ChartPoint
   end: ChartPoint
   snap: boolean
+  /** 最近一次移动/单击时按没按 Shift（线类工具 = 强制水平） */
+  shift: boolean
 }
 
-interface MovingState {
+/** 拖动中的标注：这一份只在本机显示，松手才发给后端 */
+interface MovingShape {
   id: string
-  kind: string
-  text: string
-  color: string
   start: ChartPoint
   end: ChartPoint
-  snap: boolean
 }
 
-const draft = ref<DraftState | null>(null)
-const moving = ref<MovingState | null>(null)
+const pending = ref<PendingShape | null>(null)
+const moving = ref<MovingShape | null>(null)
 /** 上一次拖动是否真的移动过：拖完松手会补一个 click，别让它把选中状态点没了 */
 let lastDragMoved = false
+
+const drawMode = computed(() => isDrawTool(store.tool))
+const modifyMode = computed(() => store.tool === 'modify')
 
 // ---------------- 尺寸与重绘 ----------------
 
@@ -155,6 +164,7 @@ onBeforeUnmount(() => {
   window.removeEventListener('pointermove', onWindowPointerMove)
   window.removeEventListener('pointerup', onWindowPointerUp)
   if (rafId) cancelAnimationFrame(rafId)
+  if (toastTimer) window.clearTimeout(toastTimer)
 })
 
 // 实例换了：重置视图（否则会拿着上一个标的的缩放去画新标的）
@@ -164,8 +174,19 @@ watch(
     scale.setBars(store.bars)
     scale.resetView()
     hover.value = null
-    draft.value = null
+    pending.value = null
     moving.value = null
+    requestDraw()
+  },
+)
+
+// 换工具 = 放弃手里那次没画完的图形，并清掉选中（两种模式管的东西不一样）
+watch(
+  () => store.tool,
+  () => {
+    pending.value = null
+    moving.value = null
+    store.selectedAnnotation = null
     requestDraw()
   },
 )
@@ -237,28 +258,33 @@ function nearestOHLC(bar: Bar, price: number): number {
   return best
 }
 
-function toScreen(p: ChartPoint): { x: number; y: number } | null {
-  const idx = scale.indexOfTime(p.time)
-  if (idx === undefined) return null
-  return { x: scale.xOf(idx), y: scale.yOf(p.price) }
+/** 画图形用的坐标换算（chart/annotations.ts 只认这一份接口，不认识缩放对象） */
+function figureView(): FigureView {
+  return {
+    plot: scale.layout.plot,
+    xOfTime: (time) => {
+      const idx = scale.indexOfTime(time)
+      return idx === undefined ? undefined : scale.xOf(idx)
+    },
+    yOfPrice: (price) => scale.yOf(price),
+    priceText: (price) => formatPrice(price, store.priceDecimals),
+  }
 }
 
 // ---------------- 指针交互 ----------------
 
 interface DragState {
-  mode: 'none' | 'pan' | 'draw' | 'move'
+  mode: 'none' | 'pan' | 'move'
   startX: number
   startY: number
   lastX: number
   lastY: number
   moved: boolean
-  // 绘制
   snap: boolean
-  // 移动
+  /** 正在拖的标注 */
   moveId: string
-  moveKind: string
-  moveText: string
-  moveColor: string
+  /** 拖的是哪个位置：-1 = 整体，0 = 起点，1 = 终点 */
+  anchor: -1 | 0 | 1
   baseStart: Point
   baseEnd: Point
   baseIndex: number
@@ -279,9 +305,7 @@ function emptyDrag(): DragState {
     moved: false,
     snap: false,
     moveId: '',
-    moveKind: '',
-    moveText: '',
-    moveColor: '',
+    anchor: -1,
     baseStart: { time: '', price: 0 },
     baseEnd: { time: '', price: 0 },
     baseIndex: 0,
@@ -307,7 +331,7 @@ function onPointerDown(ev: PointerEvent): void {
   const p = localPoint(ev)
   if (!p) return
 
-  // 中键：任何工具下都平移
+  // 中键：任何模式下都平移
   if (ev.button === 1) {
     ev.preventDefault()
     drag = { ...emptyDrag(), mode: 'pan', startX: p.x, startY: p.y, lastX: p.x, lastY: p.y }
@@ -316,31 +340,60 @@ function onPointerDown(ev: PointerEvent): void {
   }
   if (ev.button !== 0) return
 
-  const tool = store.tool
-  if (tool === 'select') {
-    drag = { ...emptyDrag(), mode: 'pan', startX: p.x, startY: p.y, lastX: p.x, lastY: p.y, snap: ev.ctrlKey }
-    beginPointerCapture()
+  // 绘图工具：两次单击。第 1 次定起点，第 2 次定终点。
+  if (drawMode.value) {
+    clickToDraw(p, ev)
     return
   }
 
-  const start = pointAt(p.x, p.y, ev.ctrlKey)
-  if (!start) return
-  if (tool === 'text') {
-    // 文字：单击即定位，随即弹输入框（第一版用 prompt —— 够用，且不会在画布上叠一层输入框）
-    finishText({ kind: 'text', start, end: start, snap: ev.ctrlKey }, ev.ctrlKey)
+  // 指针 / 修改模式在空白处按下 = 平移（修改模式下按在图形上的事件被 SVG 拦掉了）
+  drag = { ...emptyDrag(), mode: 'pan', startX: p.x, startY: p.y, lastX: p.x, lastY: p.y, snap: ev.ctrlKey }
+  beginPointerCapture()
+}
+
+/** 绘图工具的单击：没有起点就定起点，有起点就定终点并提交。 */
+function clickToDraw(p: { x: number; y: number }, ev: PointerEvent): void {
+  const tool = store.tool
+  if (!isDrawTool(tool)) return
+  if (!store.canOperate) {
+    // 后端会拒（没有操作权），但在画布上静默失败最难排查 —— 直接说清楚
+    showToast('现在只能看：先「接管」操作权再画')
     return
   }
-  drag = {
-    ...emptyDrag(),
-    mode: 'draw',
-    startX: p.x,
-    startY: p.y,
-    lastX: p.x,
-    lastY: p.y,
-    snap: ev.ctrlKey,
+  const hit = pointAt(p.x, p.y, ev.ctrlKey)
+  if (!hit) return
+  shiftDown.value = ev.shiftKey
+
+  const cur = pending.value
+  if (!cur || cur.kind !== tool) {
+    pending.value = { kind: tool, start: hit, end: hit, snap: ev.ctrlKey, shift: ev.shiftKey }
+    requestDraw()
+    return
   }
-  draft.value = { kind: tool, start, end: start, snap: ev.ctrlKey }
-  beginPointerCapture()
+
+  const end = constrainEnd(tool, cur.start, hit, ev.shiftKey)
+  if (degenerate(cur.start, end)) {
+    // 两次点在同一根 K 线的同一个价位：当成「重新开始」，不产生一个看不见的零长度图形
+    pending.value = { kind: tool, start: hit, end: hit, snap: ev.ctrlKey, shift: ev.shiftKey }
+    requestDraw()
+    return
+  }
+  commitPending({ ...cur, end, snap: ev.ctrlKey, shift: ev.shiftKey })
+}
+
+/**
+ * Shift 约束：趋势线/射线/箭头线按住 Shift 就是水平线（两个端点同一个价格）。
+ * 矩形和斐波那契不受影响 —— 它们的语义本来就是「一个区间」。
+ */
+function constrainEnd(kind: DrawTool, start: ChartPoint, end: ChartPoint, shift: boolean): ChartPoint {
+  const lineLike = kind === 'trend' || kind === 'ray' || kind === 'arrow'
+  if (!shift || !lineLike) return end
+  return { time: end.time, price: start.price }
+}
+
+/** 两个端点完全重合 = 没画出东西（时间相同、价格也相同） */
+function degenerate(start: ChartPoint, end: ChartPoint): boolean {
+  return start.time === end.time && Math.abs(start.price - end.price) < 1e-9
 }
 
 function beginPointerCapture(): void {
@@ -357,6 +410,7 @@ function onWindowPointerMove(ev: PointerEvent): void {
   const p = localPoint(ev)
   if (!p) return
   ctrlDown.value = ev.ctrlKey
+  shiftDown.value = ev.shiftKey
 
   if (drag.mode === 'pan') {
     const dx = p.x - drag.lastX
@@ -369,60 +423,42 @@ function onWindowPointerMove(ev: PointerEvent): void {
     return
   }
 
-  if (drag.mode === 'draw' && draft.value) {
-    const next = pointAt(p.x, p.y, ev.ctrlKey)
-    if (next) {
-      draft.value = { ...draft.value, end: next, snap: ev.ctrlKey }
-      drag.snap = ev.ctrlKey
-      drag.moved = true
-      requestDraw()
-    }
-    return
-  }
-
   if (drag.mode === 'move' && moving.value) {
     drag.snap = ev.ctrlKey
-    const deltaBars = Math.round((p.x - drag.startX) / scale.barWidth)
-    const deltaPrice = scale.priceAtY(p.y) - drag.downPrice
     const bars = scale.bars
     const maxIdx = Math.max(0, bars.length - 1)
-    const idxStart = Math.min(maxIdx, Math.max(0, drag.baseIndex + deltaBars))
-    const idxEnd = Math.min(maxIdx, Math.max(0, drag.baseIndexEnd + deltaBars))
+    const deltaBars = Math.round((p.x - drag.startX) / scale.barWidth)
+    const deltaPrice = scale.priceAtY(p.y) - drag.downPrice
+
+    // 整体移动：两个端点一起走；拖端点：只动那一个（另一个原样留着）
+    const moveStart = drag.anchor === -1 || drag.anchor === 0
+    const moveEnd = drag.anchor === -1 || drag.anchor === 1
+
+    const idxStart = Math.min(maxIdx, Math.max(0, drag.baseIndex + (moveStart ? deltaBars : 0)))
+    const idxEnd = Math.min(maxIdx, Math.max(0, drag.baseIndexEnd + (moveEnd ? deltaBars : 0)))
     const barStart = bars[idxStart]
     const barEnd = bars[idxEnd]
     if (!barStart || !barEnd) return
-    const priceStart = drag.snap ? nearestOHLC(barStart, drag.basePrice + deltaPrice) : drag.basePrice + deltaPrice
-    const priceEnd = drag.snap ? nearestOHLC(barEnd, drag.basePriceEnd + deltaPrice) : drag.basePriceEnd + deltaPrice
+    const rawStart = drag.basePrice + (moveStart ? deltaPrice : 0)
+    const rawEnd = drag.basePriceEnd + (moveEnd ? deltaPrice : 0)
     moving.value = {
-      ...moving.value,
-      start: { time: barStart.time, price: priceStart },
-      end: { time: barEnd.time, price: drag.moveKind === 'text' ? priceStart : priceEnd },
+      id: drag.moveId,
+      start: { time: barStart.time, price: drag.snap ? nearestOHLC(barStart, rawStart) : rawStart },
+      end: { time: barEnd.time, price: drag.snap ? nearestOHLC(barEnd, rawEnd) : rawEnd },
     }
     drag.moved = true
     requestDraw()
   }
 }
 
-function onWindowPointerUp(ev: PointerEvent): void {
-  const p = localPoint(ev)
-  if (drag.mode === 'draw' && draft.value && p) {
-    const d = draft.value
-    if (d.kind === 'text') {
-      finishText(d, ev.ctrlKey)
-    } else if (drag.moved) {
-      // 只在真的拖出了距离时才提交：单击不该产生一个零长度的图形
-      commitDraft(d, ev.ctrlKey)
-    }
-    draft.value = null
-  } else if (drag.mode === 'move' && moving.value && drag.moved) {
+function onWindowPointerUp(): void {
+  if (drag.mode === 'move' && moving.value && drag.moved) {
     lastDragMoved = true
     const m = moving.value
-    store.moveAnnotation(
-      m.id,
-      { time: m.start.time, price: round(m.start.price) },
-      m.kind === 'text' ? undefined : { time: m.end.time, price: round(m.end.price) },
-      drag.snap,
-    )
+    store.moveAnnotation(m.id, { time: m.start.time, price: round(m.start.price) }, { time: m.end.time, price: round(m.end.price) }, drag.snap)
+  } else if (drag.mode === 'pan' && !drag.moved) {
+    // 在空白处点一下 = 取消选中（和桌面上点空白处一个意思）
+    store.selectedAnnotation = null
   }
   moving.value = null
   drag = emptyDrag()
@@ -435,7 +471,22 @@ function onPointerMove(ev: PointerEvent): void {
   const p = localPoint(ev)
   if (!p) return
   ctrlDown.value = ev.ctrlKey
+  shiftDown.value = ev.shiftKey
   if (drag.mode !== 'none') return
+
+  // 两次单击绘制的中间态：终点跟着鼠标走（不需要按住任何键）
+  if (pending.value) {
+    const aim = pointAt(p.x, p.y, ev.ctrlKey)
+    if (aim) {
+      pending.value = {
+        ...pending.value,
+        end: constrainEnd(pending.value.kind, pending.value.start, aim, ev.shiftKey),
+        snap: ev.ctrlKey,
+        shift: ev.shiftKey,
+      }
+    }
+  }
+
   const idx = scale.nearestIndex(p.x)
   hover.value = { index: idx, x: p.x, y: p.y, inside: true }
   requestDraw()
@@ -444,6 +495,7 @@ function onPointerMove(ev: PointerEvent): void {
 function onPointerLeave(): void {
   hover.value = null
   ctrlDown.value = false
+  shiftDown.value = false
   requestDraw()
 }
 
@@ -463,8 +515,87 @@ function onWheel(ev: WheelEvent): void {
 }
 
 function onDoubleClick(): void {
+  // 绘图时双击是「两次单击」，不能顺手把价格轴重置了
+  if (drawMode.value) return
   scale.resetPrice()
   requestDraw()
+}
+
+// ---------------- 提交 ----------------
+
+function round(v: number): number {
+  return Math.round(v * 100) / 100
+}
+
+/** 第 2 次单击：把时间 + 价格 + **当前模板的样式快照**发往后端。 */
+function commitPending(p: PendingShape): void {
+  const template = store.templateFor(p.kind)
+  store.addAnnotation({
+    kind: p.kind,
+    start: { time: p.start.time, price: round(p.start.price) },
+    end: { time: p.end.time, price: round(p.end.price) },
+    style: resolveStyle({ kind: p.kind, style: template?.style }),
+    snap: p.snap,
+  })
+  pending.value = null
+  requestDraw()
+}
+
+// ---------------- 标注的命中、选中与拖动 ----------------
+
+/** 在「修改」模式下按下图形本体：整体移动。 */
+function beginBodyDrag(ev: PointerEvent, id: string): void {
+  beginAnnotationDrag(ev, id, -1)
+}
+
+/** 按下端点手柄：只移动这一个端点。 */
+function beginAnchorDrag(ev: PointerEvent, id: string, anchor: 0 | 1): void {
+  beginAnnotationDrag(ev, id, anchor)
+}
+
+function beginAnnotationDrag(ev: PointerEvent, id: string, anchor: -1 | 0 | 1): void {
+  if (!modifyMode.value || !store.canOperate) return
+  const a = (store.instance?.annotations ?? []).find((item) => item.id === id)
+  if (!a) return
+  ev.stopPropagation()
+  ev.preventDefault()
+  // 这里**不置选中**：选中交给 click（没拖动才会走到）。否则 pointerdown 先选中、
+  // click 又按「再点一次取消」把它翻掉，拖完一手图形就变回未选中。
+  const p = localPoint(ev)
+  if (!p) return
+  const idxStart = scale.indexOfTime(a.start.time)
+  if (idxStart === undefined) return
+  const idxEnd = scale.indexOfTime(a.end.time)
+  drag = {
+    ...emptyDrag(),
+    mode: 'move',
+    startX: p.x,
+    startY: p.y,
+    lastX: p.x,
+    lastY: p.y,
+    snap: ev.ctrlKey,
+    moveId: a.id,
+    anchor,
+    baseStart: a.start,
+    baseEnd: a.end,
+    baseIndex: idxStart,
+    baseIndexEnd: idxEnd ?? idxStart,
+    basePrice: a.start.price,
+    basePriceEnd: a.end.price,
+    downPrice: scale.priceAtY(p.y),
+  }
+  moving.value = { id: a.id, start: { ...a.start }, end: { ...a.end } }
+  beginPointerCapture()
+}
+
+/** 点一下（没拖动）就选中/取消选中。 */
+function onAnnotationClick(id: string): void {
+  if (!modifyMode.value) return
+  if (lastDragMoved) {
+    lastDragMoved = false
+    return
+  }
+  store.selectedAnnotation = store.selectedAnnotation === id ? null : id
 }
 
 // ---------------- 右键小菜单 ----------------
@@ -589,88 +720,6 @@ async function copyText(text: string): Promise<boolean> {
   }
 }
 
-onBeforeUnmount(() => {
-  if (toastTimer) window.clearTimeout(toastTimer)
-})
-
-// ---------------- 提交 ----------------
-
-function round(v: number): number {
-  return Math.round(v * 100) / 100
-}
-
-function commitDraft(d: DraftState, snap: boolean): void {
-  const start = { time: d.start.time, price: round(d.start.price) }
-  const end = { time: d.end.time, price: round(d.end.price) }
-  store.addAnnotation({ kind: d.kind, start, end, snap })
-}
-
-function finishText(d: DraftState, snap: boolean): void {
-  const text = window.prompt('文字标注内容：')
-  if (!text || !text.trim()) return
-  store.addAnnotation({
-    kind: 'text',
-    start: { time: d.start.time, price: round(d.start.price) },
-    text: text.trim(),
-    snap,
-  })
-}
-
-// ---------------- 标注的命中与移动 ----------------
-
-function beginMove(ev: PointerEvent, id: string): void {
-  if (store.tool !== 'select' || !store.canOperate) return
-  const a = (store.instance?.annotations ?? []).find((item) => item.id === id)
-  if (!a) return
-  ev.stopPropagation()
-  ev.preventDefault()
-  store.selectedAnnotation = a.id
-  const p = localPoint(ev)
-  if (!p) return
-  const idxStart = scale.indexOfTime(a.start.time)
-  const idxEnd = scale.indexOfTime(a.end.time)
-  if (idxStart === undefined) return
-  drag = {
-    ...emptyDrag(),
-    mode: 'move',
-    startX: p.x,
-    startY: p.y,
-    lastX: p.x,
-    lastY: p.y,
-    snap: ev.ctrlKey,
-    moveId: a.id,
-    moveKind: a.kind,
-    moveText: a.text ?? '',
-    moveColor: a.color ?? '#f59e0b',
-    baseStart: a.start,
-    baseEnd: a.end,
-    baseIndex: idxStart,
-    baseIndexEnd: idxEnd ?? idxStart,
-    basePrice: a.start.price,
-    basePriceEnd: a.end.price,
-    downPrice: scale.priceAtY(p.y),
-  }
-  moving.value = {
-    id: a.id,
-    kind: a.kind,
-    text: a.text ?? '',
-    color: a.color ?? '#f59e0b',
-    start: { time: a.start.time, price: a.start.price },
-    end: { time: a.end.time, price: a.end.price },
-    snap: ev.ctrlKey,
-  }
-  beginPointerCapture()
-}
-
-function onAnnotationClick(id: string): void {
-  if (store.tool !== 'select') return
-  if (lastDragMoved) {
-    lastDragMoved = false
-    return
-  }
-  store.selectedAnnotation = store.selectedAnnotation === id ? null : id
-}
-
 // ---------------- 键盘 ----------------
 
 function isTypingTarget(target: EventTarget | null): boolean {
@@ -682,9 +731,17 @@ function isTypingTarget(target: EventTarget | null): boolean {
 
 function onKeyDown(ev: KeyboardEvent): void {
   ctrlDown.value = ev.ctrlKey
+  shiftDown.value = ev.shiftKey
   if (isTypingTarget(ev.target)) return
+
   if (ev.key === 'Escape') {
-    draft.value = null
+    if (pending.value) {
+      // 第一次：只是放弃手里这次没画完的图形
+      pending.value = null
+    } else if (drawMode.value) {
+      // 第二次：退出绘图工具回到指针模式
+      store.tool = 'select'
+    }
     moving.value = null
     drag = emptyDrag()
     endPointerCapture()
@@ -702,119 +759,76 @@ function onKeyDown(ev: KeyboardEvent): void {
 
 function onKeyUp(ev: KeyboardEvent): void {
   ctrlDown.value = ev.ctrlKey
+  shiftDown.value = ev.shiftKey
 }
 
 // ---------------- SVG 图层 ----------------
 
-interface ScreenShape {
-  id: string
-  kind: string
-  x1: number
-  y1: number
-  x2: number
-  y2: number
-  text?: string
-  textWidth: number
-  color: string
-  snapped: boolean
-  selected: boolean
-}
-
-let measureCtx: CanvasRenderingContext2D | null = null
-function measureText(text: string): number {
-  if (!measureCtx) {
-    const c = document.createElement('canvas')
-    measureCtx = c.getContext('2d')
-  }
-  if (!measureCtx) return text.length * 12
-  measureCtx.font = '13px "Segoe UI", system-ui, "Microsoft YaHei", sans-serif'
-  return measureCtx.measureText(text).width
-}
-
-const shapes = computed<ScreenShape[]>(() => {
+/**
+ * 已画好的图形。拖动中的那一个用 `moving` 里的端点代替 —— 所以拖的时候图形是
+ * 跟着手指动的（不是另画一个幽灵），松手后才由后端广播定稿。
+ */
+const figures = computed<Figure[]>(() => {
   void viewTick.value
   const inst = store.instance
   if (!inst) return []
-  const out: ScreenShape[] = []
+  const view = figureView()
+  const out: Figure[] = []
   for (const a of inst.annotations) {
-    const s = moving.value?.id === a.id ? moving.value : null
-    const start = toScreen(s ? s.start : a.start)
-    const end = toScreen(s ? s.end : a.end)
-    if (!start) continue
-    const kind = s ? s.kind : a.kind
-    out.push({
-      id: a.id,
-      kind,
-      x1: start.x,
-      y1: start.y,
-      x2: end?.x ?? start.x,
-      y2: end?.y ?? start.y,
-      text: s ? s.text : a.text,
-      textWidth: measureText(s ? s.text : (a.text ?? '')),
-      color: s ? s.color : (a.color ?? '#f59e0b'),
-      snapped: s ? s.snap : a.snapped,
-      selected: store.selectedAnnotation === a.id,
-    })
+    const over = moving.value?.id === a.id ? moving.value : null
+    const f = buildFigure(
+      {
+        id: a.id,
+        kind: a.kind,
+        start: over ? over.start : a.start,
+        end: over ? over.end : a.end,
+        style: a.style,
+        color: a.color,
+      },
+      view,
+    )
+    if (f) out.push(f)
   }
   return out
 })
 
-/** 绘制/移动过程中的幽灵图形（只在本机，不发给后端） */
-const ghost = computed<ScreenShape | null>(() => {
+/** 两次单击之间、跟着鼠标走的预览图形（用当前模板的样式，所以选模板时就所见即所得） */
+const ghost = computed<Figure | null>(() => {
   void viewTick.value
-  const d = draft.value
-  if (d) {
-    const start = toScreen(d.start)
-    const end = toScreen(d.end)
-    if (!start || !end) return null
-    return {
-      id: 'ghost',
-      kind: d.kind,
-      x1: start.x,
-      y1: start.y,
-      x2: end.x,
-      y2: end.y,
-      text: '',
-      textWidth: 0,
-      color: store.color,
-      snapped: d.snap,
-      selected: false,
-    }
-  }
-  const m = moving.value
-  if (m) {
-    const start = toScreen(m.start)
-    const end = toScreen(m.end)
-    if (!start) return null
-    return {
-      id: 'ghost-move',
-      kind: m.kind,
-      x1: start.x,
-      y1: start.y,
-      x2: end?.x ?? start.x,
-      y2: end?.y ?? start.y,
-      text: m.text,
-      textWidth: measureText(m.text),
-      color: m.color,
-      snapped: m.snap,
-      selected: false,
-    }
-  }
-  return null
+  const p = pending.value
+  if (!p) return null
+  return buildFigure(
+    { id: 'ghost', kind: p.kind, start: p.start, end: p.end, style: store.templateFor(p.kind)?.style },
+    figureView(),
+  )
 })
 
-const snapLabel = computed(() => {
-  const p = draft.value ?? null
-  const m = moving.value ?? null
-  if (p?.snap || m?.snap) return '已吸附到 OHLC'
-  return ctrlDown.value ? '按住 Ctrl：吸附 OHLC' : ''
+/** 选中时显示端点手柄（只有修改模式才有「选中的图形」这个概念） */
+const selectedId = computed(() => (modifyMode.value ? store.selectedAnnotation : null))
+
+const hint = computed(() => {
+  if (drawMode.value) {
+    const name = TOOL_LABEL[store.tool]
+    const extra = store.tool === 'trend' || store.tool === 'ray' || store.tool === 'arrow' ? ' · Shift 水平' : ''
+    return pending.value
+      ? `${name}：移动鼠标找终点，再单击一下定稿${extra} · Esc 取消`
+      : `${name}：单击定起点${extra} · 滚轮缩放 · 中键拖动平移`
+  }
+  if (modifyMode.value) {
+    return '单击选中 · 拖端点改端点 · 拖线身整体移动 · Del 删除 · 空白处拖动平移'
+  }
+  return '滚轮缩放 · Shift+滚轮缩放价格 · 拖动平移 · 双击重置价格 · 右键挂单/复制价格'
 })
 
-function rectBox(s: ScreenShape): { x: number; y: number; w: number; h: number } {
-  const x = Math.min(s.x1, s.x2)
-  const y = Math.min(s.y1, s.y2)
-  return { x, y, w: Math.abs(s.x2 - s.x1), h: Math.abs(s.y2 - s.y1) }
-}
+/** 按住 Ctrl / Shift 时给一句提示，省得用户不知道有这么个东西 */
+const modifierLabel = computed(() => {
+  if (ctrlDown.value) return 'Ctrl：吸附 OHLC'
+  if (shiftDown.value && drawMode.value && (store.tool === 'trend' || store.tool === 'ray' || store.tool === 'arrow')) {
+    return 'Shift：水平线'
+  }
+  if (pending.value?.snap) return '已吸附 OHLC'
+  return ''
+})
 
 const priceHint = computed(() => {
   const h = hover.value
@@ -833,7 +847,7 @@ defineExpose({ requestDraw })
   <div
     ref="host"
     class="relative h-full w-full select-none overflow-hidden"
-    style="cursor: crosshair"
+    :style="{ cursor: drawMode ? 'crosshair' : 'default' }"
     @wheel="onWheel"
     @pointerdown="onPointerDown"
     @pointermove="onPointerMove"
@@ -849,124 +863,145 @@ defineExpose({ requestDraw })
       preserveAspectRatio="none"
       style="pointer-events: none"
     >
+      <!--
+        已画好的图形。只有「修改」模式下才对指针可见 —— 其他模式下鼠标事件要落到
+        下面的画布上（平移、绘制起点），不能让一条线挡住。
+      -->
       <g
-        v-for="s in shapes"
-        :key="s.id"
-        :style="{ pointerEvents: store.tool === 'select' ? 'auto' : 'none' }"
-        :class="store.tool === 'select' ? 'cursor-move' : ''"
-        @pointerdown="beginMove($event, s.id)"
-        @click.stop="onAnnotationClick(s.id)"
+        v-for="f in figures"
+        :key="f.id"
+        :style="{ pointerEvents: modifyMode ? 'auto' : 'none' }"
+        :class="modifyMode ? 'cursor-move' : ''"
+        @pointerdown="beginBodyDrag($event, f.id)"
+        @click.stop="onAnnotationClick(f.id)"
       >
-        <!-- 选中框 -->
+        <!-- 矩形：填充 + 边框 -->
         <rect
-          v-if="s.selected"
-          :x="Math.min(s.x1, s.x2) - 4"
-          :y="Math.min(s.y1, s.y2) - 4"
-          :width="Math.abs(s.x2 - s.x1) + 8"
-          :height="Math.abs(s.y2 - s.y1) + 8"
-          fill="none"
-          :stroke="theme.selection"
-          stroke-width="1"
-          stroke-dasharray="3 3"
-          opacity="0.7"
+          v-if="f.box"
+          :x="f.box.x"
+          :y="f.box.y"
+          :width="f.box.w"
+          :height="f.box.h"
+          :stroke="f.box.color"
+          :stroke-width="f.box.width"
+          :stroke-dasharray="f.box.dash"
+          :fill="f.box.fill"
+          :fill-opacity="f.box.fillOpacity"
         />
-        <!-- 矩形 -->
-        <template v-if="s.kind === 'rect'">
-          <rect
-            :x="rectBox(s).x"
-            :y="rectBox(s).y"
-            :width="rectBox(s).w"
-            :height="rectBox(s).h"
-            :stroke="s.color"
-            :fill="s.color"
-            fill-opacity="0.1"
-            :stroke-width="s.selected ? 2 : 1.5"
-          />
-        </template>
-        <!-- 线段 -->
-        <template v-else-if="s.kind === 'line'">
+        <!-- 线段：一条可见的 + 一条加粗透明的（命中区，否则 1px 的线根本点不中） -->
+        <template v-for="(s, i) in f.segs" :key="i">
           <line
             :x1="s.x1"
             :y1="s.y1"
             :x2="s.x2"
             :y2="s.y2"
             :stroke="s.color"
-            :stroke-width="s.selected ? 2.5 : 1.6"
+            :stroke-width="s.width"
+            :stroke-dasharray="s.dash"
+            :opacity="s.opacity"
           />
-          <circle :cx="s.x1" :cy="s.y1" r="2.6" :fill="s.color" />
-          <circle :cx="s.x2" :cy="s.y2" r="2.6" :fill="s.color" />
+          <line
+            v-if="modifyMode"
+            :x1="s.x1"
+            :y1="s.y1"
+            :x2="s.x2"
+            :y2="s.y2"
+            stroke="rgba(0,0,0,0)"
+            stroke-width="12"
+          />
         </template>
-        <!-- 文字 -->
-        <template v-else>
+        <!-- 箭头 -->
+        <polygon v-if="f.head" :points="f.head.points" :fill="f.head.color" />
+        <!-- 斐波那契的水平标签：比例 + 价格，贴在每条线的右端 -->
+        <text
+          v-for="(c, i) in f.chips"
+          :key="`t${i}`"
+          :x="c.x"
+          :y="c.y"
+          :fill="c.color"
+          :text-anchor="c.anchor"
+          font-size="11"
+          font-family='"Segoe UI", system-ui, "Microsoft YaHei", sans-serif'
+          class="tnum"
+        >
+          {{ c.text }}
+        </text>
+        <!-- 选中：虚线包围框 + 两个端点手柄 -->
+        <template v-if="selectedId === f.id">
           <rect
-            :x="s.x1 - 3"
-            :y="s.y1 - 9"
-            :width="s.textWidth + 8"
-            height="18"
-            :fill="labelBg"
-            :stroke="s.selected ? s.color : 'transparent'"
+            :x="Math.min(f.anchors[0].x, f.anchors[1].x) - 6"
+            :y="Math.min(f.anchors[0].y, f.anchors[1].y) - 6"
+            :width="Math.abs(f.anchors[1].x - f.anchors[0].x) + 12"
+            :height="Math.abs(f.anchors[1].y - f.anchors[0].y) + 12"
+            fill="none"
+            :stroke="theme.selection"
             stroke-width="1"
-            rx="2"
+            stroke-dasharray="3 3"
+            opacity="0.7"
           />
-          <text
-            :x="s.x1 + 1"
-            :y="s.y1 + 1"
-            :fill="s.color"
-            font-size="13"
-            font-family='"Segoe UI", system-ui, "Microsoft YaHei", sans-serif'
-            dominant-baseline="middle"
-          >
-            {{ s.text }}
-          </text>
+          <circle
+            v-for="(a, i) in f.anchors"
+            :key="`h${i}`"
+            :cx="a.x"
+            :cy="a.y"
+            r="4.5"
+            :fill="theme.bg"
+            :stroke="theme.selection"
+            stroke-width="1.5"
+            style="cursor: grab"
+            @pointerdown.stop="beginAnchorDrag($event, f.id, i === 0 ? 0 : 1)"
+          />
         </template>
       </g>
 
-      <!-- 幽灵图形：只在本机显示，松手后由后端广播的正式图形替换 -->
-      <g v-if="ghost" style="pointer-events: none">
-        <template v-if="ghost.kind === 'rect'">
-          <rect
-            :x="Math.min(ghost.x1, ghost.x2)"
-            :y="Math.min(ghost.y1, ghost.y2)"
-            :width="Math.abs(ghost.x2 - ghost.x1)"
-            :height="Math.abs(ghost.y2 - ghost.y1)"
-            :stroke="ghost.color"
-            fill="none"
-            stroke-width="1.4"
-            stroke-dasharray="4 3"
-          />
-        </template>
-        <template v-else-if="ghost.kind === 'line'">
-          <line
-            :x1="ghost.x1"
-            :y1="ghost.y1"
-            :x2="ghost.x2"
-            :y2="ghost.y2"
-            :stroke="ghost.color"
-            stroke-width="1.4"
-            stroke-dasharray="4 3"
-          />
-        </template>
-        <template v-else>
-          <text
-            :x="ghost.x1 + 1"
-            :y="ghost.y1 + 1"
-            :fill="ghost.color"
-            font-size="13"
-            font-family='"Segoe UI", system-ui, "Microsoft YaHei", sans-serif'
-            dominant-baseline="middle"
-            opacity="0.8"
-          >
-            {{ ghost.text }}
-          </text>
-        </template>
+      <!-- 预览图形：只在本机显示，第 2 次单击后由后端广播的正式图形替换 -->
+      <g v-if="ghost" style="pointer-events: none" opacity="0.92">
+        <rect
+          v-if="ghost.box"
+          :x="ghost.box.x"
+          :y="ghost.box.y"
+          :width="ghost.box.w"
+          :height="ghost.box.h"
+          :stroke="ghost.box.color"
+          :stroke-width="ghost.box.width"
+          :stroke-dasharray="ghost.box.dash"
+          :fill="ghost.box.fill"
+          :fill-opacity="ghost.box.fillOpacity"
+        />
+        <line
+          v-for="(s, i) in ghost.segs"
+          :key="i"
+          :x1="s.x1"
+          :y1="s.y1"
+          :x2="s.x2"
+          :y2="s.y2"
+          :stroke="s.color"
+          :stroke-width="s.width"
+          :stroke-dasharray="s.dash"
+        />
+        <polygon v-if="ghost.head" :points="ghost.head.points" :fill="ghost.head.color" />
+        <text
+          v-for="(c, i) in ghost.chips"
+          :key="`t${i}`"
+          :x="c.x"
+          :y="c.y"
+          :fill="c.color"
+          :text-anchor="c.anchor"
+          font-size="11"
+          font-family='"Segoe UI", system-ui, "Microsoft YaHei", sans-serif'
+          class="tnum"
+        >
+          {{ c.text }}
+        </text>
+        <!-- 起点标记：一眼看出「第 1 次单击落在哪儿了」 -->
         <circle
-          v-if="ghost.snapped"
-          :cx="ghost.x2"
-          :cy="ghost.y2"
-          r="4"
+          v-if="pending"
+          :cx="ghost.anchors[0].x"
+          :cy="ghost.anchors[0].y"
+          r="3.5"
           fill="none"
           :stroke="theme.selection"
-          stroke-width="1"
+          stroke-width="1.5"
         />
       </g>
     </svg>
@@ -980,13 +1015,13 @@ defineExpose({ requestDraw })
       :style="{ bottom: `${TIME_AXIS_HEIGHT + 4}px` }"
     >
       <span v-if="priceHint" class="tnum text-dim">{{ priceHint }}</span>
-      <span>滚轮缩放 · Shift+滚轮缩放价格 · 拖动平移 · 双击重置价格 · 右键挂单/复制价格</span>
+      <span>{{ hint }}</span>
     </div>
     <div
-      v-if="snapLabel"
+      v-if="modifierLabel"
       class="pointer-events-none absolute top-2 left-2 rounded bg-elev px-2 py-1 text-[12px] text-amber-600 ring-1 ring-line dark:text-amber-300"
     >
-      {{ snapLabel }}
+      {{ modifierLabel }}
     </div>
     <div
       v-if="store.instance && !store.instance.bars.length"

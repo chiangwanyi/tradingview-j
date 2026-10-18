@@ -1,28 +1,42 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 
-import { useReplayStore } from '@/stores/replay'
-import { ANNOTATION_COLORS } from '@/types/protocol'
-import type { ChartTool } from '@/stores/replay'
+import AnnotationTemplates from '@/components/AnnotationTemplates.vue'
+import { TOOL_LABEL, isDrawTool, useReplayStore, type ChartTool, type DrawTool } from '@/stores/replay'
 
 /**
  * 图表上方的操作条。
  *
  * 工具按钮只改本地工具状态；真正会改数据的动作（步进、接管、机器人）一律发消息给后端，
  * 由后端校验、执行、广播回来 —— 所以这里的按钮只是「请求」，不是「直接生效」。
+ *
+ * 工具分两组：**模式**（指针 / 修改）和**五种绘图工具**。绘图工具选中后，
+ * 右边会跟出一排模板 —— 那是这个工具自己的样式预设（各工具互不相干）。
  */
 
 const store = useReplayStore()
 
-const tools: Array<{ key: ChartTool; label: string; hint: string }> = [
-  { key: 'select', label: '选择', hint: '点选/拖动已有标注，空白处拖动平移' },
-  { key: 'line', label: '线段', hint: '拖出一段线（严格吸附到起止 K 线）' },
-  { key: 'rect', label: '矩形', hint: '拖出一个矩形区域' },
-  { key: 'text', label: '文字', hint: '点一下 K 线，输入文字' },
-]
+const modeTools: ChartTool[] = ['select', 'modify']
+const drawTools: DrawTool[] = ['trend', 'ray', 'rect', 'arrow', 'fib']
+
+const modeHint: Record<string, string> = {
+  select: '指针：只缩放/平移，不碰标注',
+  modify: '修改：点选标注 → 拖端点改端点 / 拖线身整体移动 / Del 删除',
+}
+
+const drawHint: Record<DrawTool, string> = {
+  trend: '趋势线：两次单击（起点 → 终点），按住 Shift 画水平线',
+  ray: '射线：两次单击，从起点穿过终点一直延伸出去；Shift 画水平射线',
+  rect: '矩形：两次单击定两个对角点',
+  arrow: '箭头线：两次单击，终点带箭头；Shift 画水平箭头',
+  fib: '斐波那契回撤：两次单击定价格区间，四条水平线 -1 / 0 / 1 / 2 自动排开',
+}
 
 const canEdit = computed(() => store.canOperate)
 const operator = computed(() => store.operatorLabel)
+/** 当前是不是绘图工具 —— 模板条只在绘图工具下出现（v-if 用得到，也顺手做类型收窄） */
+const drawKind = computed<DrawTool | null>(() => (isDrawTool(store.tool) ? store.tool : null))
+
 const canStartBot = computed(() => {
   const inst = store.instance
   if (!inst || inst.bot) return false
@@ -37,43 +51,40 @@ const hasMoreHint = computed(() => {
 
 const btn = 'rounded border border-line px-2 py-1 text-[12px] transition disabled:cursor-not-allowed disabled:opacity-40'
 const btnIdle = 'bg-panel text-dim hover:border-accent hover:text-accent'
+const btnActive = 'border-accent bg-accent-soft text-accent'
 </script>
 
 <template>
   <div class="flex flex-wrap items-center gap-2 border-b border-line px-2 py-1.5">
     <div class="flex items-center gap-1">
       <button
-        v-for="t in tools"
-        :key="t.key"
+        v-for="t in modeTools"
+        :key="t"
         type="button"
-        :title="t.hint"
-        :class="[
-          btn,
-          store.tool === t.key
-            ? 'border-accent bg-accent-soft text-accent'
-            : btnIdle,
-        ]"
-        :disabled="!canEdit && t.key !== 'select'"
-        @click="store.tool = t.key"
+        :title="modeHint[t]"
+        :class="[btn, store.tool === t ? btnActive : btnIdle]"
+        @click="store.tool = t"
       >
-        {{ t.label }}
+        {{ TOOL_LABEL[t] }}
+      </button>
+
+      <span class="mx-1 h-4 w-px bg-line" />
+
+      <button
+        v-for="t in drawTools"
+        :key="t"
+        type="button"
+        :title="drawHint[t]"
+        :class="[btn, store.tool === t ? btnActive : btnIdle]"
+        :disabled="!canEdit"
+        @click="store.tool = t"
+      >
+        {{ TOOL_LABEL[t] }}
       </button>
     </div>
 
-    <div class="flex items-center gap-1 pl-1">
-      <button
-        v-for="c in ANNOTATION_COLORS"
-        :key="c"
-        type="button"
-        class="h-4 w-4 rounded-full border"
-        :class="store.color === c ? 'border-ink' : 'border-line'"
-        :style="{ backgroundColor: c }"
-        :title="`标注颜色 ${c}`"
-        @click="store.color = c"
-      />
-    </div>
-
-    <span class="text-[11px] text-faint">Ctrl 吸附 OHLC</span>
+    <!-- 模板条：每个工具各有自己的一组（后端持久化，换实例也不会丢） -->
+    <AnnotationTemplates v-if="drawKind" :kind="drawKind" />
 
     <div class="h-4 w-px bg-line" />
 
@@ -103,10 +114,7 @@ const btnIdle = 'bg-panel text-dim hover:border-accent hover:text-accent'
     </button>
     <button
       type="button"
-      :class="[
-        btn,
-        'border-amber-500 text-amber-600 hover:bg-amber-500/10 dark:text-amber-400',
-      ]"
+      :class="[btn, 'border-amber-500 text-amber-600 hover:bg-amber-500/10 dark:text-amber-400']"
       :disabled="store.isOperator || !store.instance || (store.instance?.operator ?? '') !== ''"
       @click="store.takeControl()"
     >
