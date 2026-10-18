@@ -44,11 +44,17 @@ Vue + TypeScript 工程，**需要先 `npm run build`**，产物由本地服务�
   2. 地址栏访问 `chrome://inspect/#remote-debugging`
   3. 勾选 **Allow remote debugging for this browser instance**
   4. 打开 TradingView 的**图表页**（URL 里带 `/chart/`），周期切到 **5 分钟**
-- **Go 1.22+**（`go.mod` 里声明的是 `go 1.22`）：只在从源码构建时需要；跑 exe 不需要任何运行时。
+- **Go 1.26+**（`go.mod` 里声明的是 `go 1.26`）：只在从源码构建时需要；跑 exe 不需要任何运行时。
+  > 代码本身只用到 Go 1.22 的语法，这行是**对齐两台构建机的工具链下限**（Windows 上用 1.27.2、
+  > 老 macOS 12 上最高只能用 1.26 —— Go 1.26 是最后一个支持 Monterey 的版本，1.27 起要求 Ventura+）。
+  > 把它改大不会让新工具链跑上老系统，只会让老机器编不了。
 - **`go-winres`**：构建时用它把版本信息写进 exe 的文件属性，一次性装好即可：
   `go install github.com/tc-hib/go-winres@latest`，然后确认 `%USERPROFILE%\go\bin` 在 `PATH` 里。
   它是**构建期工具**，不进入程序：`go.mod` 里依然没有 `require`。
-- 当前只在 **Windows** 上实际跑过；代码本身不依赖平台特性。
+- 当前只在 **Windows** 上实际跑过；代码本身不依赖平台特性（`internal/logx` 有 `//go:build !windows`
+  分支，`syscall.SIGTERM` 在 darwin 上也有）。已交叉编译验证 `darwin/amd64` / `darwin/arm64` 能编过，
+  但 `build.cmd` 是 cmd 脚本、`.syso` 只在 windows/amd64 下参与链接，所以在 macOS 上要自己跑
+  `go build -ldflags "-X main.version=$(cat VERSION)" -o tv-capture-v$(cat VERSION)`。
 
 > Chrome 136 起，给默认用户数据目录加 `--remote-debugging-port` 启动参数会被**静默忽略**，
 > 端口根本不会开 ——「关掉 Chrome 再加参数重启」这条路走不通，只能用上面那个官方开关。
