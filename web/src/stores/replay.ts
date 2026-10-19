@@ -16,6 +16,7 @@ import type {
   InstanceSummary,
   MembersChangedPayload,
   OrderKind,
+  OrderFilledPayload,
   OrdersPayload,
   Point,
   ReplayEvent,
@@ -264,6 +265,16 @@ export const useReplayStore = defineStore('replay', () => {
         inst.orders = p.orders
         break
       }
+      case ACTION.orderFilled: {
+        // 市价单是同步成交的：订单、成交流水、持仓和盈亏一次到位
+        const p = msg.payload as OrderFilledPayload
+        inst.orders = p.orders
+        inst.trades = p.trades
+        inst.position = p.position
+        inst.realizedPnl = p.realizedPnl
+        inst.unrealizedPnl = p.unrealizedPnl
+        break
+      }
       case ACTION.membersChanged: {
         const p = msg.payload as MembersChangedPayload
         inst.members = p.members
@@ -438,6 +449,17 @@ export const useReplayStore = defineStore('replay', () => {
     send({ type: 'order_place', instanceId: instance.value.id, side, kind, price, quantity: lots })
   }
 
+  /**
+   * 市价单：不带价格，后端按当前收盘价立即成交。
+   * 它和 placeOrder 分开是因为协议上「不需要 price」本身就是语义的一部分 ——
+   * 复用 order_place 再传一个假价格，会让日志里出现一个不存在的挂单价。
+   */
+  function marketOrder(side: Side, quantity: number): void {
+    if (!instance.value) return
+    const lots = Math.max(1, Math.round(quantity))
+    send({ type: 'order_market', instanceId: instance.value.id, side, quantity: lots })
+  }
+
   function cancelOrder(orderId: string): void {
     if (!instance.value) return
     send({ type: 'order_cancel', instanceId: instance.value.id, orderId })
@@ -503,6 +525,7 @@ export const useReplayStore = defineStore('replay', () => {
     moveAnnotation,
     deleteAnnotation,
     placeOrder,
+    marketOrder,
     cancelOrder,
     startBot,
     stopBot,

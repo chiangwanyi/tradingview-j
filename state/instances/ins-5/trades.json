@@ -1,0 +1,42 @@
+[
+  {
+    "id": "t1",
+    "orderId": "o1",
+    "time": "2026-06-22 06:40",
+    "side": "buy",
+    "kind": "market",
+    "price": 30846.25,
+    "quantity": 1,
+    "realizedPnl": 0
+  },
+  {
+    "id": "t2",
+    "orderId": "o3",
+    "time": "2026-06-22 07:15",
+    "side": "sell",
+    "kind": "market",
+    "price": 30724.75,
+    "quantity": 1,
+    "realizedPnl": -243
+  },
+  {
+    "id": "t3",
+    "orderId": "o4",
+    "time": "2026-06-22 07:15",
+    "side": "buy",
+    "kind": "market",
+    "price": 30724.75,
+    "quantity": 1,
+    "realizedPnl": 0
+  },
+  {
+    "id": "t4",
+    "orderId": "o5",
+    "time": "2026-06-22 07:20",
+    "side": "sell",
+    "kind": "market",
+    "price": 30748,
+    "quantity": 1,
+    "realizedPnl": 46.5
+  }
+]

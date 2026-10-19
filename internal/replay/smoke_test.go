@@ -90,6 +90,22 @@ func TestSmokeAgainstRunningServer(t *testing.T) {
 	})
 	readAction(t, conn, ActOrderPlaced)
 
+	// 5.5 市价单：不带价格，按当前收盘价立刻成交（一次广播里带订单/成交/持仓/盈亏）
+	send(t, conn, map[string]any{
+		"type":       "order_market",
+		"instanceId": id,
+		"side":       "buy",
+		"quantity":   1,
+	})
+	filled := readAction(t, conn, ActOrderFilled)
+	fp := filled["payload"].(map[string]any)
+	if fp["order"].(map[string]any)["status"] != OrderFilled {
+		t.Fatalf("市价单应当立刻成交：%v", fp["order"])
+	}
+	if pos := fp["position"].(map[string]any); pos["side"] == "flat" {
+		t.Fatalf("市价买之后持仓不该还是空仓：%v", pos)
+	}
+
 	// 6. 机器人跑一下，确认能接管并产生动作
 	send(t, conn, map[string]any{"type": "bot_start", "instanceId": id, "intervalMs": 200})
 	readAction(t, conn, ActBotStarted)
@@ -106,5 +122,5 @@ func TestSmokeAgainstRunningServer(t *testing.T) {
 	}
 	send(t, conn, map[string]any{"type": "bot_stop", "instanceId": id})
 	readAction(t, conn, ActBotStopped)
-	t.Log("冒烟通过：标的、窗口、步进、标注、挂单、机器人")
+	t.Log("冒烟通过：标的、窗口、步进、标注、挂单、市价、机器人")
 }

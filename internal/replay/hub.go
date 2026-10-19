@@ -195,6 +195,8 @@ func (h *Hub) Handle(c *Client, raw []byte) {
 		h.handleDeleteTemplate(c, req)
 	case ReqOrderPlace:
 		h.handleOrderPlace(c, req)
+	case ReqOrderMarket:
+		h.handleOrderMarket(c, req)
 	case ReqOrderCancel:
 		h.handleOrderCancel(c, req)
 	case ReqBotStart:
@@ -435,6 +437,19 @@ func (h *Hub) handleOrderPlace(c *Client, req Request) {
 	}
 }
 
+func (h *Hub) handleOrderMarket(c *Client, req Request) {
+	inst, ok := h.instanceLocked(c, req)
+	if !ok {
+		return
+	}
+	if !h.requireOperatorLocked(c, req, inst) {
+		return
+	}
+	if _, _, err := h.doMarketOrderLocked(inst, c.Name, req.Side, req.Quantity); err != nil {
+		h.fail(c, req, err.Error())
+	}
+}
+
 func (h *Hub) handleOrderCancel(c *Client, req Request) {
 	inst, ok := h.instanceLocked(c, req)
 	if !ok {
@@ -506,6 +521,23 @@ func (h *Hub) doPlaceOrderLocked(inst *Instance, by, side, kind string, price, q
 	}
 	h.broadcastInstanceLocked(inst, ActOrderPlaced, OrdersPayload{Orders: copies(inst.Orders)}, by)
 	return o, nil
+}
+
+func (h *Hub) doMarketOrderLocked(inst *Instance, by, side string, qty float64) (Order, Trade, error) {
+	o, tr, err := inst.marketOrder(by, side, qty)
+	if err != nil {
+		return Order{}, Trade{}, err
+	}
+	h.broadcastInstanceLocked(inst, ActOrderFilled, OrderFilledPayload{
+		Order:         o,
+		Trade:         tr,
+		Orders:        copies(inst.Orders),
+		Trades:        copies(inst.Trades),
+		Position:      inst.position(),
+		RealizedPnl:   inst.RealizedPnl,
+		UnrealizedPnl: inst.unrealizedPnl(),
+	}, by)
+	return o, tr, nil
 }
 
 func (h *Hub) doCancelOrderLocked(inst *Instance, by, id string) error {

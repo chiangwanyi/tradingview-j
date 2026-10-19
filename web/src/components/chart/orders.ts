@@ -25,5 +25,7 @@ export function orderKindFor(side: Side, price: number, close: number): OrderKin
 
 /** 单型的中文名，菜单文案和后端字段只有这一处映射 */
 export function orderKindLabel(kind: OrderKind): string {
-  return kind === 'limit' ? '限价' : '止损'
+  if (kind === 'limit') return '限价'
+  if (kind === 'market') return '市价'
+  return '止损'
 }

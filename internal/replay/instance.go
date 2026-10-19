@@ -277,13 +277,14 @@ func (inst *Instance) deleteAnnotation(id string) error {
 //
 // 没有「初始资金」这个概念：这里只记数量、价格和盈亏，能不能买得起不判。
 // 也不支持止损/止盈类型 —— 用户想止损就自己挂一张 stop 单，规则和手动挂单完全一样。
+// 市价单走另一条路径（marketOrder）：它下单即成交，不需要挂单价格。
 //
 // 这里**不校验「这个方向该用哪种单」**：挂反了（比如把止损买挂在现价下方）在真实市场里
 // 等于一张已经触发的市价单，撮合时按开盘价成交（见 fillPriceFor），不会凭空拿到更好的价格。
 // 界面上的右键菜单会按方向自动选单型，手填价格的下单框允许用户自己决定。
 func (inst *Instance) placeOrder(by, side, kind string, price, qty float64) (Order, error) {
-	if side != "buy" && side != "sell" {
-		return Order{}, fmt.Errorf("买卖方向只能是 buy / sell，收到 %q", side)
+	if err := validateSide(side); err != nil {
+		return Order{}, err
 	}
 	if kind != KindLimit && kind != KindStop {
 		return Order{}, fmt.Errorf("订单类型只能是 limit / stop，收到 %q", kind)
@@ -291,17 +292,9 @@ func (inst *Instance) placeOrder(by, side, kind string, price, qty float64) (Ord
 	if !finitePositive(price) {
 		return Order{}, errors.New("挂单价格必须是大于 0 的有限数字")
 	}
-	if !finitePositive(qty) {
-		return Order{}, errors.New("数量必须是大于 0 的有限数字")
-	}
-	// 手数只能是整数：期货没有「0.4 手」这种报单，允许小数会让持仓、成交、
-	// 平仓配对全都跟着出现半手，「2 手分两次开仓」也会退化成一条平均成本的线。
-	if math.Abs(qty-math.Round(qty)) > 1e-9 {
-		return Order{}, fmt.Errorf("手数必须是整数（1、2、3…），收到 %v", qty)
-	}
-	qty = math.Round(qty)
-	if qty > maxOrderQuantity {
-		return Order{}, fmt.Errorf("单笔手数最多 %d 手", maxOrderQuantity)
+	qty, err := normalizeQuantity(qty)
+	if err != nil {
+		return Order{}, err
 	}
 	bar := inst.currentBar()
 	o := Order{
@@ -317,6 +310,74 @@ func (inst *Instance) placeOrder(by, side, kind string, price, qty float64) (Ord
 	}
 	inst.Orders = append(inst.Orders, o)
 	return o, nil
+}
+
+// marketOrder 按当前（游标那根）K 线的收盘价**立即成交**。
+//
+// 复盘里「现在」就是最后一根已揭示 K 线的收盘：没有盘口、没有滑点，也不等下一根 ——
+// 成交价和下单框上显示的「现价」是同一个数。成交以后订单直接是 filled，
+// 不会被 advance 再撮合一次（PlacedIndex 也等于 Cursor）。
+//
+// 盈亏、持仓、成交流水都走和挂单成交完全相同的 applyFill，
+// 所以「市价买入再市价平掉」和「两张限价单被触发」算出来的数字口径一致。
+func (inst *Instance) marketOrder(by, side string, qty float64) (Order, Trade, error) {
+	if err := validateSide(side); err != nil {
+		return Order{}, Trade{}, err
+	}
+	qty, err := normalizeQuantity(qty)
+	if err != nil {
+		return Order{}, Trade{}, err
+	}
+	bar := inst.currentBar()
+	price := roundPrice(bar.Close)
+	if !finitePositive(price) {
+		return Order{}, Trade{}, errors.New("当前 K 线没有可成交的收盘价")
+	}
+	o := Order{
+		ID:          inst.nextOrderID(),
+		Side:        side,
+		Kind:        KindMarket,
+		Price:       price,
+		Quantity:    qty,
+		Status:      OrderFilled,
+		PlacedAt:    bar.Time,
+		PlacedIndex: inst.Cursor,
+		FilledAt:    bar.Time,
+		FilledIndex: inst.Cursor,
+		FillPrice:   price,
+	}
+	inst.Orders = append(inst.Orders, o)
+	tr := inst.applyFill(o, price, bar.Time)
+	inst.Trades = append(inst.Trades, tr)
+	inst.RealizedPnl += tr.RealizedPnl
+	inst.Position = inst.position()
+	return o, tr, nil
+}
+
+// validateSide 是 buy / sell 之外的任何值都不收。
+func validateSide(side string) error {
+	if side != "buy" && side != "sell" {
+		return fmt.Errorf("买卖方向只能是 buy / sell，收到 %q", side)
+	}
+	return nil
+}
+
+// normalizeQuantity 校验手数并夹成整数。
+//
+// 手数只能是整数：期货没有「0.4 手」这种报单，允许小数会让持仓、成交、
+// 平仓配对全都跟着出现半手，「2 手分两次开仓」也会退化成一条平均成本的线。
+func normalizeQuantity(qty float64) (float64, error) {
+	if !finitePositive(qty) {
+		return 0, errors.New("数量必须是大于 0 的有限数字")
+	}
+	if math.Abs(qty-math.Round(qty)) > 1e-9 {
+		return 0, fmt.Errorf("手数必须是整数（1、2、3…），收到 %v", qty)
+	}
+	qty = math.Round(qty)
+	if qty > maxOrderQuantity {
+		return 0, fmt.Errorf("单笔手数最多 %d 手", maxOrderQuantity)
+	}
+	return qty, nil
 }
 
 // cancelOrder 撤单。已成交/已撤销的单不能撤。

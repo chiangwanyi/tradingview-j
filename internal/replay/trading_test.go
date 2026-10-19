@@ -133,6 +133,81 @@ func TestPositionFlipRealizesAndReopens(t *testing.T) {
 	}
 }
 
+// TestMarketOrderFillsImmediately 钉住市价单的语义：**下单那一刻就成交**，
+// 成交价是当前（游标那根）K 线的收盘价，不等下一根，也不会被 advance 再撮合一次。
+func TestMarketOrderFillsImmediately(t *testing.T) {
+	inst := newTradingInstance() // 游标 09:00，收盘 100
+
+	o, tr, err := inst.marketOrder("human", "buy", 2)
+	if err != nil {
+		t.Fatalf("市价买失败：%v", err)
+	}
+	if o.Kind != KindMarket || o.Status != OrderFilled || o.FillPrice != 100 || o.Price != 100 {
+		t.Fatalf("市价单应当立刻按 100 成交：%+v", o)
+	}
+	if o.FilledIndex != inst.Cursor || o.PlacedIndex != inst.Cursor {
+		t.Fatalf("成交下标应当就是当前游标：%+v", o)
+	}
+	if tr.Price != 100 || tr.Quantity != 2 || tr.Kind != KindMarket {
+		t.Fatalf("成交流水不对：%+v", tr)
+	}
+	if inst.Position.Quantity != 2 || inst.Position.Side != "long" || inst.Position.AveragePrice != 100 {
+		t.Fatalf("持仓不对：%+v", inst.Position)
+	}
+	if inst.RealizedPnl != 0 {
+		t.Fatalf("开仓不该产生已实现盈亏，实际 %v", inst.RealizedPnl)
+	}
+
+	// 连着步进两根：已经 filled 的单不该再成交第二次
+	if _, _, err := inst.advance(emptyDS()); err != nil {
+		t.Fatalf("步进失败：%v", err)
+	}
+	if _, _, err := inst.advance(emptyDS()); err != nil { // 09:10 收盘 102
+		t.Fatalf("步进失败：%v", err)
+	}
+	if len(inst.Trades) != 1 {
+		t.Fatalf("市价单只该成交一次，实际 %d 笔", len(inst.Trades))
+	}
+
+	// 现价 102 市价平掉 1 手：实现 (102-100)×1×1 美元/点 = 2
+	_, tr2, err := inst.marketOrder("human", "sell", 1)
+	if err != nil {
+		t.Fatalf("市价卖失败：%v", err)
+	}
+	if math.Abs(tr2.RealizedPnl-2) > 1e-9 {
+		t.Fatalf("平仓应当实现 2，实际 %v", tr2.RealizedPnl)
+	}
+	if inst.Position.Quantity != 1 || math.Abs(inst.RealizedPnl-2) > 1e-9 {
+		t.Fatalf("平仓后持仓/盈亏不对：%+v pnl=%v", inst.Position, inst.RealizedPnl)
+	}
+}
+
+func TestMarketOrderValidation(t *testing.T) {
+	inst := newTradingInstance()
+	cases := []struct {
+		side string
+		qty  float64
+	}{
+		{"hold", 1},
+		{"buy", 0},
+		{"buy", -2},
+		// 手数只能是整数，和挂单同一条规则
+		{"buy", 0.5},
+		{"sell", 1.5},
+	}
+	for _, c := range cases {
+		if _, _, err := inst.marketOrder("human", c.side, c.qty); err == nil {
+			t.Fatalf("这些参数本该报错：%+v", c)
+		}
+	}
+	if len(inst.Orders) != 0 || len(inst.Trades) != 0 {
+		t.Fatalf("被拒的市价单不该留下任何记录：orders=%d trades=%d", len(inst.Orders), len(inst.Trades))
+	}
+	if inst.Position.Quantity != 0 {
+		t.Fatalf("被拒的市价单不该改持仓：%+v", inst.Position)
+	}
+}
+
 func TestOrderValidation(t *testing.T) {
 	inst := newTradingInstance()
 	cases := []struct {

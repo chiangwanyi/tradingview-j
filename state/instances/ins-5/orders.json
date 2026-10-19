@@ -1,0 +1,65 @@
+[
+  {
+    "id": "o1",
+    "side": "buy",
+    "kind": "market",
+    "price": 30846.25,
+    "quantity": 1,
+    "status": "filled",
+    "placedAt": "2026-06-22 06:40",
+    "placedIndex": 572,
+    "filledAt": "2026-06-22 06:40",
+    "filledIndex": 572,
+    "fillPrice": 30846.25
+  },
+  {
+    "id": "o2",
+    "side": "sell",
+    "kind": "limit",
+    "price": 30894.25,
+    "quantity": 1,
+    "status": "open",
+    "placedAt": "2026-06-22 06:45",
+    "placedIndex": 573,
+    "filledIndex": -1
+  },
+  {
+    "id": "o3",
+    "side": "sell",
+    "kind": "market",
+    "price": 30724.75,
+    "quantity": 1,
+    "status": "filled",
+    "placedAt": "2026-06-22 07:15",
+    "placedIndex": 579,
+    "filledAt": "2026-06-22 07:15",
+    "filledIndex": 579,
+    "fillPrice": 30724.75
+  },
+  {
+    "id": "o4",
+    "side": "buy",
+    "kind": "market",
+    "price": 30724.75,
+    "quantity": 1,
+    "status": "filled",
+    "placedAt": "2026-06-22 07:15",
+    "placedIndex": 579,
+    "filledAt": "2026-06-22 07:15",
+    "filledIndex": 579,
+    "fillPrice": 30724.75
+  },
+  {
+    "id": "o5",
+    "side": "sell",
+    "kind": "market",
+    "price": 30748,
+    "quantity": 1,
+    "status": "filled",
+    "placedAt": "2026-06-22 07:20",
+    "placedIndex": 580,
+    "filledAt": "2026-06-22 07:20",
+    "filledIndex": 580,
+    "fillPrice": 30748
+  }
+]

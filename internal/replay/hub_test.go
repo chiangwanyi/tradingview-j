@@ -189,6 +189,65 @@ func TestDeleteRequiresCreatorOrOperator(t *testing.T) {
 	}
 }
 
+// 市价单走的是 order_market：一次广播里要带全「订单 + 成交 + 持仓 + 盈亏」，
+// 前端收到就能直接改界面，不用再要快照。
+func TestMarketOrderOverProtocol(t *testing.T) {
+	hub, _ := newTestHub(t, 5)
+	a := newFakeClient(t, hub)
+	a.waitFor(MsgWelcome)
+	id := createInstance(t, hub, a, "2026-01-06 10:00")
+
+	a.send(hub, map[string]any{
+		"type":       "order_market",
+		"instanceId": id,
+		"side":       "buy",
+		"quantity":   2,
+	})
+	ev := a.waitAction(ActOrderFilled)
+
+	payload := ev["payload"].(map[string]any)
+	order := payload["order"].(map[string]any)
+	if order["kind"] != KindMarket || order["status"] != OrderFilled {
+		t.Fatalf("市价单应当是 market/filled，实际 %v/%v", order["kind"], order["status"])
+	}
+	if order["fillPrice"] == nil || order["fillPrice"] == 0.0 {
+		t.Fatalf("市价单必须带成交价：%v", order)
+	}
+	if trades := payload["trades"].([]any); len(trades) != 1 {
+		t.Fatalf("应当有 1 笔成交，实际 %d", len(trades))
+	}
+	pos := payload["position"].(map[string]any)
+	if pos["side"] != "long" || pos["quantity"].(float64) != 2 {
+		t.Fatalf("市价买 2 手后应当是多 2：%v", pos)
+	}
+	if _, ok := payload["unrealizedPnl"]; !ok {
+		t.Fatalf("广播里应当带浮动盈亏：%v", payload)
+	}
+}
+
+// 观看者不能下市价单：它和挂单一样要操作权。
+func TestMarketOrderRequiresOperator(t *testing.T) {
+	hub, _ := newTestHub(t, 5)
+	a := newFakeClient(t, hub)
+	a.waitFor(MsgWelcome)
+	id := createInstance(t, hub, a, "2026-01-06 10:00")
+
+	b := newFakeClient(t, hub)
+	b.waitFor(MsgWelcome)
+	b.send(hub, map[string]any{"type": "join_instance", "instanceId": id})
+	b.waitFor(MsgInstanceState)
+
+	b.send(hub, map[string]any{
+		"type":       "order_market",
+		"instanceId": id,
+		"side":       "buy",
+		"quantity":   1,
+	})
+	if e := b.waitFor(MsgError); e["message"] == "" {
+		t.Fatal("没有操作权下市价单应当收到错误")
+	}
+}
+
 func TestBotsCanStepAnnotateAndTrade(t *testing.T) {
 	hub, root := newTestHub(t, 6)
 	inst := openTestInstance(t, root, "2026-01-06 10:00", 40, 2)

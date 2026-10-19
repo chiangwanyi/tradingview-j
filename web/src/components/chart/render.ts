@@ -340,7 +340,9 @@ function drawOrders(
     ctx.stroke()
     ctx.setLineDash([])
 
-    const label = `${isBuy ? '买' : '卖'}${o.kind === 'limit' ? '限价' : '止损'} ${o.quantity}`
+    // 市价单成交后立刻是 filled，正常情况下进不到这里；留着是为了画布上的文案和后端 kind 对齐
+    const kindText = o.kind === 'limit' ? '限价' : o.kind === 'market' ? '市价' : '止损'
+    const label = `${isBuy ? '买' : '卖'}${kindText} ${o.quantity}`
     const textWidth = ctx.measureText(label).width
     const boxX = plot.right - textWidth - 8
     ctx.fillStyle = isBuy ? theme.orderBuyBox : theme.orderSellBox

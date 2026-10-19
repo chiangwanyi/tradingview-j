@@ -12,6 +12,7 @@ import type { OrderKind, Side } from '@/types/protocol'
  * 语义刻意保持简单（需求如此）：
  *   - 没有初始资金、没有保证金、没有手续费和滑点，只看盈亏数字和流水；
  *   - 没有止损/止盈类型 —— 想止损就挂一张 stop 单，和手动挂单完全一样；
+ *   - 想立刻成交就用「市价」按钮：按当前这根 K 线的收盘价直接成交，不挂单、不等下一根；
  *   - 成交判断在后端：新揭示的那根 K 线的最高/最低价碰到挂单价就成交，成交价通常是挂单价，
  *     跳空（开盘就跳过挂单价）时按开盘价 —— 细节见 docs/复盘设计.md 第 7 节。
  *
@@ -74,6 +75,16 @@ function submit(): void {
   store.placeOrder(side.value, kind.value, price.value, store.orderQuantity)
 }
 
+/**
+ * 市价成交：价格由后端取当前 K 线收盘价，所以这里不校验、也不传上面那个价格框 ——
+ * 用户填的限价还留在框里，切回挂单时不会丢。
+ */
+function submitMarket(): void {
+  if (!inst.value || !store.canOperate) return
+  if (!(currentPrice.value > 0) || !(store.orderQuantity > 0)) return
+  store.marketOrder(side.value, store.orderQuantity)
+}
+
 const openOrders = computed(() => (inst.value?.orders ?? []).filter((o) => o.status === 'open'))
 const historyOrders = computed(() =>
   (inst.value?.orders ?? [])
@@ -83,7 +94,9 @@ const historyOrders = computed(() =>
 )
 
 function orderLabel(kindValue: string): string {
-  return kindValue === 'limit' ? '限价' : '止损'
+  if (kindValue === 'limit') return '限价'
+  if (kindValue === 'market') return '市价'
+  return '止损'
 }
 
 function sideLabel(sideValue: string): string {
@@ -157,6 +170,21 @@ const inputClass =
           挂单
         </button>
       </div>
+
+      <!--
+        市价单：一个按钮，方向跟着上面的「买入/卖出」走。按钮文案把方向写出来，
+        避免用户点了才发现方向选反；价格框里的数字不参与成交（市价 = 当前收盘价）。
+      -->
+      <button
+        type="button"
+        class="rounded px-3 py-1 text-[12px] font-medium text-white transition disabled:cursor-not-allowed disabled:opacity-40"
+        :class="side === 'buy' ? 'bg-emerald-600 hover:bg-emerald-500' : 'bg-red-600 hover:bg-red-500'"
+        :disabled="!store.canOperate || !inst || !(currentPrice > 0)"
+        :title="`市价单：按现价 ${priceText} 立即成交，不使用上面填的价格`"
+        @click="submitMarket"
+      >
+        市价{{ side === 'buy' ? '买入' : '卖出' }} {{ store.orderQuantity }} 手
+      </button>
 
       <!--
         这两列加起来只有 200px 出头高（字号上调后从 184px 抬到 204px），

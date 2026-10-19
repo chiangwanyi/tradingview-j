@@ -34,6 +34,7 @@ const (
 	ReqSaveTemplate  = "save_template"
 	ReqDelTemplate   = "delete_template"
 	ReqOrderPlace    = "order_place"
+	ReqOrderMarket   = "order_market"
 	ReqOrderCancel   = "order_cancel"
 	ReqBotStart      = "bot_start"
 	ReqBotStop       = "bot_stop"
@@ -72,7 +73,7 @@ type Request struct {
 	// delete_template
 	TemplateID string `json:"templateId"`
 
-	// order_place
+	// order_place / order_market
 	Side     string  `json:"side"` // buy | sell
 	Price    float64 `json:"price"`
 	Quantity float64 `json:"quantity"`
@@ -107,6 +108,7 @@ const (
 	ActAnnotationMoved  = "annotation_moved"
 	ActAnnotationDelete = "annotation_deleted"
 	ActOrderPlaced      = "order_placed"
+	ActOrderFilled      = "order_filled"
 	ActOrderCancelled   = "order_cancelled"
 	ActControlChanged   = "control_changed"
 	ActMembersChanged   = "members_changed"
@@ -208,15 +210,19 @@ const (
 
 // 订单类型。
 const (
-	KindLimit = "limit"
-	KindStop  = "stop"
+	KindLimit  = "limit"
+	KindStop   = "stop"
+	KindMarket = "market" // 市价单：下单即按当前收盘价成交，不会留在挂单列表里
 )
 
 // Order 是一张挂单。没有止损/止盈类型：用户想止损就自己挂一张 stop 单。
+//
+// KindMarket 是唯一的例外：它只在「市价成交」那一刻存在，Status 一律是 filled，
+// 记在 Orders 里是为了让成交、历史记录和撤单列表共用同一套数据结构。
 type Order struct {
 	ID          string  `json:"id"`
 	Side        string  `json:"side"` // buy | sell
-	Kind        string  `json:"kind"` // limit | stop
+	Kind        string  `json:"kind"` // limit | stop | market
 	Price       float64 `json:"price"`
 	Quantity    float64 `json:"quantity"`
 	Status      string  `json:"status"`      // open | filled | cancelled
@@ -430,6 +436,20 @@ type AnnotationDeletedPayload struct {
 
 type OrdersPayload struct {
 	Orders []Order `json:"orders"`
+}
+
+// OrderFilledPayload 是市价单成交的广播负载。
+//
+// 和挂单不同，市价单会**立刻**改持仓、成交和盈亏，所以一次把订单、成交、持仓、盈亏
+// 全部发全量：前端不用再要一次快照，也不会出现「成交了但持仓没变」的中间态。
+type OrderFilledPayload struct {
+	Order         Order    `json:"order"`
+	Trade         Trade    `json:"trade"`
+	Orders        []Order  `json:"orders"`
+	Trades        []Trade  `json:"trades"`
+	Position      Position `json:"position"`
+	RealizedPnl   float64  `json:"realizedPnl"`
+	UnrealizedPnl float64  `json:"unrealizedPnl"`
 }
 
 type ControlChangedPayload struct {

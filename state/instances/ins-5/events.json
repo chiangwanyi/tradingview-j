@@ -1,0 +1,1030 @@
+[
+  {
+    "seq": 1,
+    "at": 1792418548,
+    "by": "human",
+    "action": "order_filled",
+    "payload": {
+      "order": {
+        "id": "o1",
+        "side": "buy",
+        "kind": "market",
+        "price": 30846.25,
+        "quantity": 1,
+        "status": "filled",
+        "placedAt": "2026-06-22 06:40",
+        "placedIndex": 572,
+        "filledAt": "2026-06-22 06:40",
+        "filledIndex": 572,
+        "fillPrice": 30846.25
+      },
+      "trade": {
+        "id": "t1",
+        "orderId": "o1",
+        "time": "2026-06-22 06:40",
+        "side": "buy",
+        "kind": "market",
+        "price": 30846.25,
+        "quantity": 1,
+        "realizedPnl": 0
+      },
+      "orders": [
+        {
+          "id": "o1",
+          "side": "buy",
+          "kind": "market",
+          "price": 30846.25,
+          "quantity": 1,
+          "status": "filled",
+          "placedAt": "2026-06-22 06:40",
+          "placedIndex": 572,
+          "filledAt": "2026-06-22 06:40",
+          "filledIndex": 572,
+          "fillPrice": 30846.25
+        }
+      ],
+      "trades": [
+        {
+          "id": "t1",
+          "orderId": "o1",
+          "time": "2026-06-22 06:40",
+          "side": "buy",
+          "kind": "market",
+          "price": 30846.25,
+          "quantity": 1,
+          "realizedPnl": 0
+        }
+      ],
+      "position": {
+        "quantity": 1,
+        "side": "long",
+        "averagePrice": 30846.25
+      },
+      "realizedPnl": 0,
+      "unrealizedPnl": 0
+    }
+  },
+  {
+    "seq": 2,
+    "at": 1792418550,
+    "by": "human",
+    "action": "bar_advanced",
+    "payload": {
+      "bar": {
+        "time": "2026-06-22 06:45",
+        "open": 30845.5,
+        "high": 30864.5,
+        "low": 30840.75,
+        "close": 30863.5,
+        "volume": 3566,
+        "ema20": 30886.31803264292
+      },
+      "cursor": 573,
+      "hiddenBars": 1370,
+      "hasMore": true,
+      "orders": [
+        {
+          "id": "o1",
+          "side": "buy",
+          "kind": "market",
+          "price": 30846.25,
+          "quantity": 1,
+          "status": "filled",
+          "placedAt": "2026-06-22 06:40",
+          "placedIndex": 572,
+          "filledAt": "2026-06-22 06:40",
+          "filledIndex": 572,
+          "fillPrice": 30846.25
+        }
+      ],
+      "trades": [
+        {
+          "id": "t1",
+          "orderId": "o1",
+          "time": "2026-06-22 06:40",
+          "side": "buy",
+          "kind": "market",
+          "price": 30846.25,
+          "quantity": 1,
+          "realizedPnl": 0
+        }
+      ],
+      "position": {
+        "quantity": 1,
+        "side": "long",
+        "averagePrice": 30846.25
+      },
+      "realizedPnl": 0,
+      "unrealizedPnl": 34.5,
+      "fills": []
+    }
+  },
+  {
+    "seq": 3,
+    "at": 1792418555,
+    "by": "human",
+    "action": "order_placed",
+    "payload": {
+      "orders": [
+        {
+          "id": "o1",
+          "side": "buy",
+          "kind": "market",
+          "price": 30846.25,
+          "quantity": 1,
+          "status": "filled",
+          "placedAt": "2026-06-22 06:40",
+          "placedIndex": 572,
+          "filledAt": "2026-06-22 06:40",
+          "filledIndex": 572,
+          "fillPrice": 30846.25
+        },
+        {
+          "id": "o2",
+          "side": "sell",
+          "kind": "limit",
+          "price": 30894.25,
+          "quantity": 1,
+          "status": "open",
+          "placedAt": "2026-06-22 06:45",
+          "placedIndex": 573,
+          "filledIndex": -1
+        }
+      ]
+    }
+  },
+  {
+    "seq": 4,
+    "at": 1792418556,
+    "by": "human",
+    "action": "bar_advanced",
+    "payload": {
+      "bar": {
+        "time": "2026-06-22 06:50",
+        "open": 30863.25,
+        "high": 30866,
+        "low": 30855,
+        "close": 30862.5,
+        "volume": 2239,
+        "ema20": 30884.04964858169
+      },
+      "cursor": 574,
+      "hiddenBars": 1369,
+      "hasMore": true,
+      "orders": [
+        {
+          "id": "o1",
+          "side": "buy",
+          "kind": "market",
+          "price": 30846.25,
+          "quantity": 1,
+          "status": "filled",
+          "placedAt": "2026-06-22 06:40",
+          "placedIndex": 572,
+          "filledAt": "2026-06-22 06:40",
+          "filledIndex": 572,
+          "fillPrice": 30846.25
+        },
+        {
+          "id": "o2",
+          "side": "sell",
+          "kind": "limit",
+          "price": 30894.25,
+          "quantity": 1,
+          "status": "open",
+          "placedAt": "2026-06-22 06:45",
+          "placedIndex": 573,
+          "filledIndex": -1
+        }
+      ],
+      "trades": [
+        {
+          "id": "t1",
+          "orderId": "o1",
+          "time": "2026-06-22 06:40",
+          "side": "buy",
+          "kind": "market",
+          "price": 30846.25,
+          "quantity": 1,
+          "realizedPnl": 0
+        }
+      ],
+      "position": {
+        "quantity": 1,
+        "side": "long",
+        "averagePrice": 30846.25
+      },
+      "realizedPnl": 0,
+      "unrealizedPnl": 32.5,
+      "fills": []
+    }
+  },
+  {
+    "seq": 5,
+    "at": 1792418557,
+    "by": "human",
+    "action": "bar_advanced",
+    "payload": {
+      "bar": {
+        "time": "2026-06-22 06:55",
+        "open": 30863.25,
+        "high": 30867,
+        "low": 30792.75,
+        "close": 30817.25,
+        "volume": 6967,
+        "ema20": 30877.687777288196
+      },
+      "cursor": 575,
+      "hiddenBars": 1368,
+      "hasMore": true,
+      "orders": [
+        {
+          "id": "o1",
+          "side": "buy",
+          "kind": "market",
+          "price": 30846.25,
+          "quantity": 1,
+          "status": "filled",
+          "placedAt": "2026-06-22 06:40",
+          "placedIndex": 572,
+          "filledAt": "2026-06-22 06:40",
+          "filledIndex": 572,
+          "fillPrice": 30846.25
+        },
+        {
+          "id": "o2",
+          "side": "sell",
+          "kind": "limit",
+          "price": 30894.25,
+          "quantity": 1,
+          "status": "open",
+          "placedAt": "2026-06-22 06:45",
+          "placedIndex": 573,
+          "filledIndex": -1
+        }
+      ],
+      "trades": [
+        {
+          "id": "t1",
+          "orderId": "o1",
+          "time": "2026-06-22 06:40",
+          "side": "buy",
+          "kind": "market",
+          "price": 30846.25,
+          "quantity": 1,
+          "realizedPnl": 0
+        }
+      ],
+      "position": {
+        "quantity": 1,
+        "side": "long",
+        "averagePrice": 30846.25
+      },
+      "realizedPnl": 0,
+      "unrealizedPnl": -58,
+      "fills": []
+    }
+  },
+  {
+    "seq": 6,
+    "at": 1792418560,
+    "by": "human",
+    "action": "bar_advanced",
+    "payload": {
+      "bar": {
+        "time": "2026-06-22 07:00",
+        "open": 30817.25,
+        "high": 30818.75,
+        "low": 30749.5,
+        "close": 30774,
+        "volume": 11469,
+        "ema20": 30867.812750879795
+      },
+      "cursor": 576,
+      "hiddenBars": 1367,
+      "hasMore": true,
+      "orders": [
+        {
+          "id": "o1",
+          "side": "buy",
+          "kind": "market",
+          "price": 30846.25,
+          "quantity": 1,
+          "status": "filled",
+          "placedAt": "2026-06-22 06:40",
+          "placedIndex": 572,
+          "filledAt": "2026-06-22 06:40",
+          "filledIndex": 572,
+          "fillPrice": 30846.25
+        },
+        {
+          "id": "o2",
+          "side": "sell",
+          "kind": "limit",
+          "price": 30894.25,
+          "quantity": 1,
+          "status": "open",
+          "placedAt": "2026-06-22 06:45",
+          "placedIndex": 573,
+          "filledIndex": -1
+        }
+      ],
+      "trades": [
+        {
+          "id": "t1",
+          "orderId": "o1",
+          "time": "2026-06-22 06:40",
+          "side": "buy",
+          "kind": "market",
+          "price": 30846.25,
+          "quantity": 1,
+          "realizedPnl": 0
+        }
+      ],
+      "position": {
+        "quantity": 1,
+        "side": "long",
+        "averagePrice": 30846.25
+      },
+      "realizedPnl": 0,
+      "unrealizedPnl": -144.5,
+      "fills": []
+    }
+  },
+  {
+    "seq": 7,
+    "at": 1792418562,
+    "by": "human",
+    "action": "bar_advanced",
+    "payload": {
+      "bar": {
+        "time": "2026-06-22 07:05",
+        "open": 30774,
+        "high": 30795.25,
+        "low": 30754.25,
+        "close": 30780.75,
+        "volume": 7392,
+        "ema20": 30859.521060319814
+      },
+      "cursor": 577,
+      "hiddenBars": 1366,
+      "hasMore": true,
+      "orders": [
+        {
+          "id": "o1",
+          "side": "buy",
+          "kind": "market",
+          "price": 30846.25,
+          "quantity": 1,
+          "status": "filled",
+          "placedAt": "2026-06-22 06:40",
+          "placedIndex": 572,
+          "filledAt": "2026-06-22 06:40",
+          "filledIndex": 572,
+          "fillPrice": 30846.25
+        },
+        {
+          "id": "o2",
+          "side": "sell",
+          "kind": "limit",
+          "price": 30894.25,
+          "quantity": 1,
+          "status": "open",
+          "placedAt": "2026-06-22 06:45",
+          "placedIndex": 573,
+          "filledIndex": -1
+        }
+      ],
+      "trades": [
+        {
+          "id": "t1",
+          "orderId": "o1",
+          "time": "2026-06-22 06:40",
+          "side": "buy",
+          "kind": "market",
+          "price": 30846.25,
+          "quantity": 1,
+          "realizedPnl": 0
+        }
+      ],
+      "position": {
+        "quantity": 1,
+        "side": "long",
+        "averagePrice": 30846.25
+      },
+      "realizedPnl": 0,
+      "unrealizedPnl": -131,
+      "fills": []
+    }
+  },
+  {
+    "seq": 8,
+    "at": 1792418562,
+    "by": "human",
+    "action": "bar_advanced",
+    "payload": {
+      "bar": {
+        "time": "2026-06-22 07:10",
+        "open": 30780,
+        "high": 30783.75,
+        "low": 30735.25,
+        "close": 30751,
+        "volume": 8079,
+        "ema20": 30849.185721241738
+      },
+      "cursor": 578,
+      "hiddenBars": 1365,
+      "hasMore": true,
+      "orders": [
+        {
+          "id": "o1",
+          "side": "buy",
+          "kind": "market",
+          "price": 30846.25,
+          "quantity": 1,
+          "status": "filled",
+          "placedAt": "2026-06-22 06:40",
+          "placedIndex": 572,
+          "filledAt": "2026-06-22 06:40",
+          "filledIndex": 572,
+          "fillPrice": 30846.25
+        },
+        {
+          "id": "o2",
+          "side": "sell",
+          "kind": "limit",
+          "price": 30894.25,
+          "quantity": 1,
+          "status": "open",
+          "placedAt": "2026-06-22 06:45",
+          "placedIndex": 573,
+          "filledIndex": -1
+        }
+      ],
+      "trades": [
+        {
+          "id": "t1",
+          "orderId": "o1",
+          "time": "2026-06-22 06:40",
+          "side": "buy",
+          "kind": "market",
+          "price": 30846.25,
+          "quantity": 1,
+          "realizedPnl": 0
+        }
+      ],
+      "position": {
+        "quantity": 1,
+        "side": "long",
+        "averagePrice": 30846.25
+      },
+      "realizedPnl": 0,
+      "unrealizedPnl": -190.5,
+      "fills": []
+    }
+  },
+  {
+    "seq": 9,
+    "at": 1792418563,
+    "by": "human",
+    "action": "bar_advanced",
+    "payload": {
+      "bar": {
+        "time": "2026-06-22 07:15",
+        "open": 30751,
+        "high": 30760.25,
+        "low": 30719.5,
+        "close": 30724.75,
+        "volume": 7466,
+        "ema20": 30837.334700171097
+      },
+      "cursor": 579,
+      "hiddenBars": 1364,
+      "hasMore": true,
+      "orders": [
+        {
+          "id": "o1",
+          "side": "buy",
+          "kind": "market",
+          "price": 30846.25,
+          "quantity": 1,
+          "status": "filled",
+          "placedAt": "2026-06-22 06:40",
+          "placedIndex": 572,
+          "filledAt": "2026-06-22 06:40",
+          "filledIndex": 572,
+          "fillPrice": 30846.25
+        },
+        {
+          "id": "o2",
+          "side": "sell",
+          "kind": "limit",
+          "price": 30894.25,
+          "quantity": 1,
+          "status": "open",
+          "placedAt": "2026-06-22 06:45",
+          "placedIndex": 573,
+          "filledIndex": -1
+        }
+      ],
+      "trades": [
+        {
+          "id": "t1",
+          "orderId": "o1",
+          "time": "2026-06-22 06:40",
+          "side": "buy",
+          "kind": "market",
+          "price": 30846.25,
+          "quantity": 1,
+          "realizedPnl": 0
+        }
+      ],
+      "position": {
+        "quantity": 1,
+        "side": "long",
+        "averagePrice": 30846.25
+      },
+      "realizedPnl": 0,
+      "unrealizedPnl": -243,
+      "fills": []
+    }
+  },
+  {
+    "seq": 10,
+    "at": 1792418571,
+    "by": "human",
+    "action": "order_filled",
+    "payload": {
+      "order": {
+        "id": "o3",
+        "side": "sell",
+        "kind": "market",
+        "price": 30724.75,
+        "quantity": 1,
+        "status": "filled",
+        "placedAt": "2026-06-22 07:15",
+        "placedIndex": 579,
+        "filledAt": "2026-06-22 07:15",
+        "filledIndex": 579,
+        "fillPrice": 30724.75
+      },
+      "trade": {
+        "id": "t2",
+        "orderId": "o3",
+        "time": "2026-06-22 07:15",
+        "side": "sell",
+        "kind": "market",
+        "price": 30724.75,
+        "quantity": 1,
+        "realizedPnl": -243
+      },
+      "orders": [
+        {
+          "id": "o1",
+          "side": "buy",
+          "kind": "market",
+          "price": 30846.25,
+          "quantity": 1,
+          "status": "filled",
+          "placedAt": "2026-06-22 06:40",
+          "placedIndex": 572,
+          "filledAt": "2026-06-22 06:40",
+          "filledIndex": 572,
+          "fillPrice": 30846.25
+        },
+        {
+          "id": "o2",
+          "side": "sell",
+          "kind": "limit",
+          "price": 30894.25,
+          "quantity": 1,
+          "status": "open",
+          "placedAt": "2026-06-22 06:45",
+          "placedIndex": 573,
+          "filledIndex": -1
+        },
+        {
+          "id": "o3",
+          "side": "sell",
+          "kind": "market",
+          "price": 30724.75,
+          "quantity": 1,
+          "status": "filled",
+          "placedAt": "2026-06-22 07:15",
+          "placedIndex": 579,
+          "filledAt": "2026-06-22 07:15",
+          "filledIndex": 579,
+          "fillPrice": 30724.75
+        }
+      ],
+      "trades": [
+        {
+          "id": "t1",
+          "orderId": "o1",
+          "time": "2026-06-22 06:40",
+          "side": "buy",
+          "kind": "market",
+          "price": 30846.25,
+          "quantity": 1,
+          "realizedPnl": 0
+        },
+        {
+          "id": "t2",
+          "orderId": "o3",
+          "time": "2026-06-22 07:15",
+          "side": "sell",
+          "kind": "market",
+          "price": 30724.75,
+          "quantity": 1,
+          "realizedPnl": -243
+        }
+      ],
+      "position": {
+        "quantity": 0,
+        "side": "flat",
+        "averagePrice": 0
+      },
+      "realizedPnl": -243,
+      "unrealizedPnl": 0
+    }
+  },
+  {
+    "seq": 11,
+    "at": 1792418640,
+    "by": "human",
+    "action": "order_filled",
+    "payload": {
+      "order": {
+        "id": "o4",
+        "side": "buy",
+        "kind": "market",
+        "price": 30724.75,
+        "quantity": 1,
+        "status": "filled",
+        "placedAt": "2026-06-22 07:15",
+        "placedIndex": 579,
+        "filledAt": "2026-06-22 07:15",
+        "filledIndex": 579,
+        "fillPrice": 30724.75
+      },
+      "trade": {
+        "id": "t3",
+        "orderId": "o4",
+        "time": "2026-06-22 07:15",
+        "side": "buy",
+        "kind": "market",
+        "price": 30724.75,
+        "quantity": 1,
+        "realizedPnl": 0
+      },
+      "orders": [
+        {
+          "id": "o1",
+          "side": "buy",
+          "kind": "market",
+          "price": 30846.25,
+          "quantity": 1,
+          "status": "filled",
+          "placedAt": "2026-06-22 06:40",
+          "placedIndex": 572,
+          "filledAt": "2026-06-22 06:40",
+          "filledIndex": 572,
+          "fillPrice": 30846.25
+        },
+        {
+          "id": "o2",
+          "side": "sell",
+          "kind": "limit",
+          "price": 30894.25,
+          "quantity": 1,
+          "status": "open",
+          "placedAt": "2026-06-22 06:45",
+          "placedIndex": 573,
+          "filledIndex": -1
+        },
+        {
+          "id": "o3",
+          "side": "sell",
+          "kind": "market",
+          "price": 30724.75,
+          "quantity": 1,
+          "status": "filled",
+          "placedAt": "2026-06-22 07:15",
+          "placedIndex": 579,
+          "filledAt": "2026-06-22 07:15",
+          "filledIndex": 579,
+          "fillPrice": 30724.75
+        },
+        {
+          "id": "o4",
+          "side": "buy",
+          "kind": "market",
+          "price": 30724.75,
+          "quantity": 1,
+          "status": "filled",
+          "placedAt": "2026-06-22 07:15",
+          "placedIndex": 579,
+          "filledAt": "2026-06-22 07:15",
+          "filledIndex": 579,
+          "fillPrice": 30724.75
+        }
+      ],
+      "trades": [
+        {
+          "id": "t1",
+          "orderId": "o1",
+          "time": "2026-06-22 06:40",
+          "side": "buy",
+          "kind": "market",
+          "price": 30846.25,
+          "quantity": 1,
+          "realizedPnl": 0
+        },
+        {
+          "id": "t2",
+          "orderId": "o3",
+          "time": "2026-06-22 07:15",
+          "side": "sell",
+          "kind": "market",
+          "price": 30724.75,
+          "quantity": 1,
+          "realizedPnl": -243
+        },
+        {
+          "id": "t3",
+          "orderId": "o4",
+          "time": "2026-06-22 07:15",
+          "side": "buy",
+          "kind": "market",
+          "price": 30724.75,
+          "quantity": 1,
+          "realizedPnl": 0
+        }
+      ],
+      "position": {
+        "quantity": 1,
+        "side": "long",
+        "averagePrice": 30724.75
+      },
+      "realizedPnl": -243,
+      "unrealizedPnl": 0
+    }
+  },
+  {
+    "seq": 12,
+    "at": 1792418641,
+    "by": "human",
+    "action": "bar_advanced",
+    "payload": {
+      "bar": {
+        "time": "2026-06-22 07:20",
+        "open": 30724,
+        "high": 30751.75,
+        "low": 30715.5,
+        "close": 30748,
+        "volume": 5243,
+        "ema20": 30828.826633488134
+      },
+      "cursor": 580,
+      "hiddenBars": 1363,
+      "hasMore": true,
+      "orders": [
+        {
+          "id": "o1",
+          "side": "buy",
+          "kind": "market",
+          "price": 30846.25,
+          "quantity": 1,
+          "status": "filled",
+          "placedAt": "2026-06-22 06:40",
+          "placedIndex": 572,
+          "filledAt": "2026-06-22 06:40",
+          "filledIndex": 572,
+          "fillPrice": 30846.25
+        },
+        {
+          "id": "o2",
+          "side": "sell",
+          "kind": "limit",
+          "price": 30894.25,
+          "quantity": 1,
+          "status": "open",
+          "placedAt": "2026-06-22 06:45",
+          "placedIndex": 573,
+          "filledIndex": -1
+        },
+        {
+          "id": "o3",
+          "side": "sell",
+          "kind": "market",
+          "price": 30724.75,
+          "quantity": 1,
+          "status": "filled",
+          "placedAt": "2026-06-22 07:15",
+          "placedIndex": 579,
+          "filledAt": "2026-06-22 07:15",
+          "filledIndex": 579,
+          "fillPrice": 30724.75
+        },
+        {
+          "id": "o4",
+          "side": "buy",
+          "kind": "market",
+          "price": 30724.75,
+          "quantity": 1,
+          "status": "filled",
+          "placedAt": "2026-06-22 07:15",
+          "placedIndex": 579,
+          "filledAt": "2026-06-22 07:15",
+          "filledIndex": 579,
+          "fillPrice": 30724.75
+        }
+      ],
+      "trades": [
+        {
+          "id": "t1",
+          "orderId": "o1",
+          "time": "2026-06-22 06:40",
+          "side": "buy",
+          "kind": "market",
+          "price": 30846.25,
+          "quantity": 1,
+          "realizedPnl": 0
+        },
+        {
+          "id": "t2",
+          "orderId": "o3",
+          "time": "2026-06-22 07:15",
+          "side": "sell",
+          "kind": "market",
+          "price": 30724.75,
+          "quantity": 1,
+          "realizedPnl": -243
+        },
+        {
+          "id": "t3",
+          "orderId": "o4",
+          "time": "2026-06-22 07:15",
+          "side": "buy",
+          "kind": "market",
+          "price": 30724.75,
+          "quantity": 1,
+          "realizedPnl": 0
+        }
+      ],
+      "position": {
+        "quantity": 1,
+        "side": "long",
+        "averagePrice": 30724.75
+      },
+      "realizedPnl": -243,
+      "unrealizedPnl": 46.5,
+      "fills": []
+    }
+  },
+  {
+    "seq": 13,
+    "at": 1792418646,
+    "by": "human",
+    "action": "order_filled",
+    "payload": {
+      "order": {
+        "id": "o5",
+        "side": "sell",
+        "kind": "market",
+        "price": 30748,
+        "quantity": 1,
+        "status": "filled",
+        "placedAt": "2026-06-22 07:20",
+        "placedIndex": 580,
+        "filledAt": "2026-06-22 07:20",
+        "filledIndex": 580,
+        "fillPrice": 30748
+      },
+      "trade": {
+        "id": "t4",
+        "orderId": "o5",
+        "time": "2026-06-22 07:20",
+        "side": "sell",
+        "kind": "market",
+        "price": 30748,
+        "quantity": 1,
+        "realizedPnl": 46.5
+      },
+      "orders": [
+        {
+          "id": "o1",
+          "side": "buy",
+          "kind": "market",
+          "price": 30846.25,
+          "quantity": 1,
+          "status": "filled",
+          "placedAt": "2026-06-22 06:40",
+          "placedIndex": 572,
+          "filledAt": "2026-06-22 06:40",
+          "filledIndex": 572,
+          "fillPrice": 30846.25
+        },
+        {
+          "id": "o2",
+          "side": "sell",
+          "kind": "limit",
+          "price": 30894.25,
+          "quantity": 1,
+          "status": "open",
+          "placedAt": "2026-06-22 06:45",
+          "placedIndex": 573,
+          "filledIndex": -1
+        },
+        {
+          "id": "o3",
+          "side": "sell",
+          "kind": "market",
+          "price": 30724.75,
+          "quantity": 1,
+          "status": "filled",
+          "placedAt": "2026-06-22 07:15",
+          "placedIndex": 579,
+          "filledAt": "2026-06-22 07:15",
+          "filledIndex": 579,
+          "fillPrice": 30724.75
+        },
+        {
+          "id": "o4",
+          "side": "buy",
+          "kind": "market",
+          "price": 30724.75,
+          "quantity": 1,
+          "status": "filled",
+          "placedAt": "2026-06-22 07:15",
+          "placedIndex": 579,
+          "filledAt": "2026-06-22 07:15",
+          "filledIndex": 579,
+          "fillPrice": 30724.75
+        },
+        {
+          "id": "o5",
+          "side": "sell",
+          "kind": "market",
+          "price": 30748,
+          "quantity": 1,
+          "status": "filled",
+          "placedAt": "2026-06-22 07:20",
+          "placedIndex": 580,
+          "filledAt": "2026-06-22 07:20",
+          "filledIndex": 580,
+          "fillPrice": 30748
+        }
+      ],
+      "trades": [
+        {
+          "id": "t1",
+          "orderId": "o1",
+          "time": "2026-06-22 06:40",
+          "side": "buy",
+          "kind": "market",
+          "price": 30846.25,
+          "quantity": 1,
+          "realizedPnl": 0
+        },
+        {
+          "id": "t2",
+          "orderId": "o3",
+          "time": "2026-06-22 07:15",
+          "side": "sell",
+          "kind": "market",
+          "price": 30724.75,
+          "quantity": 1,
+          "realizedPnl": -243
+        },
+        {
+          "id": "t3",
+          "orderId": "o4",
+          "time": "2026-06-22 07:15",
+          "side": "buy",
+          "kind": "market",
+          "price": 30724.75,
+          "quantity": 1,
+          "realizedPnl": 0
+        },
+        {
+          "id": "t4",
+          "orderId": "o5",
+          "time": "2026-06-22 07:20",
+          "side": "sell",
+          "kind": "market",
+          "price": 30748,
+          "quantity": 1,
+          "realizedPnl": 46.5
+        }
+      ],
+      "position": {
+        "quantity": 0,
+        "side": "flat",
+        "averagePrice": 0
+      },
+      "realizedPnl": -196.5,
+      "unrealizedPnl": 0
+    }
+  }
+]

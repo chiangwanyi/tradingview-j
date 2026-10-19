@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from 'vue'
 
+import { formatSigned } from '@/components/chart/scale'
 import { TOOL_LABEL, useReplayStore, type ChartTool } from '@/stores/replay'
 import { ACTION } from '@/types/protocol'
 import type {
@@ -9,6 +10,7 @@ import type {
   BotPayload,
   ControlChangedPayload,
   MembersChangedPayload,
+  OrderFilledPayload,
   OrdersPayload,
   ReplayEvent,
 } from '@/types/protocol'
@@ -54,6 +56,8 @@ function actionLabel(action: string): string {
       return '删标注'
     case ACTION.orderPlaced:
       return '挂单'
+    case ACTION.orderFilled:
+      return '市价成交'
     case ACTION.orderCancelled:
       return '撤单'
     case ACTION.controlChanged:
@@ -67,6 +71,12 @@ function actionLabel(action: string): string {
     default:
       return action
   }
+}
+
+function kindLabel(kind: string): string {
+  if (kind === 'limit') return '限价'
+  if (kind === 'market') return '市价'
+  return '止损'
 }
 
 function detail(ev: ReplayEvent): string {
@@ -93,7 +103,13 @@ function detail(ev: ReplayEvent): string {
       const p = ev.payload as OrdersPayload
       const last = p.orders[p.orders.length - 1]
       if (!last) return ''
-      return `${last.side === 'buy' ? '买' : '卖'}${last.kind === 'limit' ? '限价' : '止损'} ${last.price.toFixed(store.priceDecimals)} × ${last.quantity} (${last.status})`
+      return `${last.side === 'buy' ? '买' : '卖'}${kindLabel(last.kind)} ${last.price.toFixed(store.priceDecimals)} × ${last.quantity} (${last.status})`
+    }
+    case ACTION.orderFilled: {
+      const p = ev.payload as OrderFilledPayload
+      const sign = p.order.side === 'buy' ? '买' : '卖'
+      const pnl = p.trade.realizedPnl !== 0 ? ` · 实现 ${formatSigned(p.trade.realizedPnl)}` : ''
+      return `${sign}市价 ${p.trade.price.toFixed(store.priceDecimals)} × ${p.trade.quantity}${pnl}`
     }
     case ACTION.controlChanged: {
       const p = ev.payload as ControlChangedPayload

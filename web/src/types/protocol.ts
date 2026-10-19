@@ -77,7 +77,8 @@ export interface Template {
 }
 
 export type Side = 'buy' | 'sell'
-export type OrderKind = 'limit' | 'stop'
+/** market = 市价单：下单即按当前收盘价成交，不会留在挂单列表里 */
+export type OrderKind = 'limit' | 'stop' | 'market'
 export type OrderStatus = 'open' | 'filled' | 'cancelled'
 
 export interface Order {
@@ -293,6 +294,17 @@ export interface OrdersPayload {
   orders: Order[]
 }
 
+/** 市价单成交：订单、成交、持仓、盈亏一次给全，前端不用再要快照 */
+export interface OrderFilledPayload {
+  order: Order
+  trade: Trade
+  orders: Order[]
+  trades: Trade[]
+  position: Position
+  realizedPnl: number
+  unrealizedPnl: number
+}
+
 export interface ControlChangedPayload {
   operator: string
 }
@@ -320,6 +332,7 @@ export const ACTION = {
   annotationMoved: 'annotation_moved',
   annotationDeleted: 'annotation_deleted',
   orderPlaced: 'order_placed',
+  orderFilled: 'order_filled',
   orderCancelled: 'order_cancelled',
   controlChanged: 'control_changed',
   membersChanged: 'members_changed',
