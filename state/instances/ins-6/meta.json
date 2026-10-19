@@ -1,0 +1,22 @@
+{
+  "id": "ins-6",
+  "symbol": "CME_MINI:MES1!",
+  "folder": "CME_MINI_MES1!",
+  "tick": 0.25,
+  "tickValue": 1.25,
+  "anchor": "2026-02-24 22:20",
+  "cursor": 460,
+  "position": {
+    "quantity": 0,
+    "side": "",
+    "averagePrice": 0
+  },
+  "realizedPnl": 0,
+  "createdBy": "human",
+  "createdAt": 1792426640,
+  "seq": 16,
+  "notes": [],
+  "seqAnnotation": 8,
+  "seqOrder": 0,
+  "seqTrade": 0
+}

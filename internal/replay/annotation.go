@@ -184,7 +184,8 @@ func validColor(s string) bool {
 //   - line（线段）→ trend（趋势线）：旧版画的线段就是两点直线，语义完全一样；
 //   - text（文字）→ 丢弃：新版没有文字工具，也没有承载它的样式，硬转成一条零长度的
 //     线只会在图上留个看不见的垃圾；
-//   - 样式为空（旧档根本没有样式）→ 用 LegacyColor 或出厂色补齐。
+//   - 样式为空（旧档根本没有样式）→ 用 LegacyColor 或出厂色补齐；
+//   - offset 缺失（旧档）→ 0，等价于「端点就在那根 K 线上」，旧图位置一点不变。
 func (a *Annotation) normalize() bool {
 	if a.Kind == legacyAnnLine {
 		a.Kind = AnnTrend
@@ -192,6 +193,10 @@ func (a *Annotation) normalize() bool {
 	if a.Kind == legacyAnnText || !isDrawKind(a.Kind) {
 		return false
 	}
+	// 手改过的存档可能把偏移写成一个负数或离谱的大数：读进来先夹一次，
+	// 否则前端会拿到一个画不出东西（或画出屏幕外）的端点。
+	a.Start.Offset = clampForwardBars(a.Start.Offset)
+	a.End.Offset = clampForwardBars(a.End.Offset)
 	if a.Style.Color == "" && a.LegacyColor != "" {
 		a.Style.Color = a.LegacyColor
 	}

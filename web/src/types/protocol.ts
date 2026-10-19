@@ -19,8 +19,16 @@ export interface Bar {
   ema20: number | null
 }
 
+/**
+ * 标注端点。`time` 是**锚点** K 线的时间（一定真实存在），`offset` 是从它往右延伸的根数：
+ * 0/缺省 = 就在那根 K 线上，>0 = 越过最后一根已画出来的 K 线、延伸到右侧空白区。
+ *
+ * 后端 protocol.go 的 Point 是同一份（offset 为 0 时后端不发这个字段）。
+ */
 export interface Point {
   time: string
+  /** 从 time 那根 K 线往右再走几根（>= 0） */
+  offset?: number
   price: number
 }
 

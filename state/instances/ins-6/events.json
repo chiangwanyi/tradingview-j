@@ -1,0 +1,371 @@
+[
+  {
+    "seq": 1,
+    "at": 1792426643,
+    "by": "human",
+    "action": "annotation_added",
+    "payload": {
+      "annotation": {
+        "createdAt": 1792426643,
+        "createdBy": "human",
+        "end": {
+          "price": 7038.42,
+          "time": "2026-02-24 22:20"
+        },
+        "id": "a1",
+        "kind": "arrow",
+        "snapped": false,
+        "start": {
+          "price": 7039.06,
+          "time": "2026-02-24 19:30"
+        },
+        "style": {
+          "color": "#ec4899",
+          "dash": "solid",
+          "width": 1.8
+        }
+      }
+    }
+  },
+  {
+    "seq": 2,
+    "at": 1792426660,
+    "by": "human2",
+    "action": "control_changed",
+    "payload": {
+      "operator": "human2"
+    }
+  },
+  {
+    "seq": 3,
+    "at": 1792426660,
+    "by": "system",
+    "action": "members_changed",
+    "payload": {
+      "members": [
+        {
+          "clientId": "c2",
+          "name": "human2",
+          "operator": true,
+          "connected": true
+        }
+      ]
+    }
+  },
+  {
+    "seq": 4,
+    "at": 1792426662,
+    "by": "system",
+    "action": "members_changed",
+    "payload": {
+      "members": [
+        {
+          "clientId": "c1",
+          "name": "human",
+          "operator": false,
+          "connected": true
+        },
+        {
+          "clientId": "c2",
+          "name": "human2",
+          "operator": true,
+          "connected": true
+        }
+      ]
+    }
+  },
+  {
+    "seq": 5,
+    "at": 1792426675,
+    "by": "human2",
+    "action": "control_changed",
+    "payload": {
+      "operator": ""
+    }
+  },
+  {
+    "seq": 6,
+    "at": 1792426675,
+    "by": "system",
+    "action": "members_changed",
+    "payload": {
+      "members": [
+        {
+          "clientId": "c1",
+          "name": "human",
+          "operator": false,
+          "connected": true
+        }
+      ]
+    }
+  },
+  {
+    "seq": 7,
+    "at": 1792426676,
+    "by": "human",
+    "action": "control_changed",
+    "payload": {
+      "operator": "human"
+    }
+  },
+  {
+    "seq": 8,
+    "at": 1792426680,
+    "by": "human",
+    "action": "annotation_added",
+    "payload": {
+      "annotation": {
+        "id": "a2",
+        "kind": "fib",
+        "start": {
+          "time": "2026-02-24 20:15",
+          "price": 7040.41
+        },
+        "end": {
+          "time": "2026-02-24 22:20",
+          "price": 7035.61,
+          "offset": 26
+        },
+        "style": {
+          "color": "#f59e0b",
+          "width": 1.2,
+          "dash": "solid",
+          "levels": [
+            {
+              "ratio": -1,
+              "color": "#38bdf8"
+            },
+            {
+              "ratio": 0,
+              "color": "#f59e0b"
+            },
+            {
+              "ratio": 1,
+              "color": "#ec4899"
+            },
+            {
+              "ratio": 2,
+              "color": "#22c55e"
+            }
+          ]
+        },
+        "snapped": false,
+        "createdBy": "human",
+        "createdAt": 1792426680
+      }
+    }
+  },
+  {
+    "seq": 9,
+    "at": 1792426684,
+    "by": "human",
+    "action": "annotation_added",
+    "payload": {
+      "annotation": {
+        "id": "a3",
+        "kind": "fib",
+        "start": {
+          "time": "2026-02-24 22:20",
+          "price": 7027.52,
+          "offset": 3
+        },
+        "end": {
+          "time": "2026-02-24 22:20",
+          "price": 7030.92,
+          "offset": 34
+        },
+        "style": {
+          "color": "#f59e0b",
+          "width": 1.2,
+          "dash": "solid",
+          "levels": [
+            {
+              "ratio": -1,
+              "color": "#38bdf8"
+            },
+            {
+              "ratio": 0,
+              "color": "#f59e0b"
+            },
+            {
+              "ratio": 1,
+              "color": "#ec4899"
+            },
+            {
+              "ratio": 2,
+              "color": "#22c55e"
+            }
+          ]
+        },
+        "snapped": false,
+        "createdBy": "human",
+        "createdAt": 1792426684
+      }
+    }
+  },
+  {
+    "seq": 10,
+    "at": 1792426687,
+    "by": "human",
+    "action": "annotation_added",
+    "payload": {
+      "annotation": {
+        "id": "a4",
+        "kind": "ray",
+        "start": {
+          "time": "2026-02-24 19:40",
+          "price": 7050.84
+        },
+        "end": {
+          "time": "2026-02-24 22:20",
+          "price": 7052.77,
+          "offset": 11
+        },
+        "style": {
+          "color": "#ef4444",
+          "width": 2,
+          "dash": "solid"
+        },
+        "snapped": false,
+        "createdBy": "human",
+        "createdAt": 1792426687
+      }
+    }
+  },
+  {
+    "seq": 11,
+    "at": 1792426689,
+    "by": "human",
+    "action": "annotation_added",
+    "payload": {
+      "annotation": {
+        "id": "a5",
+        "kind": "arrow",
+        "start": {
+          "time": "2026-02-24 19:45",
+          "price": 7053.89
+        },
+        "end": {
+          "time": "2026-02-24 22:20",
+          "price": 7048.15,
+          "offset": 15
+        },
+        "style": {
+          "color": "#ec4899",
+          "width": 1.8,
+          "dash": "solid"
+        },
+        "snapped": false,
+        "createdBy": "human",
+        "createdAt": 1792426689
+      }
+    }
+  },
+  {
+    "seq": 12,
+    "at": 1792426692,
+    "by": "human",
+    "action": "annotation_added",
+    "payload": {
+      "annotation": {
+        "id": "a6",
+        "kind": "trend",
+        "start": {
+          "time": "2026-02-24 20:40",
+          "price": 7048.5
+        },
+        "end": {
+          "time": "2026-02-24 22:20",
+          "price": 7047.5,
+          "offset": 26
+        },
+        "style": {
+          "color": "#f59e0b",
+          "width": 1.6,
+          "dash": "solid"
+        },
+        "snapped": false,
+        "createdBy": "human",
+        "createdAt": 1792426692
+      }
+    }
+  },
+  {
+    "seq": 13,
+    "at": 1792426696,
+    "by": "human",
+    "action": "annotation_added",
+    "payload": {
+      "annotation": {
+        "id": "a7",
+        "kind": "rect",
+        "start": {
+          "time": "2026-02-24 21:35",
+          "price": 7050.31
+        },
+        "end": {
+          "time": "2026-02-24 22:20",
+          "price": 7036.08,
+          "offset": 39
+        },
+        "style": {
+          "color": "#f59e0b",
+          "width": 1.4,
+          "dash": "solid",
+          "fill": "#f59e0b",
+          "fillOpacity": 0.12
+        },
+        "snapped": false,
+        "createdBy": "human",
+        "createdAt": 1792426696
+      }
+    }
+  },
+  {
+    "seq": 14,
+    "at": 1792426721,
+    "by": "human",
+    "action": "annotation_added",
+    "payload": {
+      "annotation": {
+        "id": "a8",
+        "kind": "trend",
+        "start": {
+          "time": "2026-02-24 21:50",
+          "price": 7025.06
+        },
+        "end": {
+          "time": "2026-02-24 22:20",
+          "price": 7020.55,
+          "offset": 34
+        },
+        "style": {
+          "color": "#f59e0b",
+          "width": 1.6,
+          "dash": "solid"
+        },
+        "snapped": false,
+        "createdBy": "human",
+        "createdAt": 1792426721
+      }
+    }
+  },
+  {
+    "seq": 15,
+    "at": 1792426734,
+    "by": "human",
+    "action": "control_changed",
+    "payload": {
+      "operator": ""
+    }
+  },
+  {
+    "seq": 16,
+    "at": 1792426734,
+    "by": "system",
+    "action": "members_changed",
+    "payload": {
+      "members": []
+    }
+  }
+]

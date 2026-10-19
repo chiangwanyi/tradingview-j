@@ -1,6 +1,7 @@
 package replay
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
 )
@@ -58,6 +59,145 @@ func TestAnnotationCannotTargetFutureBar(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "已经出现") {
 		t.Fatalf("错误信息应当说清楚原因，实际：%v", err)
+	}
+}
+
+// 端点可以往右越过最后一根已揭示的 K 线：锚点仍然是真实 K 线，只多一个「向右几根」的偏移。
+// 这条是「趋势线/矩形/箭头线/斐波那契都能画到未来」在服务端的入口。
+func TestAnnotationCanExtendPastLastBar(t *testing.T) {
+	inst := newTradingInstance() // cursor = 0：只有 09:00 已揭示，09:05 / 09:10 还藏着
+	a, err := inst.addAnnotation("human", AnnTrend,
+		Point{Time: "2026-01-05 09:00", Price: 100},
+		Point{Time: "2026-01-05 09:00", Price: 103, Offset: 40}, AnnotationStyle{}, false)
+	if err != nil {
+		t.Fatalf("端点应当能画到最后一根右侧：%v", err)
+	}
+	if a.Start.Offset != 0 {
+		t.Fatalf("落在 K 线上的端点 offset 应当是 0，实际 %d", a.Start.Offset)
+	}
+	if a.End.Offset != 40 {
+		t.Fatalf("向右偏移应当原样保留成 40，实际 %d", a.End.Offset)
+	}
+	if a.End.Time != "2026-01-05 09:00" {
+		t.Fatalf("锚点必须还是那根真实 K 线的时间，实际 %q", a.End.Time)
+	}
+	if a.End.Price != 103 {
+		t.Fatalf("不吸附时价格不该被改，实际 %v", a.End.Price)
+	}
+}
+
+// 五种图形的终点都能越过最后一根。
+//
+// 逻辑上它们共用 resolvePoint，一条就够；但「趋势线/矩形/箭头线/斐波那契都要能画到未来」
+// 是需求原文，逐类钉一遍，将来谁给某一种加了特殊校验会立刻断在这里。
+func TestAllKindsCanEndPastLastBar(t *testing.T) {
+	inst := newTradingInstance()
+	inst.Cursor = 1 // 只揭示到 09:05
+	for _, kind := range drawKinds {
+		a, err := inst.addAnnotation("human", kind,
+			Point{Time: "2026-01-05 09:00", Price: 100},
+			Point{Time: "2026-01-05 09:05", Price: 102, Offset: 25}, AnnotationStyle{}, false)
+		if err != nil {
+			t.Fatalf("%s 的终点应当能画过最后一根：%v", kind, err)
+		}
+		if a.End.Offset != 25 {
+			t.Fatalf("%s 的向右偏移没保留下来：%d", kind, a.End.Offset)
+		}
+		if a.End.Time != "2026-01-05 09:05" {
+			t.Fatalf("%s 的锚点应当还是最后一根：%q", kind, a.End.Time)
+		}
+	}
+}
+
+// 偏移是几何量：负数（想画到第一根左边）和离谱的大数都夹进合法范围，而不是让整条消息失败。
+func TestAnnotationOffsetIsClamped(t *testing.T) {
+	inst := newTradingInstance()
+	a, err := inst.addAnnotation("human", AnnRay,
+		Point{Time: "2026-01-05 09:00", Price: 100},
+		Point{Time: "2026-01-05 09:00", Price: 100, Offset: -5}, AnnotationStyle{}, false)
+	if err != nil {
+		t.Fatalf("负偏移不该让整条消息失败：%v", err)
+	}
+	if a.End.Offset != 0 {
+		t.Fatalf("负偏移应当夹到 0，实际 %d", a.End.Offset)
+	}
+
+	b, err := inst.addAnnotation("human", AnnRect,
+		Point{Time: "2026-01-05 09:00", Price: 100},
+		Point{Time: "2026-01-05 09:00", Price: 101, Offset: maxForwardBars + 999}, AnnotationStyle{}, false)
+	if err != nil {
+		t.Fatalf("超上限的偏移不该让整条消息失败：%v", err)
+	}
+	if b.End.Offset != maxForwardBars {
+		t.Fatalf("超上限的偏移应当夹到 %d，实际 %d", maxForwardBars, b.End.Offset)
+	}
+}
+
+// 拖动：偏移端点能继续往右拖，也能拖回历史里 —— 后者要把 offset 归零、锚点换成那根 K 线，
+// 否则前端会拿着「最后一根 + 负偏移」这种自相矛盾的坐标。
+func TestAnnotationMoveAcrossLastBar(t *testing.T) {
+	inst := newTradingInstance()
+	inst.Cursor = 2
+	a, err := inst.addAnnotation("human", AnnTrend,
+		Point{Time: "2026-01-05 09:00", Price: 100},
+		Point{Time: "2026-01-05 09:10", Price: 102, Offset: 10}, AnnotationStyle{}, false)
+	if err != nil {
+		t.Fatalf("加标注失败：%v", err)
+	}
+
+	// 再往右 30 根：锚点和价格不变，偏移变大
+	m, err := inst.moveAnnotation("human", a.ID,
+		Point{Time: a.Start.Time, Price: a.Start.Price},
+		Point{Time: a.End.Time, Price: a.End.Price, Offset: 40}, false)
+	if err != nil {
+		t.Fatalf("往右拖失败：%v", err)
+	}
+	if m.End.Offset != 40 || m.End.Time != "2026-01-05 09:10" {
+		t.Fatalf("往右拖应当保留锚点、只改偏移：%+v", m.End)
+	}
+
+	// 拖回历史：锚点换成 09:05，offset 归零
+	m2, err := inst.moveAnnotation("human", a.ID,
+		Point{Time: "2026-01-05 09:00", Price: 100},
+		Point{Time: "2026-01-05 09:05", Price: 101}, false)
+	if err != nil {
+		t.Fatalf("拖回历史失败：%v", err)
+	}
+	if m2.End.Offset != 0 || m2.End.Time != "2026-01-05 09:05" {
+		t.Fatalf("拖回 K 线后 offset 应当是 0：%+v", m2.End)
+	}
+}
+
+// 旧存档没有 offset 字段（等价 0），手改过的存档可能是负数/大数：读进来都要夹一次。
+func TestNormalizeClampsOffsetOnLoad(t *testing.T) {
+	a := Annotation{
+		Kind:  AnnTrend,
+		Start: Point{Time: "2026-01-05 09:00", Price: 100, Offset: -3},
+		End:   Point{Time: "2026-01-05 09:00", Price: 101, Offset: maxForwardBars + 1},
+	}
+	if !a.normalize() {
+		t.Fatal("trend 不该被丢掉")
+	}
+	if a.Start.Offset != 0 || a.End.Offset != maxForwardBars {
+		t.Fatalf("读存档时应当把偏移夹进 [0,%d]：%+v / %+v", maxForwardBars, a.Start, a.End)
+	}
+}
+
+// offset = 0 时不出现在 JSON 里：旧存档、旧客户端看到的 Point 和以前一模一样。
+func TestPointOffsetOmittedWhenZero(t *testing.T) {
+	buf, err := json.Marshal(Point{Time: "2026-01-05 09:00", Price: 100.5})
+	if err != nil {
+		t.Fatalf("序列化失败：%v", err)
+	}
+	if strings.Contains(string(buf), "offset") {
+		t.Fatalf("offset 为 0 时不该出现在 JSON 里：%s", buf)
+	}
+	buf, err = json.Marshal(Point{Time: "2026-01-05 09:00", Price: 100.5, Offset: 7})
+	if err != nil {
+		t.Fatalf("序列化失败：%v", err)
+	}
+	if !strings.Contains(string(buf), `"offset":7`) {
+		t.Fatalf("非 0 偏移要能存下来：%s", buf)
 	}
 }
 

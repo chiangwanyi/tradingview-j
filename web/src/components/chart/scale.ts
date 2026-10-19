@@ -16,6 +16,26 @@ export const TIME_AXIS_HEIGHT = 24
 export const PLOT_TOP = 10
 export const PLOT_LEFT = 10
 
+/**
+ * 标注端点最多能向右延伸多少根 —— 和后端 instance.go 的 maxForwardBars 是同一个数。
+ *
+ * 前端夹一次是为了「预览 == 定稿」（后端也会夹，两边夹出同一个结果才不会点完就跳）；
+ * 后端再夹一次是因为它不能信任消息内容。
+ */
+export const MAX_FORWARD_OFFSET = 5000
+
+/**
+ * 端点的横坐标：一根**真实存在**的 K 线 + 往右延伸的根数。
+ *
+ * 不是「一个时间字符串」也不是「一个像素」：像素不持久，未来时间不可靠（见 barRefAt）。
+ */
+export interface BarRef {
+  /** 锚点 K 线的时间，一定是 bars 里真实存在的一根 */
+  time: string
+  /** 从锚点往右延伸的根数，0 = 就在这根 K 线上 */
+  offset: number
+}
+
 export interface ChartLayout {
   width: number
   height: number
@@ -79,6 +99,41 @@ export class ChartScale {
 
   indexOfTime(time: string): number | undefined {
     return this.indexOf.get(time)
+  }
+
+  /**
+   * 端点（锚点时间 + 向右偏移）-> 连续下标。
+   *
+   * 和 `indexOfTime` 的区别：这里**允许越过最后一根**（画到右侧空白区），所以不夹到
+   * 数据范围里。锚点不在数据里（旧存档指向已删除的 K 线）返回 undefined，图形就不画。
+   */
+  virtualIndexOf(ref: { time: string; offset?: number }): number | undefined {
+    const idx = this.indexOfTime(ref.time)
+    if (idx === undefined) return undefined
+    return idx + clamp(ref.offset ?? 0, 0, MAX_FORWARD_OFFSET)
+  }
+
+  /**
+   * 连续下标 -> 端点。
+   *
+   * 这是「端点可以自由越过最后一根」和「严格时间价格坐标」的交点：
+   *   - 下标落在一根已揭示的 K 线上 -> 存那根的**时间**，offset = 0（和以前完全一样）；
+   *   - 下标越过最后一根 -> 锚在**最后一根**上，用 offset 记住「再往右几根」。
+   *
+   * 为什么不存一个外推出来的未来时间：休市/周末时外推出来的并不是真实 K 线的时间，
+   * 而且等新 K 线揭示出来，同一个时间会落到另一个下标上 —— 画好的线会自己左右跳。
+   * 「最后一根 + 根数」只依赖已经存在的 K 线，缩放、平移、步进都不会让它漂。
+   *
+   * 下标还会被夹在 [0, last + MAX_FORWARD_OFFSET]：左边没有「更早的 K 线」这个概念，
+   * 右边留一个够画完整个屏幕的上限（见 MAX_FORWARD_OFFSET）。
+   */
+  barRefAt(index: number): BarRef | null {
+    const last = this.bars.length - 1
+    if (last < 0) return null
+    const i = Math.round(index)
+    if (i <= 0) return { time: this.bars[0].time, offset: 0 }
+    if (i <= last) return { time: this.bars[i].time, offset: 0 }
+    return { time: this.bars[last].time, offset: clamp(i - last, 1, MAX_FORWARD_OFFSET) }
   }
 
   get plotWidth(): number {

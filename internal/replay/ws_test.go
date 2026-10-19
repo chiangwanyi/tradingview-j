@@ -99,6 +99,61 @@ func TestWebSocketEndToEnd(t *testing.T) {
 	}
 }
 
+// 端点越过最后一根时，offset 必须原样走完「消息 -> 实例 -> 广播」这一圈。
+//
+// 这条用**JSON 数字字段**发（而不是 Go 结构体），就是为了顺带钉住协议里的字段名：
+// 前端读的是 `end.offset`，改名后 Go 单测全绿、界面上却永远延伸不出去。
+func TestAnnotationOffsetSurvivesWire(t *testing.T) {
+	hub, root := newTestHub(t, 5)
+	srv := httptest.NewServer(NewHandler(hub, root))
+	defer srv.Close()
+
+	wsURL := "ws" + strings.TrimPrefix(srv.URL, "http") + "/ws"
+	c, err := wsclient.Dial(wsURL, wsclient.Options{Timeout: 3 * time.Second})
+	if err != nil {
+		t.Fatalf("连接失败：%v", err)
+	}
+	defer c.Close()
+	readMsg(t, c) // welcome
+
+	send(t, c, map[string]any{
+		"type":   "create_instance",
+		"symbol": testSymbol,
+		"time":   "2026-01-06 10:00",
+		"bars":   30,
+	})
+	state := readMsg(t, c)
+	if state["type"] != MsgInstanceState {
+		t.Fatalf("建实例后应当收到全量快照，实际 %v", state["type"])
+	}
+	inst := state["instance"].(map[string]any)
+	id := inst["id"].(string)
+	bars := inst["bars"].([]any)
+	last := bars[len(bars)-1].(map[string]any)["time"].(string)
+
+	send(t, c, map[string]any{
+		"type":          "annotation_add",
+		"instanceId":    id,
+		"kind":          "trend",
+		"start":         map[string]any{"time": last, "price": 100},
+		"end":           map[string]any{"time": last, "price": 101.5, "offset": 40},
+		"snap":          false,
+	})
+	ev := readAction(t, c, ActAnnotationAdded)
+	payload := ev["payload"].(map[string]any)
+	ann := payload["annotation"].(map[string]any)
+	end := ann["end"].(map[string]any)
+	if end["offset"] != float64(40) {
+		t.Fatalf("广播里的 offset 应当是 40（字段名/透传被改了？），实际 %v", end["offset"])
+	}
+	if end["time"] != last {
+		t.Fatalf("锚点必须是最后一根 K 线 %q，实际 %v", last, end["time"])
+	}
+	if start := ann["start"].(map[string]any); start["offset"] != nil {
+		t.Fatalf("offset 为 0 时不该出现在 JSON 里：%v", start["offset"])
+	}
+}
+
 // 这条盯的是「长时间空闲的连接会不会被自己踢掉」。
 //
 // 现场症状：用户打开页面就不动，日志里每 90 秒出现一次

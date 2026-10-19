@@ -23,6 +23,8 @@ import type { Bar, Order, OrderKind, Point, Side } from '@/types/protocol'
  *   - 修改 `modify`：点选标注、拖端点改端点、拖线身整体移动、Del 删除；
  *   - 五种绘图工具：**两次单击** —— 第 1 次定起点进入预览，移动鼠标找终点，第 2 次定稿。
  *     （不再是按住拖动：拖动手势在触控板和大图上都容易画歪，两次单击可以慢慢找位置。）
+ *     终点可以越过最后一根 K 线往右画：横坐标存成「锚点 K 线 + 向右几根」（见 scale.ts 的 barRefAt），
+ *     所以它既在右侧空白区里，又仍然严格落在时间-价格坐标系上。
  *
  * 「前端预览、后端定稿」没变：绘制过程只更新本地的 `pending`，第 2 次单击才把
  * **时间 + 价格 + 样式**发往后端；后端校验、编号后广播回来，界面上的正式图形永远
@@ -61,7 +63,10 @@ const toast = ref('')
 let toastTimer = 0
 
 interface ChartPoint {
+  /** 锚点 K 线的时间（一定是已揭示数据里真实存在的一根） */
   time: string
+  /** 从锚点往右延伸的根数：0 = 就在这根 K 线上，>0 = 越过最后一根、画在右侧空白区 */
+  offset: number
   price: number
 }
 
@@ -296,14 +301,25 @@ watch(() => store.showEma, () => requestDraw())
 
 // ---------------- 坐标换算 ----------------
 
-/** 指针位置 -> 数据坐标（最近的 K 线时间 + 价格）。Ctrl 按下时价格吸附到 OHLC。 */
+/**
+ * 指针位置 -> 数据坐标（锚点 K 线时间 + 向右偏移 + 价格）。Ctrl 按下时价格吸附到锚点 K 线的 OHLC。
+ *
+ * 横向**不再夹到最后一根 K 线**：x 只夹在价格区左右两条边上（右边是价格轴，不是行情区），
+ * 夹完交给 `barRefAt` 换算 —— 越过末尾的部分会自动变成「最后一根 + N 根」。
+ * 所以「往右拖到未来」和「拖到某根历史上的 K 线」走的是同一套换算，不会偏移。
+ */
 function pointAt(x: number, y: number, snap: boolean): ChartPoint | null {
   if (scale.bars.length === 0) return null
-  const idx = scale.nearestIndex(x)
-  const bar = scale.bars[idx]
+  const plot = scale.layout.plot
+  const ref = scale.barRefAt(scale.indexAtX(clamp(x, plot.left, plot.right)))
+  if (!ref) return null
+  const idx = scale.indexOfTime(ref.time)
+  const bar = idx === undefined ? undefined : scale.bars[idx]
   if (!bar) return null
+  // 吸附用的是**锚点**那根 K 线：偏移出去的地方一根 K 线都没有，没有 OHLC 可吸。
+  // 后端 resolvePoint 也是拿锚点那根吸的，所以预览和定稿结果一致。
   const price = snap ? nearestOHLC(bar, scale.priceAtY(y)) : scale.priceAtY(y)
-  return { time: bar.time, price }
+  return { time: ref.time, offset: ref.offset, price }
 }
 
 /** 和后端 nearestOHLC 同样的取舍（O 优先，严格小于才替换），保证预览与定稿一致。 */
@@ -324,8 +340,10 @@ function nearestOHLC(bar: Bar, price: number): number {
 function figureView(): FigureView {
   return {
     plot: scale.layout.plot,
-    xOfTime: (time) => {
-      const idx = scale.indexOfTime(time)
+    // 端点 = 锚点时间 + 向右偏移；virtualIndexOf 允许越过最后一根，所以右侧空白区里
+    // 的端点用得和 K 线完全相同的 x 公式（缩放/平移一起动，不会有半根线的错位）。
+    xOf: (point) => {
+      const idx = scale.virtualIndexOf(point)
       return idx === undefined ? undefined : scale.xOf(idx)
     },
     yOfPrice: (price) => scale.yOf(price),
@@ -349,8 +367,12 @@ interface DragState {
   anchor: -1 | 0 | 1
   baseStart: Point
   baseEnd: Point
+  /** 端点锚定的 K 线下标 */
   baseIndex: number
   baseIndexEnd: number
+  /** 端点从锚点往右延伸的根数（>0 = 在最后一根 K 线的右侧） */
+  baseOffset: number
+  baseOffsetEnd: number
   basePrice: number
   basePriceEnd: number
   /** 指针按下那一刻的价格：拖动时的位移基准（不能用标注自己的价格，否则一按就跳） */
@@ -372,6 +394,8 @@ function emptyDrag(): DragState {
     baseEnd: { time: '', price: 0 },
     baseIndex: 0,
     baseIndexEnd: 0,
+    baseOffset: 0,
+    baseOffsetEnd: 0,
     basePrice: 0,
     basePriceEnd: 0,
     downPrice: 0,
@@ -478,12 +502,14 @@ function clickToDraw(p: { x: number; y: number }, ev: PointerEvent): void {
 function constrainEnd(kind: DrawTool, start: ChartPoint, end: ChartPoint, shift: boolean): ChartPoint {
   const lineLike = kind === 'trend' || kind === 'ray' || kind === 'arrow'
   if (!shift || !lineLike) return end
-  return { time: end.time, price: start.price }
+  // 只改价格，横向（锚点 + 偏移）保持鼠标指的位置 —— 否则 Shift 会把线拽回起点那根 K 线上
+  return { time: end.time, offset: end.offset, price: start.price }
 }
 
-/** 两个端点完全重合 = 没画出东西（时间相同、价格也相同） */
+/** 两个端点完全重合 = 没画出东西（横坐标和时间都相同、价格也相同） */
 function degenerate(start: ChartPoint, end: ChartPoint): boolean {
-  return start.time === end.time && Math.abs(start.price - end.price) < 1e-9
+  // 横坐标要比「锚点 + 偏移」两项：同一根 K 线上的 offset=0 和 offset=3 是两个位置
+  return start.time === end.time && start.offset === end.offset && Math.abs(start.price - end.price) < 1e-9
 }
 
 function beginPointerCapture(): void {
@@ -524,8 +550,6 @@ function onWindowPointerMove(ev: PointerEvent): void {
 
   if (drag.mode === 'move' && moving.value) {
     drag.snap = ev.ctrlKey
-    const bars = scale.bars
-    const maxIdx = Math.max(0, bars.length - 1)
     const deltaBars = Math.round((p.x - drag.startX) / scale.barWidth)
     const deltaPrice = scale.priceAtY(p.y) - drag.downPrice
 
@@ -533,17 +557,32 @@ function onWindowPointerMove(ev: PointerEvent): void {
     const moveStart = drag.anchor === -1 || drag.anchor === 0
     const moveEnd = drag.anchor === -1 || drag.anchor === 1
 
-    const idxStart = Math.min(maxIdx, Math.max(0, drag.baseIndex + (moveStart ? deltaBars : 0)))
-    const idxEnd = Math.min(maxIdx, Math.max(0, drag.baseIndexEnd + (moveEnd ? deltaBars : 0)))
-    const barStart = bars[idxStart]
-    const barEnd = bars[idxEnd]
+    // 端点先化成**连续下标**（锚点下标 + 向右偏移）再平移，于是「越过最后一根」的端点
+    // 和历史里的端点走的是同一条算术；barRefAt 负责把结果重新表达成
+    // 「真实 K 线 + 根数」，并把下标夹在 [第一根, 最后一根 + 上限] 里。
+    const refStart = scale.barRefAt(drag.baseIndex + drag.baseOffset + (moveStart ? deltaBars : 0))
+    const refEnd = scale.barRefAt(drag.baseIndexEnd + drag.baseOffsetEnd + (moveEnd ? deltaBars : 0))
+    if (!refStart || !refEnd) return
+    const idxStart = scale.indexOfTime(refStart.time)
+    const idxEnd = scale.indexOfTime(refEnd.time)
+    if (idxStart === undefined || idxEnd === undefined) return
+    const barStart = scale.bars[idxStart]
+    const barEnd = scale.bars[idxEnd]
     if (!barStart || !barEnd) return
     const rawStart = drag.basePrice + (moveStart ? deltaPrice : 0)
     const rawEnd = drag.basePriceEnd + (moveEnd ? deltaPrice : 0)
     moving.value = {
       id: drag.moveId,
-      start: { time: barStart.time, price: drag.snap ? nearestOHLC(barStart, rawStart) : rawStart },
-      end: { time: barEnd.time, price: drag.snap ? nearestOHLC(barEnd, rawEnd) : rawEnd },
+      start: {
+        time: refStart.time,
+        offset: refStart.offset,
+        price: drag.snap ? nearestOHLC(barStart, rawStart) : rawStart,
+      },
+      end: {
+        time: refEnd.time,
+        offset: refEnd.offset,
+        price: drag.snap ? nearestOHLC(barEnd, rawEnd) : rawEnd,
+      },
     }
     drag.moved = true
     requestDraw()
@@ -563,7 +602,14 @@ function onWindowPointerUp(): void {
   } else if (drag.mode === 'move' && moving.value && drag.moved) {
     lastDragMoved = true
     const m = moving.value
-    store.moveAnnotation(m.id, { time: m.start.time, price: round(m.start.price) }, { time: m.end.time, price: round(m.end.price) }, drag.snap)
+    // 整个端点对象发过去（含 offset）：只发 time+price 的话，服务端会把「越过最后一根」
+    // 的端点吸回锚点那根 K 线上，松手即跳。只动一个端点时另一个原样发回。
+    store.moveAnnotation(
+      m.id,
+      { ...m.start, price: round(m.start.price) },
+      { ...m.end, price: round(m.end.price) },
+      drag.snap,
+    )
   } else if (drag.mode === 'pan' && !drag.moved) {
     // 在空白处点一下 = 取消选中（和桌面上点空白处一个意思）
     store.selectedAnnotation = null
@@ -877,13 +923,18 @@ function round(v: number): number {
   return Math.round(v * 100) / 100
 }
 
-/** 第 2 次单击：把时间 + 价格 + **当前模板的样式快照**发往后端。 */
+/**
+ * 第 2 次单击：把时间 + 价格 + **当前模板的样式快照**发往后端。
+ *
+ * 用 `...p.start` 而不是逐字段重建：offset 也是端点的一部分，漏掉它后端就会把端点
+ * 落回锚点那根 K 线 —— 预览明明伸到了右边，一松手却缩回去（这里踩过一次）。
+ */
 function commitPending(p: PendingShape): void {
   const template = store.templateFor(p.kind)
   store.addAnnotation({
     kind: p.kind,
-    start: { time: p.start.time, price: round(p.start.price) },
-    end: { time: p.end.time, price: round(p.end.price) },
+    start: { ...p.start, price: round(p.start.price) },
+    end: { ...p.end, price: round(p.end.price) },
     style: resolveStyle({ kind: p.kind, style: template?.style }),
     snap: p.snap,
   })
@@ -930,11 +981,19 @@ function beginAnnotationDrag(ev: PointerEvent, id: string, anchor: -1 | 0 | 1): 
     baseEnd: a.end,
     baseIndex: idxStart,
     baseIndexEnd: idxEnd ?? idxStart,
+    // 端点可能停在最后一根右侧（offset > 0）：拖动的起点必须把它算进去，
+    // 否则一按下整条线就会往左跳 offset 根。
+    baseOffset: a.start.offset ?? 0,
+    baseOffsetEnd: a.end.offset ?? 0,
     basePrice: a.start.price,
     basePriceEnd: a.end.price,
     downPrice: scale.priceAtY(p.y),
   }
-  moving.value = { id: a.id, start: { ...a.start }, end: { ...a.end } }
+  moving.value = {
+    id: a.id,
+    start: { time: a.start.time, offset: a.start.offset ?? 0, price: a.start.price },
+    end: { time: a.end.time, offset: a.end.offset ?? 0, price: a.end.price },
+  }
   beginPointerCapture()
 }
 
@@ -1163,9 +1222,11 @@ const hint = computed(() => {
   if (drawMode.value) {
     const name = TOOL_LABEL[store.tool]
     const extra = store.tool === 'trend' || store.tool === 'ray' || store.tool === 'arrow' ? ' · Shift 水平' : ''
+    // 「可以画过最后一根」值得写在提示里：以前终点会被吸回最后一根，用户会以为工具坏了
+    const beyond = ' · 可画过最后一根'
     return pending.value
-      ? `${name}：移动鼠标找终点，再单击一下定稿${extra} · Esc 取消`
-      : `${name}：单击定起点${extra} · 滚轮缩放 · 中键拖动平移`
+      ? `${name}：移动鼠标找终点，再单击一下定稿${extra}${beyond} · Esc 取消`
+      : `${name}：单击定起点${extra}${beyond} · 滚轮缩放 · 中键拖动平移`
   }
   if (modifyMode.value) {
     return '单击选中 · 拖端点改端点 · 拖线身整体移动 · Del 删除 · 空白处拖动平移 · 拖挂单线改价'

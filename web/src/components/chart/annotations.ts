@@ -14,8 +14,11 @@ import type { AnnotationStyle, DashStyle, FibLevel } from '@/types/protocol'
  */
 
 export interface FigurePoint {
+  /** 锚点 K 线的时间（真实存在的一根） */
   time: string
   price: number
+  /** 从锚点往右延伸的根数；0/缺省 = 就在那根 K 线上 */
+  offset?: number
 }
 
 export interface FigureInput {
@@ -31,8 +34,14 @@ export interface FigureInput {
 export interface FigureView {
   /** 价格区（不含时间轴和价格轴）：射线只延伸到这块区域的边上 */
   plot: { left: number; top: number; right: number; bottom: number }
-  /** K 线时间 -> 屏幕 x；不在已揭示的数据里返回 undefined */
-  xOfTime(time: string): number | undefined
+  /**
+   * 端点（时间 + 向右偏移）-> 屏幕 x。
+   *
+   * **不夹到最后一根 K 线**：偏移出去的端点画在右侧空白区，和 K 线用的是同一条
+   * `x = left + (下标 - scroll + 0.5) * barWidth`，所以缩放、平移、步进都和 K 线严格对齐。
+   * 锚点不在已揭示数据里返回 undefined（这条图形就不画）。
+   */
+  xOf(point: FigurePoint): number | undefined
   yOfPrice(price: number): number
   /** 价格 -> 显示文本（斐波那契的水平标签用） */
   priceText(price: number): string
@@ -162,9 +171,9 @@ const HEAD_LEN = 11
 const HEAD_HALF = 4.4
 
 export function buildFigure(a: FigureInput, view: FigureView): Figure | null {
-  const x1 = view.xOfTime(a.start.time)
-  const x2 = view.xOfTime(a.end.time)
-  if (x1 === undefined || x2 === undefined) return null // 端点指向的 K 线不在已揭示数据里
+  const x1 = view.xOf(a.start)
+  const x2 = view.xOf(a.end)
+  if (x1 === undefined || x2 === undefined) return null // 端点锚定的 K 线不在已揭示数据里
   const y1 = view.yOfPrice(a.start.price)
   const y2 = view.yOfPrice(a.end.price)
   const style = resolveStyle(a)
@@ -277,6 +286,9 @@ function arrowHead(x1: number, y1: number, x2: number, y2: number, color: string
  * 所以每次重绘都要重算（这正是它必须留在前端的原因）。
  *
  * 射线往左画（终点在起点左边）也支持：往哪个方向延伸看的是 dx 的符号，不是「往右」。
+ *
+ * **终点本身也可能在价格区外面**（端点可以往右拖到最后一根 K 线的右侧，再往右就出了价格区）；
+ * 这时 t < 1，裁剪点落在线段中间，仍然要裁 —— 否则射线会画到价格轴上面去。
  */
 function clipRay(
   x1: number,
@@ -293,6 +305,7 @@ function clipRay(
   if (dx < -1e-9) t = Math.min(t, (plot.left - x1) / dx)
   if (dy > 1e-9) t = Math.min(t, (plot.bottom - y1) / dy)
   if (dy < -1e-9) t = Math.min(t, (plot.top - y1) / dy)
-  if (!Number.isFinite(t) || t < 1) return { x: x2, y: y2 }
+  // t <= 0 是「起点已经在价格区外，还朝外画」这种退化情况：没有可画的可见段，退回终点。
+  if (!Number.isFinite(t) || t <= 0) return { x: x2, y: y2 }
   return { x: x1 + dx * t, y: y1 + dy * t }
 }

@@ -1,0 +1,208 @@
+[
+  {
+    "id": "a1",
+    "kind": "arrow",
+    "start": {
+      "time": "2026-02-24 19:30",
+      "price": 7039.06
+    },
+    "end": {
+      "time": "2026-02-24 22:20",
+      "price": 7038.42
+    },
+    "style": {
+      "color": "#ec4899",
+      "width": 1.8,
+      "dash": "solid"
+    },
+    "snapped": false,
+    "createdBy": "human",
+    "createdAt": 1792426643
+  },
+  {
+    "id": "a2",
+    "kind": "fib",
+    "start": {
+      "time": "2026-02-24 20:15",
+      "price": 7040.41
+    },
+    "end": {
+      "time": "2026-02-24 22:20",
+      "price": 7035.61,
+      "offset": 26
+    },
+    "style": {
+      "color": "#f59e0b",
+      "width": 1.2,
+      "dash": "solid",
+      "levels": [
+        {
+          "ratio": -1,
+          "color": "#38bdf8"
+        },
+        {
+          "ratio": 0,
+          "color": "#f59e0b"
+        },
+        {
+          "ratio": 1,
+          "color": "#ec4899"
+        },
+        {
+          "ratio": 2,
+          "color": "#22c55e"
+        }
+      ]
+    },
+    "snapped": false,
+    "createdBy": "human",
+    "createdAt": 1792426680
+  },
+  {
+    "id": "a3",
+    "kind": "fib",
+    "start": {
+      "time": "2026-02-24 22:20",
+      "price": 7027.52,
+      "offset": 3
+    },
+    "end": {
+      "time": "2026-02-24 22:20",
+      "price": 7030.92,
+      "offset": 34
+    },
+    "style": {
+      "color": "#f59e0b",
+      "width": 1.2,
+      "dash": "solid",
+      "levels": [
+        {
+          "ratio": -1,
+          "color": "#38bdf8"
+        },
+        {
+          "ratio": 0,
+          "color": "#f59e0b"
+        },
+        {
+          "ratio": 1,
+          "color": "#ec4899"
+        },
+        {
+          "ratio": 2,
+          "color": "#22c55e"
+        }
+      ]
+    },
+    "snapped": false,
+    "createdBy": "human",
+    "createdAt": 1792426684
+  },
+  {
+    "id": "a4",
+    "kind": "ray",
+    "start": {
+      "time": "2026-02-24 19:40",
+      "price": 7050.84
+    },
+    "end": {
+      "time": "2026-02-24 22:20",
+      "price": 7052.77,
+      "offset": 11
+    },
+    "style": {
+      "color": "#ef4444",
+      "width": 2,
+      "dash": "solid"
+    },
+    "snapped": false,
+    "createdBy": "human",
+    "createdAt": 1792426687
+  },
+  {
+    "id": "a5",
+    "kind": "arrow",
+    "start": {
+      "time": "2026-02-24 19:45",
+      "price": 7053.89
+    },
+    "end": {
+      "time": "2026-02-24 22:20",
+      "price": 7048.15,
+      "offset": 15
+    },
+    "style": {
+      "color": "#ec4899",
+      "width": 1.8,
+      "dash": "solid"
+    },
+    "snapped": false,
+    "createdBy": "human",
+    "createdAt": 1792426689
+  },
+  {
+    "id": "a6",
+    "kind": "trend",
+    "start": {
+      "time": "2026-02-24 20:40",
+      "price": 7048.5
+    },
+    "end": {
+      "time": "2026-02-24 22:20",
+      "price": 7047.5,
+      "offset": 26
+    },
+    "style": {
+      "color": "#f59e0b",
+      "width": 1.6,
+      "dash": "solid"
+    },
+    "snapped": false,
+    "createdBy": "human",
+    "createdAt": 1792426692
+  },
+  {
+    "id": "a7",
+    "kind": "rect",
+    "start": {
+      "time": "2026-02-24 21:35",
+      "price": 7050.31
+    },
+    "end": {
+      "time": "2026-02-24 22:20",
+      "price": 7036.08,
+      "offset": 39
+    },
+    "style": {
+      "color": "#f59e0b",
+      "width": 1.4,
+      "dash": "solid",
+      "fill": "#f59e0b",
+      "fillOpacity": 0.12
+    },
+    "snapped": false,
+    "createdBy": "human",
+    "createdAt": 1792426696
+  },
+  {
+    "id": "a8",
+    "kind": "trend",
+    "start": {
+      "time": "2026-02-24 21:50",
+      "price": 7025.06
+    },
+    "end": {
+      "time": "2026-02-24 22:20",
+      "price": 7020.55,
+      "offset": 34
+    },
+    "style": {
+      "color": "#f59e0b",
+      "width": 1.6,
+      "dash": "solid"
+    },
+    "snapped": false,
+    "createdBy": "human",
+    "createdAt": 1792426721
+  }
+]

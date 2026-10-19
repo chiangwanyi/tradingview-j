@@ -21,6 +21,13 @@ const (
 	maxEventsKept    = 500 // 每个实例保留多少条操作记录
 	eventsInSnapshot = 100 // 快照里带多少条
 	maxOrderQuantity = 10000
+
+	// maxForwardBars 是标注端点最多能向右延伸多少根。
+	//
+	// 不设上限的话，一条手工构造的消息就能把端点写到十万根以外：缩到最小时那个 x 坐标
+	// 早已超出浮点精度（线段会画成一条穿过整个画布的斜线），存档里也永久留着这个离谱值。
+	// 5000 根在 5 分钟周期上是 17 个交易日，比任何一块屏幕能显示的空白区都远。
+	maxForwardBars = 5000
 )
 
 // Instance 是一个复盘实例的全部状态。
@@ -111,11 +118,16 @@ func (inst *Instance) indexOfTime(t string) (int, bool) {
 	return 0, false
 }
 
-// resolvePoint 把一个标注端点落到「某一根已经揭示的 K 线」上。
+// resolvePoint 把一个标注端点的**锚点**落到「某一根已经揭示的 K 线」上，并夹住向右的偏移。
 //
-// 这是需求里「标注严格基于时间价格坐标」的执行点：横坐标不存像素，只存 K 线时间；
-// 后端不信任前端传来的价格 —— snap=true 时（用户按住 Ctrl）后端自己在这根 K 线的
-// OHLC 里挑最近的那个，前端画出来的预览和后端存下来的结果因此必然一致。
+// 这是需求里「标注严格基于时间价格坐标」的执行点：横坐标不存像素，只存 K 线时间
+// （外加一个「往右几根」的偏移，见 Point 的注释）；后端不信任前端传来的价格 ——
+// snap=true 时（用户按住 Ctrl）后端自己在这根 K 线的 OHLC 里挑最近的那个，
+// 前端画出来的预览和后端存下来的结果因此必然一致。
+//
+// 允许 offset > 0：端点可以停在最后一根已揭示 K 线的右侧，用来画「往后看」的趋势线、
+// 矩形、斐波那契区间。但那一段并没有 K 线，所以 offset 只是**根数**，不产生任何未来时间；
+// 吸附（snap）也只能吸到锚点那根 K 线的 OHLC —— 前端预览用的是同一根，口径一致。
 func (inst *Instance) resolvePoint(p Point, snap bool) (Point, int, error) {
 	if p.Time == "" {
 		return Point{}, 0, errors.New("标注端点缺少时间（必须指向一根 K 线）")
@@ -148,7 +160,7 @@ func (inst *Instance) resolvePoint(p Point, snap bool) (Point, int, error) {
 		}
 	}
 	if idx > inst.Cursor {
-		return Point{}, 0, errors.New("标注只能画在已经出现的 K 线上")
+		return Point{}, 0, errors.New("标注的锚点必须落在已经出现的 K 线上（要往右延伸到未来请用 offset）")
 	}
 
 	bar := inst.Bars[idx]
@@ -158,7 +170,22 @@ func (inst *Instance) resolvePoint(p Point, snap bool) (Point, int, error) {
 	}
 	// 价格统一修到两位小数：和 K 线、价格轴、下单框显示的值一致，
 	// 否则一条标注可能是 30061.499999999996，图上和面板里对不上。
-	return Point{Time: bar.Time, Price: roundPrice(price)}, idx, nil
+	return Point{Time: bar.Time, Price: roundPrice(price), Offset: clampForwardBars(p.Offset)}, idx, nil
+}
+
+// clampForwardBars 把偏移夹进 [0, maxForwardBars]。
+//
+// 负数（想画到第一根 K 线左边）按 0 处理：数据左侧只有 10px 留白，也没有「更早的 K 线」
+// 这个概念；而超过上限的按上限处理 —— 见 maxForwardBars 的注释。
+// 这里夹而不是报错：偏移只是几何量，夹住就能画，没必要让整条消息失败。
+func clampForwardBars(off int) int {
+	if off < 0 {
+		return 0
+	}
+	if off > maxForwardBars {
+		return maxForwardBars
+	}
+	return off
 }
 
 // diffsCloser 判断 target 更靠近 a 还是 b（都是 "yyyy-MM-dd HH:MM"）。
@@ -201,8 +228,11 @@ func nearestOHLC(b Bar, price float64) float64 {
 // addAnnotation 校验并加入一个标注。
 //
 // 五种图形都要求两个端点（趋势线/射线/箭头线是线的两端，矩形是对角，斐波那契是价格区间），
-// 两个端点都必须落在已揭示的 K 线上 —— 标注是画在历史上的，指向一根还不存在的 K 线
-// 既没意义，也会提前泄露后面的行情。
+// 两个端点的**锚点**都必须落在已揭示的 K 线上 —— 标注是画在历史上的，指向一根还不存在的
+// K 线既没意义，也会提前泄露后面的行情。
+//
+// 但端点可以带 offset 往右延伸：最后一根 K 线的右侧没有 K 线，却有画布空间，
+// 「趋势线指向未来」正是复盘里最常见的用法。offset 只是根数，不引用未来时间（见 Point）。
 func (inst *Instance) addAnnotation(by, kind string, start, end Point, style AnnotationStyle, snap bool) (Annotation, error) {
 	if !isDrawKind(kind) {
 		return Annotation{}, fmt.Errorf("不认识的标注类型 %q（只支持 trend / ray / rect / arrow / fib）", kind)
