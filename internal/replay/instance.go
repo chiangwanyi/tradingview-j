@@ -380,6 +380,34 @@ func normalizeQuantity(qty float64) (float64, error) {
 	return qty, nil
 }
 
+// moveOrder 改一张挂单的价格 —— 画布上拖动挂单线就是它。
+//
+// 只改价格，**不改单型、不改数量、不改编号**：
+//   - 单型是下单那一刻按方向定的（界面上是 orderKindFor）。拖过现价就自动换个单型，
+//     会让订单在用户手里悄悄变性质 —— 一张「跌破 95 才卖」的止损单往上拖过现价，
+//     会变成「涨到 105 才卖」的限价单，用户以为自己只是挪了条线。想换单型就撤了重挂。
+//   - 编号不变，成交三角和操作记录里那条线就还是同一个订单。
+//
+// 只有还挂着的单能改：已成交/已撤销的单改了价格不会再参与撮合，改它只会让
+// 历史记录和实际成交价对不上。
+func (inst *Instance) moveOrder(id string, price float64) (Order, error) {
+	if !finitePositive(price) {
+		return Order{}, errors.New("挂单价格必须是大于 0 的有限数字")
+	}
+	for i := range inst.Orders {
+		o := &inst.Orders[i]
+		if o.ID != id {
+			continue
+		}
+		if o.Status != OrderOpen {
+			return Order{}, fmt.Errorf("这张单已经%s，不能改价", statusText(o.Status))
+		}
+		o.Price = roundPrice(price)
+		return *o, nil
+	}
+	return Order{}, fmt.Errorf("没有这张单：%s", id)
+}
+
 // cancelOrder 撤单。已成交/已撤销的单不能撤。
 func (inst *Instance) cancelOrder(id string) (Order, error) {
 	for i := range inst.Orders {

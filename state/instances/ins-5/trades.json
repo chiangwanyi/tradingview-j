@@ -38,5 +38,25 @@
     "price": 30748,
     "quantity": 1,
     "realizedPnl": 46.5
+  },
+  {
+    "id": "t5",
+    "orderId": "o6",
+    "time": "2026-06-22 07:20",
+    "side": "sell",
+    "kind": "market",
+    "price": 30748,
+    "quantity": 1,
+    "realizedPnl": 0
+  },
+  {
+    "id": "t6",
+    "orderId": "o7",
+    "time": "2026-06-22 07:35",
+    "side": "buy",
+    "kind": "limit",
+    "price": 30686,
+    "quantity": 1,
+    "realizedPnl": 124
   }
 ]

@@ -159,16 +159,44 @@ export interface DrawInput {
   showEma: boolean
   /** 最小跳动，来自 _symbols.json（0.25 / 0.1 / 0.01…） */
   tick: number
+  /**
+   * 正在拖动 / 悬停的挂单 id。画粗一档、标签带上价格 —— 拖动时用户要看得见
+   * 「现在落在哪个价」，那一路靠价格轴上的标签得眯着眼对。
+   */
+  activeOrderId?: string | null
+  /** 悬停 / 钉住的平仓线（`closed` 里的下标）：加粗一点，让「你说的是哪一条」看得见 */
+  activeClosed?: number | null
 }
 
 const MONO = '12px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace'
 const MONO_BOLD = '600 12px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace'
 /** 价格轴/时间轴上那种实心小标签的高度（12px 字放进去不挤） */
 const AXIS_LABEL_H = 18
+/**
+ * 挂单标签右端给「撤单 ×」让出的宽度。
+ *
+ * 那个 × 是 HTML 按钮，叠在画布上（见 ChartPanel.vue）—— 画布的拾取要自己算坐标，
+ * 按钮却天然有 hover / title / disabled。两边共用一个常数，标签就不会顶到按钮底下。
+ */
+export const ORDER_RESERVE_RIGHT = 24
 
 export function drawChart(input: DrawInput): void {
-  const { ctx, scale, theme, hover, symbol, orders, trades, closed, position, unrealizedPnl, showEma, tick } =
-    input
+  const {
+    ctx,
+    scale,
+    theme,
+    hover,
+    symbol,
+    orders,
+    trades,
+    closed,
+    position,
+    unrealizedPnl,
+    showEma,
+    tick,
+    activeOrderId = null,
+    activeClosed = null,
+  } = input
   const { width, height } = scale
   const layout: ChartLayout = scale.layout
   const decimals = decimalsForTick(tick)
@@ -193,8 +221,8 @@ export function drawChart(input: DrawInput): void {
   drawGrid(ctx, scale, theme, priceTicks)
   drawCandles(ctx, scale, theme, showEma)
   // 成交标记压在 K 线上面：复盘时要一眼看到「哪里开、哪里平」
-  drawTradeMarks(ctx, scale, theme, trades, closed)
-  drawOrders(ctx, scale, theme, orders)
+  drawTradeMarks(ctx, scale, theme, trades, closed, activeClosed)
+  drawOrders(ctx, scale, theme, orders, activeOrderId, decimals)
   drawPositionLine(ctx, scale, theme, position, unrealizedPnl, decimals)
   drawLastPrice(ctx, scale, theme, decimals)
   drawAxes(ctx, scale, theme, priceTicks, decimals, tick)
@@ -314,11 +342,20 @@ function drawCandles(
   ctx.stroke()
 }
 
+/**
+ * 挂单：一条贯穿价格区的横线 + 右端一个标签（买/卖 + 单型 + 手数）。
+ *
+ * 右边的 `ORDER_RESERVE_RIGHT` 是给「撤单 ×」留的位置 —— 那个按钮是 HTML 叠在画布上的
+ * （见 ChartPanel.vue），不占画布绘制，但标签必须让开，否则会顶到按钮底下。
+ * 当前被拖动/悬停的那一张会加粗、并在标签里带上价格。
+ */
 function drawOrders(
   ctx: CanvasRenderingContext2D,
   scale: ChartScale,
   theme: ChartTheme,
   orders: Order[],
+  activeId: string | null,
+  decimals: number,
 ): void {
   const { plot } = scale.layout
   const open = orders.filter((o) => o.status === 'open')
@@ -328,11 +365,12 @@ function drawOrders(
   ctx.textAlign = 'left'
   ctx.textBaseline = 'middle'
   for (const o of open) {
+    const active = o.id === activeId
     const y = Math.round(scale.yOf(o.price)) + 0.5
     if (y < plot.top || y > plot.bottom) continue
     const isBuy = o.side === 'buy'
     ctx.strokeStyle = isBuy ? theme.orderBuy : theme.orderSell
-    ctx.lineWidth = 1
+    ctx.lineWidth = active ? 2 : 1
     ctx.setLineDash(o.kind === 'stop' ? [5, 4] : [])
     ctx.beginPath()
     ctx.moveTo(plot.left, y)
@@ -342,14 +380,18 @@ function drawOrders(
 
     // 市价单成交后立刻是 filled，正常情况下进不到这里；留着是为了画布上的文案和后端 kind 对齐
     const kindText = o.kind === 'limit' ? '限价' : o.kind === 'market' ? '市价' : '止损'
-    const label = `${isBuy ? '买' : '卖'}${kindText} ${o.quantity}`
+    const label = active
+      ? `${isBuy ? '买' : '卖'}${kindText} ${o.quantity} @ ${formatPrice(o.price, decimals)}`
+      : `${isBuy ? '买' : '卖'}${kindText} ${o.quantity}`
+    ctx.font = active ? MONO_BOLD : MONO
     const textWidth = ctx.measureText(label).width
-    const boxX = plot.right - textWidth - 8
+    const boxX = plot.right - ORDER_RESERVE_RIGHT - textWidth - 8
     ctx.fillStyle = isBuy ? theme.orderBuyBox : theme.orderSellBox
     ctx.fillRect(boxX - 4, y - 9, textWidth + 8, AXIS_LABEL_H)
     ctx.fillStyle = theme.orderText
     ctx.fillText(label, boxX, y + 0.5)
   }
+  ctx.font = MONO
 }
 
 /**
@@ -399,9 +441,11 @@ function drawPositionLine(
 
 /**
  * 成交标记：每笔成交一个三角（买 = 上三角、卖 = 下三角），
- * 再加一条「开仓均价 → 平仓价」的连线 —— 一眼看出这一仓是赚是亏、拿了多久。
+ * 再加一条「开仓价 → 平仓价」的虚线 —— 一眼看出这一仓是赚是亏、拿了多久。
  *
  * 全部画在 Canvas 上（不是 SVG 标注），所以**不能选中、不能拖动、不能删除**。
+ * `activeClosed` 是鼠标正指着（或已经钉住）的那一条：加粗一档，
+ * 否则屏幕上几条虚线交织时，信息卡说的是哪一笔要靠猜。
  */
 function drawTradeMarks(
   ctx: CanvasRenderingContext2D,
@@ -409,18 +453,20 @@ function drawTradeMarks(
   theme: ChartTheme,
   trades: Trade[],
   closed: ClosedTrade[],
+  activeClosed: number | null,
 ): void {
   if (trades.length === 0) return
   const { plot } = scale.layout
 
   // 先画连线，三角形压在上面
-  for (const c of closed) {
+  closed.forEach((c, i) => {
     const i1 = scale.indexOfTime(c.openTime)
     const i2 = scale.indexOfTime(c.closeTime)
-    if (i1 === undefined || i2 === undefined) continue
+    if (i1 === undefined || i2 === undefined) return
+    const active = i === activeClosed
     ctx.strokeStyle = c.side === 'long' ? theme.tradeBuy : theme.tradeSell
-    ctx.globalAlpha = 0.7
-    ctx.lineWidth = 1.2
+    ctx.globalAlpha = active ? 1 : 0.7
+    ctx.lineWidth = active ? 2.4 : 1.2
     ctx.setLineDash([4, 3])
     ctx.beginPath()
     ctx.moveTo(scale.xOf(i1), scale.yOf(c.openPrice))
@@ -428,7 +474,7 @@ function drawTradeMarks(
     ctx.stroke()
     ctx.setLineDash([])
     ctx.globalAlpha = 1
-  }
+  })
 
   const half = 5
   const tall = 7

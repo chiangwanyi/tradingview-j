@@ -35,6 +35,7 @@ const (
 	ReqDelTemplate   = "delete_template"
 	ReqOrderPlace    = "order_place"
 	ReqOrderMarket   = "order_market"
+	ReqOrderModify   = "order_modify" // 改挂单价：画布上拖动挂单线走这条
 	ReqOrderCancel   = "order_cancel"
 	ReqBotStart      = "bot_start"
 	ReqBotStop       = "bot_stop"
@@ -78,7 +79,7 @@ type Request struct {
 	Price    float64 `json:"price"`
 	Quantity float64 `json:"quantity"`
 
-	// order_cancel
+	// order_cancel / order_modify
 	OrderID string `json:"orderId"`
 
 	// bot_start
@@ -109,6 +110,7 @@ const (
 	ActAnnotationDelete = "annotation_deleted"
 	ActOrderPlaced      = "order_placed"
 	ActOrderFilled      = "order_filled"
+	ActOrderMoved       = "order_moved" // 改挂单价
 	ActOrderCancelled   = "order_cancelled"
 	ActControlChanged   = "control_changed"
 	ActMembersChanged   = "members_changed"
@@ -435,6 +437,15 @@ type AnnotationDeletedPayload struct {
 }
 
 type OrdersPayload struct {
+	Orders []Order `json:"orders"`
+}
+
+// OrderMovedPayload 是改挂单价的广播负载。
+//
+// 比 OrdersPayload 多带一个 Order：操作记录里要写清「改的是哪一张、改成了多少」，
+// 只给全量列表的话，前端只能靠猜（列表里没有「刚改的那张」的标记）。
+type OrderMovedPayload struct {
+	Order  Order   `json:"order"`
 	Orders []Order `json:"orders"`
 }
 

@@ -199,6 +199,8 @@ func (h *Hub) Handle(c *Client, raw []byte) {
 		h.handleOrderMarket(c, req)
 	case ReqOrderCancel:
 		h.handleOrderCancel(c, req)
+	case ReqOrderModify:
+		h.handleOrderModify(c, req)
 	case ReqBotStart:
 		h.handleBotStart(c, req)
 	case ReqBotStop:
@@ -463,6 +465,22 @@ func (h *Hub) handleOrderCancel(c *Client, req Request) {
 	}
 }
 
+// handleOrderModify 处理「拖动挂单线改价」。
+//
+// 和撤单一样要操作权：改价会改变这张单接下来会不会成交，属于交易动作。
+func (h *Hub) handleOrderModify(c *Client, req Request) {
+	inst, ok := h.instanceLocked(c, req)
+	if !ok {
+		return
+	}
+	if !h.requireOperatorLocked(c, req, inst) {
+		return
+	}
+	if _, err := h.doMoveOrderLocked(inst, c.Name, req.OrderID, req.Price); err != nil {
+		h.fail(c, req, err.Error())
+	}
+}
+
 // ---------------- 操作实现（真人 / 机器人共用） ----------------
 
 func (h *Hub) doStepLocked(inst *Instance, by string) error {
@@ -538,6 +556,17 @@ func (h *Hub) doMarketOrderLocked(inst *Instance, by, side string, qty float64) 
 		UnrealizedPnl: inst.unrealizedPnl(),
 	}, by)
 	return o, tr, nil
+}
+
+// doMoveOrderLocked 改价并广播。列表每次都发全量（挂单本来就只有几张），
+// 顺带把改完的那一张单独发出去 —— 操作记录靠它写清「改的是哪张、改成了多少」。
+func (h *Hub) doMoveOrderLocked(inst *Instance, by, id string, price float64) (Order, error) {
+	o, err := inst.moveOrder(id, price)
+	if err != nil {
+		return Order{}, err
+	}
+	h.broadcastInstanceLocked(inst, ActOrderMoved, OrderMovedPayload{Order: o, Orders: copies(inst.Orders)}, by)
+	return o, nil
 }
 
 func (h *Hub) doCancelOrderLocked(inst *Instance, by, id string) error {

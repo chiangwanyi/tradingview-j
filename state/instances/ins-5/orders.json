@@ -16,9 +16,9 @@
     "id": "o2",
     "side": "sell",
     "kind": "limit",
-    "price": 30894.25,
+    "price": 30913,
     "quantity": 1,
-    "status": "open",
+    "status": "cancelled",
     "placedAt": "2026-06-22 06:45",
     "placedIndex": 573,
     "filledIndex": -1
@@ -61,5 +61,31 @@
     "filledAt": "2026-06-22 07:20",
     "filledIndex": 580,
     "fillPrice": 30748
+  },
+  {
+    "id": "o6",
+    "side": "sell",
+    "kind": "market",
+    "price": 30748,
+    "quantity": 1,
+    "status": "filled",
+    "placedAt": "2026-06-22 07:20",
+    "placedIndex": 580,
+    "filledAt": "2026-06-22 07:20",
+    "filledIndex": 580,
+    "fillPrice": 30748
+  },
+  {
+    "id": "o7",
+    "side": "buy",
+    "kind": "limit",
+    "price": 30686,
+    "quantity": 1,
+    "status": "filled",
+    "placedAt": "2026-06-22 07:30",
+    "placedIndex": 582,
+    "filledAt": "2026-06-22 07:35",
+    "filledIndex": 583,
+    "fillPrice": 30686
   }
 ]

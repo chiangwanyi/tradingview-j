@@ -399,3 +399,59 @@ func TestStopBuyBelowMarketFillsAtOpen(t *testing.T) {
 		t.Fatalf("止损买挂在现价下方应当按开盘价 100 成交（等于市价买），实际 %v", fills[0].Price)
 	}
 }
+
+// TestMoveOrderChangesPriceOnly 钉住「拖挂单线 = 只改价」。
+//
+// 单型、数量、编号都不能动：拖过现价就自动换单型，会让订单在用户手里悄悄变性质
+// （止损单变限价单），而他以为自己只是挪了条线。
+func TestMoveOrderChangesPriceOnly(t *testing.T) {
+	inst := newTradingInstance()
+	o, err := inst.placeOrder("human", "buy", KindLimit, 97.5, 2)
+	if err != nil {
+		t.Fatalf("挂单失败：%v", err)
+	}
+	got, err := inst.moveOrder(o.ID, 96.25)
+	if err != nil {
+		t.Fatalf("改价失败：%v", err)
+	}
+	if got.Price != 96.25 {
+		t.Fatalf("价格应当改成 96.25，实际 %v", got.Price)
+	}
+	if got.Kind != KindLimit || got.Quantity != 2 || got.ID != o.ID {
+		t.Fatalf("改价不该动单型/数量/编号：%+v", got)
+	}
+	if got.Status != OrderOpen || got.PlacedIndex != 0 || got.PlacedAt != "2026-01-05 09:00" {
+		t.Fatalf("改价不改下单时间与状态：%+v", got)
+	}
+
+	// 改成 96.25 之后按新价参与撮合：09:05 最低 98 不成交，09:10 最低 97 也不成交
+	if _, fills, _ := inst.advance(emptyDS()); len(fills) != 0 {
+		t.Fatalf("09:05 最低 98 不该成交：%v", fills)
+	}
+	if _, fills, _ := inst.advance(emptyDS()); len(fills) != 0 {
+		t.Fatalf("09:10 最低 97 不该成交 96.25 的买单：%v", fills)
+	}
+}
+
+// TestMoveOrderRejectsClosedAndBadPrice 兜住两条边界：已成交的单不能改价，
+// 价格必须是大于 0 的有限数字（前端理论上会做好，但协议不能只信前端）。
+func TestMoveOrderRejectsClosedAndBadPrice(t *testing.T) {
+	inst := newTradingInstance()
+	o, _ := inst.placeOrder("human", "buy", KindLimit, 99, 1)
+	if _, err := inst.cancelOrder(o.ID); err != nil {
+		t.Fatalf("撤单失败：%v", err)
+	}
+	if _, err := inst.moveOrder(o.ID, 98); err == nil {
+		t.Fatal("已撤销的单不该能改价")
+	}
+	if _, err := inst.moveOrder("o999", 98); err == nil {
+		t.Fatal("不存在的单应当报错")
+	}
+
+	o2, _ := inst.placeOrder("human", "buy", KindLimit, 99, 1)
+	for _, bad := range []float64{0, -1, math.NaN(), math.Inf(1)} {
+		if _, err := inst.moveOrder(o2.ID, bad); err == nil {
+			t.Fatalf("价格 %v 应当被拒", bad)
+		}
+	}
+}

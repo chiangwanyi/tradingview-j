@@ -3,11 +3,12 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 
 import { buildFigure, resolveStyle, type Figure, type FigureView } from '@/components/chart/annotations'
 import { orderKindFor, orderKindLabel } from '@/components/chart/orders'
-import { drawChart, themeOf, type HoverState } from '@/components/chart/render'
-import { ChartScale, TIME_AXIS_HEIGHT, formatAxisTime, formatPrice, snapToTick } from '@/components/chart/scale'
-import { closedTrades } from '@/components/chart/trades'
+import { ORDER_RESERVE_RIGHT, drawChart, themeOf, type HoverState } from '@/components/chart/render'
+import { ChartScale, TIME_AXIS_HEIGHT, clamp, formatAxisTime, formatPrice, snapToTick } from '@/components/chart/scale'
+import { closedTrades, type ClosedTrade } from '@/components/chart/trades'
+import TradeTipCard from '@/components/TradeTipCard.vue'
 import { TOOL_LABEL, isDrawTool, useReplayStore, type DrawTool } from '@/stores/replay'
-import type { Bar, OrderKind, Point, Side } from '@/types/protocol'
+import type { Bar, Order, OrderKind, Point, Side } from '@/types/protocol'
 
 /**
  * 画布 = Canvas（K 线/指标/挂单价线/十字光标）+ SVG（标注图形）。
@@ -86,6 +87,42 @@ const moving = ref<MovingShape | null>(null)
 /** 上一次拖动是否真的移动过：拖完松手会补一个 click，别让它把选中状态点没了 */
 let lastDragMoved = false
 
+/**
+ * 拖动中的挂单：这一份只在本机显示，松手才发给后端。
+ *
+ * 为什么不在拖动过程中就发：鼠标每移动 1px 就是一条 WS 消息，后端会广播回来，
+ * 多人演示时其他人看到的挂单线会一路抖。拖动期间本机按这个价格画，松手一次定稿。
+ */
+const orderDrag = ref<{ id: string; price: number } | null>(null)
+/** 指针停在挂单线上：换光标、把那条线画粗（挂单是 Canvas 画的，得自己拾取） */
+const hoverOrderId = ref<string | null>(null)
+
+/**
+ * 平仓虚线的悬停信息卡。
+ *
+ * 三种状态，缺一不可：
+ *   - `tip`：跟随鼠标，鼠标一离开这条线就销毁（指针离开画布同理）；
+ *   - `pinned`：鼠标 3 秒没动就把它钉在画布上 —— 这时可以拖动、可以点 × 关掉；
+ *   - 都没有：什么都不显示。
+ *
+ * `x/y` 在 `tip` 里是**鼠标位置**（渲染时算偏移），在 `pinned` 里是**卡片左上角**（拖动直接改它）。
+ */
+interface TradeTip {
+  index: number
+  trade: ClosedTrade
+  x: number
+  y: number
+}
+
+const tip = ref<TradeTip | null>(null)
+const pinned = ref<TradeTip | null>(null)
+/** 钉住的等待时间：鼠标不动满这么久才固定 */
+const PIN_DELAY = 3000
+let pinTimer = 0
+/** 卡片尺寸（用来做边缘翻转与拖动边界，和 TradeTipCard 的实际大小是同一档） */
+const TIP_W = 196
+const TIP_H = 132
+
 const drawMode = computed(() => isDrawTool(store.tool))
 const modifyMode = computed(() => store.tool === 'modify')
 
@@ -131,15 +168,32 @@ function draw(): void {
     theme: theme.value,
     hover: hover.value,
     symbol: inst?.symbol ?? '',
-    orders: inst?.orders ?? [],
+    orders: effectiveOrders(),
     trades,
-    closed: closedTrades(trades),
+    closed: closed.value,
     position: inst?.position ?? { quantity: 0, side: 'flat', averagePrice: 0 },
     unrealizedPnl: inst?.unrealizedPnl ?? 0,
     showEma: store.showEma,
     tick: store.tick,
+    activeOrderId: activeOrderId.value,
+    activeClosed: activeClosed.value,
   })
 }
+
+/** 画布上的挂单：拖动中的那一张换成**本机价格**，其余原样 */
+function effectiveOrders(): Order[] {
+  const inst = store.instance
+  if (!inst) return []
+  const d = orderDrag.value
+  return d ? inst.orders.map((o) => (o.id === d.id ? { ...o, price: d.price } : o)) : inst.orders
+}
+
+/** 已配好对的「开仓 → 平仓」，画线、命中、信息卡用的是同一份 */
+const closed = computed(() => closedTrades(store.instance?.trades ?? []))
+/** 加粗哪一条挂单：拖动优先于悬停（拖动时鼠标其实一直在线上） */
+const activeOrderId = computed(() => orderDrag.value?.id ?? hoverOrderId.value)
+/** 加粗哪一条平仓线：跟随卡优先，其次是钉住的卡 */
+const activeClosed = computed(() => tip.value?.index ?? pinned.value?.index ?? null)
 
 onMounted(() => {
   scale.setBars(store.bars)
@@ -163,8 +217,11 @@ onBeforeUnmount(() => {
   window.removeEventListener('keyup', onKeyUp)
   window.removeEventListener('pointermove', onWindowPointerMove)
   window.removeEventListener('pointerup', onWindowPointerUp)
+  window.removeEventListener('pointermove', onPinMove)
+  window.removeEventListener('pointerup', onPinUp)
   if (rafId) cancelAnimationFrame(rafId)
   if (toastTimer) window.clearTimeout(toastTimer)
+  if (pinTimer) window.clearTimeout(pinTimer)
 })
 
 // 实例换了：重置视图（否则会拿着上一个标的的缩放去画新标的）
@@ -176,6 +233,10 @@ watch(
     hover.value = null
     pending.value = null
     moving.value = null
+    orderDrag.value = null
+    hoverOrderId.value = null
+    clearTip()
+    pinned.value = null
     requestDraw()
   },
 )
@@ -275,7 +336,7 @@ function figureView(): FigureView {
 // ---------------- 指针交互 ----------------
 
 interface DragState {
-  mode: 'none' | 'pan' | 'move'
+  mode: 'none' | 'pan' | 'move' | 'order'
   startX: number
   startY: number
   lastX: number
@@ -328,6 +389,8 @@ function localPoint(ev: { clientX: number; clientY: number }): { x: number; y: n
 
 function onPointerDown(ev: PointerEvent): void {
   menu.value = null
+  // 按下 = 要开始拖东西了：跟随卡先收掉（否则它会留在原地，看着像没跟上手）
+  clearTip()
   if (!store.instance) return
   const p = localPoint(ev)
   if (!p) return
@@ -344,6 +407,32 @@ function onPointerDown(ev: PointerEvent): void {
   // 绘图工具：两次单击。第 1 次定起点，第 2 次定终点。
   if (drawMode.value) {
     clickToDraw(p, ev)
+    return
+  }
+
+  // 指针 / 修改模式：先看有没有按在**挂单线**上（画在 Canvas 上，没有 DOM 命中测试）。
+  // 挂单在网格、K 线之上，视觉上就是可以抓的东西，所以优先于平移。
+  const hitOrder = orderAt(p.x, p.y)
+  if (hitOrder) {
+    if (!store.canOperate) {
+      showToast('现在只能看：先「接管」操作权再改挂单')
+      return
+    }
+    const target = store.instance?.orders.find((o) => o.id === hitOrder)
+    if (!target) return
+    drag = {
+      ...emptyDrag(),
+      mode: 'order',
+      startX: p.x,
+      startY: p.y,
+      lastX: p.x,
+      lastY: p.y,
+      moveId: target.id,
+      basePrice: target.price,
+      downPrice: scale.priceAtY(p.y),
+    }
+    orderDrag.value = { id: target.id, price: target.price }
+    beginPointerCapture()
     return
   }
 
@@ -424,6 +513,15 @@ function onWindowPointerMove(ev: PointerEvent): void {
     return
   }
 
+  if (drag.mode === 'order') {
+    // 拖动改价：价格吸附到 tick（和十字光标、右键菜单同一把尺子），
+    // 所以拖到哪儿都是这个标的上真实存在的报价
+    if (Math.abs(p.y - drag.startY) > 1) drag.moved = true
+    orderDrag.value = { id: drag.moveId, price: snapToTick(scale.priceAtY(p.y), store.tick) }
+    requestDraw()
+    return
+  }
+
   if (drag.mode === 'move' && moving.value) {
     drag.snap = ev.ctrlKey
     const bars = scale.bars
@@ -453,7 +551,16 @@ function onWindowPointerMove(ev: PointerEvent): void {
 }
 
 function onWindowPointerUp(): void {
-  if (drag.mode === 'move' && moving.value && drag.moved) {
+  if (drag.mode === 'order') {
+    const moved = orderDrag.value
+    // 只在真的换了价格时才发：点一下（没拖）等于什么都没发生，
+    // 否则操作记录里会多出一条「改价 6484.00 → 6484.00」的噪音
+    if (moved && drag.moved && Math.abs(moved.price - drag.basePrice) > 1e-9) {
+      lastDragMoved = true
+      store.moveOrder(moved.id, moved.price)
+    }
+    orderDrag.value = null
+  } else if (drag.mode === 'move' && moving.value && drag.moved) {
     lastDragMoved = true
     const m = moving.value
     store.moveAnnotation(m.id, { time: m.start.time, price: round(m.start.price) }, { time: m.end.time, price: round(m.end.price) }, drag.snap)
@@ -490,13 +597,23 @@ function onPointerMove(ev: PointerEvent): void {
 
   const idx = scale.nearestIndex(p.x)
   hover.value = { index: idx, x: p.x, y: p.y, inside: true }
+
+  // 挂单线：换光标 + 画粗（拖拽改价的入口）
+  hoverOrderId.value = orderAt(p.x, p.y)
+  // 平仓虚线：悬停出信息卡（绘图工具下不抢：那条线会挡住「找终点」）
+  if (drawMode.value) clearTip()
+  else updateTradeTip(p.x, p.y)
+
   requestDraw()
 }
 
 function onPointerLeave(): void {
   hover.value = null
+  hoverOrderId.value = null
   ctrlDown.value = false
   shiftDown.value = false
+  // 鼠标移出画布 = 离开那条线：跟随卡销毁（钉住的卡是用户自己固定下来的，留着）
+  clearTip()
   requestDraw()
 }
 
@@ -507,11 +624,15 @@ function onWheel(ev: WheelEvent): void {
   const p = localPoint(ev)
   if (!p) return
   const factor = ev.deltaY > 0 ? 1 / 1.12 : 1.12
-  if (ev.shiftKey) {
-    scale.zoomPrice(factor, p.y)
-  } else {
-    scale.zoomTime(factor, p.x)
-  }
+  // 右侧价格轴 = 价格区的旋钮：指针在那儿滚轮就缩价格，在行情区滚轮就缩时间。
+  // （以前是 Shift+滚轮缩价格 —— 但「在价格轴上一滚就能缩」是看图时的本能，
+  //   而且不用先找准 Shift。Shift 现在在画布上不再有缩放含义。）
+  //
+  // 注意价格轴的系数要取倒数：`zoomTime` 的 factor 是乘在 **barWidth** 上（大 = 放大），
+  // 而 `zoomPrice` 的 factor 是乘在 **离锚点的距离** 上（大 = 缩小）。同一个滚轮方向
+  // 两边必须给出相反的系数，否则「往上滚」在时间轴是放大、在价格轴却成了缩小。
+  if (p.x >= scale.layout.plot.right) scale.zoomPrice(1 / factor, p.y)
+  else scale.zoomTime(factor, p.x)
   requestDraw()
 }
 
@@ -520,6 +641,234 @@ function onDoubleClick(): void {
   if (drawMode.value) return
   scale.resetPrice()
   requestDraw()
+}
+
+// ---------------- 画布上的拾取：挂单线 / 平仓虚线 ----------------
+
+/** 挂单线的命中容差：线只有 1px，光标得有点容错，但不能大到「隔着两条线也能抓」 */
+const ORDER_HIT_PX = 6
+/**
+ * 平仓虚线的命中容差。
+ *
+ * 6px 是折中量出来的：3px 以下时，1.2px 的虚线得瞄准着放才碰得到；10px 以上时，
+ * 鼠标只是从线旁边经过就会弹出卡片挡住 K 线，而且两条线挨得近时分不清指的是哪条。
+ */
+const TRADE_HIT_PX = 6
+
+/**
+ * 指针下面的挂单 id（只认还挂着的、画在可见区里的）。
+ *
+ * 挂单是 Canvas 画的，没有 DOM 元素可点，命中测试只能自己算：把价格换成 y 坐标取最近的一条。
+ * 多条挨在一起时取**最近**的，不是数组里最后一条 —— 否则两张价格几乎相同的单里，
+ * 永远只能抓到后面挂的那张。
+ */
+function orderAt(x: number, y: number): string | null {
+  const plot = scale.layout.plot
+  if (x < plot.left || x > plot.right || y < plot.top || y > plot.bottom) return null
+  let bestId: string | null = null
+  let bestDist = ORDER_HIT_PX + 1
+  for (const o of effectiveOrders()) {
+    if (o.status !== 'open') continue
+    const oy = scale.yOf(o.price)
+    if (oy < plot.top || oy > plot.bottom) continue
+    const d = Math.abs(oy - y)
+    if (d < bestDist) {
+      bestId = o.id
+      bestDist = d
+    }
+  }
+  return bestId
+}
+
+/** 指针下面的平仓虚线（取最近的一条） */
+function closedAt(x: number, y: number): TradeTip | null {
+  const plot = scale.layout.plot
+  if (x < plot.left || x > plot.right || y < plot.top || y > plot.bottom) return null
+  const list = closed.value
+  let best: { index: number; trade: ClosedTrade; d: number } | null = null
+  for (let i = 0; i < list.length; i += 1) {
+    const c = list[i]
+    const i1 = scale.indexOfTime(c.openTime)
+    const i2 = scale.indexOfTime(c.closeTime)
+    if (i1 === undefined || i2 === undefined) continue
+    const d = distanceToSegment(
+      x,
+      y,
+      scale.xOf(i1),
+      scale.yOf(c.openPrice),
+      scale.xOf(i2),
+      scale.yOf(c.closePrice),
+    )
+    if (d <= TRADE_HIT_PX && (!best || d < best.d)) best = { index: i, trade: c, d }
+  }
+  return best ? { index: best.index, trade: best.trade, x, y } : null
+}
+
+/** 点到线段的距离：判断「悬浮在平仓线上」的全部几何都在这里 */
+function distanceToSegment(
+  px: number,
+  py: number,
+  x1: number,
+  y1: number,
+  x2: number,
+  y2: number,
+): number {
+  const dx = x2 - x1
+  const dy = y2 - y1
+  const len2 = dx * dx + dy * dy
+  if (len2 <= 1e-9) return Math.hypot(px - x1, py - y1)
+  // 投影参数夹到 [0,1]：落在线段外时，距离算到最近的那个端点（不会有无限延伸的命中区）
+  const t = clamp(((px - x1) * dx + (py - y1) * dy) / len2, 0, 1)
+  return Math.hypot(px - (x1 + t * dx), py - (y1 + t * dy))
+}
+
+// ---------------- 平仓线的信息卡 ----------------
+
+/**
+ * 鼠标每动一次就更新跟随卡并**重新计时**：
+ * 「3 秒没动」是从最后一次移动算起的，不是从第一次悬浮算起的。
+ */
+function updateTradeTip(x: number, y: number): void {
+  // 已经钉住时不再出跟随卡：否则屏幕上同时两张卡说同一件事
+  if (pinned.value) return
+  const hit = closedAt(x, y)
+  if (!hit) {
+    clearTip()
+    return
+  }
+  tip.value = hit
+  armPinTimer()
+}
+
+/** 销毁跟随卡（鼠标移出那条线、移出画布、开始拖东西时都走它） */
+function clearTip(): void {
+  if (pinTimer) {
+    window.clearTimeout(pinTimer)
+    pinTimer = 0
+  }
+  tip.value = null
+}
+
+function armPinTimer(): void {
+  if (pinTimer) window.clearTimeout(pinTimer)
+  pinTimer = window.setTimeout(() => {
+    pinTimer = 0
+    const t = tip.value
+    if (!t) return
+    // 固定在它**此刻所在的位置**（而不是鼠标位置）：否则卡片会从右下角突然跳到左上角
+    const box = tipBox.value
+    pinned.value = { ...t, x: box.left, y: box.top }
+    tip.value = null
+    requestDraw()
+  }, PIN_DELAY)
+}
+
+/** 跟随卡的左上角：默认在鼠标右下方 16px，贴近边缘时翻到另一侧，并夹在画布内 */
+const tipBox = computed(() => {
+  const t = tip.value
+  if (!t) return { left: 0, top: 0 }
+  let left = t.x + 16
+  let top = t.y + 16
+  if (left + TIP_W > size.value.width - 8) left = t.x - TIP_W - 16
+  if (top + TIP_H > size.value.height - 8) top = t.y - TIP_H - 16
+  return {
+    left: clamp(left, 8, Math.max(8, size.value.width - TIP_W - 8)),
+    top: clamp(top, 8, Math.max(8, size.value.height - TIP_H - 8)),
+  }
+})
+
+const tipStyle = computed(() => ({
+  left: `${tipBox.value.left}px`,
+  top: `${tipBox.value.top}px`,
+  width: `${TIP_W}px`,
+}))
+
+const pinnedStyle = computed(() => {
+  const p = pinned.value
+  if (!p) return {}
+  return { left: `${p.x}px`, top: `${p.y}px`, width: `${TIP_W}px` }
+})
+
+/** 钉住之后拖着走：按下卡片（× 除外）就在画布内平移它 */
+let pinDrag: { dx: number; dy: number } | null = null
+
+function beginPinDrag(ev: PointerEvent): void {
+  const p = pinned.value
+  if (!p) return
+  // 卡片长在画布里：不 stop 的话按下会冒到画布的 pointerdown，顺手把整个视图也拖了
+  ev.stopPropagation()
+  ev.preventDefault()
+  const pt = localPoint(ev)
+  if (!pt) return
+  pinDrag = { dx: pt.x - p.x, dy: pt.y - p.y }
+  window.addEventListener('pointermove', onPinMove)
+  window.addEventListener('pointerup', onPinUp)
+}
+
+function onPinMove(ev: PointerEvent): void {
+  const p = pinned.value
+  const pt = localPoint(ev)
+  if (!pinDrag || !p || !pt) return
+  pinned.value = {
+    ...p,
+    x: clamp(pt.x - pinDrag.dx, 4, Math.max(4, size.value.width - TIP_W - 4)),
+    y: clamp(pt.y - pinDrag.dy, 4, Math.max(4, size.value.height - TIP_H - 4)),
+  }
+}
+
+function onPinUp(): void {
+  pinDrag = null
+  window.removeEventListener('pointermove', onPinMove)
+  window.removeEventListener('pointerup', onPinUp)
+}
+
+function closePinned(): void {
+  pinned.value = null
+  requestDraw()
+}
+
+// ---------------- 挂单的「×」按钮（HTML 叠在画布上） ----------------
+
+interface AxisOrder {
+  id: string
+  side: Side
+  left: number
+  top: number
+  title: string
+}
+
+/**
+ * 每张挂单右侧的撤单按钮位置。
+ *
+ * 为什么用 HTML 而不是画在 Canvas 上：按钮需要 hover 反馈、title 提示、禁用态，
+ * 这些 Canvas 全要手写；HTML 一个 button 就都有了。位置仍然由 `ChartScale` 算，
+ * 和画布上那条线严格对齐（同一个 yOf）。
+ */
+const axisOrders = computed<AxisOrder[]>(() => {
+  void viewTick.value
+  const plot = scale.layout.plot
+  const out: AxisOrder[] = []
+  for (const o of effectiveOrders()) {
+    if (o.status !== 'open') continue
+    const y = scale.yOf(o.price)
+    if (y < plot.top || y > plot.bottom) continue
+    out.push({
+      id: o.id,
+      side: o.side,
+      left: plot.right - ORDER_RESERVE_RIGHT + 4,
+      top: y - 8,
+      title: `撤单：${o.side === 'buy' ? '买' : '卖'} ${o.quantity} 手 @ ${formatPrice(o.price, store.priceDecimals)}`,
+    })
+  }
+  return out
+})
+
+function cancelFromCanvas(id: string): void {
+  if (!store.canOperate) {
+    showToast('现在只能看：先「接管」操作权再撤单')
+    return
+  }
+  store.cancelOrder(id)
 }
 
 // ---------------- 提交 ----------------
@@ -748,6 +1097,9 @@ function onKeyDown(ev: KeyboardEvent): void {
     endPointerCapture()
     store.selectedAnnotation = null
     menu.value = null
+    // 钉住的信息卡也一起收掉：Esc 在这个画布上的含义是「退掉最上面那一层」
+    pinned.value = null
+    clearTip()
     requestDraw()
     return
   }
@@ -816,9 +1168,23 @@ const hint = computed(() => {
       : `${name}：单击定起点${extra} · 滚轮缩放 · 中键拖动平移`
   }
   if (modifyMode.value) {
-    return '单击选中 · 拖端点改端点 · 拖线身整体移动 · Del 删除 · 空白处拖动平移'
+    return '单击选中 · 拖端点改端点 · 拖线身整体移动 · Del 删除 · 空白处拖动平移 · 拖挂单线改价'
   }
-  return '滚轮缩放 · Shift+滚轮缩放价格 · 拖动平移 · 双击重置价格 · 右键挂单/复制价格'
+  return '滚轮缩放 · 右轴滚轮缩价格 · 拖动平移 · 拖挂单线改价 · 双击重置价格 · 右键挂单'
+})
+
+/**
+ * 画布光标：把「这里能做什么」写在指针上。
+ *
+ * 挂单线可以上下拖（ns-resize）、平仓虚线有信息卡（help）—— 这两种都是画在 Canvas 上的，
+ * 没有 DOM 能自动给出 cursor，只能按命中结果自己切。
+ */
+const cursorStyle = computed(() => {
+  if (drawMode.value) return 'crosshair'
+  if (orderDrag.value) return 'grabbing'
+  if (hoverOrderId.value) return 'ns-resize'
+  if (tip.value) return 'help'
+  return 'default'
 })
 
 /** 按住 Ctrl / Shift 时给一句提示，省得用户不知道有这么个东西 */
@@ -848,7 +1214,7 @@ defineExpose({ requestDraw })
   <div
     ref="host"
     class="relative h-full w-full select-none overflow-hidden"
-    :style="{ cursor: drawMode ? 'crosshair' : 'default' }"
+    :style="{ cursor: cursorStyle }"
     @wheel="onWheel"
     @pointerdown="onPointerDown"
     @pointermove="onPointerMove"
@@ -1006,6 +1372,51 @@ defineExpose({ requestDraw })
         />
       </g>
     </svg>
+
+    <!--
+      每张挂单一个「×」：位置由 ChartScale 算（和画布上那条线同一个 yOf），
+      横向让在挂单标签的右边 —— 标签绘制时已经用 ORDER_RESERVE_RIGHT 让出了这块地方。
+      pointerdown.stop 是必须的：不拦住就会冒到画布的 pointerdown，顺手把视图也拖一下。
+      没有操作权时保留按钮但禁用（灰掉）：直接藏起来会让人以为「这些单撤不了」。
+    -->
+    <button
+      v-for="o in axisOrders"
+      :key="`cancel-${o.id}`"
+      type="button"
+      class="absolute z-20 flex h-4 w-4 items-center justify-center rounded-[3px] text-[12px] leading-none ring-1 transition disabled:cursor-not-allowed disabled:opacity-30"
+      :class="
+        o.side === 'buy'
+          ? 'bg-panel text-emerald-700 ring-emerald-500/60 hover:bg-emerald-600 hover:text-white dark:text-emerald-300'
+          : 'bg-panel text-red-700 ring-red-500/60 hover:bg-red-600 hover:text-white dark:text-red-300'
+      "
+      :style="{ left: `${o.left}px`, top: `${o.top}px` }"
+      :title="o.title"
+      :disabled="!store.canOperate"
+      @pointerdown.stop
+      @click.stop="cancelFromCanvas(o.id)"
+      @contextmenu.stop.prevent
+    >
+      ×
+    </button>
+
+    <!--
+      平仓线的跟随卡：pointer-events-none 是硬要求 —— 卡片一旦能接指针，
+      鼠标「停在卡片上」就不再落在虚线上，「移出线就销毁」永远触发不了。
+    -->
+    <div v-if="tip" class="pointer-events-none absolute z-30" :style="tipStyle">
+      <TradeTipCard :trade="tip.trade" />
+    </div>
+
+    <!-- 3 秒没动就固定下来的那张：可以拖（整个卡是把手），右上角 × 关闭 -->
+    <div
+      v-if="pinned"
+      class="absolute z-30 cursor-move select-none"
+      :style="pinnedStyle"
+      @pointerdown="beginPinDrag"
+      @contextmenu.stop.prevent
+    >
+      <TradeTipCard :trade="pinned.trade" pinned @close="closePinned" />
+    </div>
 
     <!--
       提示文字放在时间轴**上方**（bottom = 时间轴高度 + 4px）。

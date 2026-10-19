@@ -294,6 +294,12 @@ export interface OrdersPayload {
   orders: Order[]
 }
 
+/** 改挂单价：多带一个「改完的那张」，操作记录里才能写清改的是谁、改成了多少 */
+export interface OrderMovedPayload {
+  order: Order
+  orders: Order[]
+}
+
 /** 市价单成交：订单、成交、持仓、盈亏一次给全，前端不用再要快照 */
 export interface OrderFilledPayload {
   order: Order
@@ -333,6 +339,7 @@ export const ACTION = {
   annotationDeleted: 'annotation_deleted',
   orderPlaced: 'order_placed',
   orderFilled: 'order_filled',
+  orderMoved: 'order_moved',
   orderCancelled: 'order_cancelled',
   controlChanged: 'control_changed',
   membersChanged: 'members_changed',

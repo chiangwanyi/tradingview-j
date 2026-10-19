@@ -435,3 +435,51 @@ func TestStepRequestReturnsAdjacentNextBar(t *testing.T) {
 		}
 	}
 }
+
+// 拖动挂单线走的是 order_modify：广播里必须带「改完的那一张」和全量列表 ——
+// 前者给操作记录写清改的是谁、改成了多少，后者让所有人（含观众）看到同一个盘面。
+func TestMoveOrderOverProtocol(t *testing.T) {
+	hub, _ := newTestHub(t, 5)
+	a := newFakeClient(t, hub)
+	a.waitFor(MsgWelcome)
+	id := createInstance(t, hub, a, "2026-01-06 10:00")
+
+	a.send(hub, map[string]any{
+		"type":       "order_place",
+		"instanceId": id,
+		"side":       "buy",
+		"kind":       KindLimit,
+		"price":      99.0,
+		"quantity":   2,
+	})
+	placed := a.waitAction(ActOrderPlaced)
+	orders := placed["payload"].(map[string]any)["orders"].([]any)
+	orderID, _ := orders[0].(map[string]any)["id"].(string)
+	if orderID == "" {
+		t.Fatalf("挂单广播里没有订单 id：%v", placed)
+	}
+
+	a.send(hub, map[string]any{
+		"type":       "order_modify",
+		"instanceId": id,
+		"orderId":    orderID,
+		"price":      97.5,
+	})
+	ev := a.waitAction(ActOrderMoved)
+	p := ev["payload"].(map[string]any)
+
+	o, ok := p["order"].(map[string]any)
+	if !ok {
+		t.Fatalf("改价广播里应当带改完的那张单：%v", p)
+	}
+	if o["id"] != orderID || o["price"].(float64) != 97.5 {
+		t.Fatalf("改完的单应当是 %s @ 97.5，实际 %v @ %v", orderID, o["id"], o["price"])
+	}
+	if o["kind"] != KindLimit || o["quantity"].(float64) != 2 || o["status"] != OrderOpen {
+		t.Fatalf("改价不该动单型/数量/状态：%v", o)
+	}
+	list := p["orders"].([]any)
+	if len(list) != 1 || list[0].(map[string]any)["price"].(float64) != 97.5 {
+		t.Fatalf("全量列表里也应当是 97.5：%v", list)
+	}
+}

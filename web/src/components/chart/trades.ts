@@ -97,3 +97,43 @@ export function closedTrades(trades: Trade[]): ClosedTrade[] {
 
   return out
 }
+
+/**
+ * 一条平仓线的唯一键（只用于「悬停时高亮哪一条」）。
+ *
+ * 用下标不行：`closedTrades` 每次成交后都会重算，同一个下标可能换成另一笔交易；
+ * 用这一个字符串就能在重算前后对上同一笔（同一时间 + 同一价格 + 同一数量）。
+ */
+export function closedKey(c: ClosedTrade): string {
+  return `${c.openTime}|${c.openPrice}|${c.closeTime}|${c.closePrice}|${c.quantity}`
+}
+
+/**
+ * 持仓时长：平仓时间 - 开仓时间，格式固定「x小时x分钟」。
+ *
+ * 时间字符串是 CSV 里的原始文本 `yyyy-MM-dd HH:MM`（本地时区）。这里按**日历**解析
+ * （年/月/日/时/分逐段喂给 Date），不走 `Date.parse("2026-10-16 09:35")` ——
+ * 带空格的这种格式在部分浏览器里会被当成 UTC，甚至直接 NaN。
+ *
+ * 不足 1 分钟按 0 分钟算（四舍五入到整分）；超过一天也只报小时（`30小时20分钟`），
+ * 不做「1天6小时」的换算 —— 复盘横跨几天时，小时数最直观。
+ */
+export function durationText(from: string, to: string): string {
+  const a = minuteOf(from)
+  const b = minuteOf(to)
+  if (a === undefined || b === undefined) return '—'
+  const minutes = Math.max(0, Math.round(b - a))
+  return `${Math.floor(minutes / 60)}小时${minutes % 60}分钟`
+}
+
+function minuteOf(s: string): number | undefined {
+  if (s.length < 16) return undefined
+  const y = Number(s.slice(0, 4))
+  const mo = Number(s.slice(5, 7))
+  const d = Number(s.slice(8, 10))
+  const hh = Number(s.slice(11, 13))
+  const mm = Number(s.slice(14, 16))
+  if (!(y > 1970) || !(mo >= 1 && mo <= 12) || !(d >= 1 && d <= 31)) return undefined
+  if (!(hh >= 0 && hh <= 23) || !(mm >= 0 && mm <= 59)) return undefined
+  return new Date(y, mo - 1, d, hh, mm).getTime() / 60000
+}

@@ -1,1 +1,60 @@
-[]
+[
+  {
+    "id": "a1",
+    "kind": "fib",
+    "start": {
+      "time": "2026-06-22 06:55",
+      "price": 30867
+    },
+    "end": {
+      "time": "2026-06-22 07:30",
+      "price": 30774.95
+    },
+    "style": {
+      "color": "#f59e0b",
+      "width": 1.2,
+      "dash": "solid",
+      "levels": [
+        {
+          "ratio": -1,
+          "color": "#38bdf8"
+        },
+        {
+          "ratio": 0,
+          "color": "#f59e0b"
+        },
+        {
+          "ratio": 1,
+          "color": "#ec4899"
+        },
+        {
+          "ratio": 2,
+          "color": "#22c55e"
+        }
+      ]
+    },
+    "snapped": false,
+    "createdBy": "human",
+    "createdAt": 1792424099
+  },
+  {
+    "id": "a2",
+    "kind": "trend",
+    "start": {
+      "time": "2026-06-22 06:20",
+      "price": 30887.83
+    },
+    "end": {
+      "time": "2026-06-22 07:30",
+      "price": 30878.33
+    },
+    "style": {
+      "color": "#f59e0b",
+      "width": 1.6,
+      "dash": "solid"
+    },
+    "snapped": false,
+    "createdBy": "human",
+    "createdAt": 1792424104
+  }
+]

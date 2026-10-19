@@ -260,6 +260,7 @@ export const useReplayStore = defineStore('replay', () => {
         break
       }
       case ACTION.orderPlaced:
+      case ACTION.orderMoved:
       case ACTION.orderCancelled: {
         const p = msg.payload as OrdersPayload
         inst.orders = p.orders
@@ -465,6 +466,17 @@ export const useReplayStore = defineStore('replay', () => {
     send({ type: 'order_cancel', instanceId: instance.value.id, orderId })
   }
 
+  /**
+   * 改挂单价（画布上拖动挂单线）。
+   *
+   * 只发改价：单型是下单那一刻按方向定的，拖过现价就让后端自动换单型，
+   * 会让订单在用户手里悄悄变性质 —— 他以为自己只是挪了条线。
+   */
+  function moveOrder(orderId: string, price: number): void {
+    if (!instance.value) return
+    send({ type: 'order_modify', instanceId: instance.value.id, orderId, price })
+  }
+
   function startBot(intervalMs = 1200): void {
     if (!instance.value) return
     send({ type: 'bot_start', instanceId: instance.value.id, intervalMs })
@@ -526,6 +538,7 @@ export const useReplayStore = defineStore('replay', () => {
     deleteAnnotation,
     placeOrder,
     marketOrder,
+    moveOrder,
     cancelOrder,
     startBot,
     stopBot,
