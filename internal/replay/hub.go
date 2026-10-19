@@ -123,6 +123,10 @@ func (h *Hub) Unregister(c *Client) {
 	}
 	h.leaveLocked(c, true)
 	delete(h.clients, c.ID)
+	// 名字只在「同时在线」时才要求唯一，人走了就还回池子。不还的话，一个人刷新
+	// 两百次页面（或者掉线重连两百次）会看到 human201，而列表里全是幽灵名字。
+	// 已经发生的广播里记的仍是当时的名字，回看照旧能读。
+	delete(h.usedNames, c.Name)
 	h.broadcastInstancesLocked()
 	h.log("[replay] %s 已断开，当前 %d 人", c.Name, len(h.clients))
 }

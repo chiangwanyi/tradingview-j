@@ -25,6 +25,30 @@ func createInstance(t *testing.T, hub *Hub, c *fakeClient, anchor string) string
 	return id
 }
 
+// 名字只在「同时在线」时唯一：人走了要还回池子。
+// 不还的话，掉线重连（或刷新页面）会让名字一路涨到 human201 —— 这不是计数错了，
+// 而是上面那条 90 秒心跳超时的副作用被放大后的样子。
+func TestDisconnectReleasesName(t *testing.T) {
+	hub, _ := newTestHub(t, 5)
+
+	a := newFakeClient(t, hub)
+	if w := a.waitFor(MsgWelcome); w["name"] != "human" {
+		t.Fatalf("第一个连接应当叫 human，实际 %v", w["name"])
+	}
+	hub.Unregister(a.conn)
+
+	b := newFakeClient(t, hub)
+	if w := b.waitFor(MsgWelcome); w["name"] != "human" {
+		t.Fatalf("上一个连接断开后名字应当可以再用，实际 %v", w["name"])
+	}
+
+	// 但同时在线时仍然必须唯一，否则广播里分不清是谁干的
+	c := newFakeClient(t, hub)
+	if w := c.waitFor(MsgWelcome); w["name"] != "human2" {
+		t.Fatalf("同时在线时第二个连接应当叫 human2，实际 %v", w["name"])
+	}
+}
+
 func TestCreateJoinAndOperator(t *testing.T) {
 	hub, _ := newTestHub(t, 5)
 

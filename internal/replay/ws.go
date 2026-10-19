@@ -41,9 +41,17 @@ const (
 
 const (
 	maxFramePayload = 4 << 20 // 4MB：一条快照几百根 K 线也就几十 KB，4MB 足够宽松
-	readIdleTimeout = 90 * time.Second
 	writeTimeout    = 5 * time.Second
-	pingInterval    = 25 * time.Second
+)
+
+// 心跳的两个旋钮。这里用 var 而不是 const，是为了让测试能把它们调到毫秒级
+// （真正的 90s 等不起，而这条链路的 bug 全都只在「长时间空闲」时暴露）。
+var (
+	// pingInterval：多久主动发一次 ping。浏览器不会自己发 ping，只会回 pong，
+	// 所以它是「让连接看起来还活着」的活性信号。
+	pingInterval = 25 * time.Second
+	// readIdleTimeout：这么久**一帧都没收到**就认定对端没了。
+	readIdleTimeout = 90 * time.Second
 )
 
 var errWSClosed = errors.New("replay: 连接已关闭")
@@ -158,6 +166,16 @@ func (c *wsConn) ReadMessage() (byte, []byte, error) {
 }
 
 func (c *wsConn) readFrame() (bool, byte, []byte, error) {
+	// 读超时**每帧**续一次，而不是在外面按「一轮 ReadMessage」续。
+	//
+	// 原因：ping/pong 是在 ReadMessage 内部就被消费掉的（见上面的 case opPing/opPong），
+	// 一条纯空闲的连接（浏览器只回 pong、不发业务消息）根本走不完那一轮，
+	// 于是从进入这一轮开始算，readIdleTimeout 一到必定超时断开 —— 前端自动重连，
+	// 日志里就是「已连接 -> 90 秒后已断开 -> 1 秒后已连接」无限循环，
+	// 而且每次重连都白拿一个新名字（human2、human3……）。
+	if readIdleTimeout > 0 {
+		_ = c.conn.SetReadDeadline(time.Now().Add(readIdleTimeout))
+	}
 	var hdr [2]byte
 	if _, err := io.ReadFull(c.br, hdr[:]); err != nil {
 		if errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) {
@@ -290,9 +308,14 @@ func (h *Hub) Serve(conn *wsConn) {
 	}()
 
 	for {
-		_ = conn.conn.SetReadDeadline(time.Now().Add(readIdleTimeout))
 		op, payload, err := conn.ReadMessage()
 		if err != nil {
+			// 超时只可能是「什么都没收到」：连接静默死了（拔网线、休眠、对端崩溃）。
+			// 顺手把原因写进日志，否则用户只看到「已断开」，无从判断是不是又踩了心跳的坑。
+			var ne net.Error
+			if errors.As(err, &ne) && ne.Timeout() {
+				h.Logf("[replay] %s 心跳超时（%s 内没收到任何帧），断开", c.Name, readIdleTimeout)
+			}
 			return
 		}
 		if op == opText {

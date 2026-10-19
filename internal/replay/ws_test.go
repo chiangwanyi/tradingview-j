@@ -1,7 +1,11 @@
 package replay
 
 import (
+	"bufio"
+	"bytes"
 	"encoding/json"
+	"errors"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -92,6 +96,112 @@ func TestWebSocketEndToEnd(t *testing.T) {
 	payload := ev["payload"].(map[string]any)
 	if payload["cursor"] == nil || payload["position"] == nil {
 		t.Fatalf("bar_advanced 缺少字段：%v", payload)
+	}
+}
+
+// 这条盯的是「长时间空闲的连接会不会被自己踢掉」。
+//
+// 现场症状：用户打开页面就不动，日志里每 90 秒出现一次
+// 「已连接 -> 已断开」，名字从 human2 一路涨到 human201。
+// 根因是读超时只在进入一轮 ReadMessage 时设一次，而 pong 是在 ReadMessage
+// 内部被消费的 —— 空闲连接永远走不完那一轮，90 秒后必定超时。
+//
+// 这里不去真的等 90 秒，而是数「收一帧有没有续一次读超时」：
+// 喂两帧 pong（客户端帧必须带掩码），第三次读会撞到 EOF，
+// 于是预期正好续了 3 次。旧写法是 0 次。
+func TestReadDeadlineRenewedPerFrame(t *testing.T) {
+	maskedPong := []byte{0x80 | opPong, 0x80, 0x01, 0x02, 0x03, 0x04} // FIN|pong，有掩码，载荷 0 字节
+	raw := append(append([]byte{}, maskedPong...), maskedPong...)
+
+	nc := &deadlineConn{r: bytes.NewReader(raw)}
+	c := &wsConn{conn: nc, br: bufio.NewReader(nc), maxPayload: maxFramePayload}
+
+	_, _, err := c.ReadMessage()
+	if !errors.Is(err, errWSClosed) {
+		t.Fatalf("读到 EOF 应当返回 errWSClosed，实际 %v", err)
+	}
+	if nc.deadlines != 3 {
+		t.Fatalf("两帧 pong 加一次 EOF 应当续 3 次读超时，实际 %d 次", nc.deadlines)
+	}
+}
+
+// deadlineConn 只做两件事：从一个字节缓冲里读，并数续了几次读超时。
+type deadlineConn struct {
+	r         *bytes.Reader
+	deadlines int
+}
+
+func (c *deadlineConn) Read(p []byte) (int, error)       { return c.r.Read(p) }
+func (c *deadlineConn) Write(p []byte) (int, error)      { return len(p), nil }
+func (c *deadlineConn) Close() error                     { return nil }
+func (c *deadlineConn) LocalAddr() net.Addr              { return testAddr{} }
+func (c *deadlineConn) RemoteAddr() net.Addr             { return testAddr{} }
+func (c *deadlineConn) SetDeadline(time.Time) error      { return nil }
+func (c *deadlineConn) SetWriteDeadline(time.Time) error { return nil }
+func (c *deadlineConn) SetReadDeadline(time.Time) error  { c.deadlines++; return nil }
+
+type testAddr struct{}
+
+func (testAddr) Network() string { return "test" }
+func (testAddr) String() string  { return "test" }
+
+// 端到端版：真起服务、真连接、真空闲。
+// 心跳压到毫秒级（90 秒等不起），空闲期间只有 ping/pong，之后连接必须还能收发。
+// 旧逻辑在这一步必挂 —— 也正好复现用户看到的「挂着不动就掉线重连」。
+func TestIdleConnectionSurvivesHeartbeat(t *testing.T) {
+	oldIdle, oldPing := readIdleTimeout, pingInterval
+	readIdleTimeout, pingInterval = 300*time.Millisecond, 100*time.Millisecond
+	defer func() { readIdleTimeout, pingInterval = oldIdle, oldPing }()
+
+	hub, root := newTestHub(t, 5)
+	srv := httptest.NewServer(NewHandler(hub, root))
+	defer srv.Close()
+
+	wsURL := "ws" + strings.TrimPrefix(srv.URL, "http") + "/ws"
+	c, err := wsclient.Dial(wsURL, wsclient.Options{Timeout: 3 * time.Second})
+	if err != nil {
+		t.Fatalf("连接失败：%v", err)
+	}
+	defer c.Close()
+
+	// 后台持续读：浏览器平时就是这样，只有在读的时候才会回 pong。
+	msgs := make(chan map[string]any, 32)
+	go func() {
+		_ = c.SetReadDeadline(time.Now().Add(30 * time.Second))
+		for {
+			_, payload, err := c.ReadMessage()
+			if err != nil {
+				return
+			}
+			var m map[string]any
+			_ = json.Unmarshal(payload, &m)
+			msgs <- m
+		}
+	}()
+
+	select {
+	case m := <-msgs:
+		if m["type"] != MsgWelcome {
+			t.Fatalf("第一条应当是 welcome：%v", m)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("没收到 welcome")
+	}
+
+	// 空闲 2 秒 ≈ 6.6 倍读超时，中间一条业务消息都没有
+	time.Sleep(2 * time.Second)
+
+	send(t, c, map[string]any{"type": "list_symbols"})
+	deadline := time.After(3 * time.Second)
+	for {
+		select {
+		case m := <-msgs:
+			if m["type"] == MsgSymbols {
+				return
+			}
+		case <-deadline:
+			t.Fatal("空闲之后连接已经不响应了（心跳把空闲连接踢掉了）")
+		}
 	}
 }
 
