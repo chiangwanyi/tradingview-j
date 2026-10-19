@@ -100,10 +100,21 @@ export const useReplayStore = defineStore('replay', () => {
   /** 是否显示 EMA20（纯显示开关，跟后端无关） */
   const showEma = ref(true)
   /**
-   * 下单数量，是**界面状态**：底部下单框和画布右键菜单共用同一个数，
-   * 所以右键菜单里的「买入 N 手」永远和你在下单框里填的一致。
+   * 下单数量（手）。**只能是正整数**：期货没有「0.4 手」这种报单，
+   * 允许小数会让持仓、成交、平仓配对全都出现半手。
+   *
+   * 用「内部 ref + 可写 computed」而不是裸 ref：底部下单框、右键菜单、挂单动作
+   * 三处共用这一个数，夹整数的逻辑只能有一份 —— 否则某条入口漏了，后端还是会拒，
+   * 用户看到的就是「点了没反应」。
    */
-  const orderQuantity = ref(1)
+  const orderQuantityRaw = ref(1)
+  const orderQuantity = computed<number>({
+    get: () => orderQuantityRaw.value,
+    set: (v) => {
+      const n = Math.round(Number(v))
+      orderQuantityRaw.value = Number.isFinite(n) && n >= 1 ? Math.min(n, 10000) : 1
+    },
+  })
 
   const bars = computed(() => instance.value?.bars ?? [])
   const cursor = computed(() => instance.value?.cursor ?? 0)
@@ -422,7 +433,9 @@ export const useReplayStore = defineStore('replay', () => {
 
   function placeOrder(side: Side, kind: OrderKind, price: number, quantity: number): void {
     if (!instance.value) return
-    send({ type: 'order_place', instanceId: instance.value.id, side, kind, price, quantity })
+    // 后端也会校验整数，这里再夹一次是为了让「右键菜单里的 N 手」和真正发出去的一致
+    const lots = Math.max(1, Math.round(quantity))
+    send({ type: 'order_place', instanceId: instance.value.id, side, kind, price, quantity: lots })
   }
 
   function cancelOrder(orderId: string): void {

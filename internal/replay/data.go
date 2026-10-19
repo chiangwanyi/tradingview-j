@@ -68,6 +68,7 @@ func (ds *DataSource) Catalog() ([]SymbolInfo, error) {
 			FirstDate: e.FirstDate,
 			LastDate:  e.LastDate,
 			Tick:      e.Tick,
+			TickValue: e.TickValue,
 		})
 	}
 	return out, nil
@@ -89,6 +90,23 @@ func (ds *DataSource) resolveFolder(symbol string) (SymbolInfo, error) {
 		}
 	}
 	return SymbolInfo{}, fmt.Errorf("数据目录里没有标的 %q（先用菜单 1 抓过它）", symbol)
+}
+
+// TickValue 查一个标的「1 tick 值多少美元」。查不到返回 0（调用方按每点 1 美元兜底）。
+//
+// 恢复旧存档时用：老存档里没有 tickValue，用户在 _symbols.json 里补上之后，
+// 重开服务就该按新值结算，而不是沿用「不知道」。
+func (ds *DataSource) TickValue(symbol, folder string) float64 {
+	list, err := ds.Catalog()
+	if err != nil {
+		return 0
+	}
+	for _, e := range list {
+		if e.Symbol == symbol || (folder != "" && e.Folder == folder) {
+			return e.TickValue
+		}
+	}
+	return 0
 }
 
 // Open 按「标的 + 时间锚点」准备一个实例（不含 ID 与创建者，那些由 hub 填）。
@@ -126,10 +144,11 @@ func (ds *DataSource) Open(symbol, anchorTime string, history, forwardDays int, 
 	}
 
 	inst := &Instance{
-		Symbol:   info.Symbol,
-		Folder:   info.Folder,
-		Tick:     info.Tick,
-		dayFiles: files,
+		Symbol:    info.Symbol,
+		Folder:    info.Folder,
+		Tick:      info.Tick,
+		TickValue: info.TickValue,
+		dayFiles:  files,
 	}
 	var notes []string
 

@@ -154,7 +154,8 @@ export interface DrawInput {
   /** 已经配好对的「开仓 → 平仓」（见 chart/trades.ts），画连线用 */
   closed: ClosedTrade[]
   position: Position
-  realizedPnl: number
+  /** 浮动盈亏（后端按当前 K 线收盘价算好，美元） */
+  unrealizedPnl: number
   showEma: boolean
   /** 最小跳动，来自 _symbols.json（0.25 / 0.1 / 0.01…） */
   tick: number
@@ -166,7 +167,7 @@ const MONO_BOLD = '600 12px ui-monospace, SFMono-Regular, Menlo, Consolas, monos
 const AXIS_LABEL_H = 18
 
 export function drawChart(input: DrawInput): void {
-  const { ctx, scale, theme, hover, symbol, orders, trades, closed, position, realizedPnl, showEma, tick } =
+  const { ctx, scale, theme, hover, symbol, orders, trades, closed, position, unrealizedPnl, showEma, tick } =
     input
   const { width, height } = scale
   const layout: ChartLayout = scale.layout
@@ -194,7 +195,7 @@ export function drawChart(input: DrawInput): void {
   // 成交标记压在 K 线上面：复盘时要一眼看到「哪里开、哪里平」
   drawTradeMarks(ctx, scale, theme, trades, closed)
   drawOrders(ctx, scale, theme, orders)
-  drawPositionLine(ctx, scale, theme, position, realizedPnl, decimals)
+  drawPositionLine(ctx, scale, theme, position, unrealizedPnl, decimals)
   drawLastPrice(ctx, scale, theme, decimals)
   drawAxes(ctx, scale, theme, priceTicks, decimals, tick)
   drawWatermark(ctx, layout, theme, symbol)
@@ -350,7 +351,10 @@ function drawOrders(
 }
 
 /**
- * 未平仓持仓：一条横线贯穿整个价格区，标出**成本价**和**已实现盈亏**。
+ * 未平仓持仓：一条横线贯穿整个价格区，标出**成本价**和**浮动盈亏**。
+ *
+ * 标签写浮动盈亏而不是已实现盈亏：仓位没平时已实现盈亏一直是 0，写在成本线上
+ * 等于什么都没说；浮动盈亏才是「这条线现在值多少钱」。
  *
  * 多头绿、空头红（深色主题是亮绿/亮红，浅色主题压暗一档，白底上才看得清）。
  * 标签贴左边：右边留给挂单标签（也是同一行的矩形块），两者不会叠在一起。
@@ -360,7 +364,7 @@ function drawPositionLine(
   scale: ChartScale,
   theme: ChartTheme,
   position: Position,
-  realizedPnl: number,
+  unrealizedPnl: number,
   decimals: number,
 ): void {
   if (!position || position.side === 'flat' || !(position.averagePrice > 0)) return
@@ -380,7 +384,7 @@ function drawPositionLine(
 
   const label =
     `${long ? '多' : '空'} ${Math.abs(qty)} @ ${formatPrice(position.averagePrice, decimals)}` +
-    ` · 已实现 ${formatSigned(realizedPnl, decimals)}`
+    ` · 浮动 ${formatSigned(unrealizedPnl, decimals)}`
   ctx.font = MONO_BOLD
   const w = ctx.measureText(label).width + 12
   ctx.fillStyle = long ? theme.posLongBox : theme.posShortBox

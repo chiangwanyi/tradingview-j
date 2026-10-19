@@ -134,6 +134,8 @@ export interface InstanceDetail {
   cursor: number
   /** 最小跳动（来自 _symbols.json），价格轴用它定小数位 */
   tick: number
+  /** 1 tick 值多少美元（MNQ 0.5 / MES 1.25 / MGC 1 / CL 10）；0 = 没配置 */
+  tickValue: number
   bars: Bar[]
   hiddenBars: number
   hasMore: boolean
@@ -176,6 +178,8 @@ export interface SymbolInfo {
   lastDate: string
   /** 最小跳动：0.25 / 0.1 / 0.01（写在 _symbols.json 里，缺省按标的名兜底） */
   tick: number
+  /** 1 tick 的美元价值（写在 _symbols.json 里，缺省按标的名兜底）；0 = 不知道 */
+  tickValue: number
 }
 
 export interface You {

@@ -144,11 +144,75 @@ func TestOrderValidation(t *testing.T) {
 		{"buy", KindLimit, 0, 1},
 		{"buy", KindLimit, 100, 0},
 		{"buy", KindLimit, -5, 1},
+		// 手数只能是整数：0.5 手、1.5 手在期货里根本报不出去
+		{"buy", KindLimit, 100, 0.5},
+		{"buy", KindLimit, 100, 1.5},
+		{"sell", KindStop, 100, 2.25},
 	}
 	for _, c := range cases {
 		if _, err := inst.placeOrder("human", c.side, c.kind, c.price, c.qty); err == nil {
 			t.Fatalf("这些参数本该报错：%+v", c)
 		}
+	}
+	// 整数手数照常通过，并且数量就是整数本身（3 手不是 3.0000001）
+	o, err := inst.placeOrder("human", "buy", KindLimit, 99, 3)
+	if err != nil {
+		t.Fatalf("整数手数不该被拒：%v", err)
+	}
+	if o.Quantity != 3 {
+		t.Fatalf("数量应当原样存成 3，实际 %v", o.Quantity)
+	}
+}
+
+// TestPointValueFromTickValue 钉住「一跳值多少美元 -> 每点多少美元」的换算。
+//
+// 用户只在 _symbols.json 里填 tick 和 tickValue；结算乘数是两者相除得到的，
+// 不另存一份，免得改了一处忘了另一处。
+func TestPointValueFromTickValue(t *testing.T) {
+	cases := []struct {
+		symbol    string
+		tick      float64
+		tickValue float64
+		want      float64
+	}{
+		{"MNQ", 0.25, 0.5, 2},
+		{"MES", 0.25, 1.25, 5},
+		{"MGC", 0.1, 1, 10},
+		{"CL", 0.01, 10, 1000},
+	}
+	for _, c := range cases {
+		inst := &Instance{Symbol: c.symbol, Tick: c.tick, TickValue: c.tickValue}
+		if got := inst.pointValue(); math.Abs(got-c.want) > 1e-9 {
+			t.Fatalf("%s：每点应当值 %v 美元，实际 %v", c.symbol, c.want, got)
+		}
+	}
+	// 没配置（或只配了一半）时退化成「每点 1 美元」，而不是 0
+	if got := (&Instance{}).pointValue(); got != 1 {
+		t.Fatalf("没配置时应当按每点 1 美元兜底，实际 %v", got)
+	}
+}
+
+// TestTickValueSettlesPnlInUsd 确认已实现盈亏和浮动盈亏都乘上了每点价值。
+// 价格差 × 手数只是「点数」，不换成美元的话 MNQ 和 CL 会显示成同一个数。
+func TestTickValueSettlesPnlInUsd(t *testing.T) {
+	// MNQ：0.5 美元 / 0.25 点 = 2 美元/点
+	inst := newTradingInstance()
+	inst.Tick, inst.TickValue = 0.25, 0.5
+
+	inst.applyFill(Order{Side: "buy", Quantity: 2, Price: 18000}, 18000, inst.Bars[0].Time)
+	tr := inst.applyFill(Order{Side: "sell", Quantity: 2, Price: 18001.5}, 18001.5, inst.Bars[0].Time)
+	// 1.5 点 × 2 手 × 2 美元/点 = 6 美元
+	if math.Abs(tr.RealizedPnl-6) > 1e-9 {
+		t.Fatalf("MNQ 平 2 手、赚 1.5 点应当是 6 美元，实际 %v", tr.RealizedPnl)
+	}
+
+	// 浮动盈亏：100 开 2 手多，游标到收盘 102（2 点）-> 2×2×2 = 8 美元
+	inst2 := newTradingInstance()
+	inst2.Tick, inst2.TickValue = 0.25, 0.5
+	inst2.applyFill(Order{Side: "buy", Quantity: 2, Price: 100}, 100, inst2.Bars[0].Time)
+	inst2.Cursor = 2 // 收盘 102
+	if got := inst2.unrealizedPnl(); math.Abs(got-8) > 1e-9 {
+		t.Fatalf("MNQ 浮盈应当是 8 美元，实际 %v", got)
 	}
 }
 

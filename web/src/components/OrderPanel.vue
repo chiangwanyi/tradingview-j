@@ -132,8 +132,15 @@ const inputClass =
           />
         </label>
         <label class="block">
-          <span class="text-[11px] text-faint">数量</span>
-          <input v-model.number="store.orderQuantity" type="number" min="0.01" step="1" :class="inputClass" />
+          <span class="text-[11px] text-faint">数量（手）</span>
+          <input
+            v-model.number="store.orderQuantity"
+            type="number"
+            min="1"
+            step="1"
+            :class="inputClass"
+            title="手数只能是整数：1、2、3…（没有 0.5 手）"
+          />
         </label>
       </div>
 

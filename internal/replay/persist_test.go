@@ -8,6 +8,7 @@ package replay
 
 import (
 	"encoding/json"
+	"math"
 	"os"
 	"path/filepath"
 	"strings"
@@ -72,7 +73,14 @@ func TestInstancesSurviveRestart(t *testing.T) {
 
 	hub.flushState() // 不等到 2 秒的定时器
 	if _, err := os.Stat(filepath.Join(stateDir, stateFileName)); err != nil {
-		t.Fatalf("状态文件没有写出来：%v", err)
+		t.Fatalf("状态索引没有写出来：%v", err)
+	}
+	// v2 起按实例分文件夹：条条数据在自己的文件里，索引只记 id
+	for _, name := range []string{metaFileName, barsFileName, annFileName, orderFileName, tradeFileName, eventFileName} {
+		p := filepath.Join(stateDir, instanceDirName, id, name)
+		if _, err := os.Stat(p); err != nil {
+			t.Fatalf("实例的 %s 没有写出来：%v", name, err)
+		}
 	}
 	hub.Close()
 
@@ -176,55 +184,42 @@ func TestRestoreRepairsMissingAnchorDayTail(t *testing.T) {
 	hub.Close()
 
 	// 2. 把存档改回 0.5.0 的样子：删掉「锚点当天锚点之后的那些根」
-	path := filepath.Join(stateDir, stateFileName)
-	raw, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatalf("读存档失败：%v", err)
-	}
-	var sf stateFile
-	if err := json.Unmarshal(raw, &sf); err != nil {
-		t.Fatalf("解析存档失败：%v", err)
-	}
-	if len(sf.Instances) != 1 {
-		t.Fatalf("存档里应当只有 1 个实例，实际 %d 个", len(sf.Instances))
-	}
-	p := &sf.Instances[0]
+	dir := filepath.Join(stateDir, instanceDirName, id)
+	meta := readMetaFile(t, dir)
+	bars := readBarsFile(t, dir)
 
 	anchorIdx := -1
-	for i := range p.Bars {
-		if p.Bars[i].Time == p.Anchor {
+	for i := range bars {
+		if bars[i].Time == meta.Anchor {
 			anchorIdx = i
 			break
 		}
 	}
 	if anchorIdx < 0 {
-		t.Fatalf("存档里找不到锚点 %s", p.Anchor)
+		t.Fatalf("存档里找不到锚点 %s", meta.Anchor)
 	}
 	cut := anchorIdx + 1
-	for cut < len(p.Bars) && barDate(p.Bars[cut].Time) == barDate(p.Anchor) {
+	for cut < len(bars) && barDate(bars[cut].Time) == barDate(meta.Anchor) {
 		cut++
 	}
 	tail := cut - (anchorIdx + 1)
 	if tail == 0 {
 		t.Fatal("造数据失败：锚点之后当天还有 K 线，才能模拟这个缺口")
 	}
-	p.Bars = append(p.Bars[:anchorIdx+1:anchorIdx+1], p.Bars[cut:]...)
+	bars = append(bars[:anchorIdx+1:anchorIdx+1], bars[cut:]...)
 
 	// 模拟「老版本里已经往后翻了几根」：游标在新位置，挂单也记着当时（错位）的下标
-	p.Cursor = anchorIdx + 3
-	jumped := p.Bars[p.Cursor].Time
-	p.Orders = append(p.Orders, Order{
+	meta.Cursor = anchorIdx + 3
+	jumped := bars[meta.Cursor].Time
+	orders := readOrdersFile(t, dir)
+	orders = append(orders, Order{
 		ID: "o1", Side: "buy", Kind: KindLimit, Price: 100, Quantity: 1,
-		Status: OrderOpen, PlacedAt: jumped, PlacedIndex: p.Cursor, FilledIndex: -1,
+		Status: OrderOpen, PlacedAt: jumped, PlacedIndex: meta.Cursor, FilledIndex: -1,
 	})
-	buf, err := json.Marshal(sf)
-	if err != nil {
-		t.Fatalf("序列化失败：%v", err)
-	}
-	if err := os.WriteFile(path, buf, 0o644); err != nil {
-		t.Fatalf("写存档失败：%v", err)
-	}
-	barsBefore := len(p.Bars)
+	writeBarsFile(t, dir, bars)
+	writeOrdersFile(t, dir, orders)
+	writeMetaFile(t, dir, meta)
+	barsBefore := len(bars)
 
 	// 3. 重启：缺口应当被补齐
 	hub2 := newPersistentHub(t, root, stateDir)
@@ -241,7 +236,7 @@ func TestRestoreRepairsMissingAnchorDayTail(t *testing.T) {
 	if got := inst.Bars[inst.Cursor].Time; got != jumped {
 		t.Fatalf("游标应当还停在 %s，实际 %s", jumped, got)
 	}
-	want, ok := expectedNextBar(t, root, testFolder, p.Anchor)
+	want, ok := expectedNextBar(t, root, testFolder, meta.Anchor)
 	if !ok {
 		t.Fatal("锚点之后应当还有 K 线")
 	}
@@ -321,4 +316,172 @@ func TestBrokenStateFileDoesNotCrash(t *testing.T) {
 		t.Fatalf("坏的状态文件被改动了：%v %q", err, raw)
 	}
 	hub.Close()
+}
+
+// ---------------- 新存档布局（按实例分文件夹）的读写小工具 ----------------
+//
+// 测试刻意不用 writeInstanceFiles 造数据：那等于拿被测代码去准备被测代码。
+// 这几个函数只做「读一个文件 / 写一个文件」，坏数据才造得出来。
+
+func readMetaFile(t *testing.T, dir string) instanceMeta {
+	t.Helper()
+	var m instanceMeta
+	if err := readJSONFile(filepath.Join(dir, metaFileName), &m); err != nil {
+		t.Fatalf("读 meta.json 失败：%v", err)
+	}
+	return m
+}
+
+func writeMetaFile(t *testing.T, dir string, m instanceMeta) {
+	t.Helper()
+	if err := writeJSONAtomic(filepath.Join(dir, metaFileName), m); err != nil {
+		t.Fatalf("写 meta.json 失败：%v", err)
+	}
+}
+
+func readBarsFile(t *testing.T, dir string) []Bar {
+	t.Helper()
+	var bars []Bar
+	if err := readJSONFile(filepath.Join(dir, barsFileName), &bars); err != nil {
+		t.Fatalf("读 bars.json 失败：%v", err)
+	}
+	return bars
+}
+
+func writeBarsFile(t *testing.T, dir string, bars []Bar) {
+	t.Helper()
+	if err := writeJSONAtomic(filepath.Join(dir, barsFileName), bars); err != nil {
+		t.Fatalf("写 bars.json 失败：%v", err)
+	}
+}
+
+func readOrdersFile(t *testing.T, dir string) []Order {
+	t.Helper()
+	var orders []Order
+	if err := readJSONFile(filepath.Join(dir, orderFileName), &orders); err != nil && !os.IsNotExist(err) {
+		t.Fatalf("读 orders.json 失败：%v", err)
+	}
+	return orders
+}
+
+func writeOrdersFile(t *testing.T, dir string, orders []Order) {
+	t.Helper()
+	if err := writeJSONAtomic(filepath.Join(dir, orderFileName), orders); err != nil {
+		t.Fatalf("写 orders.json 失败：%v", err)
+	}
+}
+
+// TestLegacySingleFileArchiveMigrates 钉住 v1 -> v2 的迁移：
+// 旧版把所有实例塞在一个 replay-instances.json 里，新版按实例分文件夹。
+// 迁移必须**先备份旧文件**，再把数据摊到新布局，而且恢复出来的实例一条不能少。
+func TestLegacySingleFileArchiveMigrates(t *testing.T) {
+	root := writeTestData(t, 3)
+	stateDir := t.TempDir()
+
+	// 1. 先用当前代码造一个实例，拿到一份完整数据
+	hub := newPersistentHub(t, root, stateDir)
+	a := newFakeClient(t, hub)
+	id := createInstance(t, hub, a, "2026-01-06 10:00")
+	hub.flushState()
+	hub.Close()
+
+	dir := filepath.Join(stateDir, instanceDirName, id)
+	m := readMetaFile(t, dir)
+	bars := readBarsFile(t, dir)
+	var anns []Annotation
+	var trades []Trade
+	var events []Event
+	if err := readJSONFile(filepath.Join(dir, annFileName), &anns); err != nil {
+		t.Fatalf("读 annotations.json 失败：%v", err)
+	}
+	if err := readJSONFile(filepath.Join(dir, tradeFileName), &trades); err != nil {
+		t.Fatalf("读 trades.json 失败：%v", err)
+	}
+	if err := readJSONFile(filepath.Join(dir, eventFileName), &events); err != nil {
+		t.Fatalf("读 events.json 失败：%v", err)
+	}
+
+	// 2. 把新布局整个抹掉，按 v1 的样子写回一个单文件
+	//
+	// 顺带造一笔「点数」口径的盈亏：v1 没有 tickValue，realizedPnl 是「点数 × 手数」，
+	// 迁移后应当按 MNQ 的 2 美元/点换成美元（2.5 -> 5）。
+	trades = []Trade{
+		{ID: "t1", OrderID: "o1", Time: bars[m.Cursor].Time, Side: "buy", Kind: KindLimit, Price: 100, Quantity: 1},
+		{ID: "t2", OrderID: "o2", Time: bars[m.Cursor].Time, Side: "sell", Kind: KindLimit, Price: 102.5, Quantity: 1, RealizedPnl: 2.5},
+	}
+	legacy := legacyStateFile{
+		Version:      1,
+		SavedAt:      time.Now().Unix(),
+		NextInstance: 1,
+		Instances: []legacyInstance{{
+			ID: m.ID, Symbol: m.Symbol, Folder: m.Folder, Tick: m.Tick, Anchor: m.Anchor,
+			Cursor: m.Cursor, Bars: bars,
+			Annotations: anns, Orders: readOrdersFile(t, dir), Trades: trades,
+			Position: m.Position, RealizedPnl: 2.5,
+			CreatedBy: m.CreatedBy, CreatedAt: m.CreatedAt,
+			Seq: m.Seq, Events: events, Notes: m.Notes,
+			SeqAnnotation: m.SeqAnn, SeqOrder: m.SeqOrd, SeqTrade: m.SeqTrd,
+		}},
+	}
+	raw, err := json.Marshal(legacy)
+	if err != nil {
+		t.Fatalf("序列化 v1 存档失败：%v", err)
+	}
+	if err := os.RemoveAll(filepath.Join(stateDir, instanceDirName)); err != nil {
+		t.Fatalf("清理新布局失败：%v", err)
+	}
+	path := filepath.Join(stateDir, stateFileName)
+	if err := os.WriteFile(path, raw, 0o644); err != nil {
+		t.Fatalf("写 v1 存档失败：%v", err)
+	}
+
+	// 3. 重启：应当在读的过程中迁到新布局，并且实例还在
+	hub2 := newPersistentHub(t, root, stateDir)
+	defer hub2.Close()
+	hub2.mu.Lock()
+	inst := hub2.instances[id]
+	hub2.mu.Unlock()
+	if inst == nil {
+		t.Fatal("v1 存档里的实例没有被恢复")
+	}
+	if inst.Cursor != m.Cursor || len(inst.Bars) != len(bars) {
+		t.Fatalf("迁移后游标/K 线不对：游标 %d（应当 %d）、K 线 %d 根（应当 %d）",
+			inst.Cursor, m.Cursor, len(inst.Bars), len(bars))
+	}
+	// tickValue 不在 v1 存档里，要从 _symbols.json 补上（测试数据里是 MNQ 口径）
+	if inst.TickValue != 0.5 {
+		t.Fatalf("迁移后应当按 _symbols.json 补上 tickValue=0.5，实际 %v", inst.TickValue)
+	}
+	// v1 的盈亏是点数口径：2.5 点 × 2 美元/点 = 5 美元
+	if math.Abs(inst.RealizedPnl-5) > 1e-9 {
+		t.Fatalf("迁移后累计盈亏应当换成美元（2.5 -> 5），实际 %v", inst.RealizedPnl)
+	}
+	if len(inst.Trades) != 2 || math.Abs(inst.Trades[1].RealizedPnl-5) > 1e-9 {
+		t.Fatalf("成交流水里的盈亏也要换成美元：%+v", inst.Trades)
+	}
+
+	// 4. 新布局已经落盘，索引是 v2（只记 id，没有 K 线/成交）
+	for _, name := range []string{metaFileName, barsFileName, annFileName, orderFileName, tradeFileName, eventFileName} {
+		if _, err := os.Stat(filepath.Join(stateDir, instanceDirName, id, name)); err != nil {
+			t.Fatalf("迁移后缺少 %s：%v", name, err)
+		}
+	}
+	var idx stateFile
+	if err := readJSONFile(path, &idx); err != nil {
+		t.Fatalf("迁移后的索引读不了：%v", err)
+	}
+	if idx.Version != stateVersion || len(idx.Instances) != 1 || idx.Instances[0].ID != id {
+		t.Fatalf("迁移后的索引不对：%+v", idx)
+	}
+
+	// 5. 旧文件原样备份着（迁移出问题时还能拿回去用旧版本打开）
+	bak := path + legacyBackupSuffix
+	bakRaw, err := os.ReadFile(bak)
+	if err != nil {
+		t.Fatalf("迁移前的备份不见了：%v", err)
+	}
+	var old legacyStateFile
+	if err := json.Unmarshal(bakRaw, &old); err != nil || old.Version != 1 || len(old.Instances) != 1 {
+		t.Fatalf("备份文件不对：err=%v version=%d 实例 %d 个", err, old.Version, len(old.Instances))
+	}
 }

@@ -27,7 +27,11 @@ func writeTestData(t *testing.T, days int) string {
 	}
 	idx := map[string]any{
 		"version": 1,
-		"symbols": map[string]any{testSymbol: map[string]any{"folder": testFolder}},
+		"symbols": map[string]any{testSymbol: map[string]any{
+			"folder":    testFolder,
+			"tick":      0.25,
+			"tickValue": 0.5, // 像 MNQ：一跳 0.25 点 = 0.5 美元
+		}},
 	}
 	buf, _ := json.MarshalIndent(idx, "", "  ")
 	if err := os.WriteFile(filepath.Join(root, "_symbols.json"), buf, 0o644); err != nil {

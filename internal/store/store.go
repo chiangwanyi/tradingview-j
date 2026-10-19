@@ -57,13 +57,14 @@ type Store struct {
 	opts Options
 	loc  *time.Location
 
-	mu       sync.Mutex
-	days     map[string]*day
-	folders  map[string]string  // symbol -> folder
-	taken    map[string]string  // lower(folder) -> symbol
-	ticks    map[string]float64 // symbol -> 最小跳动（来自 _symbols.json，写回时保留）
-	accepted map[string]int64   // folder -> Add 调用次数（含覆盖）
-	idxDirty bool
+	mu         sync.Mutex
+	days       map[string]*day
+	folders    map[string]string  // symbol -> folder
+	taken      map[string]string  // lower(folder) -> symbol
+	ticks      map[string]float64 // symbol -> 最小跳动（来自 _symbols.json，写回时保留）
+	tickValues map[string]float64 // symbol -> 1 tick 的美元价值（同上，写回时保留）
+	accepted   map[string]int64   // folder -> Add 调用次数（含覆盖）
+	idxDirty   bool
 }
 
 type day struct {
@@ -83,13 +84,14 @@ func Open(opts Options) (*Store, error) {
 		loc = time.Local
 	}
 	s := &Store{
-		opts:     opts,
-		loc:      loc,
-		days:     map[string]*day{},
-		folders:  map[string]string{},
-		taken:    map[string]string{},
-		ticks:    map[string]float64{},
-		accepted: map[string]int64{},
+		opts:       opts,
+		loc:        loc,
+		days:       map[string]*day{},
+		folders:    map[string]string{},
+		taken:      map[string]string{},
+		ticks:      map[string]float64{},
+		tickValues: map[string]float64{},
+		accepted:   map[string]int64{},
 	}
 	if err := os.MkdirAll(opts.Root, 0o755); err != nil {
 		return nil, fmt.Errorf("创建数据目录 %s 失败: %w", opts.Root, err)
@@ -111,8 +113,12 @@ type symRec struct {
 	// Tick 是这个标的的最小跳动（0.25 / 0.1 / 0.01…）。它由用户直接写进
 	// _symbols.json（复盘的价格轴要用它决定小数位），抓取这边**原样保留**：
 	// 写索引时从 s.ticks 里带回去，否则抓一次就把用户填的值抹掉了。
-	Tick    float64 `json:"tick,omitempty"`
-	Created int64   `json:"created,omitempty"`
+	Tick float64 `json:"tick,omitempty"`
+	// TickValue 是**一个 tick 值多少美元**（MNQ 0.50、MES 1.25、MGC 1.00、CL 10.00）。
+	// 复盘结算盈亏要用它：光有 tick 只能知道价格跳多粗，不知道一跳值多少钱。
+	// 和 Tick 一样由用户直接写进 _symbols.json，抓取这边原样保留。
+	TickValue float64 `json:"tickValue,omitempty"`
+	Created   int64   `json:"created,omitempty"`
 }
 
 type symbolIndex struct {
@@ -147,6 +153,9 @@ func (s *Store) loadIndex() {
 		for sym, rec := range idx.Symbols {
 			if rec.Tick > 0 {
 				s.ticks[sym] = rec.Tick
+			}
+			if rec.TickValue > 0 {
+				s.tickValues[sym] = rec.TickValue
 			}
 			if rec.Folder == "" {
 				continue
@@ -237,7 +246,7 @@ func shortHash(s string) string {
 func (s *Store) saveIndexLocked() error {
 	idx := symbolIndex{Version: 1, Symbols: map[string]symRec{}}
 	for sym, folder := range s.folders {
-		idx.Symbols[sym] = symRec{Folder: folder, Tick: s.ticks[sym]}
+		idx.Symbols[sym] = symRec{Folder: folder, Tick: s.ticks[sym], TickValue: s.tickValues[sym]}
 	}
 	buf, err := json.MarshalIndent(idx, "", "  ")
 	if err != nil {

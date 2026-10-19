@@ -47,10 +47,15 @@ type Hub struct {
 	usedNames   map[string]bool
 	closed      bool
 
-	// 持久化（persist.go）：statePath 为空 = 不落盘（单元测试就是这么跑的）
-	statePath string
-	stateDone chan struct{}
-	dirty     bool
+	// 持久化（persist.go）：statePath 为空 = 不落盘（单元测试就是这么跑的）。
+	// dirtyIndex 管索引（新建/删除实例），dirtyInst 管单个实例的数据 ——
+	// 分开记，步进一次就只重写那一个文件夹。
+	statePath     string
+	instanceDir   string
+	stateDone     chan struct{}
+	dirtyIndex    bool
+	dirtyInst     map[string]bool
+	pendingRemove []string // 已删除实例的目录名，等索引写成功后再回收
 
 	// 标注模板（templates.go）：和实例存档同一个目录，但另一个文件
 	templates []Template
@@ -71,6 +76,7 @@ func NewHub(ds *DataSource, version string, logf func(format string, args ...any
 		rnd:       rand.New(rand.NewSource(time.Now().UnixNano())),
 		usedNames: map[string]bool{},
 		stateDone: make(chan struct{}),
+		dirtyInst: map[string]bool{},
 		// 出厂模板先放在内存里：没配状态目录（测试）或第一次运行都有得用。
 		// EnablePersistence 会拿磁盘上的文件覆盖它。
 		templates: defaultTemplates(),
@@ -257,7 +263,9 @@ func (h *Hub) handleCreate(c *Client, req Request) {
 
 	h.instances[inst.ID] = inst
 	h.order = append(h.order, inst.ID)
+	// 新实例既要进索引，也要自己那份数据落盘
 	h.markDirtyLocked()
+	h.markDirtyLocked(inst.ID)
 	h.log("[replay] %s 新建实例 %s（%s @ %s，%d 根已加载）", c.Name, inst.ID, inst.Symbol, inst.Anchor, len(inst.Bars))
 
 	h.sendStateLocked(c, inst)
@@ -604,6 +612,10 @@ func (h *Hub) deleteLocked(inst *Instance) {
 			h.reply(c, DeletedMsg{Type: MsgDeleted, InstanceID: inst.ID})
 		}
 	}
+	// 目录要等索引写成功之后再删，见 persist.go 的 flushState
+	if h.statePath != "" {
+		h.pendingRemove = append(h.pendingRemove, instanceFolder(inst.ID))
+	}
 	h.markDirtyLocked()
 	h.broadcastInstancesLocked()
 	h.log("[replay] 实例 %s 已删除", inst.ID)
@@ -644,7 +656,7 @@ func (h *Hub) broadcastInstanceLocked(inst *Instance, action string, payload any
 	ev := inst.appendEvent(by, action, payload)
 	// 广播 = 这个实例的状态变了（步进、标注、下单、操作权、成员）。落盘就打在这里，
 	// 免得每个 do* 方法各记一次、漏一个就静默丢数据。
-	h.markDirtyLocked()
+	h.markDirtyLocked(inst.ID)
 	data, err := json.Marshal(EventMsg{
 		Type:       MsgEvent,
 		InstanceID: inst.ID,

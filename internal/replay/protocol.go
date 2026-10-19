@@ -143,14 +143,14 @@ type Bar struct {
 // 趋势线/射线/箭头线是两点连成的一条线，矩形用两个对角点，斐波那契回撤用两点的
 // 价格区间摊开四条水平线（见 FibLevel）。
 type Annotation struct {
-	ID    string          `json:"id"`
-	Kind  string          `json:"kind"` // trend | ray | rect | arrow | fib
-	Start Point           `json:"start"`
-	End   Point           `json:"end"`
-	Style AnnotationStyle `json:"style"`
-	Snapped   bool        `json:"snapped"` // 端点吸附过 OHLC（界面上画小圆点提示）
-	CreatedBy string      `json:"createdBy"`
-	CreatedAt int64       `json:"createdAt"`
+	ID        string          `json:"id"`
+	Kind      string          `json:"kind"` // trend | ray | rect | arrow | fib
+	Start     Point           `json:"start"`
+	End       Point           `json:"end"`
+	Style     AnnotationStyle `json:"style"`
+	Snapped   bool            `json:"snapped"` // 端点吸附过 OHLC（界面上画小圆点提示）
+	CreatedBy string          `json:"createdBy"`
+	CreatedAt int64           `json:"createdAt"`
 
 	// LegacyColor 是 0.5.2 及以前唯一的颜色字段（那时候没有模板，整条线一个颜色）。
 	// 只在读旧存档时有用：迁移时并进 Style.Color 后清空，所以新标注的 JSON 里没有它。
@@ -181,9 +181,9 @@ type FibLevel struct {
 // 这也是把它存进 Annotation 而不是只存 templateId 的原因 —— 否则模板一改，
 // 昨天画在盘面上的所有线一起变色。
 type AnnotationStyle struct {
-	Color       string     `json:"color"` // 线条 / 矩形边框颜色
-	Width       float64    `json:"width"` // 线宽（屏幕像素）
-	Dash        string     `json:"dash"`  // solid | dashed
+	Color       string     `json:"color"`                 // 线条 / 矩形边框颜色
+	Width       float64    `json:"width"`                 // 线宽（屏幕像素）
+	Dash        string     `json:"dash"`                  // solid | dashed
 	Fill        string     `json:"fill,omitempty"`        // 矩形填充色，空 = 只画边框
 	FillOpacity float64    `json:"fillOpacity,omitempty"` // 矩形填充不透明度 0~1
 	Levels      []FibLevel `json:"levels,omitempty"`      // 斐波那契的四个水平（只有 fib 用）
@@ -292,7 +292,8 @@ type InstanceDTO struct {
 	Folder        string       `json:"folder"`
 	Anchor        string       `json:"anchor"`
 	Cursor        int          `json:"cursor"`
-	Tick          float64      `json:"tick"` // 最小跳动，价格轴按它定小数位
+	Tick          float64      `json:"tick"`      // 最小跳动，价格轴按它定小数位
+	TickValue     float64      `json:"tickValue"` // 1 tick 的美元价值（0 = 没配置，按每点 1 美元）
 	Bars          []Bar        `json:"bars"`
 	HiddenBars    int          `json:"hiddenBars"` // 已加载但还没揭示的根数
 	HasMore       bool         `json:"hasMore"`    // 数据目录里还有没有更晚的日文件
@@ -396,6 +397,9 @@ type SymbolInfo struct {
 	// Tick 是最小跳动（0.25 / 0.1 / 0.01…），来自 _symbols.json，缺省按标的名兜底。
 	// 前端用它决定价格轴与提示的小数位。
 	Tick float64 `json:"tick"`
+	// TickValue 是一个 tick 值多少美元（MNQ 0.5、MES 1.25、MGC 1、CL 10），
+	// 0 = 没配置。复盘结算盈亏用它，界面只做展示。
+	TickValue float64 `json:"tickValue"`
 }
 
 // ---------------- 广播负载 ----------------

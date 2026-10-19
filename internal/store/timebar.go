@@ -41,6 +41,9 @@ type CatalogEntry struct {
 	// Tick 是最小跳动：优先取 _symbols.json 里登记的（用户手填），
 	// 没登记就按标的名兜底（见 DefaultTick）。价格轴用它定小数位。
 	Tick float64
+	// TickValue 是一个 tick 值多少美元（0 = 不知道，复盘按「每点 1 美元」兜底）。
+	// 一样来自 _symbols.json，没登记时按标的名兜底（见 DefaultTickValue）。
+	TickValue float64
 }
 
 // FallbackTick 是认不出标的时的最小跳动。
@@ -74,6 +77,31 @@ func DefaultTick(symbol string) float64 {
 		}
 	}
 	return FallbackTick
+}
+
+// tickValueRules 是「没在 _symbols.json 里登记 tickValue 时」的兜底表。
+//
+// 只列确实知道的几个 CME 迷你合约；认不出来就回 0 —— 0 在复盘里表示
+// 「不知道一跳值多少钱」，盈亏退化成「每点 1 美元」，而不是猜一个数糊弄过去。
+var tickValueRules = []struct {
+	key   string
+	value float64
+}{
+	{"MNQ", 0.5},
+	{"MES", 1.25},
+	{"MGC", 1.0},
+	{"CL", 10.0},
+}
+
+// DefaultTickValue 按标的名猜「一个 tick 值多少美元」。认不出来返回 0。
+func DefaultTickValue(symbol string) float64 {
+	up := strings.ToUpper(symbol)
+	for _, r := range tickValueRules {
+		if strings.Contains(up, r.key) {
+			return r.value
+		}
+	}
+	return 0
 }
 
 // readDayRows 把一份日文件读成按时间升序的行，保留时间文本。
@@ -150,6 +178,8 @@ func Catalog(root string) ([]CatalogEntry, error) {
 	symbolOf := map[string]string{}
 	tickByFolder := map[string]float64{}
 	tickBySymbol := map[string]float64{}
+	tickValueByFolder := map[string]float64{}
+	tickValueBySymbol := map[string]float64{}
 	if idx, err := readIndexFile(root); err == nil {
 		for sym, rec := range idx.Symbols {
 			if rec.Folder != "" {
@@ -159,6 +189,12 @@ func Catalog(root string) ([]CatalogEntry, error) {
 				tickBySymbol[sym] = rec.Tick
 				if rec.Folder != "" {
 					tickByFolder[rec.Folder] = rec.Tick
+				}
+			}
+			if rec.TickValue > 0 {
+				tickValueBySymbol[sym] = rec.TickValue
+				if rec.Folder != "" {
+					tickValueByFolder[rec.Folder] = rec.TickValue
 				}
 			}
 		}
@@ -183,6 +219,13 @@ func Catalog(root string) ([]CatalogEntry, error) {
 		if tick <= 0 {
 			tick = DefaultTick(sym)
 		}
+		tickValue := tickValueByFolder[e.Name()]
+		if tickValue <= 0 {
+			tickValue = tickValueBySymbol[sym]
+		}
+		if tickValue <= 0 {
+			tickValue = DefaultTickValue(sym)
+		}
 		out = append(out, CatalogEntry{
 			Symbol:    sym,
 			Folder:    e.Name(),
@@ -190,6 +233,7 @@ func Catalog(root string) ([]CatalogEntry, error) {
 			FirstDate: strings.TrimSuffix(files[0], filepath.Ext(files[0])),
 			LastDate:  strings.TrimSuffix(files[len(files)-1], filepath.Ext(files[len(files)-1])),
 			Tick:      tick,
+			TickValue: tickValue,
 		})
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Folder < out[j].Folder })

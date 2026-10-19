@@ -7,8 +7,10 @@ package replay
 //
 // 它和 persist_test.go 的分工：
 //   - persist_test.go：假 hub + 临时数据目录，只测「存档 -> 读档」这一层，秒级、离线；
-//   - 这个用例：真实 data/ 里的 CSV、真实的 web/dist、真实的 8790 端口，走的是
+//   - 这个用例：真实 data/ 里的 CSV、真实的 web/dist、真实的 8799 端口，走的是
 //     完整 HTTP + WebSocket + 机器人，最后真的把服务关掉重开。
+//
+// 端口用的是 srv.Port（Start 发现被占会自动换），所以 8799 也有人占也能跑。
 //
 // 所以它不放进 `go test ./...` 的默认集合：要占端口、要几秒、还依赖 dist 已构建。
 // 但「重启后实例还在」这件事只有它能在真进程里证明 —— 每次改存档相关代码建议跑一次。
@@ -24,8 +26,10 @@ import (
 	"tradingview-j/internal/wsclient"
 )
 
-// livePort 单独挑一个，避开 config.json 里的 replayPort（8765 附近），免得和手动开着的服务抢端口
-const livePort = 8790
+// livePort 单独挑一个，避开 config.json 里正式用的 replayPort（8790）：
+// 平时菜单 4 开着的服务就占着 8790，测试要是也用 8790，Start 会换端口（srv.Moved），
+// 而写死端口的冒烟就会连到那个旧服务上去，把测试实例塞进人家的存档里。
+const livePort = 8799
 
 func liveOpts(stateDir string) Options {
 	return Options{
@@ -40,7 +44,7 @@ func liveOpts(stateDir string) Options {
 
 func TestLiveRestartKeepsInstances(t *testing.T) {
 	if os.Getenv("REPLAY_LIVE") == "" {
-		t.Skip("设 REPLAY_LIVE=1 才跑：会占用 8790 端口，需要真实 data/ 与 web/dist")
+		t.Skip("设 REPLAY_LIVE=1 才跑：会占用 8799 端口，需要真实 data/ 与 web/dist")
 	}
 	stateDir := t.TempDir()
 
@@ -49,6 +53,11 @@ func TestLiveRestartKeepsInstances(t *testing.T) {
 		t.Fatalf("启动服务失败：%v", err)
 	}
 	t.Logf("服务在 %s", srv.URL)
+	// 端口被占时 Start 会自动换一个（srv.Moved），所以后面一律用 srv.Port 拼地址，
+	// 不能写死 livePort —— 否则冒烟会连到「占着 8790 的那个别的服务」上去。
+	if srv.Moved {
+		t.Logf("注意：%d 被占用，已换到 %d", livePort, srv.Port)
+	}
 
 	// 1. 静态页面确实托管出来了（dist 是构建产物，很容易忘了 npm run build）
 	for _, p := range []string{"/", "/index.html"} {
@@ -63,19 +72,23 @@ func TestLiveRestartKeepsInstances(t *testing.T) {
 	}
 
 	// 2. 完整冒烟（标的/建实例/步进/标注/挂单/机器人）—— 复用现成的那个用例
-	t.Setenv("REPLAY_WS", fmt.Sprintf("ws://127.0.0.1:%d/ws", livePort))
+	t.Setenv("REPLAY_WS", fmt.Sprintf("ws://127.0.0.1:%d/ws", srv.Port))
 	TestSmokeAgainstRunningServer(t)
 
 	// 3. 关掉服务（这一步会把存档刷到盘上）
 	if err := srv.Close(); err != nil {
 		t.Fatalf("关闭失败：%v", err)
 	}
-	statePath := filepath.Join(stateDir, "replay-instances.json")
+	statePath := filepath.Join(stateDir, stateFileName)
 	info, err := os.Stat(statePath)
 	if err != nil {
 		t.Fatalf("存档没写出来：%v", err)
 	}
-	t.Logf("存档 %s，%d 字节", statePath, info.Size())
+	t.Logf("存档索引 %s，%d 字节", statePath, info.Size())
+	// v2：索引只记「有哪些实例」，每个实例的数据在 instances/<id>/ 下分开存
+	if _, err := os.Stat(filepath.Join(stateDir, "instances")); err != nil {
+		t.Fatalf("实例目录没建出来：%v", err)
+	}
 
 	// 4. 重开：实例应该还在，且标注/挂单也回来了
 	srv2, err := Start(liveOpts(stateDir), livePort)
@@ -84,7 +97,7 @@ func TestLiveRestartKeepsInstances(t *testing.T) {
 	}
 	defer srv2.Close()
 
-	conn, err := wsclient.Dial(fmt.Sprintf("ws://127.0.0.1:%d/ws", livePort), wsclient.Options{Timeout: 5 * time.Second})
+	conn, err := wsclient.Dial(fmt.Sprintf("ws://127.0.0.1:%d/ws", srv2.Port), wsclient.Options{Timeout: 5 * time.Second})
 	if err != nil {
 		t.Fatalf("重连失败：%v", err)
 	}

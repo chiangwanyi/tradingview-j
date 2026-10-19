@@ -135,7 +135,7 @@ function draw(): void {
     trades,
     closed: closedTrades(trades),
     position: inst?.position ?? { quantity: 0, side: 'flat', averagePrice: 0 },
-    realizedPnl: inst?.realizedPnl ?? 0,
+    unrealizedPnl: inst?.unrealizedPnl ?? 0,
     showEma: store.showEma,
     tick: store.tick,
   })
@@ -223,8 +223,9 @@ watch(
   () => store.instance?.position,
   () => requestDraw(),
 )
+// 浮盈只在步进时变（按新 K 线收盘价重算），成本线标签要跟着更新
 watch(
-  () => store.instance?.realizedPnl,
+  () => store.instance?.unrealizedPnl,
   () => requestDraw(),
 )
 

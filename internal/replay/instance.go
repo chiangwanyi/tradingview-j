@@ -20,6 +20,7 @@ var ErrNoMoreBars = errors.New("数据已经到最后一根 K 线了")
 const (
 	maxEventsKept    = 500 // 每个实例保留多少条操作记录
 	eventsInSnapshot = 100 // 快照里带多少条
+	maxOrderQuantity = 10000
 )
 
 // Instance 是一个复盘实例的全部状态。
@@ -31,7 +32,10 @@ type Instance struct {
 	Symbol string
 	Folder string
 	Tick   float64 // 最小跳动（来自 _symbols.json），价格轴按它定小数位
-	Anchor string  // 锚点 K 线的时间字符串
+	// TickValue 是一个 tick 值多少美元（MNQ 0.5 / MES 1.25 / MGC 1 / CL 10）。
+	// 0 = _symbols.json 没登记、按标的名也认不出来：盈亏退化成「每点 1 美元」。
+	TickValue float64
+	Anchor    string // 锚点 K 线的时间字符串
 
 	Bars   []Bar
 	Cursor int
@@ -290,6 +294,15 @@ func (inst *Instance) placeOrder(by, side, kind string, price, qty float64) (Ord
 	if !finitePositive(qty) {
 		return Order{}, errors.New("数量必须是大于 0 的有限数字")
 	}
+	// 手数只能是整数：期货没有「0.4 手」这种报单，允许小数会让持仓、成交、
+	// 平仓配对全都跟着出现半手，「2 手分两次开仓」也会退化成一条平均成本的线。
+	if math.Abs(qty-math.Round(qty)) > 1e-9 {
+		return Order{}, fmt.Errorf("手数必须是整数（1、2、3…），收到 %v", qty)
+	}
+	qty = math.Round(qty)
+	if qty > maxOrderQuantity {
+		return Order{}, fmt.Errorf("单笔手数最多 %d 手", maxOrderQuantity)
+	}
 	bar := inst.currentBar()
 	o := Order{
 		ID:          inst.nextOrderID(),
@@ -455,7 +468,7 @@ func (inst *Instance) applyFill(o Order, price float64, t string) Trade {
 		if pos < 0 {
 			dir = -1
 		}
-		realized = (price - inst.Position.AveragePrice) * closeQty * dir
+		realized = (price - inst.Position.AveragePrice) * closeQty * dir * inst.pointValue()
 		next := pos + signed
 		if math.Abs(next) < 1e-9 {
 			next = 0
@@ -499,14 +512,27 @@ func (inst *Instance) position() Position {
 	return Position{Quantity: q, Side: side, AveragePrice: avg}
 }
 
-// unrealizedPnl 按当前这根 K 线的收盘价算浮动盈亏。
-// 空头持仓 Quantity 为负，(close-avg)*qty 自然给出正确符号。
+// pointValue 是「价格每走 1.0，一手值多少美元」。
+//
+// 它由 _symbols.json 里的 tickValue / tick 算出来，而不是另存一个乘数：
+// MNQ 0.50/0.25 = 2 美元/点，MES 1.25/0.25 = 5，MGC 1.00/0.1 = 10，CL 10.00/0.01 = 1000。
+// 用户只要填「一跳值多少」，乘数自然就对了。没配置（或配置不成对）时退化成 1 美元/点 ——
+// 至少数字还能互相比较，而不是算出一个 0。
+func (inst *Instance) pointValue() float64 {
+	if inst.Tick > 0 && inst.TickValue > 0 {
+		return inst.TickValue / inst.Tick
+	}
+	return 1
+}
+
+// unrealizedPnl 按当前这根 K 线的收盘价算浮动盈亏（美元）。
+// 空头持仓 Quantity 为负，(close-avg)*qty 自然给出正确符号；再乘每点价值换成美元。
 func (inst *Instance) unrealizedPnl() float64 {
 	q := inst.Position.Quantity
 	if q == 0 {
 		return 0
 	}
-	return (inst.currentBar().Close - inst.Position.AveragePrice) * q
+	return (inst.currentBar().Close - inst.Position.AveragePrice) * q * inst.pointValue()
 }
 
 // ---------------------------------------------------------------------------
@@ -549,6 +575,7 @@ func (inst *Instance) snapshot(members []Member) InstanceDTO {
 		Anchor:        inst.Anchor,
 		Cursor:        cursor,
 		Tick:          inst.Tick,
+		TickValue:     inst.TickValue,
 		Bars:          bars,
 		HiddenBars:    inst.hiddenBars(),
 		HasMore:       inst.hasMore(),

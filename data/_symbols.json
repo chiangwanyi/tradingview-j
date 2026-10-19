@@ -3,19 +3,23 @@
   "symbols": {
     "CME_MINI:MES1!": {
       "folder": "CME_MINI_MES1!",
-      "tick": 0.25
+      "tick": 0.25,
+      "tickValue": 1.25
     },
     "CME_MINI:MNQ1!": {
       "folder": "CME_MINI_MNQ1!",
-      "tick": 0.25
+      "tick": 0.25,
+      "tickValue": 0.5
     },
     "COMEX_MINI:MGC1!": {
       "folder": "COMEX_MINI_MGC1!",
-      "tick": 0.1
+      "tick": 0.1,
+      "tickValue": 1
     },
     "NYMEX:CL1!": {
       "folder": "NYMEX_CL1!",
-      "tick": 0.01
+      "tick": 0.01,
+      "tickValue": 10
     }
   }
 }
