@@ -1,0 +1,42 @@
+[
+  {
+    "id": "t1",
+    "orderId": "o2",
+    "time": "2026-01-29 01:50",
+    "side": "sell",
+    "kind": "limit",
+    "price": 7185.75,
+    "quantity": 1,
+    "realizedPnl": 0
+  },
+  {
+    "id": "t2",
+    "orderId": "o3",
+    "time": "2026-01-29 03:00",
+    "side": "buy",
+    "kind": "limit",
+    "price": 7178.5,
+    "quantity": 1,
+    "realizedPnl": 36.25
+  },
+  {
+    "id": "t3",
+    "orderId": "o4",
+    "time": "2026-01-29 03:30",
+    "side": "sell",
+    "kind": "stop",
+    "price": 7174.5,
+    "quantity": 1,
+    "realizedPnl": 0
+  },
+  {
+    "id": "t4",
+    "orderId": "o5",
+    "time": "2026-01-29 11:15",
+    "side": "buy",
+    "kind": "stop",
+    "price": 7188.25,
+    "quantity": 1,
+    "realizedPnl": -68.75
+  }
+]

@@ -1,0 +1,145 @@
+{
+  "version": 1,
+  "nextId": 11,
+  "templates": [
+    {
+      "id": "tpl-1",
+      "kind": "trend",
+      "name": "金色实线",
+      "style": {
+        "color": "#f59e0b",
+        "width": 1.6,
+        "dash": "solid"
+      },
+      "createdAt": 0
+    },
+    {
+      "id": "tpl-2",
+      "kind": "trend",
+      "name": "蓝色虚线",
+      "style": {
+        "color": "#0ea5e9",
+        "width": 1.6,
+        "dash": "dashed"
+      },
+      "createdAt": 0
+    },
+    {
+      "id": "tpl-11",
+      "kind": "ray",
+      "name": "空头突破",
+      "style": {
+        "color": "#ef4444",
+        "width": 2,
+        "dash": "solid"
+      },
+      "createdAt": 1792417243
+    },
+    {
+      "id": "tpl-7",
+      "kind": "rect",
+      "name": "金框",
+      "style": {
+        "color": "#f59e0b",
+        "width": 1.4,
+        "dash": "solid",
+        "fill": "#f59e0b",
+        "fillOpacity": 0.12
+      },
+      "createdAt": 0
+    },
+    {
+      "id": "tpl-8",
+      "kind": "rect",
+      "name": "蓝框",
+      "style": {
+        "color": "#0ea5e9",
+        "width": 1.4,
+        "dash": "solid",
+        "fill": "#0ea5e9",
+        "fillOpacity": 0.12
+      },
+      "createdAt": 0
+    },
+    {
+      "id": "tpl-5",
+      "kind": "arrow",
+      "name": "粉色箭头",
+      "style": {
+        "color": "#ec4899",
+        "width": 1.8,
+        "dash": "solid"
+      },
+      "createdAt": 0
+    },
+    {
+      "id": "tpl-6",
+      "kind": "arrow",
+      "name": "绿色虚线箭头",
+      "style": {
+        "color": "#22c55e",
+        "width": 1.8,
+        "dash": "dashed"
+      },
+      "createdAt": 0
+    },
+    {
+      "id": "tpl-9",
+      "kind": "fib",
+      "name": "四色实线",
+      "style": {
+        "color": "#f59e0b",
+        "width": 1.2,
+        "dash": "solid",
+        "levels": [
+          {
+            "ratio": -1,
+            "color": "#38bdf8"
+          },
+          {
+            "ratio": 0,
+            "color": "#f59e0b"
+          },
+          {
+            "ratio": 1,
+            "color": "#ec4899"
+          },
+          {
+            "ratio": 2,
+            "color": "#22c55e"
+          }
+        ]
+      },
+      "createdAt": 0
+    },
+    {
+      "id": "tpl-10",
+      "kind": "fib",
+      "name": "四色虚线",
+      "style": {
+        "color": "#f59e0b",
+        "width": 1.2,
+        "dash": "dashed",
+        "levels": [
+          {
+            "ratio": -1,
+            "color": "#38bdf8"
+          },
+          {
+            "ratio": 0,
+            "color": "#f59e0b"
+          },
+          {
+            "ratio": 1,
+            "color": "#ec4899"
+          },
+          {
+            "ratio": 2,
+            "color": "#22c55e"
+          }
+        ]
+      },
+      "createdAt": 0
+    }
+  ]
+}
