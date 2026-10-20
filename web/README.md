@@ -81,6 +81,7 @@ web/
 │  ├─ views/ReplayView.vue 页面骨架（页头 / 画布 / 底部 Tab 条）
 │  └─ components/
 │     ├─ chart/scale.ts    坐标变换（时间索引 ⇄ 像素、价格 ⇄ 像素）+ 刻度 + tick 吸附 + 轴上时间文案
+│     ├─ chart/snap.ts     Ctrl 吸附 OHLC（`nearestOHLC` / `snapAtCursor`，与后端同口径）
 │     ├─ chart/trades.ts   成交流水 → 「开仓均价 → 平仓价」线段（纯函数，只读）
 │     ├─ chart/render.ts   Canvas 绘制（K 线、EMA20、挂单/成本线、成交三角、十字光标）+ 两套 ChartTheme
 │     ├─ ChartPanel.vue    Canvas + SVG 容器与全部指针交互（平移 / 缩放 / 画 / 拖 / 吸附）
@@ -118,6 +119,15 @@ web/
 预览和后端定稿的差别只有一处：**Ctrl 吸附**。前端为了手感自己算一版最近的 OHLC，
 后端按同一规则再算一遍（开盘价优先、严格更近才替换）—— 两边都必须一致，
 不一致的表现是"松手后图形跳一下"。
+
+前端这套取舍**只有一份实现**：`chart/snap.ts` 的 `nearestOHLC` / `snapAtCursor`。
+十字光标那一帧、以及左上角那句提示都调 `snapAtCursor`（按住 Ctrl 就能在单击**之前**
+看见落点），定稿端点和拖动端点调 `nearestOHLC`。**改它时同时看一眼 Go 的
+`internal/replay/instance.go` 里的 `nearestOHLC`** —— 两份必须逐字同口径。
+
+光标下那根 K 线由 `scale.barAtCursor(x)` 给出（`ref` = 存坐标用的「锚点 + 向右几根」，
+`bar` = 吸附用的那根）。**别在别处再算一遍「光标在哪根 K 线上」**：十字光标的竖线走的是
+`nearestIndex`，两条路不一致的表现是「吸住时竖线跳到旁边那根上」。
 
 ## 坐标模型（最容易被写坏的地方）
 

@@ -1,5 +1,6 @@
 import type { Order, Position, Trade } from '@/types/protocol'
 
+import { snapAtCursor, type OHLCItem } from './snap'
 import type { ClosedTrade } from './trades'
 import {
   ChartScale,
@@ -68,6 +69,10 @@ export interface ChartTheme {
   tradeSell: string
   /** 选中标注的虚线框 */
   selection: string
+  /** Ctrl 吸附生效时的高亮色：十字线、价格标签、OHLC 图例里被吸住的那一项 */
+  snap: string
+  /** 吸附高亮块上的文字色（琥珀底上不能用浅色字，对比度不够） */
+  snapText: string
 }
 
 export const DARK_THEME: ChartTheme = {
@@ -99,6 +104,9 @@ export const DARK_THEME: ChartTheme = {
   tradeBuy: '#4ade80',
   tradeSell: '#f87171',
   selection: '#cbd5e1',
+  // 深色底上用琥珀色标「吸住了」：和涨跌红绿都不撞，一眼能认出这不是普通十字线
+  snap: '#fbbf24',
+  snapText: '#1c1206',
 }
 
 export const LIGHT_THEME: ChartTheme = {
@@ -130,6 +138,9 @@ export const LIGHT_THEME: ChartTheme = {
   tradeBuy: '#15803d',
   tradeSell: '#b91c1c',
   selection: '#334155',
+  // 浅色底上压暗一档（和浅色主题里 ema 用的同一枚琥珀）
+  snap: '#b45309',
+  snapText: '#ffffff',
 }
 
 export function themeOf(mode: 'light' | 'dark'): ChartTheme {
@@ -141,6 +152,15 @@ export interface HoverState {
   x: number
   y: number
   inside: boolean
+  /**
+   * 指针此刻是否按着 Ctrl。
+   *
+   * 只传「按没按」，**不传吸到了哪个价**：吸附由十字光标每一帧自己算
+   * （见 `drawCrosshair`），于是缩放、平移、步进之后它永远是对的。
+   * 要是把结果缓存进这个对象，滚一下滚轮十字线就会停在上次算出的那个价位上，
+   * 看着就像吸附失灵了。ChartPanel 里的价格提示也调同一个函数，两边必然一致。
+   */
+  snap?: boolean
 }
 
 export interface DrawInput {
@@ -629,16 +649,22 @@ function drawCrosshair(
   const { plot, timeAxis } = scale.layout
   const b = scale.bars[hover.index]
   if (!b) return
-  const x = Math.round(scale.xOf(hover.index)) + 0.5
 
-  // 光标的价格**吸附到最小跳动**：MES 只能停在 xxxx.00/.25/.50/.75，
-  // 不会出现 6484.12 这种这个标的根本不存在的报价。横线也跟着这条价格走，
-  // 所以看到标签上的数字，就是横线所在位置的真实价格。
-  const price = snapToTick(scale.priceAtY(hover.y), tick)
+  // 按住 Ctrl 时十字线**自己跳到 OHLC 上**，横竖两条线一起跳。
+  //
+  // 这一条以前没有：那时吸附只在「画下去的那一刻」发生，用户按住 Ctrl 之后十字线纹丝不动，
+  // 得先点一下才知道起点落在哪儿 —— 点歪了只能 Esc 重来。现在按住 Ctrl 就能看见落点。
+  //
+  // 吸附在这里**每帧现算**（不读缓存值）：缩放/平移/步进之后它永远是对的。
+  // 没吸时照旧：价格吸到最小跳动（MES 只有 .00/.25/.50/.75，不该出现 6484.12）。
+  const hit = hover.snap ? snapAtCursor(scale, hover.x, hover.y) : null
+  const bar = hit ? (scale.bars[hit.index] ?? b) : b
+  const price = hit ? hit.price : snapToTick(scale.priceAtY(hover.y), tick)
+  const x = Math.round(scale.xOf(hit ? hit.index : hover.index)) + 0.5
   const y = clamp(scale.yOf(price), plot.top, plot.bottom)
 
-  ctx.strokeStyle = theme.crosshair
-  ctx.lineWidth = 1
+  ctx.strokeStyle = hit ? theme.snap : theme.crosshair
+  ctx.lineWidth = hit ? 1.4 : 1
   ctx.setLineDash([4, 4])
   ctx.beginPath()
   ctx.moveTo(x, plot.top)
@@ -648,46 +674,63 @@ function drawCrosshair(
   ctx.stroke()
   ctx.setLineDash([])
 
-  // 价格标签
-  drawAxisBox(ctx, scale, formatPrice(price, decimals), Math.round(y), theme.crossBoxBg, theme.crossBoxText)
+  // 吸住的那一点上画个小圈：告诉用户「价格和这根 K 线绑上了」，而不是随手停在半路
+  if (hit) {
+    ctx.beginPath()
+    ctx.arc(x, y, 4, 0, Math.PI * 2)
+    ctx.strokeStyle = theme.snap
+    ctx.lineWidth = 1.6
+    ctx.stroke()
+  }
 
-  // 时间标签（同样给完整日期时间，和刻度标签一个格式）
+  // 价格标签：吸附生效时底色调成吸附色
+  drawAxisBox(
+    ctx,
+    scale,
+    formatPrice(price, decimals),
+    Math.round(y),
+    hit ? theme.snap : theme.crossBoxBg,
+    hit ? theme.snapText : theme.crossBoxText,
+  )
+
+  // 时间标签：跟着**被吸住的那根 K 线**走（竖线在它身上，标签就必须是它的时间）
   ctx.font = MONO
-  const label = formatAxisTime(b.time)
+  const label = formatAxisTime(bar.time)
   const w = ctx.measureText(label).width + 10
   const boxX = Math.min(Math.max(x - w / 2, plot.left), scale.width - w - 2)
-  ctx.fillStyle = theme.crossBoxBg
+  ctx.fillStyle = hit ? theme.snap : theme.crossBoxBg
   ctx.fillRect(boxX, timeAxis.top + 2, w, AXIS_LABEL_H)
   ctx.fillStyle = theme.crossBoxText
   ctx.textAlign = 'center'
   ctx.textBaseline = 'top'
   ctx.fillText(label, boxX + w / 2, timeAxis.top + 4)
 
-  // OHLC 图例（顶部一行）
-  const upColor = b.close >= b.open ? theme.up.stroke : theme.down.stroke
-  const parts: Array<[string, string, string]> = [
-    ['开', formatPrice(b.open, decimals), upColor],
-    ['高', formatPrice(b.high, decimals), theme.text],
-    ['低', formatPrice(b.low, decimals), theme.text],
-    ['收', formatPrice(b.close, decimals), upColor],
+  // OHLC 图例（顶部一行）：吸住的那一项换成吸附色 —— 用户一眼看出吸到的是哪个价
+  const upColor = bar.close >= bar.open ? theme.up.stroke : theme.down.stroke
+  const parts: Array<[string, string, string, OHLCItem]> = [
+    ['开', formatPrice(bar.open, decimals), upColor, 'open'],
+    ['高', formatPrice(bar.high, decimals), theme.text, 'high'],
+    ['低', formatPrice(bar.low, decimals), theme.text, 'low'],
+    ['收', formatPrice(bar.close, decimals), upColor, 'close'],
   ]
   let lx = plot.left + 6
   ctx.textAlign = 'left'
   ctx.textBaseline = 'top'
   ctx.font = MONO
-  for (const [name, value, color] of parts) {
-    ctx.fillStyle = theme.textDim
+  for (const [name, value, color, item] of parts) {
+    const on = hit?.item === item
+    ctx.fillStyle = on ? theme.snap : theme.textDim
     ctx.fillText(name, lx, plot.top + 3)
     lx += ctx.measureText(name).width + 4
-    ctx.fillStyle = color
+    ctx.fillStyle = on ? theme.snap : color
     ctx.fillText(value, lx, plot.top + 3)
     lx += ctx.measureText(value).width + 12
   }
-  if (b.ema20 !== null) {
+  if (bar.ema20 !== null) {
     ctx.fillStyle = theme.textDim
     ctx.fillText('EMA20', lx, plot.top + 3)
     lx += ctx.measureText('EMA20').width + 4
     ctx.fillStyle = theme.ema
-    ctx.fillText(formatPrice(b.ema20, decimals), lx, plot.top + 3)
+    ctx.fillText(formatPrice(bar.ema20, decimals), lx, plot.top + 3)
   }
 }

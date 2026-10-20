@@ -163,6 +163,31 @@ export class ChartScale {
     return clamp(Math.round(this.indexAtX(x)), 0, this.bars.length - 1)
   }
 
+  /**
+   * 光标（横向像素）指向的那根 K 线，连带它的端点坐标。
+   *
+   * 为什么要有这一个：**光标上显示的吸附点，必须就是单击后落下的位置**。
+   * 光标那条路要的是「哪根 K 线」（拿去挑 OHLC），绘图那条路要的是
+   * 「锚点 + 向右几根」（拿去存坐标），两处各算一遍迟早会漂出半根。
+   * 这里一次算完，谁要用哪部分就取哪部分。
+   *
+   * 横向夹在行情区左右两条边上（右边是价格轴，不是行情）：往右拖到最后一根之外时，
+   * 下标会越过末尾，但返回的 `bar` 是**被夹回来的那根**（最后一根）—— 那一段没有 K 线，
+   * 吸附只能吸在最后一根上（和后端 resolvePoint 一致）。
+   */
+  barAtCursor(x: number): { ref: BarRef; index: number; bar: Bar } | null {
+    if (this.bars.length === 0) return null
+    const { plot } = this.layout
+    const ref = this.barRefAt(this.indexAtX(clamp(x, plot.left, plot.right)))
+    if (!ref) return null
+    const vi = this.virtualIndexOf(ref)
+    if (vi === undefined) return null
+    const index = clamp(vi, 0, this.bars.length - 1)
+    const bar = this.bars[index]
+    if (!bar) return null
+    return { ref, index, bar }
+  }
+
   yOf(price: number): number {
     const span = this.priceMax - this.priceMin
     if (span <= 0) return this.layout.plot.bottom

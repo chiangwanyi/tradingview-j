@@ -5,10 +5,11 @@ import { buildFigure, resolveStyle, type Figure, type FigureView } from '@/compo
 import { orderKindFor, orderKindLabel } from '@/components/chart/orders'
 import { ORDER_RESERVE_RIGHT, drawChart, themeOf, type HoverState } from '@/components/chart/render'
 import { ChartScale, TIME_AXIS_HEIGHT, clamp, formatAxisTime, formatPrice, snapToTick } from '@/components/chart/scale'
+import { nearestOHLC, snapAtCursor, OHLC_LABEL } from '@/components/chart/snap'
 import { closedTrades, type ClosedTrade } from '@/components/chart/trades'
 import TradeTipCard from '@/components/TradeTipCard.vue'
 import { TOOL_LABEL, isDrawTool, useReplayStore, type DrawTool } from '@/stores/replay'
-import type { Bar, Order, OrderKind, Point, Side } from '@/types/protocol'
+import type { Order, OrderKind, Point, Side } from '@/types/protocol'
 
 /**
  * 画布 = Canvas（K 线/指标/挂单价线/十字光标）+ SVG（标注图形）。
@@ -138,6 +139,10 @@ const TIP_H = 132
 
 const drawMode = computed(() => isDrawTool(store.tool))
 const modifyMode = computed(() => store.tool === 'modify')
+/** 线类工具（趋势线 / 射线 / 箭头线）：只有它们支持 Shift 画水平线 */
+const isLineTool = computed(
+  () => store.tool === 'trend' || store.tool === 'ray' || store.tool === 'arrow',
+)
 
 // ---------------- 尺寸与重绘 ----------------
 
@@ -310,38 +315,22 @@ watch(() => store.showEma, () => requestDraw())
 // ---------------- 坐标换算 ----------------
 
 /**
- * 指针位置 -> 数据坐标（锚点 K 线时间 + 向右偏移 + 价格）。Ctrl 按下时价格吸附到锚点 K 线的 OHLC。
+ * 指针位置 -> 数据坐标（锚点 K 线时间 + 向右偏移 + 价格）。Ctrl 按下时价格吸附到该 K 线的 OHLC。
  *
  * 横向**不再夹到最后一根 K 线**：x 只夹在价格区左右两条边上（右边是价格轴，不是行情区），
  * 夹完交给 `barRefAt` 换算 —— 越过末尾的部分会自动变成「最后一根 + N 根」。
  * 所以「往右拖到未来」和「拖到某根历史上的 K 线」走的是同一套换算，不会偏移。
+ *
+ * 换算走 `scale.barAtCursor`，和十字光标用的是同一份 —— 预览里那个吸住的点，
+ * 就是这一下单击会落下的位置（以前两处各算一遍，差半根也看不出来）。
  */
 function pointAt(x: number, y: number, snap: boolean): ChartPoint | null {
-  if (scale.bars.length === 0) return null
-  const plot = scale.layout.plot
-  const ref = scale.barRefAt(scale.indexAtX(clamp(x, plot.left, plot.right)))
-  if (!ref) return null
-  const idx = scale.indexOfTime(ref.time)
-  const bar = idx === undefined ? undefined : scale.bars[idx]
-  if (!bar) return null
+  const hit = scale.barAtCursor(x)
+  if (!hit) return null
   // 吸附用的是**锚点**那根 K 线：偏移出去的地方一根 K 线都没有，没有 OHLC 可吸。
   // 后端 resolvePoint 也是拿锚点那根吸的，所以预览和定稿结果一致。
-  const price = snap ? nearestOHLC(bar, scale.priceAtY(y)) : scale.priceAtY(y)
-  return { time: ref.time, offset: ref.offset, price }
-}
-
-/** 和后端 nearestOHLC 同样的取舍（O 优先，严格小于才替换），保证预览与定稿一致。 */
-function nearestOHLC(bar: Bar, price: number): number {
-  let best = bar.open
-  let diff = Math.abs(bar.open - price)
-  for (const v of [bar.high, bar.low, bar.close]) {
-    const d = Math.abs(v - price)
-    if (d < diff) {
-      best = v
-      diff = d
-    }
-  }
-  return best
+  const price = snap ? nearestOHLC(hit.bar, scale.priceAtY(y)).price : scale.priceAtY(y)
+  return { time: hit.ref.time, offset: hit.ref.offset, price }
 }
 
 /** 画图形用的坐标换算（chart/annotations.ts 只认这一份接口，不认识缩放对象） */
@@ -536,6 +525,15 @@ function onWindowPointerMove(ev: PointerEvent): void {
   ctrlDown.value = ev.ctrlKey
   shiftDown.value = ev.shiftKey
 
+  // 拖动期间十字线一律退出吸附形态。
+  //
+  // 拖动中「要落在哪儿」由图形自己表达（标端点被吸在 OHLC 上、挂单线跟着走），
+  // 不必再靠十字线提示；更重要的是拖端点时端点可能停在最后一根的右侧（offset > 0），
+  // 那一段没有 K 线 —— 十字线一吸就会被夹回最后一根、离开端点，看着像吸附坏了。
+  if (drag.mode !== 'none' && hover.value?.snap) {
+    hover.value = { ...hover.value, snap: false }
+  }
+
   if (drag.mode === 'pan') {
     const dx = p.x - drag.lastX
     const dy = p.y - drag.lastY
@@ -584,12 +582,12 @@ function onWindowPointerMove(ev: PointerEvent): void {
       start: {
         time: refStart.time,
         offset: refStart.offset,
-        price: drag.snap ? nearestOHLC(barStart, rawStart) : rawStart,
+        price: drag.snap ? nearestOHLC(barStart, rawStart).price : rawStart,
       },
       end: {
         time: refEnd.time,
         offset: refEnd.offset,
-        price: drag.snap ? nearestOHLC(barEnd, rawEnd) : rawEnd,
+        price: drag.snap ? nearestOHLC(barEnd, rawEnd).price : rawEnd,
       },
     }
     drag.moved = true
@@ -650,7 +648,9 @@ function onPointerMove(ev: PointerEvent): void {
   }
 
   const idx = scale.nearestIndex(p.x)
-  hover.value = { index: idx, x: p.x, y: p.y, inside: true }
+  // 只传「按没按 Ctrl」：吸附本身由十字光标每帧现算（见 render.ts 的 drawCrosshair），
+  // 缩放/平移之后就不会过期。这里只需要把键位状态记进悬停对象里。
+  hover.value = { index: idx, x: p.x, y: p.y, inside: true, snap: ev.ctrlKey }
 
   // 挂单线：换光标 + 画粗（拖拽改价的入口）
   hoverOrderId.value = orderAt(p.x, p.y)
@@ -664,6 +664,7 @@ function onPointerMove(ev: PointerEvent): void {
 function onPointerLeave(): void {
   hover.value = null
   hoverOrderId.value = null
+  // 键位状态一起清掉：鼠标都出去了，提示和吸附圈不该留在画布上
   ctrlDown.value = false
   shiftDown.value = false
   // 鼠标移出画布 = 离开那条线：跟随卡销毁（钉住的卡是用户自己固定下来的，留着）
@@ -1188,9 +1189,29 @@ function isTypingTarget(target: EventTarget | null): boolean {
   return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || el.isContentEditable
 }
 
+/**
+ * Ctrl 按下/松开时，让光标立刻重画一次。
+ *
+ * 场景：**鼠标停着不动、只按一下 Ctrl** —— 这时不会触发 pointermove，
+ * 不补这一下十字线要等用户动一下鼠标才跳，按了 Ctrl 却看不见任何反应。
+ * 按下的那一下必须立刻吸：这是这个功能的全部意义（先看见落点，再单击）。
+ *
+ * 只置 `hover.snap` 这个开关，吸附值不动手算 —— 十字光标每帧自己算
+ * （见 render.ts 的 `drawCrosshair`），这里算一遍反而会多出一份可能不一致的口径。
+ */
+function refreshHoverSnap(): void {
+  const h = hover.value
+  if (!h || !h.inside || drag.mode !== 'none') return
+  hover.value = { ...h, snap: ctrlDown.value }
+  requestDraw()
+}
+
 function onKeyDown(ev: KeyboardEvent): void {
+  const wasCtrl = ctrlDown.value
   ctrlDown.value = ev.ctrlKey
   shiftDown.value = ev.shiftKey
+  // 在输入框里按 Ctrl（复制粘贴之类）不该让画布上的十字线闪一下
+  if (ev.ctrlKey && !wasCtrl && !isTypingTarget(ev.target)) refreshHoverSnap()
   if (isTypingTarget(ev.target)) return
 
   if (ev.key === 'Escape') {
@@ -1220,8 +1241,11 @@ function onKeyDown(ev: KeyboardEvent): void {
 }
 
 function onKeyUp(ev: KeyboardEvent): void {
+  const wasCtrl = ctrlDown.value
   ctrlDown.value = ev.ctrlKey
   shiftDown.value = ev.shiftKey
+  // 松开 Ctrl：十字线立刻回到跟着指针走（不用等鼠标动一下）
+  if (wasCtrl && !ev.ctrlKey) refreshHoverSnap()
 }
 
 // ---------------- SVG 图层 ----------------
@@ -1274,12 +1298,14 @@ const hint = computed(() => {
     const extra = store.tool === 'trend' || store.tool === 'ray' || store.tool === 'arrow' ? ' · Shift 水平' : ''
     // 「可以画过最后一根」值得写在提示里：以前终点会被吸回最后一根，用户会以为工具坏了
     const beyond = ' · 可画过最后一根'
+    // Ctrl 也写进去：这个功能是「按住就能看见落点」，不写用户不会知道
+    const snap = ' · Ctrl 吸附 OHLC'
     return pending.value
-      ? `${name}：移动鼠标找终点，再单击一下定稿${extra}${beyond} · Esc 取消`
-      : `${name}：单击定起点${extra}${beyond} · 滚轮缩放 · 中键拖动平移`
+      ? `${name}：移动鼠标找终点，再单击一下定稿${extra}${beyond}${snap} · Esc 取消`
+      : `${name}：单击定起点${extra}${beyond}${snap} · 滚轮缩放 · 中键拖动平移`
   }
   if (modifyMode.value) {
-    return '单击选中 · 拖端点改端点 · 拖线身整体移动 · Del 删除 · 空白处拖动平移 · 拖挂单线改价'
+    return '单击选中 · 拖端点改端点 · 拖线身整体移动 · Ctrl 吸附 OHLC · Del 删除 · 空白处拖动平移 · 拖挂单线改价'
   }
   return '滚轮缩放 · 右轴滚轮缩价格 · 拖动平移 · 拖挂单线改价 · 双击重置价格 · 右键挂单'
 })
@@ -1298,23 +1324,43 @@ const cursorStyle = computed(() => {
   return 'default'
 })
 
-/** 按住 Ctrl / Shift 时给一句提示，省得用户不知道有这么个东西 */
+/**
+ * 按住 Ctrl 时左上角那一句：说清「吸到了哪一根 K 线的哪个价」。
+ *
+ * 走的是十字光标同一个 `snapAtCursor`，所以这句话和画布上的圈、横线永远指同一个价
+ * —— 用户按着 Ctrl 慢慢找位置时，靠这句话就能把数读出来，不必盯着价格轴上的标签眯眼。
+ */
+const ctrlHint = computed(() => {
+  if (!ctrlDown.value) return ''
+  const h = hover.value
+  if (!h) return ''
+  const hit = snapAtCursor(scale, h.x, h.y)
+  if (!hit) return 'Ctrl：吸附 OHLC'
+  const bar = scale.bars[hit.index]
+  if (!bar) return 'Ctrl：吸附 OHLC'
+  return `Ctrl 吸附：${OHLC_LABEL[hit.item]} ${formatPrice(hit.price, store.priceDecimals)} · ${formatAxisTime(bar.time)}`
+})
+
+/** 按住 Shift（线类工具）时的那一句 */
+const shiftHint = computed(() =>
+  shiftDown.value && drawMode.value && isLineTool.value ? 'Shift：水平线' : '',
+)
+
 const modifierLabel = computed(() => {
-  if (ctrlDown.value) return 'Ctrl：吸附 OHLC'
-  if (shiftDown.value && drawMode.value && (store.tool === 'trend' || store.tool === 'ray' || store.tool === 'arrow')) {
-    return 'Shift：水平线'
-  }
+  if (ctrlHint.value) return ctrlHint.value
   if (pending.value?.snap) return '已吸附 OHLC'
-  return ''
+  return shiftHint.value
 })
 
 const priceHint = computed(() => {
   const h = hover.value
   if (!h) return ''
-  const bar = scale.bars[h.index]
+  // 按住 Ctrl 时显示**吸住的那个 OHLC 价**（十字线就画在那儿）；没吸时才显示光标价。
+  // 走的是十字光标同一个函数，所以这行文字和线永远说的是同一件事。
+  const hit = h.snap ? snapAtCursor(scale, h.x, h.y) : null
+  const bar = hit ? scale.bars[hit.index] : scale.bars[h.index]
   if (!bar) return ''
-  // 和十字光标同一个口径：价格先吸附到最小跳动，再显示
-  const p = snapToTick(scale.priceAtY(h.y), store.tick)
+  const p = hit ? hit.price : snapToTick(scale.priceAtY(h.y), store.tick)
   return `${formatAxisTime(bar.time)}   ${formatPrice(p, store.priceDecimals)}`
 })
 

@@ -28,5 +28,145 @@
     "price": 7054.25,
     "quantity": 2,
     "realizedPnl": 217.5
+  },
+  {
+    "id": "t4",
+    "orderId": "o4",
+    "time": "2026-02-24 22:40",
+    "side": "sell",
+    "kind": "market",
+    "price": 7054.25,
+    "quantity": 1,
+    "realizedPnl": 0
+  },
+  {
+    "id": "t5",
+    "orderId": "o5",
+    "time": "2026-02-24 23:00",
+    "side": "buy",
+    "kind": "limit",
+    "price": 7033,
+    "quantity": 1,
+    "realizedPnl": 106.25
+  },
+  {
+    "id": "t6",
+    "orderId": "o6",
+    "time": "2026-02-24 23:55",
+    "side": "buy",
+    "kind": "limit",
+    "price": 7062.66,
+    "quantity": 1,
+    "realizedPnl": 0
+  },
+  {
+    "id": "t7",
+    "orderId": "o7",
+    "time": "2026-02-25 00:10",
+    "side": "sell",
+    "kind": "limit",
+    "price": 7076.86,
+    "quantity": 1,
+    "realizedPnl": 70.99999999999909
+  },
+  {
+    "id": "t8",
+    "orderId": "o8",
+    "time": "2026-02-25 00:55",
+    "side": "buy",
+    "kind": "stop",
+    "price": 7078.02,
+    "quantity": 1,
+    "realizedPnl": 0
+  },
+  {
+    "id": "t9",
+    "orderId": "o11",
+    "time": "2026-02-25 02:00",
+    "side": "sell",
+    "kind": "limit",
+    "price": 7091.58,
+    "quantity": 1,
+    "realizedPnl": 67.79999999999745
+  },
+  {
+    "id": "t10",
+    "orderId": "o13",
+    "time": "2026-02-25 03:10",
+    "side": "buy",
+    "kind": "limit",
+    "price": 7081.73,
+    "quantity": 1,
+    "realizedPnl": 0
+  },
+  {
+    "id": "t11",
+    "orderId": "o15",
+    "time": "2026-02-25 04:10",
+    "side": "sell",
+    "kind": "stop",
+    "price": 7077.84,
+    "quantity": 1,
+    "realizedPnl": -19.44999999999709
+  },
+  {
+    "id": "t12",
+    "orderId": "o12",
+    "time": "2026-02-25 04:15",
+    "side": "sell",
+    "kind": "stop",
+    "price": 7076.14,
+    "quantity": 1,
+    "realizedPnl": 0
+  },
+  {
+    "id": "t13",
+    "orderId": "o16",
+    "time": "2026-02-25 04:30",
+    "side": "sell",
+    "kind": "market",
+    "price": 7081,
+    "quantity": 1,
+    "realizedPnl": 0
+  },
+  {
+    "id": "t14",
+    "orderId": "o17",
+    "time": "2026-02-25 04:40",
+    "side": "sell",
+    "kind": "market",
+    "price": 7083.25,
+    "quantity": 1,
+    "realizedPnl": 0
+  },
+  {
+    "id": "t15",
+    "orderId": "o18",
+    "time": "2026-02-25 05:05",
+    "side": "sell",
+    "kind": "market",
+    "price": 7081.5,
+    "quantity": 1,
+    "realizedPnl": 0
+  },
+  {
+    "id": "t16",
+    "orderId": "o19",
+    "time": "2026-02-25 05:15",
+    "side": "sell",
+    "kind": "market",
+    "price": 7082.5,
+    "quantity": 1,
+    "realizedPnl": 0
+  },
+  {
+    "id": "t17",
+    "orderId": "o20",
+    "time": "2026-02-25 07:05",
+    "side": "buy",
+    "kind": "market",
+    "price": 7079.25,
+    "quantity": 5,
+    "realizedPnl": 40.69999999999254
   }
 ]
