@@ -259,6 +259,13 @@ export const useReplayStore = defineStore('replay', () => {
         if (selectedAnnotation.value === p.annotationId) selectedAnnotation.value = null
         break
       }
+      case ACTION.annotationCleared: {
+        // 一次清空是**一个原子状态**：不去按 payload 里的编号逐个过滤 ——
+        // 服务端说的是「这个实例现在一个绘图都没有」，照它办就不会有漏网的那一个。
+        inst.annotations = []
+        selectedAnnotation.value = null
+        break
+      }
       case ACTION.orderPlaced:
       case ACTION.orderMoved:
       case ACTION.orderCancelled: {
@@ -443,6 +450,20 @@ export const useReplayStore = defineStore('replay', () => {
     send({ type: 'annotation_delete', instanceId: instance.value.id, annotationId: id })
   }
 
+  /**
+   * 移除当前画布上的**全部**绘图（右键菜单）。
+   *
+   * 走一条专门的 `annotation_clear`，而不是循环调 deleteAnnotation：那样会连发 N 条消息、
+   * 别人的画布一条条消失，操作记录里也多出 N 行。一条消息 = 一次状态变化 = 一条广播。
+   *
+   * 没有本地「先清空界面」的乐观更新：清空是服务端动作，广播回来才算数 ——
+   * 被拒（比如没有操作权）时界面上什么都不该变。
+   */
+  function clearAnnotations(): void {
+    if (!instance.value) return
+    send({ type: 'annotation_clear', instanceId: instance.value.id })
+  }
+
   function placeOrder(side: Side, kind: OrderKind, price: number, quantity: number): void {
     if (!instance.value) return
     // 后端也会校验整数，这里再夹一次是为了让「右键菜单里的 N 手」和真正发出去的一致
@@ -536,6 +557,7 @@ export const useReplayStore = defineStore('replay', () => {
     addAnnotation,
     moveAnnotation,
     deleteAnnotation,
+    clearAnnotations,
     placeOrder,
     marketOrder,
     moveOrder,

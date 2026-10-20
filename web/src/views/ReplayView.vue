@@ -5,13 +5,17 @@ import ChartPanel from '@/components/ChartPanel.vue'
 import ChartToolbar from '@/components/ChartToolbar.vue'
 import InstancesMenu from '@/components/InstancesMenu.vue'
 import TradeDock from '@/components/TradeDock.vue'
+import TradeFloat from '@/components/TradeFloat.vue'
 import { useReplayStore } from '@/stores/replay'
 
 /**
- * 复盘主界面：一条顶栏 + 画布占满 + 底部 Tab（模拟交易 / 操作记录）。
+ * 复盘主界面：一条顶栏 + 画布占满 + 底部 Tab（模拟交易 / 操作记录）+ 浮在页面上的下单窗。
  *
  * 布局是 v1.1 调整过的：左侧那一栏「标的与实例」搬进了右上角的折叠面板，
  * 右侧的交易栏搬到了底部 Tab —— 两处都只为了同一个目标：**把空间让给画布**。
+ *
+ * v0.8.0 又把「下单」这一列从底部面板里提出来，做成一枚可拖动、可折叠成小图标的浮窗：
+ * 步进、看盘、挂单是交替进行的，下单框必须随手能点到，又不能再吃掉画布的高度。
  *
  * 整个应用只有这一页。实例是服务端概念，这里只负责「进入/退出/观看」，
  * 关掉标签页不会删除实例（下次连上还在列表里）。
@@ -127,5 +131,11 @@ onMounted(() => {
     </main>
 
     <TradeDock />
+
+    <!--
+      下单浮窗：`position: fixed`，挂在这里只是因为它属于这一页；
+      它自己管位置（拖到哪儿记在哪儿）、自己管折叠，不参与上面的 flex 布局。
+    -->
+    <TradeFloat />
   </div>
 </template>

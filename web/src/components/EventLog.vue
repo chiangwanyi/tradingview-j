@@ -5,6 +5,7 @@ import { formatSigned } from '@/components/chart/scale'
 import { TOOL_LABEL, useReplayStore, type ChartTool } from '@/stores/replay'
 import { ACTION } from '@/types/protocol'
 import type {
+  AnnotationClearedPayload,
   AnnotationPayload,
   BarAdvancedPayload,
   BotPayload,
@@ -54,6 +55,8 @@ function actionLabel(action: string): string {
       return '移标注'
     case ACTION.annotationDeleted:
       return '删标注'
+    case ACTION.annotationCleared:
+      return '清空绘图'
     case ACTION.orderPlaced:
       return '挂单'
     case ACTION.orderFilled:
@@ -97,6 +100,11 @@ function detail(ev: ReplayEvent): string {
     case ACTION.annotationDeleted: {
       const p = ev.payload as { annotationId: string }
       return p.annotationId
+    }
+    case ACTION.annotationCleared: {
+      const p = ev.payload as AnnotationClearedPayload
+      // 编号可能几十个，列表里只写数量；鼠标停上去看具体删了哪几个
+      return `移除 ${p.count} 个：${p.annotationIds.join('、')}`
     }
     case ACTION.orderPlaced:
     case ACTION.orderCancelled: {

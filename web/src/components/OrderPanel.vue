@@ -1,92 +1,33 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed } from 'vue'
 
 import { formatSigned } from '@/components/chart/scale'
 import TradePanel from '@/components/TradePanel.vue'
 import { useReplayStore } from '@/stores/replay'
-import type { OrderKind, Side } from '@/types/protocol'
 
 /**
- * 模拟交易（底部「模拟交易」Tab 的内容）。
+ * 底部「模拟交易」Tab 的内容：**持仓与挂单** + **成交流水**两列。
  *
- * 语义刻意保持简单（需求如此）：
+ * 「下单」那一列（方向/单型/价格/数量/市价按钮）已经搬到 `TradeFloat.vue` ——
+ * 它是要反复点的东西，浮在图上比沉在底部顺手；这里留下的是「看」的部分：
+ * 持仓、盈亏、挂着的单、已经成交的流水。
+ *
+ * 语义仍然刻意保持简单（需求如此）：
  *   - 没有初始资金、没有保证金、没有手续费和滑点，只看盈亏数字和流水；
  *   - 没有止损/止盈类型 —— 想止损就挂一张 stop 单，和手动挂单完全一样；
- *   - 想立刻成交就用「市价买入 / 市价卖出」两个按钮：按当前这根 K 线的收盘价直接成交，
- *     不挂单、不等下一根；方向在按钮上，不用先选方向再点；
  *   - 成交判断在后端：新揭示的那根 K 线的最高/最低价碰到挂单价就成交，成交价通常是挂单价，
  *     跳空（开盘就跳过挂单价）时按开盘价 —— 细节见 docs/复盘设计.md 第 7 节。
- *
- * 画布右键菜单里不用选单型（按价格在现价哪一侧自动定）；这个框里保留手选，
- * 因为手填价格的场景不想被自动改掉。
- * 布局是**横排三列**（下单 / 持仓与挂单 / 成交）：底部面板只有约 180px 高，
- * 纵向堆叠放不下，横过来正好一眼看全。
  */
 
 const store = useReplayStore()
 
-const side = ref<Side>('buy')
-const kind = ref<OrderKind>('limit')
-const price = ref<number>(0)
-const manualPrice = ref(false)
-
 const inst = computed(() => store.instance)
-const currentPrice = computed(() => store.currentBar?.close ?? 0)
-const priceText = computed(() =>
-  currentPrice.value ? currentPrice.value.toFixed(store.priceDecimals) : '—',
-)
 const position = computed(() => inst.value?.position ?? { quantity: 0, side: 'flat', averagePrice: 0 })
 const positionText = computed(() => {
   const p = position.value
   if (p.side === 'flat') return '空仓'
   return `${p.side === 'long' ? '多' : '空'} ${Math.abs(p.quantity)} @ ${p.averagePrice.toFixed(store.priceDecimals)}`
 })
-
-/** 跳动用交易的 tick（没有就按两位小数） */
-const step = computed(() => {
-  const t = store.tick
-  return t > 0 ? String(t) : '0.01'
-})
-
-// 换实例、或者行情往前走而用户没手动改过价格时，价格框跟着现价
-watch(
-  () => inst.value?.id,
-  () => {
-    manualPrice.value = false
-    price.value = round2(currentPrice.value)
-  },
-  { immediate: true },
-)
-watch(currentPrice, (v) => {
-  if (!manualPrice.value && v > 0) price.value = round2(v)
-})
-
-function round2(v: number): number {
-  return Math.round(v * 100) / 100
-}
-
-function useCurrentPrice(): void {
-  manualPrice.value = false
-  price.value = round2(currentPrice.value)
-}
-
-function submit(): void {
-  if (!inst.value || !store.canOperate) return
-  if (!(price.value > 0) || !(store.orderQuantity > 0)) return
-  store.placeOrder(side.value, kind.value, price.value, store.orderQuantity)
-}
-
-/**
- * 市价成交：价格由后端取当前 K 线收盘价，所以这里不校验、也不传上面那个价格框 ——
- * 用户填的限价还留在框里，切回挂单时不会丢。
- *
- * 方向是**参数**，不是上面那个下拉框：两个按钮各自写死方向（见模板）。
- */
-function submitMarket(dir: Side): void {
-  if (!inst.value || !store.canOperate) return
-  if (!(currentPrice.value > 0) || !(store.orderQuantity > 0)) return
-  store.marketOrder(dir, store.orderQuantity)
-}
 
 const openOrders = computed(() => (inst.value?.orders ?? []).filter((o) => o.status === 'open'))
 const historyOrders = computed(() =>
@@ -111,107 +52,10 @@ function pnlClass(v: number): string {
   if (v < 0) return 'text-red-600 dark:text-red-400'
   return 'text-dim'
 }
-
-const inputClass =
-  'w-full rounded border border-line bg-surface px-1.5 py-1 text-[12px] text-ink tnum focus:border-accent focus:outline-none'
 </script>
 
 <template>
   <div class="flex h-full min-h-0 divide-x divide-line">
-    <!-- 下单 -->
-    <div class="flex w-[16.5rem] shrink-0 flex-col gap-1.5 p-2">
-      <div class="flex items-center justify-between text-[12px]">
-        <span class="font-semibold">下单</span>
-        <span class="tnum text-dim">现价 {{ priceText }}</span>
-      </div>
-
-      <div class="grid grid-cols-2 gap-1.5">
-        <select v-model="side" :class="inputClass">
-          <option value="buy">买入 / 做多</option>
-          <option value="sell">卖出 / 做空</option>
-        </select>
-        <select v-model="kind" :class="inputClass">
-          <option value="limit">限价单</option>
-          <option value="stop">止损单</option>
-        </select>
-      </div>
-
-      <div class="grid grid-cols-2 gap-1.5">
-        <label class="block">
-          <span class="text-[11px] text-faint">价格（跳动 {{ step }}）</span>
-          <input
-            v-model.number="price"
-            type="number"
-            :step="step"
-            :class="inputClass"
-            @input="manualPrice = true"
-          />
-        </label>
-        <label class="block">
-          <span class="text-[11px] text-faint">数量（手）</span>
-          <input
-            v-model.number="store.orderQuantity"
-            type="number"
-            min="1"
-            step="1"
-            :class="inputClass"
-            title="手数只能是整数：1、2、3…（没有 0.5 手）"
-          />
-        </label>
-      </div>
-
-      <div class="flex items-center gap-2">
-        <button type="button" class="text-[11px] text-accent hover:underline" @click="useCurrentPrice">
-          用现价
-        </button>
-        <button
-          type="button"
-          class="ml-auto rounded bg-amber-600 px-3 py-1 text-[12px] font-medium text-white hover:bg-amber-500 disabled:cursor-not-allowed disabled:opacity-40"
-          :disabled="!store.canOperate || !inst"
-          @click="submit"
-        >
-          挂单
-        </button>
-      </div>
-
-      <!--
-        市价单：**两个按钮，方向写死在按钮里**，不跟上面的「买入/卖出」下拉走。
-        复盘时最常见的动作是反手（刚市价买完，下一根就要市价卖），共用一个方向的话
-        每次都得先改下拉再点按钮 —— 改错方向就是一笔反向仓。两个按钮一步到位。
-        价格框里的数字不参与成交（市价 = 当前收盘价）。
-      -->
-      <div class="grid grid-cols-2 gap-1.5">
-        <button
-          type="button"
-          class="rounded bg-emerald-600 px-2 py-1 text-[12px] font-medium whitespace-nowrap text-white transition hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-40"
-          :disabled="!store.canOperate || !inst || !(currentPrice > 0)"
-          :title="`市价买入 ${store.orderQuantity} 手：按现价 ${priceText} 立即成交，不使用上面填的价格`"
-          @click="submitMarket('buy')"
-        >
-          市价买入 {{ store.orderQuantity }} 手
-        </button>
-        <button
-          type="button"
-          class="rounded bg-red-600 px-2 py-1 text-[12px] font-medium whitespace-nowrap text-white transition hover:bg-red-500 disabled:cursor-not-allowed disabled:opacity-40"
-          :disabled="!store.canOperate || !inst || !(currentPrice > 0)"
-          :title="`市价卖出 ${store.orderQuantity} 手：按现价 ${priceText} 立即成交，不使用上面填的价格`"
-          @click="submitMarket('sell')"
-        >
-          市价卖出 {{ store.orderQuantity }} 手
-        </button>
-      </div>
-
-      <!--
-        这两列加起来只有 200px 出头高（字号上调后从 184px 抬到 204px），
-        左边这列没有滚动条 —— 说明文字只留一行。
-        完整规则（限价买 low<=价、限价卖 high>=价、止损相反、不计手续费/滑点）在
-        docs/复盘设计.md 的「模拟交易」一节，界面上放不下也不必放。
-      -->
-      <div class="mt-auto truncate text-[11px] leading-4 text-faint" title="限价买：最低价 ≤ 挂单价；限价卖：最高价 ≥ 挂单价；止损单相反。无资金/手续费/滑点。">
-        规则见 docs/复盘设计.md · 不计手续费/滑点
-      </div>
-    </div>
-
     <!-- 持仓 + 挂单 -->
     <div class="flex w-[17.5rem] shrink-0 flex-col gap-1 overflow-auto p-2 text-[12px]">
       <div class="flex justify-between">

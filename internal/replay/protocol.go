@@ -30,6 +30,7 @@ const (
 	ReqAnnAdd        = "annotation_add"
 	ReqAnnMove       = "annotation_move"
 	ReqAnnDelete     = "annotation_delete"
+	ReqAnnClear      = "annotation_clear" // 一次清掉当前实例的全部绘图（画布右键菜单「移除 N 个绘图」）
 	ReqListTemplates = "list_templates"
 	ReqSaveTemplate  = "save_template"
 	ReqDelTemplate   = "delete_template"
@@ -108,6 +109,7 @@ const (
 	ActAnnotationAdded  = "annotation_added"
 	ActAnnotationMoved  = "annotation_moved"
 	ActAnnotationDelete = "annotation_deleted"
+	ActAnnotationClear  = "annotation_cleared"
 	ActOrderPlaced      = "order_placed"
 	ActOrderFilled      = "order_filled"
 	ActOrderMoved       = "order_moved" // 改挂单价
@@ -446,6 +448,18 @@ type AnnotationPayload struct {
 
 type AnnotationDeletedPayload struct {
 	AnnotationID string `json:"annotationId"`
+}
+
+// AnnotationClearedPayload 是「清空全部绘图」的广播负载。
+//
+// 为什么不是连发 N 条 annotation_deleted：那条路会在操作记录里留下 N 行噪音，
+// 而且中途断线会留下「删了一半」的状态。一次清空 = 一条广播 = 一个原子状态。
+//
+// 带上被删掉的编号，是为了让操作记录能写清「清掉的是哪几个」——只给个数量的话，
+// 事后回看只能知道「有人清了 5 个」，不知道清的是哪 5 个。
+type AnnotationClearedPayload struct {
+	Count         int      `json:"count"`
+	AnnotationIDs []string `json:"annotationIds"`
 }
 
 type OrdersPayload struct {

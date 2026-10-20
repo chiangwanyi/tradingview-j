@@ -299,6 +299,26 @@ func (inst *Instance) deleteAnnotation(id string) error {
 	return fmt.Errorf("没有这个标注：%s（可能已被别人删掉）", id)
 }
 
+// clearAnnotations 删掉**全部**标注，返回被删掉的编号（操作记录要写清删了哪几个）。
+//
+// 一次清空，而不是循环调用 deleteAnnotation：那样每删一个就广播一条，别人的画布
+// 会一条条消失（还能看见中间态），操作记录里也会多出 N 行。这里改完整个切片，
+// 由 hub 广播一条 annotation_cleared，所有人同时变成空画布。
+//
+// 编号计数器**不回退**（seqAnn 不动）：删掉的 a3 不会被后来的标注重复使用，
+// 否则操作记录里两条不同时间的「删标注 a3」会指到两个不同的图形上。
+func (inst *Instance) clearAnnotations() []string {
+	if len(inst.Annotations) == 0 {
+		return nil
+	}
+	ids := make([]string, 0, len(inst.Annotations))
+	for _, a := range inst.Annotations {
+		ids = append(ids, a.ID)
+	}
+	inst.Annotations = nil
+	return ids
+}
+
 // ---------------------------------------------------------------------------
 // 模拟交易
 // ---------------------------------------------------------------------------

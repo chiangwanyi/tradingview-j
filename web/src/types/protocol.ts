@@ -298,6 +298,15 @@ export interface AnnotationDeletedPayload {
   annotationId: string
 }
 
+/**
+ * 清空全部绘图。`count` 是删掉几个（操作记录里直接显示），`annotationIds` 是
+ * 「具体删了哪几个」—— 只留数量的话，事后回看只知道有人清了 5 个，不知道是哪 5 个。
+ */
+export interface AnnotationClearedPayload {
+  count: number
+  annotationIds: string[]
+}
+
 export interface OrdersPayload {
   orders: Order[]
 }
@@ -345,6 +354,7 @@ export const ACTION = {
   annotationAdded: 'annotation_added',
   annotationMoved: 'annotation_moved',
   annotationDeleted: 'annotation_deleted',
+  annotationCleared: 'annotation_cleared',
   orderPlaced: 'order_placed',
   orderFilled: 'order_filled',
   orderMoved: 'order_moved',

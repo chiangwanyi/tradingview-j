@@ -1,1 +1,32 @@
-[]
+[
+  {
+    "id": "t1",
+    "orderId": "o1",
+    "time": "2026-02-24 22:20",
+    "side": "buy",
+    "kind": "market",
+    "price": 7031.75,
+    "quantity": 1,
+    "realizedPnl": 0
+  },
+  {
+    "id": "t2",
+    "orderId": "o2",
+    "time": "2026-02-24 22:35",
+    "side": "buy",
+    "kind": "market",
+    "price": 7033.25,
+    "quantity": 1,
+    "realizedPnl": 0
+  },
+  {
+    "id": "t3",
+    "orderId": "o3",
+    "time": "2026-02-24 22:40",
+    "side": "sell",
+    "kind": "market",
+    "price": 7054.25,
+    "quantity": 2,
+    "realizedPnl": 217.5
+  }
+]

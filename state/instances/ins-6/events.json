@@ -45,9 +45,9 @@
       "members": [
         {
           "clientId": "c2",
+          "connected": true,
           "name": "human2",
-          "operator": true,
-          "connected": true
+          "operator": true
         }
       ]
     }
@@ -61,15 +61,15 @@
       "members": [
         {
           "clientId": "c1",
+          "connected": true,
           "name": "human",
-          "operator": false,
-          "connected": true
+          "operator": false
         },
         {
           "clientId": "c2",
+          "connected": true,
           "name": "human2",
-          "operator": true,
-          "connected": true
+          "operator": true
         }
       ]
     }
@@ -92,9 +92,9 @@
       "members": [
         {
           "clientId": "c1",
+          "connected": true,
           "name": "human",
-          "operator": false,
-          "connected": true
+          "operator": false
         }
       ]
     }
@@ -115,43 +115,43 @@
     "action": "annotation_added",
     "payload": {
       "annotation": {
+        "createdAt": 1792426680,
+        "createdBy": "human",
+        "end": {
+          "offset": 26,
+          "price": 7035.61,
+          "time": "2026-02-24 22:20"
+        },
         "id": "a2",
         "kind": "fib",
+        "snapped": false,
         "start": {
-          "time": "2026-02-24 20:15",
-          "price": 7040.41
-        },
-        "end": {
-          "time": "2026-02-24 22:20",
-          "price": 7035.61,
-          "offset": 26
+          "price": 7040.41,
+          "time": "2026-02-24 20:15"
         },
         "style": {
           "color": "#f59e0b",
-          "width": 1.2,
           "dash": "solid",
           "levels": [
             {
-              "ratio": -1,
-              "color": "#38bdf8"
+              "color": "#38bdf8",
+              "ratio": -1
             },
             {
-              "ratio": 0,
-              "color": "#f59e0b"
+              "color": "#f59e0b",
+              "ratio": 0
             },
             {
-              "ratio": 1,
-              "color": "#ec4899"
+              "color": "#ec4899",
+              "ratio": 1
             },
             {
-              "ratio": 2,
-              "color": "#22c55e"
+              "color": "#22c55e",
+              "ratio": 2
             }
-          ]
-        },
-        "snapped": false,
-        "createdBy": "human",
-        "createdAt": 1792426680
+          ],
+          "width": 1.2
+        }
       }
     }
   },
@@ -162,44 +162,44 @@
     "action": "annotation_added",
     "payload": {
       "annotation": {
+        "createdAt": 1792426684,
+        "createdBy": "human",
+        "end": {
+          "offset": 34,
+          "price": 7030.92,
+          "time": "2026-02-24 22:20"
+        },
         "id": "a3",
         "kind": "fib",
+        "snapped": false,
         "start": {
-          "time": "2026-02-24 22:20",
+          "offset": 3,
           "price": 7027.52,
-          "offset": 3
-        },
-        "end": {
-          "time": "2026-02-24 22:20",
-          "price": 7030.92,
-          "offset": 34
+          "time": "2026-02-24 22:20"
         },
         "style": {
           "color": "#f59e0b",
-          "width": 1.2,
           "dash": "solid",
           "levels": [
             {
-              "ratio": -1,
-              "color": "#38bdf8"
+              "color": "#38bdf8",
+              "ratio": -1
             },
             {
-              "ratio": 0,
-              "color": "#f59e0b"
+              "color": "#f59e0b",
+              "ratio": 0
             },
             {
-              "ratio": 1,
-              "color": "#ec4899"
+              "color": "#ec4899",
+              "ratio": 1
             },
             {
-              "ratio": 2,
-              "color": "#22c55e"
+              "color": "#22c55e",
+              "ratio": 2
             }
-          ]
-        },
-        "snapped": false,
-        "createdBy": "human",
-        "createdAt": 1792426684
+          ],
+          "width": 1.2
+        }
       }
     }
   },
@@ -210,25 +210,25 @@
     "action": "annotation_added",
     "payload": {
       "annotation": {
+        "createdAt": 1792426687,
+        "createdBy": "human",
+        "end": {
+          "offset": 11,
+          "price": 7052.77,
+          "time": "2026-02-24 22:20"
+        },
         "id": "a4",
         "kind": "ray",
+        "snapped": false,
         "start": {
-          "time": "2026-02-24 19:40",
-          "price": 7050.84
-        },
-        "end": {
-          "time": "2026-02-24 22:20",
-          "price": 7052.77,
-          "offset": 11
+          "price": 7050.84,
+          "time": "2026-02-24 19:40"
         },
         "style": {
           "color": "#ef4444",
-          "width": 2,
-          "dash": "solid"
-        },
-        "snapped": false,
-        "createdBy": "human",
-        "createdAt": 1792426687
+          "dash": "solid",
+          "width": 2
+        }
       }
     }
   },
@@ -239,25 +239,25 @@
     "action": "annotation_added",
     "payload": {
       "annotation": {
+        "createdAt": 1792426689,
+        "createdBy": "human",
+        "end": {
+          "offset": 15,
+          "price": 7048.15,
+          "time": "2026-02-24 22:20"
+        },
         "id": "a5",
         "kind": "arrow",
+        "snapped": false,
         "start": {
-          "time": "2026-02-24 19:45",
-          "price": 7053.89
-        },
-        "end": {
-          "time": "2026-02-24 22:20",
-          "price": 7048.15,
-          "offset": 15
+          "price": 7053.89,
+          "time": "2026-02-24 19:45"
         },
         "style": {
           "color": "#ec4899",
-          "width": 1.8,
-          "dash": "solid"
-        },
-        "snapped": false,
-        "createdBy": "human",
-        "createdAt": 1792426689
+          "dash": "solid",
+          "width": 1.8
+        }
       }
     }
   },
@@ -268,25 +268,25 @@
     "action": "annotation_added",
     "payload": {
       "annotation": {
+        "createdAt": 1792426692,
+        "createdBy": "human",
+        "end": {
+          "offset": 26,
+          "price": 7047.5,
+          "time": "2026-02-24 22:20"
+        },
         "id": "a6",
         "kind": "trend",
+        "snapped": false,
         "start": {
-          "time": "2026-02-24 20:40",
-          "price": 7048.5
-        },
-        "end": {
-          "time": "2026-02-24 22:20",
-          "price": 7047.5,
-          "offset": 26
+          "price": 7048.5,
+          "time": "2026-02-24 20:40"
         },
         "style": {
           "color": "#f59e0b",
-          "width": 1.6,
-          "dash": "solid"
-        },
-        "snapped": false,
-        "createdBy": "human",
-        "createdAt": 1792426692
+          "dash": "solid",
+          "width": 1.6
+        }
       }
     }
   },
@@ -297,27 +297,27 @@
     "action": "annotation_added",
     "payload": {
       "annotation": {
+        "createdAt": 1792426696,
+        "createdBy": "human",
+        "end": {
+          "offset": 39,
+          "price": 7036.08,
+          "time": "2026-02-24 22:20"
+        },
         "id": "a7",
         "kind": "rect",
+        "snapped": false,
         "start": {
-          "time": "2026-02-24 21:35",
-          "price": 7050.31
-        },
-        "end": {
-          "time": "2026-02-24 22:20",
-          "price": 7036.08,
-          "offset": 39
+          "price": 7050.31,
+          "time": "2026-02-24 21:35"
         },
         "style": {
           "color": "#f59e0b",
-          "width": 1.4,
           "dash": "solid",
           "fill": "#f59e0b",
-          "fillOpacity": 0.12
-        },
-        "snapped": false,
-        "createdBy": "human",
-        "createdAt": 1792426696
+          "fillOpacity": 0.12,
+          "width": 1.4
+        }
       }
     }
   },
@@ -328,25 +328,25 @@
     "action": "annotation_added",
     "payload": {
       "annotation": {
+        "createdAt": 1792426721,
+        "createdBy": "human",
+        "end": {
+          "offset": 34,
+          "price": 7020.55,
+          "time": "2026-02-24 22:20"
+        },
         "id": "a8",
         "kind": "trend",
+        "snapped": false,
         "start": {
-          "time": "2026-02-24 21:50",
-          "price": 7025.06
-        },
-        "end": {
-          "time": "2026-02-24 22:20",
-          "price": 7020.55,
-          "offset": 34
+          "price": 7025.06,
+          "time": "2026-02-24 21:50"
         },
         "style": {
           "color": "#f59e0b",
-          "width": 1.6,
-          "dash": "solid"
-        },
-        "snapped": false,
-        "createdBy": "human",
-        "createdAt": 1792426721
+          "dash": "solid",
+          "width": 1.6
+        }
       }
     }
   },
@@ -366,6 +366,582 @@
     "action": "members_changed",
     "payload": {
       "members": []
+    }
+  },
+  {
+    "seq": 17,
+    "at": 1792461103,
+    "by": "human",
+    "action": "control_changed",
+    "payload": {
+      "operator": "human"
+    }
+  },
+  {
+    "seq": 18,
+    "at": 1792461103,
+    "by": "system",
+    "action": "members_changed",
+    "payload": {
+      "members": [
+        {
+          "clientId": "c1",
+          "connected": true,
+          "name": "human",
+          "operator": true
+        }
+      ]
+    }
+  },
+  {
+    "seq": 19,
+    "at": 1792462655,
+    "by": "human",
+    "action": "control_changed",
+    "payload": {
+      "operator": "human"
+    }
+  },
+  {
+    "seq": 20,
+    "at": 1792462655,
+    "by": "system",
+    "action": "members_changed",
+    "payload": {
+      "members": [
+        {
+          "clientId": "c1",
+          "name": "human",
+          "operator": true,
+          "connected": true
+        }
+      ]
+    }
+  },
+  {
+    "seq": 21,
+    "at": 1792462664,
+    "by": "human",
+    "action": "annotation_cleared",
+    "payload": {
+      "count": 8,
+      "annotationIds": [
+        "a1",
+        "a2",
+        "a3",
+        "a4",
+        "a5",
+        "a6",
+        "a7",
+        "a8"
+      ]
+    }
+  },
+  {
+    "seq": 22,
+    "at": 1792462670,
+    "by": "human",
+    "action": "order_filled",
+    "payload": {
+      "order": {
+        "id": "o1",
+        "side": "buy",
+        "kind": "market",
+        "price": 7031.75,
+        "quantity": 1,
+        "status": "filled",
+        "placedAt": "2026-02-24 22:20",
+        "placedIndex": 460,
+        "filledAt": "2026-02-24 22:20",
+        "filledIndex": 460,
+        "fillPrice": 7031.75
+      },
+      "trade": {
+        "id": "t1",
+        "orderId": "o1",
+        "time": "2026-02-24 22:20",
+        "side": "buy",
+        "kind": "market",
+        "price": 7031.75,
+        "quantity": 1,
+        "realizedPnl": 0
+      },
+      "orders": [
+        {
+          "id": "o1",
+          "side": "buy",
+          "kind": "market",
+          "price": 7031.75,
+          "quantity": 1,
+          "status": "filled",
+          "placedAt": "2026-02-24 22:20",
+          "placedIndex": 460,
+          "filledAt": "2026-02-24 22:20",
+          "filledIndex": 460,
+          "fillPrice": 7031.75
+        }
+      ],
+      "trades": [
+        {
+          "id": "t1",
+          "orderId": "o1",
+          "time": "2026-02-24 22:20",
+          "side": "buy",
+          "kind": "market",
+          "price": 7031.75,
+          "quantity": 1,
+          "realizedPnl": 0
+        }
+      ],
+      "position": {
+        "quantity": 1,
+        "side": "long",
+        "averagePrice": 7031.75
+      },
+      "realizedPnl": 0,
+      "unrealizedPnl": 0
+    }
+  },
+  {
+    "seq": 23,
+    "at": 1792462673,
+    "by": "human",
+    "action": "bar_advanced",
+    "payload": {
+      "bar": {
+        "time": "2026-02-24 22:25",
+        "open": 7032,
+        "high": 7033,
+        "low": 7026.75,
+        "close": 7029.25,
+        "volume": 6863,
+        "ema20": 7037.712425013157
+      },
+      "cursor": 461,
+      "hiddenBars": 1122,
+      "hasMore": true,
+      "orders": [
+        {
+          "id": "o1",
+          "side": "buy",
+          "kind": "market",
+          "price": 7031.75,
+          "quantity": 1,
+          "status": "filled",
+          "placedAt": "2026-02-24 22:20",
+          "placedIndex": 460,
+          "filledAt": "2026-02-24 22:20",
+          "filledIndex": 460,
+          "fillPrice": 7031.75
+        }
+      ],
+      "trades": [
+        {
+          "id": "t1",
+          "orderId": "o1",
+          "time": "2026-02-24 22:20",
+          "side": "buy",
+          "kind": "market",
+          "price": 7031.75,
+          "quantity": 1,
+          "realizedPnl": 0
+        }
+      ],
+      "position": {
+        "quantity": 1,
+        "side": "long",
+        "averagePrice": 7031.75
+      },
+      "realizedPnl": 0,
+      "unrealizedPnl": -12.5,
+      "fills": []
+    }
+  },
+  {
+    "seq": 24,
+    "at": 1792462674,
+    "by": "human",
+    "action": "bar_advanced",
+    "payload": {
+      "bar": {
+        "time": "2026-02-24 22:30",
+        "open": 7029.25,
+        "high": 7032.5,
+        "low": 7016,
+        "close": 7018,
+        "volume": 46124,
+        "ema20": 7035.835051202381
+      },
+      "cursor": 462,
+      "hiddenBars": 1121,
+      "hasMore": true,
+      "orders": [
+        {
+          "id": "o1",
+          "side": "buy",
+          "kind": "market",
+          "price": 7031.75,
+          "quantity": 1,
+          "status": "filled",
+          "placedAt": "2026-02-24 22:20",
+          "placedIndex": 460,
+          "filledAt": "2026-02-24 22:20",
+          "filledIndex": 460,
+          "fillPrice": 7031.75
+        }
+      ],
+      "trades": [
+        {
+          "id": "t1",
+          "orderId": "o1",
+          "time": "2026-02-24 22:20",
+          "side": "buy",
+          "kind": "market",
+          "price": 7031.75,
+          "quantity": 1,
+          "realizedPnl": 0
+        }
+      ],
+      "position": {
+        "quantity": 1,
+        "side": "long",
+        "averagePrice": 7031.75
+      },
+      "realizedPnl": 0,
+      "unrealizedPnl": -68.75,
+      "fills": []
+    }
+  },
+  {
+    "seq": 25,
+    "at": 1792462675,
+    "by": "human",
+    "action": "bar_advanced",
+    "payload": {
+      "bar": {
+        "time": "2026-02-24 22:35",
+        "open": 7018.25,
+        "high": 7036,
+        "low": 7010.25,
+        "close": 7033.25,
+        "volume": 54790,
+        "ema20": 7035.588855849773
+      },
+      "cursor": 463,
+      "hiddenBars": 1120,
+      "hasMore": true,
+      "orders": [
+        {
+          "id": "o1",
+          "side": "buy",
+          "kind": "market",
+          "price": 7031.75,
+          "quantity": 1,
+          "status": "filled",
+          "placedAt": "2026-02-24 22:20",
+          "placedIndex": 460,
+          "filledAt": "2026-02-24 22:20",
+          "filledIndex": 460,
+          "fillPrice": 7031.75
+        }
+      ],
+      "trades": [
+        {
+          "id": "t1",
+          "orderId": "o1",
+          "time": "2026-02-24 22:20",
+          "side": "buy",
+          "kind": "market",
+          "price": 7031.75,
+          "quantity": 1,
+          "realizedPnl": 0
+        }
+      ],
+      "position": {
+        "quantity": 1,
+        "side": "long",
+        "averagePrice": 7031.75
+      },
+      "realizedPnl": 0,
+      "unrealizedPnl": 7.5,
+      "fills": []
+    }
+  },
+  {
+    "seq": 26,
+    "at": 1792462680,
+    "by": "human",
+    "action": "order_filled",
+    "payload": {
+      "order": {
+        "id": "o2",
+        "side": "buy",
+        "kind": "market",
+        "price": 7033.25,
+        "quantity": 1,
+        "status": "filled",
+        "placedAt": "2026-02-24 22:35",
+        "placedIndex": 463,
+        "filledAt": "2026-02-24 22:35",
+        "filledIndex": 463,
+        "fillPrice": 7033.25
+      },
+      "trade": {
+        "id": "t2",
+        "orderId": "o2",
+        "time": "2026-02-24 22:35",
+        "side": "buy",
+        "kind": "market",
+        "price": 7033.25,
+        "quantity": 1,
+        "realizedPnl": 0
+      },
+      "orders": [
+        {
+          "id": "o1",
+          "side": "buy",
+          "kind": "market",
+          "price": 7031.75,
+          "quantity": 1,
+          "status": "filled",
+          "placedAt": "2026-02-24 22:20",
+          "placedIndex": 460,
+          "filledAt": "2026-02-24 22:20",
+          "filledIndex": 460,
+          "fillPrice": 7031.75
+        },
+        {
+          "id": "o2",
+          "side": "buy",
+          "kind": "market",
+          "price": 7033.25,
+          "quantity": 1,
+          "status": "filled",
+          "placedAt": "2026-02-24 22:35",
+          "placedIndex": 463,
+          "filledAt": "2026-02-24 22:35",
+          "filledIndex": 463,
+          "fillPrice": 7033.25
+        }
+      ],
+      "trades": [
+        {
+          "id": "t1",
+          "orderId": "o1",
+          "time": "2026-02-24 22:20",
+          "side": "buy",
+          "kind": "market",
+          "price": 7031.75,
+          "quantity": 1,
+          "realizedPnl": 0
+        },
+        {
+          "id": "t2",
+          "orderId": "o2",
+          "time": "2026-02-24 22:35",
+          "side": "buy",
+          "kind": "market",
+          "price": 7033.25,
+          "quantity": 1,
+          "realizedPnl": 0
+        }
+      ],
+      "position": {
+        "quantity": 2,
+        "side": "long",
+        "averagePrice": 7032.5
+      },
+      "realizedPnl": 0,
+      "unrealizedPnl": 7.5
+    }
+  },
+  {
+    "seq": 27,
+    "at": 1792462681,
+    "by": "human",
+    "action": "bar_advanced",
+    "payload": {
+      "bar": {
+        "time": "2026-02-24 22:40",
+        "open": 7033.25,
+        "high": 7054.5,
+        "low": 7032.25,
+        "close": 7054.25,
+        "volume": 44352,
+        "ema20": 7037.366107673603
+      },
+      "cursor": 464,
+      "hiddenBars": 1119,
+      "hasMore": true,
+      "orders": [
+        {
+          "id": "o1",
+          "side": "buy",
+          "kind": "market",
+          "price": 7031.75,
+          "quantity": 1,
+          "status": "filled",
+          "placedAt": "2026-02-24 22:20",
+          "placedIndex": 460,
+          "filledAt": "2026-02-24 22:20",
+          "filledIndex": 460,
+          "fillPrice": 7031.75
+        },
+        {
+          "id": "o2",
+          "side": "buy",
+          "kind": "market",
+          "price": 7033.25,
+          "quantity": 1,
+          "status": "filled",
+          "placedAt": "2026-02-24 22:35",
+          "placedIndex": 463,
+          "filledAt": "2026-02-24 22:35",
+          "filledIndex": 463,
+          "fillPrice": 7033.25
+        }
+      ],
+      "trades": [
+        {
+          "id": "t1",
+          "orderId": "o1",
+          "time": "2026-02-24 22:20",
+          "side": "buy",
+          "kind": "market",
+          "price": 7031.75,
+          "quantity": 1,
+          "realizedPnl": 0
+        },
+        {
+          "id": "t2",
+          "orderId": "o2",
+          "time": "2026-02-24 22:35",
+          "side": "buy",
+          "kind": "market",
+          "price": 7033.25,
+          "quantity": 1,
+          "realizedPnl": 0
+        }
+      ],
+      "position": {
+        "quantity": 2,
+        "side": "long",
+        "averagePrice": 7032.5
+      },
+      "realizedPnl": 0,
+      "unrealizedPnl": 217.5,
+      "fills": []
+    }
+  },
+  {
+    "seq": 28,
+    "at": 1792462691,
+    "by": "human",
+    "action": "order_filled",
+    "payload": {
+      "order": {
+        "id": "o3",
+        "side": "sell",
+        "kind": "market",
+        "price": 7054.25,
+        "quantity": 2,
+        "status": "filled",
+        "placedAt": "2026-02-24 22:40",
+        "placedIndex": 464,
+        "filledAt": "2026-02-24 22:40",
+        "filledIndex": 464,
+        "fillPrice": 7054.25
+      },
+      "trade": {
+        "id": "t3",
+        "orderId": "o3",
+        "time": "2026-02-24 22:40",
+        "side": "sell",
+        "kind": "market",
+        "price": 7054.25,
+        "quantity": 2,
+        "realizedPnl": 217.5
+      },
+      "orders": [
+        {
+          "id": "o1",
+          "side": "buy",
+          "kind": "market",
+          "price": 7031.75,
+          "quantity": 1,
+          "status": "filled",
+          "placedAt": "2026-02-24 22:20",
+          "placedIndex": 460,
+          "filledAt": "2026-02-24 22:20",
+          "filledIndex": 460,
+          "fillPrice": 7031.75
+        },
+        {
+          "id": "o2",
+          "side": "buy",
+          "kind": "market",
+          "price": 7033.25,
+          "quantity": 1,
+          "status": "filled",
+          "placedAt": "2026-02-24 22:35",
+          "placedIndex": 463,
+          "filledAt": "2026-02-24 22:35",
+          "filledIndex": 463,
+          "fillPrice": 7033.25
+        },
+        {
+          "id": "o3",
+          "side": "sell",
+          "kind": "market",
+          "price": 7054.25,
+          "quantity": 2,
+          "status": "filled",
+          "placedAt": "2026-02-24 22:40",
+          "placedIndex": 464,
+          "filledAt": "2026-02-24 22:40",
+          "filledIndex": 464,
+          "fillPrice": 7054.25
+        }
+      ],
+      "trades": [
+        {
+          "id": "t1",
+          "orderId": "o1",
+          "time": "2026-02-24 22:20",
+          "side": "buy",
+          "kind": "market",
+          "price": 7031.75,
+          "quantity": 1,
+          "realizedPnl": 0
+        },
+        {
+          "id": "t2",
+          "orderId": "o2",
+          "time": "2026-02-24 22:35",
+          "side": "buy",
+          "kind": "market",
+          "price": 7033.25,
+          "quantity": 1,
+          "realizedPnl": 0
+        },
+        {
+          "id": "t3",
+          "orderId": "o3",
+          "time": "2026-02-24 22:40",
+          "side": "sell",
+          "kind": "market",
+          "price": 7054.25,
+          "quantity": 2,
+          "realizedPnl": 217.5
+        }
+      ],
+      "position": {
+        "quantity": 0,
+        "side": "flat",
+        "averagePrice": 0
+      },
+      "realizedPnl": 217.5,
+      "unrealizedPnl": 0
     }
   }
 ]

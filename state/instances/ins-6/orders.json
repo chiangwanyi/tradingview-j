@@ -1,1 +1,41 @@
-[]
+[
+  {
+    "id": "o1",
+    "side": "buy",
+    "kind": "market",
+    "price": 7031.75,
+    "quantity": 1,
+    "status": "filled",
+    "placedAt": "2026-02-24 22:20",
+    "placedIndex": 460,
+    "filledAt": "2026-02-24 22:20",
+    "filledIndex": 460,
+    "fillPrice": 7031.75
+  },
+  {
+    "id": "o2",
+    "side": "buy",
+    "kind": "market",
+    "price": 7033.25,
+    "quantity": 1,
+    "status": "filled",
+    "placedAt": "2026-02-24 22:35",
+    "placedIndex": 463,
+    "filledAt": "2026-02-24 22:35",
+    "filledIndex": 463,
+    "fillPrice": 7033.25
+  },
+  {
+    "id": "o3",
+    "side": "sell",
+    "kind": "market",
+    "price": 7054.25,
+    "quantity": 2,
+    "status": "filled",
+    "placedAt": "2026-02-24 22:40",
+    "placedIndex": 464,
+    "filledAt": "2026-02-24 22:40",
+    "filledIndex": 464,
+    "fillPrice": 7054.25
+  }
+]

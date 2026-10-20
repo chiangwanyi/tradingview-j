@@ -50,14 +50,22 @@ const shiftDown = ref(false)
 /**
  * 右键小菜单：位置（画布内的本地像素）+ **已经吸附到最小跳动**的价格。
  *
- * 菜单只提供「按这个价格挂单 / 复制这个价格」，所以价格必须在打开那一刻就定死，
- * 不能等点击时再从鼠标位置算一遍 —— 手一抖价格就变了。
+ * 菜单的前三项都作用在这个价格上（买入 / 卖出 / 复制价格），所以价格必须在打开那一刻就定死，
+ * 不能等点击时再从鼠标位置算一遍 —— 手一抖价格就变了。（第四项「移除 N 个绘图」不看价格。）
  *
  * 单型（限价/止损）也不让用户选：由**这个价格相对现价的方向**算出来
  * （见 `chart/orders.ts` 的 `orderKindFor`）。现有价才有方向，所以菜单里先把现价写出来，
  * 用户一眼就能看出「我这一下是在现价上方还是下方、买到的是哪种单」。
  */
 const menu = ref<{ x: number; y: number; price: number } | null>(null)
+/**
+ * 「移除 N 个绘图」按下一次之后的上膛状态：**第二次单击才真的删**。
+ *
+ * 这个动作删的是当前实例上**所有人**画的图，而且没有撤销 —— 手滑一下代价太大，
+ * 所以用「同一行变红再点一次」代替弹窗：不打断操作，也不用再解释一遍。
+ * 菜单一关就复位（见 onContextMenu / 各条关闭路径）。
+ */
+const clearArmed = ref(false)
 /** 复制价格/挂单成功后的一句轻提示（1.4 秒自己消失） */
 const toast = ref('')
 let toastTimer = 0
@@ -412,7 +420,7 @@ function localPoint(ev: { clientX: number; clientY: number }): { x: number; y: n
 }
 
 function onPointerDown(ev: PointerEvent): void {
-  menu.value = null
+  closeMenu()
   // 按下 = 要开始拖东西了：跟随卡先收掉（否则它会留在原地，看着像没跟上手）
   clearTip()
   if (!store.instance) return
@@ -664,7 +672,7 @@ function onPointerLeave(): void {
 }
 
 function onWheel(ev: WheelEvent): void {
-  menu.value = null
+  closeMenu()
   if (!store.instance) return
   ev.preventDefault()
   const p = localPoint(ev)
@@ -1049,8 +1057,8 @@ const sellKind = computed<OrderKind>(() =>
 const menuStyle = computed(() => {
   const m = menu.value
   if (!m) return {}
-  const w = 236
-  const h = 142
+  const w = 264
+  const h = 206
   return {
     left: `${Math.max(4, Math.min(m.x, size.value.width - w - 4))}px`,
     top: `${Math.max(4, Math.min(m.y, size.value.height - h - 4))}px`,
@@ -1058,12 +1066,54 @@ const menuStyle = computed(() => {
   }
 })
 
+/** 关菜单 = 顺手把「移除绘图」的上膛状态也退掉（关掉再打开不该还是一点就删） */
+function closeMenu(): void {
+  menu.value = null
+  clearArmed.value = false
+}
+
 function onContextMenu(ev: MouseEvent): void {
   ev.preventDefault()
   if (!store.instance) return
   const p = localPoint(ev)
   if (!p) return
+  // 每次打开都从「没上膛」开始：上一次按了一半就走开，不该让下一次一点就删
+  clearArmed.value = false
   menu.value = { x: p.x, y: p.y, price: snapToTick(scale.priceAtY(p.y), store.tick) }
+}
+
+/** 当前画布上有几个绘图 —— 菜单里那个 n，也是「一次会删掉几个」 */
+const annotationCount = computed(() => store.instance?.annotations.length ?? 0)
+
+/**
+ * 移除全部绘图。
+ *
+ * 第一下只是上膛（文案变红、写明不可撤销），第二下才发消息。发出去之后**本地不做
+ * 乐观清空**：后端广播 `annotation_cleared` 回来才算数，被拒时画布保持原样。
+ *
+ * 手里那些「指向某个图形」的临时状态必须一起丢掉：画到一半的预览、正在拖的图形、
+ * 选中的那个 id —— 它们指向的图形马上就要不存在了，留着会让下一次按键打到空气上。
+ */
+function menuClearAnnotations(): void {
+  if (annotationCount.value === 0) return
+  if (!store.canOperate) {
+    showToast('现在只能看：先「接管」操作权再移除绘图')
+    closeMenu()
+    return
+  }
+  if (!clearArmed.value) {
+    clearArmed.value = true
+    return
+  }
+  const n = annotationCount.value
+  store.clearAnnotations()
+  pending.value = null
+  moving.value = null
+  store.selectedAnnotation = null
+  clearArmed.value = false
+  closeMenu()
+  requestDraw()
+  showToast(`已移除 ${n} 个绘图`)
 }
 
 function showToast(text: string): void {
@@ -1083,12 +1133,12 @@ function menuOrder(side: Side): void {
   if (!m) return
   if (!store.canOperate) {
     showToast('现在只能看：先「接管」操作权再下单')
-    menu.value = null
+    closeMenu()
     return
   }
   const kind = orderKindFor(side, m.price, lastPrice.value)
   store.placeOrder(side, kind, m.price, store.orderQuantity)
-  menu.value = null
+  closeMenu()
   showToast(
     `已挂 ${side === 'buy' ? '买入' : '卖出'}${orderKindLabel(kind)} ${formatPrice(m.price, store.priceDecimals)}`,
   )
@@ -1099,7 +1149,7 @@ async function menuCopy(): Promise<void> {
   if (!m) return
   const text = formatPrice(m.price, store.priceDecimals)
   const ok = await copyText(text)
-  menu.value = null
+  closeMenu()
   showToast(ok ? `已复制 ${text}` : '复制失败：浏览器不允许访问剪贴板')
 }
 
@@ -1155,7 +1205,7 @@ function onKeyDown(ev: KeyboardEvent): void {
     drag = emptyDrag()
     endPointerCapture()
     store.selectedAnnotation = null
-    menu.value = null
+    closeMenu()
     // 钉住的信息卡也一起收掉：Esc 在这个画布上的含义是「退掉最上面那一层」
     pinned.value = null
     clearTip()
@@ -1504,7 +1554,8 @@ defineExpose({ requestDraw })
     </div>
 
     <!--
-      右键小菜单：价格在打开那一刻就算好（吸附到最小跳动），三项动作都基于这个价格。
+      右键小菜单：价格在打开那一刻就算好（吸附到最小跳动），前三项动作都基于这个价格；
+      第四项「移除 N 个绘图」与价格无关，按的是整个画布的绘图总数。
       菜单自身要 stop 掉 pointerdown —— 否则画布的 pointerdown 会先把菜单关掉，
       click 就永远到不了按钮上。
       单型跟着「价格在现价的哪一侧」走：下方 = 买限价 / 卖止损，上方 = 买止损 / 卖限价。
@@ -1556,6 +1607,40 @@ defineExpose({ requestDraw })
       >
         <span class="h-2 w-2 shrink-0 rounded-[2px] border border-current opacity-60" />
         复制价格 {{ menuPriceText }}
+      </button>
+
+      <!--
+        「移除 N 个绘图」：N 是当前画布上的绘图总数（= 这一下会删掉几个）。
+        第一次单击只是上膛（变红 + 写明不可撤销），第二次才真删 —— 一次删光所有人
+        画的图且不能撤销，值得多问一遍。灰掉的理由只有两个：没有绘图、没有操作权。
+      -->
+      <div class="my-1 h-px bg-line" />
+      <button
+        type="button"
+        class="flex w-full items-center gap-2 px-3 py-1.5 text-left disabled:cursor-not-allowed disabled:opacity-40"
+        :class="
+          clearArmed
+            ? 'bg-red-50 text-red-700 hover:bg-red-100 dark:bg-red-950/50 dark:text-red-300 dark:hover:bg-red-950'
+            : 'hover:bg-elev'
+        "
+        :disabled="annotationCount === 0 || !store.canOperate"
+        :title="
+          annotationCount === 0
+            ? '当前画布上还没有绘图'
+            : !store.canOperate
+              ? '现在只能看：先「接管」操作权再移除绘图'
+              : '删掉当前画布上全部绘图（同实例所有人都会看不到，不能撤销）'
+        "
+        @click="menuClearAnnotations"
+      >
+        <span class="h-2 w-2 shrink-0 rounded-[2px] border border-current opacity-60" />
+        {{
+          annotationCount === 0
+            ? '移除 0 个绘图'
+            : clearArmed
+              ? `确认移除 ${annotationCount} 个绘图（不可撤销）`
+              : `移除 ${annotationCount} 个绘图`
+        }}
       </button>
     </div>
 

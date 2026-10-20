@@ -187,6 +187,8 @@ func (h *Hub) Handle(c *Client, raw []byte) {
 		h.handleAnnotationMove(c, req)
 	case ReqAnnDelete:
 		h.handleAnnotationDelete(c, req)
+	case ReqAnnClear:
+		h.handleAnnotationClear(c, req)
 	case ReqListTemplates:
 		h.handleListTemplates(c)
 	case ReqSaveTemplate:
@@ -426,6 +428,23 @@ func (h *Hub) handleAnnotationDelete(c *Client, req Request) {
 	}
 }
 
+// handleAnnotationClear 处理「移除全部绘图」（画布右键菜单）。
+//
+// 它删的是**这个实例**的绘图，不是某一个人的：画布上的图形属于实例，任何人画的都在同一层。
+// 所以要和单条删除一样要操作权 —— 观众没有资格一把清空别人画的图。
+func (h *Hub) handleAnnotationClear(c *Client, req Request) {
+	inst, ok := h.instanceLocked(c, req)
+	if !ok {
+		return
+	}
+	if !h.requireOperatorLocked(c, req, inst) {
+		return
+	}
+	if _, err := h.doClearAnnotationsLocked(inst, c.Name); err != nil {
+		h.fail(c, req, err.Error())
+	}
+}
+
 func (h *Hub) handleOrderPlace(c *Client, req Request) {
 	inst, ok := h.instanceLocked(c, req)
 	if !ok {
@@ -530,6 +549,22 @@ func (h *Hub) doDeleteAnnotationLocked(inst *Instance, by, id string) error {
 	}
 	h.broadcastInstanceLocked(inst, ActAnnotationDelete, AnnotationDeletedPayload{AnnotationID: id}, by)
 	return nil
+}
+
+// doClearAnnotationsLocked 清空全部绘图并广播一条 annotation_cleared。
+//
+// 空画布直接报错而不是静默成功：前端菜单在 0 个绘图时本来就是灰的，
+// 真走到这里只可能是「别人刚清完」的竞态 —— 给用户一句准话，比什么都不发生好。
+func (h *Hub) doClearAnnotationsLocked(inst *Instance, by string) (int, error) {
+	ids := inst.clearAnnotations()
+	if len(ids) == 0 {
+		return 0, fmt.Errorf("当前画布上没有绘图可移除")
+	}
+	h.broadcastInstanceLocked(inst, ActAnnotationClear, AnnotationClearedPayload{
+		Count:         len(ids),
+		AnnotationIDs: ids,
+	}, by)
+	return len(ids), nil
 }
 
 func (h *Hub) doPlaceOrderLocked(inst *Instance, by, side, kind string, price, qty float64) (Order, error) {

@@ -374,3 +374,77 @@ func TestAnnotationLegacyMigration(t *testing.T) {
 		t.Fatalf("矩形应当补齐填充色与线宽：%+v", a)
 	}
 }
+
+// 清空全部绘图：一条广播把整块画布变成空的，而且**只有操作者能清**。
+//
+// 为什么值得单独钉一条：这个动作没有「撤销」，删的是**所有人**画的图（画布属于实例，
+// 不属于某个人）。所以这里两头都要验 —— 操作者清完必须一条广播、状态真的空了；
+// 观众发同样的消息必须被挡住，不能靠前端把按钮灰掉来保证。
+func TestClearAllAnnotations(t *testing.T) {
+	hub, _ := newTestHub(t, 5)
+	op := newFakeClient(t, hub)
+	op.waitFor(MsgWelcome)
+	id := createInstance(t, hub, op, "2026-01-06 10:00")
+
+	hub.mu.Lock()
+	inst := hub.instances[id]
+	last := inst.Bars[inst.Cursor].Time
+	hub.mu.Unlock()
+
+	for i := 0; i < 2; i++ {
+		op.send(hub, map[string]any{
+			"type":       "annotation_add",
+			"instanceId": id,
+			"kind":       "trend",
+			"start":      map[string]any{"time": last, "price": 100 + float64(i)},
+			"end":        map[string]any{"time": last, "price": 101 + float64(i)},
+		})
+		op.waitAction(ActAnnotationAdded)
+	}
+	if n := len(inst.Annotations); n != 2 {
+		t.Fatalf("应当有 2 个绘图，实际 %d 个", n)
+	}
+
+	op.send(hub, map[string]any{"type": "annotation_clear", "instanceId": id})
+	ev := op.waitAction(ActAnnotationClear)
+	payload := ev["payload"].(map[string]any)
+	if payload["count"] != float64(2) {
+		t.Fatalf("清空广播的 count 应当是 2，实际 %v", payload["count"])
+	}
+	ids, _ := payload["annotationIds"].([]any)
+	if len(ids) != 2 || ids[0] != "a1" || ids[1] != "a2" {
+		t.Fatalf("广播里应当带上被删的 a1/a2，实际 %v", payload["annotationIds"])
+	}
+	if n := len(inst.Annotations); n != 0 {
+		t.Fatalf("清空后实例里不该再有绘图，实际 %d 个", n)
+	}
+
+	// 空画布再清一次：给一句准话，不要静默成功（否则界面以为清掉了别的东西）
+	op.send(hub, map[string]any{"type": "annotation_clear", "instanceId": id})
+	if e := op.waitFor(MsgError); !strings.Contains(e["message"].(string), "没有绘图") {
+		t.Fatalf("空画布清空的报错应当说明没有绘图可移除，实际 %v", e["message"])
+	}
+
+	// 观众（后来的人，拿不到操作权）再画一个、再清：画得进去？不，画不进去 ——
+	// 这里只验「清」被挡住，图形仍是操作者刚画的那一个。
+	op.send(hub, map[string]any{
+		"type":       "annotation_add",
+		"instanceId": id,
+		"kind":       "rect",
+		"start":      map[string]any{"time": last, "price": 100},
+		"end":        map[string]any{"time": last, "price": 102},
+	})
+	op.waitAction(ActAnnotationAdded)
+
+	viewer := newFakeClient(t, hub)
+	viewer.waitFor(MsgWelcome)
+	viewer.send(hub, map[string]any{"type": "join_instance", "instanceId": id})
+	viewer.waitFor(MsgInstanceState)
+	viewer.send(hub, map[string]any{"type": "annotation_clear", "instanceId": id})
+	if e := viewer.waitFor(MsgError); !strings.Contains(e["message"].(string), "只能观看") {
+		t.Fatalf("观众清空应当被拒绝，实际 %v", e["message"])
+	}
+	if n := len(inst.Annotations); n != 1 {
+		t.Fatalf("被拒绝的清空不该动数据，应当还剩 1 个，实际 %d 个", n)
+	}
+}
