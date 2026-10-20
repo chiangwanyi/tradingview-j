@@ -225,10 +225,16 @@ export const useReplayStore = defineStore('replay', () => {
         log.value = []
         break
       case 'deleted':
-        noteError('这个实例已经被删除了')
-        instance.value = null
-        you.value = null
-        log.value = []
+        // 删除是**用户自己点的**（别人的实例删不掉，见后端 handleDelete），
+        // 再弹一句「这个实例已经被删除了」等于把他刚做的事复述一遍，还挂在界面上
+        // 一直不消失（错误框要手动关、录制浮层会把它当成提示吃进去）。
+        // 所以这里只安静地退回大厅；`instanceId` 对不上就什么都不做 ——
+        // 删的要是别的实例，当前这块盘面不该被清掉。
+        if (instance.value?.id === msg.instanceId) {
+          instance.value = null
+          you.value = null
+          log.value = []
+        }
         break
       case 'pong':
         break
@@ -256,6 +262,10 @@ export const useReplayStore = defineStore('replay', () => {
 
   function applyState(msg: InstanceStateMessage): void {
     const inst = msg.instance
+    // 换了一块盘面（新建 / 进入另一个实例）：上一条错误属于上一条实例，跟着它作废。
+    // 不这么做的话，删掉旧实例时留下的那句话会一直贴在右下角、还会被录制浮层
+    // 抄进「提示」里 —— 新建的实例明明好好的，界面却在喊它已经被删了。
+    if (instance.value?.id !== inst.id) clearError()
     // 快照里的 bars 只含已揭示的部分（后端根本不会发未来的 K 线）
     instance.value = { ...inst, bars: inst.bars ?? [], recording: inst.recording ?? null }
     you.value = msg.you

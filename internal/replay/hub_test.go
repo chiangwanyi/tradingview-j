@@ -189,6 +189,42 @@ func TestDeleteRequiresCreatorOrOperator(t *testing.T) {
 	}
 }
 
+// 删掉一个实例、紧接着新建一个：新实例身上**不许再出现删除通知**。
+//
+// 前端那句「这个实例已经被删除了」的误报就是这么来的：删除回执和新建实例的快照
+// 只隔一两条消息，界面把旧 id 的回执当成了「当前这块盘面没了」，于是新建完之后
+// 提示还在（旧版本里它是一条不会自己消失的错误）。协议这一侧钉死两件事：
+// 回执只指向被删的那个 id、新实例复用不了旧 id，前端才有条件判断「这条跟我有关吗」。
+func TestDeleteThenCreateKeepsNewInstanceClean(t *testing.T) {
+	hub, _ := newTestHub(t, 5)
+	a := newFakeClient(t, hub)
+	a.waitFor(MsgWelcome)
+	oldID := createInstance(t, hub, a, "2026-01-06 10:00")
+
+	a.send(hub, map[string]any{"type": "delete_instance", "instanceId": oldID})
+	if m := a.waitFor(MsgDeleted); m["instanceId"] != oldID {
+		t.Fatalf("删除回执应当指向被删的实例 %s，实际 %v", oldID, m)
+	}
+	a.drain()
+
+	newID := createInstance(t, hub, a, "2026-01-06 10:30")
+	if newID == oldID {
+		t.Fatalf("新建的实例不该复用被删的 id %s", oldID)
+	}
+
+drain:
+	for {
+		select {
+		case m := <-a.msg:
+			if m["type"] == MsgDeleted {
+				t.Fatalf("新建实例 %s 之后不该再收到删除通知：%v", newID, m)
+			}
+		default:
+			break drain
+		}
+	}
+}
+
 // 市价单走的是 order_market：一次广播里要带全「订单 + 成交 + 持仓 + 盈亏」，
 // 前端收到就能直接改界面，不用再要快照。
 func TestMarketOrderOverProtocol(t *testing.T) {
