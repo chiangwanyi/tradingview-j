@@ -22,14 +22,18 @@ import type { Order, OrderKind, Point, Side } from '@/types/protocol'
  *
  *   - 指针 `select`：只缩放/平移，不碰标注；
  *   - 修改 `modify`：点选标注、拖端点改端点、拖线身整体移动、Del 删除；
- *   - 五种绘图工具：**两次单击** —— 第 1 次定起点进入预览，移动鼠标找终点，第 2 次定稿。
+ *   - 射线 `ray`：**单击即完成**，画出一条水平朝右的射线（预览跟着鼠标走，落下之前就看得见）。
+ *     金融工具里「水平线 + 价位」是最常用的一笔，两次单击 + Shift 水平纯属多余步骤。
+ *     按住 **Shift** 退回两次单击，需要斜射线时才用；
+ *   - 其余四种绘图工具：**两次单击** —— 第 1 次定起点进入预览，移动鼠标找终点，第 2 次定稿。
  *     （不再是按住拖动：拖动手势在触控板和大图上都容易画歪，两次单击可以慢慢找位置。）
  *     终点可以越过最后一根 K 线往右画：横坐标存成「锚点 K 线 + 向右几根」（见 scale.ts 的 barRefAt），
  *     所以它既在右侧空白区里，又仍然严格落在时间-价格坐标系上。
+ *     **定稿后工具自动交回指针**（见 commitPending），下一次单击回到平移/缩放的常规手势。
  *
- * 「前端预览、后端定稿」没变：绘制过程只更新本地的 `pending`，第 2 次单击才把
- * **时间 + 价格 + 样式**发往后端；后端校验、编号后广播回来，界面上的正式图形永远
- * 来自广播。所以后端拒绝时幽灵图形一消失，界面上什么都不会留下。
+ * 「前端预览、后端定稿」没变：绘制过程只更新本地的预览（`pending` / `rayHover`），
+ * 定稿那一刻才把 **时间 + 价格 + 样式**发往后端；后端校验、编号后广播回来，
+ * 界面上的正式图形永远来自广播。所以后端拒绝时幽灵图形一消失，界面上什么都不会留下。
  */
 
 const store = useReplayStore()
@@ -97,6 +101,13 @@ interface MovingShape {
 }
 
 const pending = ref<PendingShape | null>(null)
+/**
+ * 射线工具的**悬停起点**：单击即定稿，所以它没有「第 1 次单击」这一步 ——
+ * 预览直接跟着鼠标走，落点/价位在按之前就看得见（金融工具里价格是命脉，
+ * 不该让人先点下去才发现落错了几毛钱）。
+ * 只在【射线】工具下有值，切工具 / 鼠标移出画布 / 真的画完就清掉。
+ */
+const rayHover = ref<ChartPoint | null>(null)
 const moving = ref<MovingShape | null>(null)
 /** 上一次拖动是否真的移动过：拖完松手会补一个 click，别让它把选中状态点没了 */
 let lastDragMoved = false
@@ -250,6 +261,7 @@ watch(
     scale.resetView()
     hover.value = null
     pending.value = null
+    rayHover.value = null
     moving.value = null
     orderDrag.value = null
     hoverOrderId.value = null
@@ -264,6 +276,7 @@ watch(
   () => store.tool,
   () => {
     pending.value = null
+    rayHover.value = null
     moving.value = null
     store.selectedAnnotation = null
     requestDraw()
@@ -462,7 +475,12 @@ function onPointerDown(ev: PointerEvent): void {
   beginPointerCapture()
 }
 
-/** 绘图工具的单击：没有起点就定起点，有起点就定终点并提交。 */
+/**
+ * 绘图工具的单击。
+ *
+ * 五种工具里只有【射线】是**单击即完成**：一次单击画出一条水平朝右的射线。
+ * 其余四种仍然是两次单击（第 1 次定起点，第 2 次定终点并提交）。
+ */
 function clickToDraw(p: { x: number; y: number }, ev: PointerEvent): void {
   const tool = store.tool
   if (!isDrawTool(tool)) return
@@ -474,6 +492,12 @@ function clickToDraw(p: { x: number; y: number }, ev: PointerEvent): void {
   const hit = pointAt(p.x, p.y, ev.ctrlKey)
   if (!hit) return
   shiftDown.value = ev.shiftKey
+
+  // 射线：一击成线。按住 Shift 仍然走两次单击 —— 想画斜射线（不水平）时用得上。
+  if (tool === 'ray' && !ev.shiftKey) {
+    commitPending({ kind: 'ray', start: hit, end: rayEndAt(hit), snap: ev.ctrlKey, shift: false })
+    return
+  }
 
   const cur = pending.value
   if (!cur || cur.kind !== tool) {
@@ -490,6 +514,27 @@ function clickToDraw(p: { x: number; y: number }, ev: PointerEvent): void {
     return
   }
   commitPending({ ...cur, end, snap: ev.ctrlKey, shift: ev.shiftKey })
+}
+
+/**
+ * 水平朝右的射线，终点落在哪。
+ *
+ * 射线是「从起点穿过终点一直延伸」，所以终点只决定**方向**，不决定画多长 ——
+ * 真正画到哪儿由 `clipRay` 按当前视图裁到价格区右边缘。因此这里只要保证
+ * 「终点严格在起点右边、且价格与起点相同」，画出来就是一条通到底的水平线。
+ *
+ * 终点取「往右一整屏」：`indexAtX(plot.right)` 换算成数据下标再取 barRef。
+ * 为什么不写死一个根数（比方说 50 根）—— 用户放大到 barWidth=40 时 50 根只有
+ * 2000px，射线会被裁在一个莫名其妙的位置；按当前视口算则在任何缩放下
+ * 都至少越过整个可视区。取不到（右边就是当前那根）时退回 +1 根，
+ * 保证方向成立，哪怕线短 —— 方向对了才谈得上「水平朝右」。
+ */
+function rayEndAt(start: ChartPoint): ChartPoint {
+  const beyond = scale.indexAtX(scale.layout.plot.right) + 1
+  const vi = scale.virtualIndexOf(start)
+  const end = scale.barRefAt(beyond > (vi ?? 0) ? beyond : (vi ?? 0) + 1)
+  if (!end) return { time: start.time, offset: start.offset + 1, price: start.price }
+  return { time: end.time, offset: end.offset, price: start.price }
 }
 
 /**
@@ -645,6 +690,12 @@ function onPointerMove(ev: PointerEvent): void {
         shift: ev.shiftKey,
       }
     }
+  } else if (store.tool === 'ray' && !ev.shiftKey) {
+    // 射线是单击即完成，所以预览得在**还没点**的时候就跟着鼠标走 ——
+    // 否则用户按下鼠标之前完全不知道这条线会落在哪个价位。
+    rayHover.value = pointAt(p.x, p.y, ev.ctrlKey)
+  } else {
+    rayHover.value = null
   }
 
   const idx = scale.nearestIndex(p.x)
@@ -664,6 +715,7 @@ function onPointerMove(ev: PointerEvent): void {
 function onPointerLeave(): void {
   hover.value = null
   hoverOrderId.value = null
+  rayHover.value = null
   // 键位状态一起清掉：鼠标都出去了，提示和吸附圈不该留在画布上
   ctrlDown.value = false
   shiftDown.value = false
@@ -933,10 +985,16 @@ function round(v: number): number {
 }
 
 /**
- * 第 2 次单击：把时间 + 价格 + **当前模板的样式快照**发往后端。
+ * 第 2 次单击：把时间 + 价格 + **当前模板的样式快照**发往后端，
+ * 然后把工具交回**指针**。
  *
  * 用 `...p.start` 而不是逐字段重建：offset 也是端点的一部分，漏掉它后端就会把端点
  * 落回锚点那根 K 线 —— 预览明明伸到了右边，一松手却缩回去（这里踩过一次）。
+ *
+ * 为什么画完就退回指针：图形一旦定稿，接下来的单击就该回到「平移 / 缩放 / 改价」的
+ * 常规手势，而不是接着画下一个 —— 指针模式下单击空白是平移，也是「取消选中」，
+ * 在绘图工具下同一个动作会画出一条看不见的零长度线。想画下一个，重新点一次工具即可
+ * （一次「选工具 → 画两下」本来就是个完整动作，留着工具只会让下一次误触）。
  */
 function commitPending(p: PendingShape): void {
   const template = store.templateFor(p.kind)
@@ -948,6 +1006,9 @@ function commitPending(p: PendingShape): void {
     snap: p.snap,
   })
   pending.value = null
+  // 定稿即交回指针：工具条的高亮、光标（十字 → 默认）、底部提示语一起复位，
+  // 不留在绘图工具上等人再按一次 Esc。watch(store.tool) 会顺手把 pending 清干净。
+  store.tool = 'select'
   requestDraw()
 }
 
@@ -1278,15 +1339,29 @@ const figures = computed<Figure[]>(() => {
   return out
 })
 
-/** 两次单击之间、跟着鼠标走的预览图形（用当前模板的样式，所以选模板时就所见即所得） */
+/**
+ * 跟着鼠标走的预览图形（用当前模板的样式，所以选模板时就所见即所得）。
+ *
+ * 两个来源：其余四种工具的「两次单击之间」的 pending，和射线工具的**悬停起点** rayHover
+ * （单击即完成，没有中间态，所以预览在按下之前就得出现）。
+ */
 const ghost = computed<Figure | null>(() => {
   void viewTick.value
   const p = pending.value
-  if (!p) return null
-  return buildFigure(
-    { id: 'ghost', kind: p.kind, start: p.start, end: p.end, style: store.templateFor(p.kind)?.style },
-    figureView(),
-  )
+  if (p) {
+    return buildFigure(
+      { id: 'ghost', kind: p.kind, start: p.start, end: p.end, style: store.templateFor(p.kind)?.style },
+      figureView(),
+    )
+  }
+  const h = rayHover.value
+  if (h) {
+    return buildFigure(
+      { id: 'ghost', kind: 'ray', start: h, end: rayEndAt(h), style: store.templateFor('ray')?.style },
+      figureView(),
+    )
+  }
+  return null
 })
 
 /** 选中时显示端点手柄（只有修改模式才有「选中的图形」这个概念） */
@@ -1295,11 +1370,15 @@ const selectedId = computed(() => (modifyMode.value ? store.selectedAnnotation :
 const hint = computed(() => {
   if (drawMode.value) {
     const name = TOOL_LABEL[store.tool]
-    const extra = store.tool === 'trend' || store.tool === 'ray' || store.tool === 'arrow' ? ' · Shift 水平' : ''
     // 「可以画过最后一根」值得写在提示里：以前终点会被吸回最后一根，用户会以为工具坏了
     const beyond = ' · 可画过最后一根'
     // Ctrl 也写进去：这个功能是「按住就能看见落点」，不写用户不会知道
     const snap = ' · Ctrl 吸附 OHLC'
+    // 射线是单击即完成，没有「找终点」这一步，提示语得跟别的工具分开写
+    if (store.tool === 'ray') {
+      return `射线：单击一下就画出一条水平朝右的射线${snap} · Shift 两次单击画斜射线 · 滚轮缩放 · 中键拖动平移`
+    }
+    const extra = store.tool === 'trend' || store.tool === 'arrow' ? ' · Shift 水平' : ''
     return pending.value
       ? `${name}：移动鼠标找终点，再单击一下定稿${extra}${beyond}${snap} · Esc 取消`
       : `${name}：单击定起点${extra}${beyond}${snap} · 滚轮缩放 · 中键拖动平移`
@@ -1341,10 +1420,17 @@ const ctrlHint = computed(() => {
   return `Ctrl 吸附：${OHLC_LABEL[hit.item]} ${formatPrice(hit.price, store.priceDecimals)} · ${formatAxisTime(bar.time)}`
 })
 
-/** 按住 Shift（线类工具）时的那一句 */
-const shiftHint = computed(() =>
-  shiftDown.value && drawMode.value && isLineTool.value ? 'Shift：水平线' : '',
-)
+/**
+ * 按住 Shift 时左上角的那一句。
+ *
+ * Shift 在三个工具上含义不同：趋势线/箭头线是「强制水平」，射线是「回到两次单击、
+ * 画一条不水平的斜射线」—— 射线单击即出的默认形态本来就是水平，Shift 反而是退出它。
+ */
+const shiftHint = computed(() => {
+  if (!shiftDown.value || !drawMode.value) return ''
+  if (store.tool === 'ray') return 'Shift：两次单击画斜射线'
+  return isLineTool.value ? 'Shift：水平线' : ''
+})
 
 const modifierLabel = computed(() => {
   if (ctrlHint.value) return ctrlHint.value
@@ -1517,7 +1603,7 @@ defineExpose({ requestDraw })
         >
           {{ c.text }}
         </text>
-        <!-- 起点标记：一眼看出「第 1 次单击落在哪儿了」 -->
+        <!-- 起点标记：一眼看出「第 1 次单击落在哪儿了」（射线的悬停预览不需要，它就是落点本身） -->
         <circle
           v-if="pending"
           :cx="ghost.anchors[0].x"
