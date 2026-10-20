@@ -1345,7 +1345,8 @@ function onKeyDown(ev: KeyboardEvent): void {
     requestDraw()
     return
   }
-  if ((ev.key === 'Delete' || ev.key === 'Backspace') && store.selectedAnnotation) {
+  // 回放是只读的：Delete 不能把「录像里的图形」发一条删除请求出去
+  if ((ev.key === 'Delete' || ev.key === 'Backspace') && store.selectedAnnotation && store.canOperate) {
     ev.preventDefault()
     store.deleteAnnotation(store.selectedAnnotation)
     store.selectedAnnotation = null

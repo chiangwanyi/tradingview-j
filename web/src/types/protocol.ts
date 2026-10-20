@@ -186,6 +186,8 @@ export interface InstanceDetail {
   notes: string[]
   createdBy: string
   createdAt: number
+  /** 正在录制时的状态；没在录是 null/undefined */
+  recording?: RecordingState | null
 }
 
 export interface InstanceSummary {
@@ -298,6 +300,8 @@ export type ServerMessage =
   | DeletedMessage
   | PongMessage
   | TemplatesMessage
+  | RecordingsMessage
+  | RecordingMessage
 
 // ---------------- 广播负载 ----------------
 
@@ -391,6 +395,9 @@ export const ACTION = {
   membersChanged: 'members_changed',
   botStarted: 'bot_started',
   botStopped: 'bot_stopped',
+  recordingStarted: 'recording_started',
+  recordingStopped: 'recording_stopped',
+  recordingAudio: 'recording_audio',
 } as const
 
 /**
@@ -406,3 +413,123 @@ export const ANNOTATION_COLORS = [
   '#ef4444',
   '#e5e7eb',
 ] as const
+
+// ---------------- 录制与回放（v0.11.0） ----------------
+
+/**
+ * 这个实例现在的录制状态。跟着实例快照下发，也随三条录制广播更新。
+ *
+ * 步数与录音数**都是服务端数的**：界面只是显示，不自己累加 ——
+ * 否则「界面写第 12 步、文件里只有 11 段」这种问题永远查不清。
+ */
+export interface RecordingState {
+  active: boolean
+  id?: string
+  by?: string
+  startedAt?: number
+  /** 当前第几步（1 = 点录制时那一屏） */
+  step: number
+  /** 第 1 步对应的 K 线时间 */
+  startTime?: string
+  /** 当前这一步对应的 K 线时间 */
+  current?: string
+  audios: number
+  maxAudios: number
+}
+
+/** 录像列表里的一行。 */
+export interface RecordingSummary {
+  id: string
+  name: string
+  symbol: string
+  folder: string
+  anchor: string
+  endTime: string
+  /** 摘要里的计数（带 Count 是为了不和 Recording.steps 那个数组撞名） */
+  stepCount: number
+  audioCount: number
+  eventCount: number
+  bars: number
+  size: number
+  createdBy: string
+  createdAt: number
+  endedAt: number
+}
+
+/** 录制起点那一刻的盘面。 */
+export interface RecordingBase {
+  cursor: number
+  bars: Bar[]
+  annotations: Annotation[]
+  orders: Order[]
+  trades: Trade[]
+  closedLots: ClosedLot[]
+  position: Position
+  realizedPnl: number
+  unrealizedPnl: number
+}
+
+/**
+ * 一条被录下来的操作。
+ *
+ * `payload` 就是当时广播出去的那份 JSON（原样保存、原样回放）——
+ * 不重新构造，任何「翻译一层」都会让回放和实时产生细微差异。
+ */
+export interface RecordingEvent {
+  seq: number
+  at: number
+  /** human / human2 / bot */
+  by: string
+  action: string
+  payload?: unknown
+}
+
+/** 录像里的一步：第 1 步没有事件（它就是 base），第 2 步起第一条一定是 bar_advanced。 */
+export interface RecordingStep {
+  step: number
+  time: string
+  events: RecordingEvent[]
+}
+
+/** 一段挂在某根 K 线上的录音。`time` 是 K 线时间（存储键）。 */
+export interface AudioClip {
+  id: string
+  step: number
+  time: string
+  durationMs: number
+  /** 录像目录里的文件名（audio-N.wav），音频本身走 HTTP 取 */
+  file: string
+  size: number
+  createdAt: number
+}
+
+/** 一条完整的录像：起始盘面 + 每一步的事件 + 录音。 */
+export interface Recording extends RecordingSummary {
+  tick: number
+  tickValue: number
+  base: RecordingBase
+  steps: RecordingStep[]
+  audios: AudioClip[]
+}
+
+export interface RecordingsMessage {
+  type: 'recordings'
+  dir: string
+  recordings: RecordingSummary[]
+}
+
+export interface RecordingMessage {
+  type: 'recording'
+  recording: Recording | null
+}
+
+export interface RecordingStoppedPayload {
+  recording: RecordingSummary
+  dir?: string
+  error?: string
+}
+
+export interface RecordingAudioPayload {
+  audio: AudioClip
+  state: RecordingState
+}

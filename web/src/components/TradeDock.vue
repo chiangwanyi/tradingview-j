@@ -3,10 +3,11 @@ import { computed, ref } from 'vue'
 
 import EventLog from '@/components/EventLog.vue'
 import OrderPanel from '@/components/OrderPanel.vue'
+import RecordingPanel from '@/components/RecordingPanel.vue'
 import { useReplayStore } from '@/stores/replay'
 
 /**
- * 底部停靠区：模拟交易 / 操作记录 两个 Tab（需求要求「以 Tab 切换显示」）。
+ * 底部停靠区：模拟交易 / 操作记录 / 回放 三个 Tab（需求要求「以 Tab 切换显示」）。
  *
  * 两个面板都用 v-show 而不是 v-if —— 切 Tab 时不该丢掉滚动位置，
  * 操作记录也要能继续自动滚到最新一条。
@@ -15,10 +16,11 @@ import { useReplayStore } from '@/stores/replay'
  */
 
 const store = useReplayStore()
-const tab = ref<'trade' | 'log'>('trade')
+type DockTab = 'trade' | 'log' | 'rec'
+const tab = ref<DockTab>('trade')
 const collapsed = ref(false)
 
-const tabClass = (key: 'trade' | 'log') =>
+const tabClass = (key: DockTab) =>
   [
     'rounded-t px-3 py-1 text-[12px] transition',
     tab.value === key && !collapsed.value
@@ -45,6 +47,10 @@ const summary = computed(() => {
         操作记录
         <span class="text-faint">({{ store.log.length }})</span>
       </button>
+      <button type="button" :class="tabClass('rec')" @click="((tab = 'rec'), (collapsed = false))">
+        回放
+        <span class="text-faint">({{ store.recordings.length }})</span>
+      </button>
 
       <span class="ml-auto truncate text-[11px] text-faint">{{ summary }}</span>
       <button
@@ -59,6 +65,7 @@ const summary = computed(() => {
     <div v-show="!collapsed" class="h-[12.75rem] border-t border-line">
       <OrderPanel v-show="tab === 'trade'" />
       <EventLog v-show="tab === 'log'" />
+      <RecordingPanel v-show="tab === 'rec'" />
     </div>
   </section>
 </template>

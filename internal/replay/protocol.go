@@ -1,5 +1,7 @@
 package replay
 
+import "encoding/json"
+
 // 前后端之间唯一的通信格式：JSON 文本帧，全部经 WebSocket（见 server.go / ws.go）。
 //
 // 两条刻意的规则：
@@ -41,6 +43,14 @@ const (
 	ReqBotStart      = "bot_start"
 	ReqBotStop       = "bot_stop"
 	ReqPing          = "ping"
+
+	// 录制与回放（v0.11.0）
+	ReqRecordStart     = "record_start"    // 开始录制：把当前盘面记为第 1 步
+	ReqRecordStop      = "record_stop"     // 结束录制并落盘
+	ReqRecordAudio     = "record_audio"    // 一条录音，挂在当前那根 K 线上
+	ReqListRecordings  = "list_recordings" // 录像列表
+	ReqGetRecording    = "get_recording"   // 取一条录像的全部内容（回放用）
+	ReqDeleteRecording = "delete_recording"
 )
 
 // Request 是一条上行消息。每种类型只读自己那几个字段。
@@ -85,6 +95,14 @@ type Request struct {
 
 	// bot_start
 	IntervalMs int `json:"intervalMs"`
+
+	// record_audio：一段 WAV 的 base64。**不走文件上传** —— 录音只有几十 KB
+	// 到几百 KB，和别的动作一样走这条有序的消息流，顺序天然和操作对得上。
+	AudioData  string `json:"audioData"`
+	DurationMs int    `json:"durationMs"`
+
+	// get_recording / delete_recording
+	RecordingID string `json:"recordingId"`
 }
 
 // ---------------- 下行：后端 -> 前端 ----------------
@@ -101,6 +119,8 @@ const (
 	MsgDeleted       = "deleted"
 	MsgPong          = "pong"
 	MsgTemplates     = "templates"
+	MsgRecordings    = "recordings" // 录像列表（摘要）
+	MsgRecording     = "recording"  // 一条录像的完整内容（回放用）
 )
 
 // 广播的动作名（Event.Action）。
@@ -118,6 +138,12 @@ const (
 	ActMembersChanged   = "members_changed"
 	ActBotStarted       = "bot_started"
 	ActBotStopped       = "bot_stopped"
+
+	// 录制（v0.11.0）。这三个动作**不会被录进录像本身** —— 否则回放时会
+	// 出现「第 3 步里还有一条开始录制」，那是元信息，不是盘面操作。
+	ActRecordingStarted = "recording_started"
+	ActRecordingStopped = "recording_stopped"
+	ActRecordingAudio   = "recording_audio"
 )
 
 // Point 是标注的一个端点：横坐标是「一根已揭示 K 线的时间 + 向右延伸的根数」，纵坐标是价格。
@@ -281,8 +307,8 @@ type ClosedLot struct {
 	OpenPrice   float64 `json:"openPrice"` // 开仓的真实成交价（三角的纵坐标）
 	CloseTime   string  `json:"closeTime"`
 	ClosePrice  float64 `json:"closePrice"`
-	Side        string  `json:"side"`   // long = 买开的仓，short = 卖开的仓
-	Quantity    float64 `json:"quantity"` // 这一批被平掉的手数
+	Side        string  `json:"side"`        // long = 买开的仓，short = 卖开的仓
+	Quantity    float64 `json:"quantity"`    // 这一批被平掉的手数
 	RealizedPnl float64 `json:"realizedPnl"` // 这一批自己的已实现盈亏（美元）
 }
 
@@ -358,6 +384,10 @@ type InstanceDTO struct {
 	Notes         []string     `json:"notes"`
 	CreatedBy     string       `json:"createdBy"`
 	CreatedAt     int64        `json:"createdAt"`
+	// Recording 是这个实例当前的录制状态（没在录时是 null）。
+	// 只有操作者能开始录制，但**所有人都能看到这个标记** —— 演示时观众要知道
+	// 屏幕上正在被录，否则「刚才那段怎么没录进去」根本无从判断。
+	Recording *RecordingState `json:"recording,omitempty"`
 }
 
 // You 告诉这条连接「你是谁」，前端据此决定按钮能不能点。
@@ -455,17 +485,17 @@ type SymbolInfo struct {
 // 订单/成交/持仓每次都发全量：它们数量很少（一次复盘通常个位数），
 // 全量发送让前端不用维护「增量合并」这套容易出错的逻辑。
 type BarAdvancedPayload struct {
-	Bar           Bar      `json:"bar"`
-	Cursor        int      `json:"cursor"`
-	HiddenBars    int      `json:"hiddenBars"`
-	HasMore       bool     `json:"hasMore"`
-	Orders        []Order  `json:"orders"`
-	Trades        []Trade  `json:"trades"`
+	Bar           Bar         `json:"bar"`
+	Cursor        int         `json:"cursor"`
+	HiddenBars    int         `json:"hiddenBars"`
+	HasMore       bool        `json:"hasMore"`
+	Orders        []Order     `json:"orders"`
+	Trades        []Trade     `json:"trades"`
 	ClosedLots    []ClosedLot `json:"closedLots"`
-	Position      Position `json:"position"`
-	RealizedPnl   float64  `json:"realizedPnl"`
-	UnrealizedPnl float64  `json:"unrealizedPnl"`
-	Fills         []Trade  `json:"fills"` // 这一根 K 线触发成交的单（可能为空）
+	Position      Position    `json:"position"`
+	RealizedPnl   float64     `json:"realizedPnl"`
+	UnrealizedPnl float64     `json:"unrealizedPnl"`
+	Fills         []Trade     `json:"fills"` // 这一根 K 线触发成交的单（可能为空）
 }
 
 type AnnotationPayload struct {
@@ -506,14 +536,14 @@ type OrderMovedPayload struct {
 // 和挂单不同，市价单会**立刻**改持仓、成交和盈亏，所以一次把订单、成交、持仓、盈亏
 // 全部发全量：前端不用再要一次快照，也不会出现「成交了但持仓没变」的中间态。
 type OrderFilledPayload struct {
-	Order         Order    `json:"order"`
-	Trade         Trade    `json:"trade"`
-	Orders        []Order  `json:"orders"`
-	Trades        []Trade  `json:"trades"`
+	Order         Order       `json:"order"`
+	Trade         Trade       `json:"trade"`
+	Orders        []Order     `json:"orders"`
+	Trades        []Trade     `json:"trades"`
 	ClosedLots    []ClosedLot `json:"closedLots"`
-	Position      Position `json:"position"`
-	RealizedPnl   float64  `json:"realizedPnl"`
-	UnrealizedPnl float64  `json:"unrealizedPnl"`
+	Position      Position    `json:"position"`
+	RealizedPnl   float64     `json:"realizedPnl"`
+	UnrealizedPnl float64     `json:"unrealizedPnl"`
 }
 
 type ControlChangedPayload struct {
@@ -526,4 +556,145 @@ type MembersChangedPayload struct {
 
 type BotPayload struct {
 	IntervalMs int `json:"intervalMs"`
+}
+
+// ---------------- 录制与回放（v0.11.0） ----------------
+
+// RecordingState 是「这个实例现在正在录吗」的实时状态。
+//
+// 它跟着实例快照一起下发，也随 recording_started / recording_stopped /
+// recording_audio 三条广播更新。**步数是服务端数的**，不是前端自己加：
+// 前端数的步数和「录像文件里到底有几段」必须永远是同一个数，否则录完一看
+// 「第 12 步」却只有 11 段，谁也不知道少的是哪一段。
+type RecordingState struct {
+	Active    bool   `json:"active"`
+	ID        string `json:"id,omitempty"`
+	By        string `json:"by,omitempty"`        // 谁在录
+	StartedAt int64  `json:"startedAt,omitempty"` // 开始录制的时间（Unix 秒）
+	Step      int    `json:"step"`                // 当前第几步（1 = 点录制时那一屏）
+	StartTime string `json:"startTime,omitempty"` // 第 1 步对应的 K 线时间
+	Current   string `json:"current,omitempty"`   // 当前这一步对应的 K 线时间
+	Audios    int    `json:"audios"`              // 已录了几条
+	MaxAudios int    `json:"maxAudios"`           // 上限（9）
+}
+
+// RecordingSummary 是录像列表里的一行。
+type RecordingSummary struct {
+	ID      string `json:"id"`
+	Name    string `json:"name"`
+	Symbol  string `json:"symbol"`
+	Folder  string `json:"folder"`
+	Anchor  string `json:"anchor"`  // 第 1 步那根 K 线的时间
+	EndTime string `json:"endTime"` // 最后一步那根 K 线的时间
+	// StepCount / AudioCount / EventCount 是**摘要里的计数**，名字带 Count 是为了
+	// 不和 Recording 里的 Steps（每一步的事件数组）撞 JSON 名 —— 一旦撞了，
+	// Go 的内嵌字段会被外层同名字段盖掉，列表里的「12 步」会变成一段 JSON 数组。
+	StepCount  int    `json:"stepCount"`  // 共几步（含第 1 步）
+	AudioCount int    `json:"audioCount"` // 共几条录音
+	EventCount int    `json:"eventCount"` // 共多少个操作（绘图/下单/步进都算）
+	Bars       int    `json:"bars"`       // 录像里一共有多少根 K 线
+	Size       int64  `json:"size"`       // 录像目录占用（JSON + 音频）
+	CreatedBy  string `json:"createdBy"`
+	CreatedAt  int64  `json:"createdAt"`
+	EndedAt    int64  `json:"endedAt"`
+}
+
+// Recording 是一条录像的全部内容。
+//
+// 它**不是视频**，而是「起始盘面 + 之后每一个操作的原始广播」：
+//
+//	Base   第 1 步那一刻的完整画布（已揭示的 K 线、标注、挂单、成交、持仓）
+//	Steps  第 2 步起，每次【下一根】开一段，段内按顺序排列那一步发生的操作
+//
+// 回放就是把 Base 深拷贝一份，然后按顺序把事件重新「演」一遍 —— 和实时界面
+// 用的是同一套状态更新逻辑（前端 stores/instance-reducer.ts），所以
+// **回放看到的画面和当时看到的必然一模一样**，包括机器人做的操作。
+type Recording struct {
+	RecordingSummary
+	Tick      float64 `json:"tick"`
+	TickValue float64 `json:"tickValue"`
+
+	Base   RecordingBase   `json:"base"`
+	Steps  []RecordingStep `json:"steps"`
+	Audios []AudioClip     `json:"audios"`
+}
+
+// RecordingBase 是录制起点那一刻的盘面。
+type RecordingBase struct {
+	Cursor        int          `json:"cursor"`
+	Bars          []Bar        `json:"bars"`
+	Annotations   []Annotation `json:"annotations"`
+	Orders        []Order      `json:"orders"`
+	Trades        []Trade      `json:"trades"`
+	ClosedLots    []ClosedLot  `json:"closedLots"`
+	Position      Position     `json:"position"`
+	RealizedPnl   float64      `json:"realizedPnl"`
+	UnrealizedPnl float64      `json:"unrealizedPnl"`
+}
+
+// RecordingStep 是录像里的一步。
+//
+// 第 1 步没有事件（它就是 Base 本身，而且不从 bar_advanced 开始）；
+// 第 2 步起，Events[0] 一定是那条 bar_advanced —— 正是它把这一步开出来的。
+type RecordingStep struct {
+	Step   int              `json:"step"`
+	Time   string           `json:"time"` // 这一步对应的 K 线时间
+	Events []RecordingEvent `json:"events"`
+}
+
+// RecordingEvent 是一条被录下来的操作，字段与广播一一对应。
+//
+// Payload 保持原始 JSON：回放端直接把它交给状态更新逻辑，不重新构造 ——
+// 任何「翻译一层」的做法都会让回放和实时出现细微差异，而这正是要避免的。
+type RecordingEvent struct {
+	Seq     int             `json:"seq"`
+	At      int64           `json:"at"`
+	By      string          `json:"by"` // human / human2 / bot
+	Action  string          `json:"action"`
+	Payload json.RawMessage `json:"payload,omitempty"`
+}
+
+// AudioClip 是一段挂在某根 K 线上的录音。
+//
+// 存储键是 **K 线时间**（Time），不是下标、不是时间戳：回放时按时间找挂载点，
+// 录像内数据被重排也不会错位。Step 是冗余的一份（列表里显示「第几步」用）。
+//
+// File 是录像目录里的文件名（相对路径），音频本身不进 JSON。
+type AudioClip struct {
+	ID         string `json:"id"`
+	Step       int    `json:"step"`
+	Time       string `json:"time"`
+	DurationMs int    `json:"durationMs"`
+	File       string `json:"file"`
+	Size       int64  `json:"size"`
+	CreatedAt  int64  `json:"createdAt"`
+}
+
+// RecordingStoppedPayload 是「录制结束」的广播负载。
+//
+// 录制本身一定已经结束（内存里的录像已清空），Saved 是否为空表示**落盘**成没成：
+// 目录没权限、磁盘满之类的情况要说清楚，但不能把已经录完的内容一起丢掉。
+type RecordingStoppedPayload struct {
+	Recording RecordingSummary `json:"recording"`
+	Dir       string           `json:"dir,omitempty"`
+	Error     string           `json:"error,omitempty"`
+}
+
+// RecordingAudioPayload 是一条录音落位之后的广播。
+type RecordingAudioPayload struct {
+	Audio AudioClip      `json:"audio"`
+	State RecordingState `json:"state"`
+}
+
+// RecordingsMsg 是录像列表。
+type RecordingsMsg struct {
+	Type       string             `json:"type"`
+	Dir        string             `json:"dir"`
+	Recordings []RecordingSummary `json:"recordings"`
+}
+
+// RecordingMsg 是一条录像的完整内容。
+type RecordingMsg struct {
+	Type      string     `json:"type"`
+	Recording *Recording `json:"recording"`
 }

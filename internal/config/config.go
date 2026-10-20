@@ -53,6 +53,10 @@ type Config struct {
 	// ReplayStateDir 是复盘实例的本地存档目录（replay-instances.json）。
 	// 有了它，关掉服务再打开，实例、游标、标注、挂单、成交都还在。
 	ReplayStateDir string `json:"replayStateDir"`
+	// ReplayRecordingDir 是录制的录像落盘目录（v0.11.0）。
+	// 一条录像一个文件夹：recording.json（起始盘面 + 每一步的操作）+ audio-N.wav。
+	// 和实例存档分开是刻意的 —— 录像是一次性的成品，删起来不该动到实例。
+	ReplayRecordingDir string `json:"replayRecordingDir"`
 
 	// ---- 节奏（秒）----
 	FlushSeconds      float64 `json:"flushSeconds"`      // CSV 落盘间隔
@@ -73,26 +77,27 @@ type Config struct {
 
 func Defaults() Config {
 	return Config{
-		Comment:           "配置说明见 README.md。程序不接受命令行参数，改配置就改这个文件。",
-		MatchURL:          "tradingview.com/chart",
-		Symbol:            "",
-		CDPPort:           0,
-		IntervalSeconds:   300,
-		OutDir:            "data",
-		RawDir:            "raw",
-		SaveRawFrames:     true,
-		CSVHeader:         true,
-		WebPort:           8765,
-		ReplayPort:        8790,
-		ReplayDistDir:     "web/dist",
-		ReplayStateDir:    "state",
-		FlushSeconds:      1,
-		AttachPollSeconds: 3,
-		RetrySeconds:      5,
-		StatusSeconds:     15,
-		NetworkBufferMB:   200,
-		MaxFrameMB:        16,
-		PauseOnExit:       true,
+		Comment:            "配置说明见 README.md。程序不接受命令行参数，改配置就改这个文件。",
+		MatchURL:           "tradingview.com/chart",
+		Symbol:             "",
+		CDPPort:            0,
+		IntervalSeconds:    300,
+		OutDir:             "data",
+		RawDir:             "raw",
+		SaveRawFrames:      true,
+		CSVHeader:          true,
+		WebPort:            8765,
+		ReplayPort:         8790,
+		ReplayDistDir:      "web/dist",
+		ReplayStateDir:     "state",
+		ReplayRecordingDir: "recordings",
+		FlushSeconds:       1,
+		AttachPollSeconds:  3,
+		RetrySeconds:       5,
+		StatusSeconds:      15,
+		NetworkBufferMB:    200,
+		MaxFrameMB:         16,
+		PauseOnExit:        true,
 	}
 }
 
@@ -122,6 +127,7 @@ func (c Config) OutPath() string         { return resolve(c.BaseDir, c.OutDir) }
 func (c Config) RawPath() string         { return resolve(c.BaseDir, c.RawDir) }
 func (c Config) ReplayDistPath() string  { return resolve(c.BaseDir, c.ReplayDistDir) }
 func (c Config) ReplayStatePath() string { return resolve(c.BaseDir, c.ReplayStateDir) }
+func (c Config) RecordingPath() string   { return resolve(c.BaseDir, c.ReplayRecordingDir) }
 
 func resolve(base, dir string) string {
 	if dir == "" {
@@ -226,6 +232,9 @@ func (c *Config) normalize() []string {
 	}
 	if c.ReplayStateDir == "" {
 		c.ReplayStateDir = d.ReplayStateDir
+	}
+	if c.ReplayRecordingDir == "" {
+		c.ReplayRecordingDir = d.ReplayRecordingDir
 	}
 	return notes
 }

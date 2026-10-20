@@ -71,6 +71,10 @@ type Instance struct {
 	botStop     chan struct{}
 	botInterval time.Duration
 	deleted     bool
+
+	// rec 是「正在录制的那一份」（v0.11.0）。nil = 没在录。
+	// 它挂在实例上而不是 Hub 上：录制属于「这一个盘面」，换实例就该换一段录像。
+	rec *recorder
 }
 
 // currentBar 是游标所在的那根。
@@ -704,7 +708,7 @@ type openLot struct {
 func (inst *Instance) closedLots() []ClosedLot {
 	var out []ClosedLot
 	var lots []openLot
-	qty := 0.0   // 净头寸（带符号）
+	qty := 0.0 // 净头寸（带符号）
 	pv := inst.pointValue()
 
 	for _, t := range inst.Trades {
@@ -825,7 +829,18 @@ func (inst *Instance) snapshot(members []Member) InstanceDTO {
 		Notes:         notes,
 		CreatedBy:     inst.CreatedBy,
 		CreatedAt:     inst.CreatedAt,
+		Recording:     inst.recordingState(),
 	}
+}
+
+// recordingState 返回录制状态（没在录时 nil，序列化成 null）。
+// 单独抽出来是因为快照和广播都要用它，口径必须只有一份。
+func (inst *Instance) recordingState() *RecordingState {
+	if inst.rec == nil {
+		return nil
+	}
+	st := inst.rec.state()
+	return &st
 }
 
 func (inst *Instance) summary(members int) InstanceSummary {

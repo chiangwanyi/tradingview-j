@@ -2,10 +2,10 @@ import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
 
 import { ReplaySocket, defaultSocketUrl } from '@/net/socket'
+import { applyInstanceEvent } from '@/stores/instance-reducer'
 import { ACTION } from '@/types/protocol'
 import type {
   AnnotationKind,
-  AnnotationPayload,
   AnnotationDeletedPayload,
   AnnotationStyle,
   BarAdvancedPayload,
@@ -14,11 +14,13 @@ import type {
   InstanceDetail,
   InstanceStateMessage,
   InstanceSummary,
-  MembersChangedPayload,
   OrderKind,
-  OrderFilledPayload,
-  OrdersPayload,
   Point,
+  Recording,
+  RecordingAudioPayload,
+  RecordingState,
+  RecordingStoppedPayload,
+  RecordingSummary,
   ReplayEvent,
   ServerEvent,
   ServerMessage,
@@ -76,6 +78,11 @@ export const useReplayStore = defineStore('replay', () => {
   const socket = new ReplaySocket(defaultSocketUrl())
 
   const status = ref<'connecting' | 'open' | 'closed'>('closed')
+  /**
+   * 回放模式。开启时 `instance` 被换成「录像演出来的那一份」，
+   * 所有会改状态的动作都必须停手 —— 这是**只读**地看历史，不能往后端发任何修改。
+   */
+  const playbackActive = ref(false)
   const me = ref<{ clientId: string; name: string; version: string } | null>(null)
   const symbols = ref<SymbolInfo[]>([])
   const instances = ref<InstanceSummary[]>([])
@@ -84,6 +91,10 @@ export const useReplayStore = defineStore('replay', () => {
   const log = ref<ReplayEvent[]>([])
   const lastError = ref('')
   const errorKey = ref(0)
+  /** 一句会自己消失的轻提示（录像已保存 / 录音已挂载）。 */
+  const notice = ref('')
+  const noticeKey = ref(0)
+  let noticeTimer = 0
 
   // 界面状态（只影响显示，不属于业务状态，所以不发给后端）
   const tool = ref<ChartTool>('select')
@@ -96,6 +107,14 @@ export const useReplayStore = defineStore('replay', () => {
    */
   const templates = ref<Template[]>([])
   const activeTemplate = ref<Record<string, string>>({})
+  /** 已保存的录像列表（后端扫录像目录得到的，新→旧） */
+  const recordings = ref<RecordingSummary[]>([])
+  /** 录像目录的绝对路径，显示在回放 Tab 上，方便用户去文件夹里找 */
+  const recordingDir = ref('')
+  /** 刚取回来、等着交给播放器的那一条录像 */
+  const loadedRecording = ref<Recording | null>(null)
+  /** 每取回一条就加一：组件用它判断"这是一条新的"，避免同一条被重复打开 */
+  const loadedSeq = ref(0)
   const theme = ref<ThemeMode>(readTheme())
   applyTheme(theme.value)
   /** 是否显示 EMA20（纯显示开关，跟后端无关） */
@@ -121,9 +140,12 @@ export const useReplayStore = defineStore('replay', () => {
   const cursor = computed(() => instance.value?.cursor ?? 0)
   const currentBar = computed(() => bars.value[bars.value.length - 1] ?? null)
   const isOperator = computed(() => you.value?.operator === true)
+  /** 当前实例的录制状态（没在录是 null） */
+  const recording = computed<RecordingState | null>(() => instance.value?.recording ?? null)
+  const isRecording = computed(() => recording.value?.active === true)
   const botRunning = computed(() => instance.value?.bot === true)
   /** 能操作 = 拿到操作权，且不是机器人在跑（机器人跑着的时候真人只能看，这就是演示模式） */
-  const canOperate = computed(() => isOperator.value && !botRunning.value)
+  const canOperate = computed(() => isOperator.value && !botRunning.value && !playbackActive.value)
   const operatorLabel = computed(() => {
     const inst = instance.value
     if (!inst) return ''
@@ -147,6 +169,21 @@ export const useReplayStore = defineStore('replay', () => {
 
   function clearError(): void {
     lastError.value = ''
+  }
+
+  /** 一条会自己消失的提示（6 秒）。比 error 轻：保存成功不该弹一个要人点掉的框。 */
+  function noteNotice(text: string): void {
+    notice.value = text
+    noticeKey.value += 1
+    if (noticeTimer) window.clearTimeout(noticeTimer)
+    noticeTimer = window.setTimeout(() => {
+      notice.value = ''
+    }, 6000)
+  }
+
+  function clearNotice(): void {
+    notice.value = ''
+    if (noticeTimer) window.clearTimeout(noticeTimer)
   }
 
   function send(msg: ClientMessage): boolean {
@@ -194,6 +231,15 @@ export const useReplayStore = defineStore('replay', () => {
         break
       case 'pong':
         break
+      case 'recordings':
+        recordings.value = msg.recordings ?? []
+        recordingDir.value = msg.dir ?? ''
+        break
+      case 'recording':
+        // 一条录像的完整内容到了：交给播放器（组件的 watch 会接住）
+        loadedRecording.value = msg.recording ?? null
+        loadedSeq.value += 1
+        break
       case 'templates':
         templates.value = msg.templates ?? []
         if (msg.lastSavedId) {
@@ -210,7 +256,7 @@ export const useReplayStore = defineStore('replay', () => {
   function applyState(msg: InstanceStateMessage): void {
     const inst = msg.instance
     // 快照里的 bars 只含已揭示的部分（后端根本不会发未来的 K 线）
-    instance.value = { ...inst, bars: inst.bars ?? [] }
+    instance.value = { ...inst, bars: inst.bars ?? [], recording: inst.recording ?? null }
     you.value = msg.you
     log.value = [...(inst.events ?? [])].slice(-MAX_LOG)
     selectedAnnotation.value = null
@@ -229,83 +275,76 @@ export const useReplayStore = defineStore('replay', () => {
     })
     if (log.value.length > MAX_LOG) log.value = log.value.slice(-MAX_LOG)
 
+    // 录制相关的三条不是盘面变化，单独处理（放进 reducer 会让"回放"里也出现录制动作）
+    if (
+      msg.action === ACTION.recordingStarted ||
+      msg.action === ACTION.recordingStopped ||
+      msg.action === ACTION.recordingAudio
+    ) {
+      applyRecordingEvent(inst, msg)
+      return
+    }
+
+    // 盘面变化：和回放共用同一份更新逻辑（stores/instance-reducer.ts）
+    applyInstanceEvent(inst, msg.action, msg.payload)
+
+    // 录制中的「第 N 步」只能在这里往上加：服务端只在 instance_state 全量快照里带
+    // 录制状态，而步进走的是 bar_advanced 这条事件流，不会重发快照。
+    // 不加这一句，HUD 会一直停在「第 1 步」，而录像其实已经录了十几步（实测过）。
+    // 只在**实时**里加：回放的 reducer 是同一份，但那时 recording 是 null（见 playback.ts）。
+    if (inst.recording?.active && msg.action === ACTION.barAdvanced) {
+      const p = msg.payload as BarAdvancedPayload
+      inst.recording = {
+        ...inst.recording,
+        step: inst.recording.step + 1,
+        current: p.bar?.time ?? inst.recording.current,
+      }
+    }
+
+    // 下面是界面状态，不属于盘面
+    if (msg.action === ACTION.annotationDeleted) {
+      const p = msg.payload as AnnotationDeletedPayload
+      if (selectedAnnotation.value === p.annotationId) selectedAnnotation.value = null
+    } else if (msg.action === ACTION.annotationCleared) {
+      selectedAnnotation.value = null
+    } else if (msg.action === ACTION.controlChanged) {
+      const p = msg.payload as ControlChangedPayload
+      if (you.value) {
+        you.value = { ...you.value, operator: p.operator !== '' && p.operator === me.value?.name }
+      }
+    }
+  }
+
+  /** 录制状态的三条广播：更新实例上的录制标记 + 给一句提示。 */
+  function applyRecordingEvent(inst: InstanceDetail, msg: ServerEvent): void {
     switch (msg.action) {
-      case ACTION.barAdvanced: {
-        const p = msg.payload as BarAdvancedPayload
-        inst.bars = [...inst.bars, p.bar]
-        inst.cursor = p.cursor
-        inst.hiddenBars = p.hiddenBars
-        inst.hasMore = p.hasMore
-        inst.orders = p.orders
-        inst.trades = p.trades
-        inst.closedLots = p.closedLots
-        inst.position = p.position
-        inst.realizedPnl = p.realizedPnl
-        inst.unrealizedPnl = p.unrealizedPnl
+      case ACTION.recordingStarted: {
+        inst.recording = msg.payload as RecordingState
+        noteNotice('开始录制：当前盘面记为第 1 步，之后每次【下一根】加一步')
         break
       }
-      case ACTION.annotationAdded: {
-        const p = msg.payload as AnnotationPayload
-        inst.annotations = [...inst.annotations, p.annotation]
+      case ACTION.recordingAudio: {
+        const p = msg.payload as RecordingAudioPayload
+        inst.recording = p.state
+        noteNotice(
+          `录音 ${p.state.audios}/${p.state.maxAudios} 已挂到 ${p.audio.time}（第 ${p.audio.step} 步 · ${(p.audio.durationMs / 1000).toFixed(1)} 秒）`,
+        )
         break
       }
-      case ACTION.annotationMoved: {
-        const p = msg.payload as AnnotationPayload
-        inst.annotations = inst.annotations.map((a) => (a.id === p.annotation.id ? p.annotation : a))
-        break
-      }
-      case ACTION.annotationDeleted: {
-        const p = msg.payload as AnnotationDeletedPayload
-        inst.annotations = inst.annotations.filter((a) => a.id !== p.annotationId)
-        if (selectedAnnotation.value === p.annotationId) selectedAnnotation.value = null
-        break
-      }
-      case ACTION.annotationCleared: {
-        // 一次清空是**一个原子状态**：不去按 payload 里的编号逐个过滤 ——
-        // 服务端说的是「这个实例现在一个绘图都没有」，照它办就不会有漏网的那一个。
-        inst.annotations = []
-        selectedAnnotation.value = null
-        break
-      }
-      case ACTION.orderPlaced:
-      case ACTION.orderMoved:
-      case ACTION.orderCancelled: {
-        const p = msg.payload as OrdersPayload
-        inst.orders = p.orders
-        break
-      }
-      case ACTION.orderFilled: {
-        // 市价单是同步成交的：订单、成交流水、持仓和盈亏一次到位
-        const p = msg.payload as OrderFilledPayload
-        inst.orders = p.orders
-        inst.trades = p.trades
-        inst.closedLots = p.closedLots
-        inst.position = p.position
-        inst.realizedPnl = p.realizedPnl
-        inst.unrealizedPnl = p.unrealizedPnl
-        break
-      }
-      case ACTION.membersChanged: {
-        const p = msg.payload as MembersChangedPayload
-        inst.members = p.members
-        break
-      }
-      case ACTION.controlChanged: {
-        const p = msg.payload as ControlChangedPayload
-        inst.operator = p.operator
-        if (you.value) {
-          you.value = { ...you.value, operator: p.operator !== '' && p.operator === me.value?.name }
+      case ACTION.recordingStopped: {
+        const p = msg.payload as RecordingStoppedPayload
+        inst.recording = null
+        if (p.error) {
+          noteError(`录制已结束，但录像没有保存：${p.error}`)
+        } else {
+          noteNotice(
+            `录像已保存：${p.recording.name}（${p.recording.stepCount} 步 / ${p.recording.audioCount} 条录音）→ ${p.dir ?? ''}`,
+          )
         }
+        // 录完就该在【回放】里看见它，不用用户手动刷新
+        listRecordings()
         break
       }
-      case ACTION.botStarted:
-        inst.bot = true
-        break
-      case ACTION.botStopped:
-        inst.bot = false
-        break
-      default:
-        break
     }
   }
 
@@ -314,8 +353,11 @@ export const useReplayStore = defineStore('replay', () => {
     send({ type: 'list_symbols' })
     send({ type: 'list_instances' })
     send({ type: 'list_templates' })
+    send({ type: 'list_recordings' })
+    // 回放时 instance 是「演出来的那一份」，id 是 rec:xxx，后端根本没有这个实例：
+    // 重连后去 join 它只会收到一条错误，还会把回放画面清空。等退出回放再重新 join。
     const id = instance.value?.id
-    if (id) send({ type: 'join_instance', instanceId: id })
+    if (id && !playbackActive.value) send({ type: 'join_instance', instanceId: id })
   }
 
   socket.onMessage(handleMessage)
@@ -500,6 +542,54 @@ export const useReplayStore = defineStore('replay', () => {
     send({ type: 'order_modify', instanceId: instance.value.id, orderId, price })
   }
 
+  // ---------------- 录制与录像 ----------------
+
+  /**
+   * 开始录制。【第 1 步 = 点下去时的那一屏】是后端定的：
+   * 它把当时的 K 线、标注、挂单、成交整份存成 Base，不依赖前端算步数。
+   */
+  function startRecording(): void {
+    if (!instance.value || !canOperate.value) return
+    send({ type: 'record_start', instanceId: instance.value.id })
+  }
+
+  /** 结束录制。后端收尾、落盘、广播，前端只等消息。 */
+  function stopRecording(): void {
+    if (!instance.value) return
+    send({ type: 'record_stop', instanceId: instance.value.id })
+  }
+
+  function toggleRecording(): void {
+    if (isRecording.value) stopRecording()
+    else startRecording()
+  }
+
+  /**
+   * 送一段录音上去（WAV 的 base64）。挂载点是**服务端当前那根 K 线**，
+   * 前端不传时间 —— 传了就有两种"当前"，一旦不一致录音会挂错柱子。
+   */
+  function sendRecordingAudio(audioData: string, durationMs: number): boolean {
+    if (!instance.value || !isRecording.value) return false
+    return send({ type: 'record_audio', instanceId: instance.value.id, audioData, durationMs })
+  }
+
+  function listRecordings(): void {
+    send({ type: 'list_recordings' })
+  }
+
+  /** 请求一条录像的完整内容；回来之后由回放面板打开播放器。 */
+  function requestRecording(id: string): void {
+    send({ type: 'get_recording', recordingId: id })
+  }
+
+  function deleteRecording(id: string): void {
+    send({ type: 'delete_recording', recordingId: id })
+  }
+
+  function clearLoadedRecording(): void {
+    loadedRecording.value = null
+  }
+
   function startBot(intervalMs = 1200): void {
     if (!instance.value) return
     send({ type: 'bot_start', instanceId: instance.value.id, intervalMs })
@@ -514,6 +604,15 @@ export const useReplayStore = defineStore('replay', () => {
     // 状态
     status,
     me,
+    playbackActive,
+    notice,
+    noticeKey,
+    recordings,
+    recordingDir,
+    loadedRecording,
+    loadedSeq,
+    recording,
+    isRecording,
     symbols,
     instances,
     instance,
@@ -567,5 +666,15 @@ export const useReplayStore = defineStore('replay', () => {
     startBot,
     stopBot,
     clearError,
+    noteNotice,
+    clearNotice,
+    startRecording,
+    stopRecording,
+    toggleRecording,
+    sendRecordingAudio,
+    listRecordings,
+    requestRecording,
+    deleteRecording,
+    clearLoadedRecording,
   }
 })

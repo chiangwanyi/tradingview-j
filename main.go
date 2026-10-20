@@ -8,7 +8,7 @@
 //	1  启动抓取  —— 等 Chrome 的调试端口 -> 等 TradingView 图表页 -> 被动监听 WebSocket 帧
 //	                -> 解出 5 分钟 K 线 -> 覆盖写 <数据目录>/<标的>/<yyyy-MM-dd>.csv
 //	2  网页版分析 —— 同一个统计结果起在 127.0.0.1 的本地网页上（可排序、可筛选）
-//	3  复盘      —— 本地网页 + WebSocket：逐根回放、画标注、模拟下单（不写回 CSV）
+//	3  复盘      —— 本地网页 + WebSocket：逐根回放、画标注、模拟下单、录制与回放（不写回 CSV）
 //	4  退出
 //
 // 抓取停下来（Ctrl+C）之后是**回到菜单**，不是退出程序 —— 想接着抓就再选 1。
@@ -34,7 +34,7 @@ import (
 // 它必须留在 main 包：-X 只能设置包级字符串变量，而 build.cmd 里写死的是
 // -X main.version（version_test.go 会把这一条钉住）。所以是把这个值**传进去**，
 // 而不是把启动逻辑留在这里。
-var version = "0.10.0"
+var version = "0.11.0"
 
 func main() {
 	os.Exit(cli.Run(version))

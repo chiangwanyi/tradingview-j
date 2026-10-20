@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
 
+import { usePlaybackStore } from '@/stores/playback'
 import { useReplayStore } from '@/stores/replay'
 
 /**
@@ -14,6 +15,7 @@ import { useReplayStore } from '@/stores/replay'
  */
 
 const store = useReplayStore()
+const pb = usePlaybackStore()
 
 const open = ref(false)
 const symbol = ref('')
@@ -35,8 +37,22 @@ watch(
   { immediate: true },
 )
 
+/**
+ * 回放中要切到实例：先安静地退出回放（不自动 join 旧实例，免得连发两条 join）。
+ * 回放是只读的临时视图，它和「当前实例」是互斥的 —— 两者同时存在只会让顶栏自相矛盾。
+ */
+function leavePlayback(): void {
+  if (pb.active) pb.close(false)
+}
+
+function enter(id: string): void {
+  leavePlayback()
+  store.joinInstance(id)
+}
+
 function create(): void {
   if (!symbol.value) return
+  leavePlayback()
   busy.value = true
   store.createInstance(symbol.value, timeText.value.trim())
   window.setTimeout(() => {
@@ -115,6 +131,13 @@ function statusOf(operator: string, bot: boolean): string {
         </button>
       </div>
 
+      <div
+        v-if="pb.active"
+        class="mt-2 rounded border border-amber-400 bg-amber-500/10 px-2 py-1 text-[11px] text-amber-700 dark:text-amber-300"
+      >
+        正在回放录像（只读）。新建或进入实例会先退出回放。
+      </div>
+
       <div class="mt-3 flex items-center justify-between border-t border-line pt-2">
         <span class="text-[12px] text-dim">实例 {{ store.instances.length }} 个</span>
         <div class="flex items-center gap-2">
@@ -163,7 +186,7 @@ function statusOf(operator: string, bot: boolean): string {
               v-if="store.instance?.id !== inst.id"
               type="button"
               class="text-[11px] text-accent hover:underline"
-              @click="store.joinInstance(inst.id)"
+              @click="enter(inst.id)"
             >
               进入
             </button>

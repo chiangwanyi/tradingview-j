@@ -61,6 +61,19 @@ type Hub struct {
 	templates []Template
 	tplSeq    int
 	tplPath   string
+
+	// 录制（recording.go）。records 永远非 nil：没配目录时它是一个「不落盘」的
+	// 空壳，录制照样能在内存里跑完（测试就是这么用的）。
+	records *RecordingStore
+	// pendingSaves 是「已经录完、等锁外落盘」的录像。写盘是 IO，
+	// 不能拿着 h.mu 做 —— 那会把所有人的步进和广播一起卡住。
+	pendingSaves []pendingSave
+}
+
+// pendingSave 是一条等待写盘的录像（含音频字节）。
+type pendingSave struct {
+	rec    *Recording
+	audios []pendingAudio
 }
 
 func NewHub(ds *DataSource, version string, logf func(format string, args ...any)) *Hub {
@@ -81,6 +94,8 @@ func NewHub(ds *DataSource, version string, logf func(format string, args ...any
 		// EnablePersistence 会拿磁盘上的文件覆盖它。
 		templates: defaultTemplates(),
 		tplSeq:    len(defaultTemplates()),
+		// 没启用录像目录时它是个空壳：录制能跑、只是不落盘
+		records: &RecordingStore{},
 	}
 }
 
@@ -123,7 +138,15 @@ func (h *Hub) Unregister(c *Client) {
 		return
 	}
 	h.mu.Lock()
-	defer h.mu.Unlock()
+	defer func() {
+		// 断开时可能刚好收尾了一段录制（见 leaveLocked）：写盘同样放到锁外。
+		saves := h.pendingSaves
+		h.pendingSaves = nil
+		h.mu.Unlock()
+		for _, s := range saves {
+			h.saveRecording(s)
+		}
+	}()
 	if _, ok := h.clients[c.ID]; !ok {
 		return
 	}
@@ -143,7 +166,12 @@ func (h *Hub) Handle(c *Client, raw []byte) {
 	defer func() {
 		garbage := h.garbage
 		h.garbage = nil
+		saves := h.pendingSaves
+		h.pendingSaves = nil
 		h.mu.Unlock()
+		for _, s := range saves {
+			h.saveRecording(s)
+		}
 		for _, d := range garbage {
 			if d.close != nil {
 				d.close()
@@ -209,6 +237,18 @@ func (h *Hub) Handle(c *Client, raw []byte) {
 		h.handleBotStop(c, req)
 	case ReqPing:
 		h.reply(c, PongMsg{Type: MsgPong})
+	case ReqRecordStart:
+		h.handleRecordStart(c, req)
+	case ReqRecordStop:
+		h.handleRecordStop(c, req)
+	case ReqRecordAudio:
+		h.handleRecordAudio(c, req)
+	case ReqListRecordings:
+		h.handleListRecordings(c)
+	case ReqGetRecording:
+		h.handleGetRecording(c, req)
+	case ReqDeleteRecording:
+		h.handleDeleteRecording(c, req)
 	case "":
 		h.fail(c, req, "消息缺少 type 字段")
 	default:
@@ -684,6 +724,13 @@ func (h *Hub) leaveLocked(c *Client, quiet bool) {
 		inst.Operator = ""
 		h.broadcastInstanceLocked(inst, ActControlChanged, ControlChangedPayload{}, c.Name)
 	}
+	// 录制属于「这个人这一段操作」：他走了就结束并保存。
+	// 不这么做的话，这个实例会永远停在「已经在录制了」，下一个人再也开不了新的录像。
+	if inst.rec != nil && inst.rec.rec.CreatedBy == c.Name {
+		if payload, ok := h.finishRecordingLocked(inst); ok {
+			h.broadcastInstanceLocked(inst, ActRecordingStopped, payload, "system")
+		}
+	}
 	h.broadcastMembersLocked(inst)
 	// 没人看了就把机器人停掉：否则它会一直替一个空实例改数据。
 	if len(h.membersLocked(inst)) == 0 && inst.botStop != nil {
@@ -695,6 +742,11 @@ func (h *Hub) leaveLocked(c *Client, quiet bool) {
 func (h *Hub) deleteLocked(inst *Instance) {
 	if inst.botStop != nil {
 		h.stopBotLocked(inst, "")
+	}
+	// 删实例时正在录的那一段也要收尾：录制文件不属于实例存档，它是独立的一份录像，
+	// 留着比丢掉有用（用户删的是「这个盘面」，不是「刚录的那段」）。
+	if inst.rec != nil {
+		h.finishRecordingLocked(inst)
 	}
 	inst.deleted = true
 	delete(h.instances, inst.ID)
@@ -731,6 +783,10 @@ func (h *Hub) Close() {
 		if inst.botStop != nil {
 			h.stopBotLocked(inst, "")
 		}
+		// 正在录的那一段要收尾并保存：Ctrl+C 不该把已经录完的十几步一起丢掉。
+		if inst.rec != nil {
+			h.finishRecordingLocked(inst)
+		}
 	}
 	for _, c := range h.clients {
 		if c.close != nil {
@@ -739,11 +795,16 @@ func (h *Hub) Close() {
 	}
 	h.clients = map[string]*Client{}
 	done := h.stateDone
+	saves := h.pendingSaves
+	h.pendingSaves = nil
 	h.mu.Unlock()
 
 	// 先让定时器退出，再同步写一次：Ctrl+C 之后不该丢最后几秒的动作。
 	if done != nil {
 		close(done)
+	}
+	for _, s := range saves {
+		h.saveRecording(s)
 	}
 	h.flushState()
 }
@@ -752,6 +813,12 @@ func (h *Hub) Close() {
 
 func (h *Hub) broadcastInstanceLocked(inst *Instance, action string, payload any, by string) {
 	ev := inst.appendEvent(by, action, payload)
+	// 录制挂在这里，而不是散在每个 do* 方法里：这条路径是所有状态变化的唯一出口
+	// （真人、机器人、多人广播都走它），所以「机器人操作也能被录」不是另写一套，
+	// 而是**挂对位置**的自然结果 —— 录下来的和操作记录 Tab 里看到的是同一批事件。
+	if inst.rec != nil {
+		inst.rec.observe(action, by, payload, ev.Seq)
+	}
 	// 广播 = 这个实例的状态变了（步进、标注、下单、操作权、成员）。落盘就打在这里，
 	// 免得每个 do* 方法各记一次、漏一个就静默丢数据。
 	h.markDirtyLocked(inst.ID)

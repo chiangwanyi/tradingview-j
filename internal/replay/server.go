@@ -23,12 +23,13 @@ import (
 
 // Options 是起服务需要的全部输入。
 type Options struct {
-	DataRoot string         // config.OutPath()
-	DistDir  string         // config.ReplayDistPath()，通常是 <exe>/web/dist
-	StateDir string         // config.ReplayStatePath()，实例存档目录；空 = 不持久化
-	Version  string         // 显示在 welcome 里
-	Location *time.Location // 空则本机时区
-	Log      func(format string, args ...any)
+	DataRoot     string         // config.OutPath()
+	DistDir      string         // config.ReplayDistPath()，通常是 <exe>/web/dist
+	StateDir     string         // config.ReplayStatePath()，实例存档目录；空 = 不持久化
+	RecordingDir string         // config.RecordingPath()，录像目录；空 = 录制不落盘
+	Version      string         // 显示在 welcome 里
+	Location     *time.Location // 空则本机时区
+	Log          func(format string, args ...any)
 }
 
 // NewHandler 组装路由。测试里可以直接拿它配 httptest.NewServer。
@@ -54,8 +55,50 @@ func NewHandler(hub *Hub, distDir string) http.Handler {
 		_, _ = w.Write([]byte("ok"))
 	})
 
+	// 录像里的录音：/api/recordings/<录像 id>/audio/<audio-N.wav>
+	//
+	// 为什么音频走 HTTP 而不是塞进 WS 的 JSON：一段 30 秒的 WAV 有近 1MB，
+	// base64 再涨三分之一，而列表/回放的消息本来只有几十 KB。音频是**只读、可缓存**
+	// 的静态内容，正好交给浏览器自己的 <audio> 去播（能拖动、能循环、不占内存队列）。
+	mux.HandleFunc("/api/recordings/", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet && r.Method != http.MethodHead {
+			http.Error(w, "只支持 GET", http.StatusMethodNotAllowed)
+			return
+		}
+		id, file, ok := parseAudioPath(r.URL.Path)
+		if !ok {
+			http.NotFound(w, r)
+			return
+		}
+		h := hub.Records()
+		path, err := h.AudioFile(id, file)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusNotFound)
+			return
+		}
+		// 录像写完之后音频不会再变，可以放心让浏览器缓存一会儿；
+		// 不用 immutable —— 用户删了录像重录同一个 id 的概率虽小，但没必要赌。
+		w.Header().Set("Cache-Control", "private, max-age=3600")
+		w.Header().Set("Content-Type", "audio/wav")
+		http.ServeFile(w, r, path)
+	})
+
 	mux.Handle("/", staticHandler(distDir))
 	return mux
+}
+
+// parseAudioPath 把 /api/recordings/<id>/audio/<file> 拆成两段。
+//
+// 路径的**形状**在这里就把死：多一段少一段都不认。真正的越权防护在
+// RecordingStore.AudioFile（id 必须在索引里、文件名必须是 audio-N.wav）——
+// 这里只负责别把奇怪的路径拼进去。
+func parseAudioPath(p string) (id, file string, ok bool) {
+	rest := strings.TrimPrefix(p, "/api/recordings/")
+	parts := strings.Split(rest, "/")
+	if len(parts) != 3 || parts[0] == "" || parts[1] != "audio" || parts[2] == "" {
+		return "", "", false
+	}
+	return parts[0], parts[2], true
 }
 
 // originAllowed 挡住「任意网页连本地服务」。浏览器发 WS 时会带 Origin，
@@ -156,6 +199,10 @@ func Start(opts Options, port int) (*Server, error) {
 	// 必须在开始接连接之前做，否则第一条 list_instances 会拿到空列表。
 	if err := hub.EnablePersistence(opts.StateDir); err != nil {
 		hub.Logf("[replay] 实例持久化没启用：%v", err)
+	}
+	// 录像目录：读不到/建不了也只是「录了不落盘」，不该拦住整个复盘服务。
+	if err := hub.EnableRecordings(opts.RecordingDir); err != nil {
+		hub.Logf("[replay] 录像目录没启用：%v", err)
 	}
 
 	ln, moved, err := listen(port)

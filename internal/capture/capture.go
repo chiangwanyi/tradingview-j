@@ -278,15 +278,25 @@ func (s *Session) attachPage(ctx context.Context, tr *cdp.Transport, reg *regist
 		s.lg.Plain("     一个标签页同时只能有一个调试会话，关掉 DevTools 后本程序会自动重试。")
 		return
 	}
+
+	// 先登记、再打开网络事件 —— 顺序不能反。
+	//
+	// EnableNetwork 的响应后面紧跟着的就是页面自己的 WebSocket 流量，而事件分发那边
+	// 只认**已经登记过**的 session（supervise 里的 reg.get(sessionID)）。先 enable
+	// 后登记的写法有一个窗口：帧已经到了，页面还没进注册表，这几帧被静默丢掉。
+	// 真实浏览器里这个窗口表现成「刚接上的一瞬间丢几帧」；在只推三帧的
+	// TestEndToEndWithoutBrowser 里直接表现成「一行 CSV 都没写出来」——
+	// 本机实测在全量跑时约半数概率碰上（2026-10 修的）。
+	p := newPage(s.cfg, s.st, s.lg, t, sid)
+	reg.add(p)
 	if err := tr.EnableNetwork(ctx, sid, s.cfg.NetworkBufferMB); err != nil {
+		reg.remove(sid)
 		reg.markFailed(t.ID)
 		tr.Detach(ctx, sid)
 		s.lg.Warn("打开网络事件失败：%v", err)
 		return
 	}
 
-	p := newPage(s.cfg, s.st, s.lg, t, sid)
-	reg.add(p)
 	s.lg.Info("已接入图表页：%s", p.describe())
 	if sym := p.dec.Symbol(); sym != "" {
 		s.lg.Info("  当前品种：%s（若帧里带 symbol_resolved，会以它为准）", sym)

@@ -37,13 +37,24 @@ const drawHint: Record<DrawTool, string> = {
 }
 
 const canEdit = computed(() => store.canOperate)
+/**
+ * 【录制】能不能点。
+ *
+ * 两个分支不一样：开始录制要求「有操作权 + 有 K 线」；结束录制只看操作权 ——
+ * 万一录到一半操作权被交还了，还留在录制状态里的人至少能把它停下来保存。
+ */
+const canRecord = computed(() => {
+  const inst = store.instance
+  if (!inst || store.playbackActive || !store.canOperate) return false
+  return store.isRecording || inst.bars.length > 0
+})
 const operator = computed(() => store.operatorLabel)
 /** 当前是不是绘图工具 —— 模板条只在绘图工具下出现（v-if 用得到，也顺手做类型收窄） */
 const drawKind = computed<DrawTool | null>(() => (isDrawTool(store.tool) ? store.tool : null))
 
 const canStartBot = computed(() => {
   const inst = store.instance
-  if (!inst || inst.bot) return false
+  if (!inst || inst.bot || store.playbackActive) return false
   return inst.operator === '' || store.isOperator
 })
 const hasMoreHint = computed(() => {
@@ -113,13 +124,41 @@ const btnActive = 'border-accent bg-accent-soft text-accent'
       下一根 →
     </button>
 
+    <!--
+      录制：点一下开始（当前盘面 = 第 1 步），再点一下结束并落盘。
+      按钮文案在录制中变成【录制中…】—— 这是用户确认「正在被录」的唯一显式信号，
+      所以不加图标式的开关，免得有人以为它是个切换显示。
+    -->
+    <button
+      type="button"
+      :class="[
+        btn,
+        store.isRecording
+          ? 'border-red-500 bg-red-500/10 font-medium text-red-600 dark:text-red-400'
+          : 'border-red-400 text-red-600 hover:bg-red-500/10 dark:text-red-400',
+      ]"
+      :disabled="!canRecord"
+      :title="
+        store.isRecording
+          ? '结束录制并保存到录像目录（录像里是操作事件，不是视频）'
+          : '开始录制：当前盘面记为第 1 步，之后每次【下一根】加一步；画图、下单、机器人操作都会被记下'
+      "
+      @click="store.toggleRecording()"
+    >
+      <span
+        v-if="store.isRecording"
+        class="mr-1 inline-block h-2 w-2 animate-pulse rounded-full bg-red-500 align-middle"
+      />
+      {{ store.isRecording ? '录制中…' : '● 录制' }}
+    </button>
+
     <button type="button" :class="[btn, btnIdle]" :disabled="!store.isOperator" @click="store.releaseControl()">
       交还操作权
     </button>
     <button
       type="button"
       :class="[btn, 'border-amber-500 text-amber-600 hover:bg-amber-500/10 dark:text-amber-400']"
-      :disabled="store.isOperator || !store.instance || (store.instance?.operator ?? '') !== ''"
+      :disabled="store.isOperator || !store.instance || (store.instance?.operator ?? '') !== '' || store.playbackActive"
       @click="store.takeControl()"
     >
       接管
@@ -145,7 +184,8 @@ const btnActive = 'border-accent bg-accent-soft text-accent'
     </button>
 
     <div class="ml-auto flex items-center gap-3 text-[11px] text-dim">
-      <span v-if="store.instance">
+      <span v-if="store.playbackActive" class="text-red-600 dark:text-red-400">回放模式（只读）</span>
+      <span v-else-if="store.instance">
         操作权：<b :class="store.isOperator ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'">
           {{ operator || '无人' }}
         </b>

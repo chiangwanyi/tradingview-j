@@ -8,6 +8,9 @@
 # 数据目录（K 线 CSV 与原始帧留档）
 /raw/
 
+# 录制下来的录像（recording.json + 音频），是用户产物，不入库
+/recordings/
+
 # WorkBuddy 工作区数据（记忆、技能等），仅本机使用，不入库
 /.workbuddy/
 

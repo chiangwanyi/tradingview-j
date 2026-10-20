@@ -29,6 +29,12 @@ export default defineConfig({
      * 浏览器收到的不是 101 而是 200，握手直接失败。
      */
     proxy: {
+      // 录像里的音频（/api/recordings/<id>/audio/*.wav）挂在复盘服务上，
+      // 必须排在 '/api' 前面 —— 否则会被下面那条转发到菜单 2 的分析服务（8765）。
+      '/api/recordings': {
+        target: 'http://127.0.0.1:8790',
+        changeOrigin: true,
+      },
       '/api': {
         target: 'http://127.0.0.1:8765',
         changeOrigin: true,
