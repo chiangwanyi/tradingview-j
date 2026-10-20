@@ -1,0 +1,70 @@
+{
+  "version": 1,
+  "savedAt": 1792511112,
+  "items": [
+    {
+      "id": "rec-20261020-232913",
+      "name": "CME_MINI:MES1! · 2025-06-19 17:05 · 1 步",
+      "symbol": "CME_MINI:MES1!",
+      "folder": "CME_MINI_MES1!",
+      "anchor": "2025-06-19 17:05",
+      "endTime": "2025-06-19 17:05",
+      "stepCount": 1,
+      "audioCount": 0,
+      "eventCount": 0,
+      "bars": 470,
+      "size": 98156,
+      "createdBy": "human",
+      "createdAt": 1792510153,
+      "endedAt": 1792511112
+    },
+    {
+      "id": "rec-20261020-232449",
+      "name": "CME_MINI:MES1! · 2025-01-18 02:45 → 2025-01-18 05:00 · 28 步",
+      "symbol": "CME_MINI:MES1!",
+      "folder": "CME_MINI_MES1!",
+      "anchor": "2025-01-18 02:45",
+      "endTime": "2025-01-18 05:00",
+      "stepCount": 28,
+      "audioCount": 6,
+      "eventCount": 30,
+      "bars": 613,
+      "size": 1233675,
+      "createdBy": "human",
+      "createdAt": 1792509889,
+      "endedAt": 1792510044
+    },
+    {
+      "id": "rec-20261020-224335",
+      "name": "CME_MINI:MES1! · 2026-05-16 00:15 → 2026-05-16 00:40 · 6 步",
+      "symbol": "CME_MINI:MES1!",
+      "folder": "CME_MINI_MES1!",
+      "anchor": "2026-05-16 00:15",
+      "endTime": "2026-05-16 00:40",
+      "stepCount": 6,
+      "audioCount": 9,
+      "eventCount": 5,
+      "bars": 561,
+      "size": 512567,
+      "createdBy": "human",
+      "createdAt": 1792507415,
+      "endedAt": 1792507456
+    },
+    {
+      "id": "rec-20261020-223928",
+      "name": "CME_MINI:MES1! · 2026-04-24 09:40 → 2026-04-24 13:35 · 48 步",
+      "symbol": "CME_MINI:MES1!",
+      "folder": "CME_MINI_MES1!",
+      "anchor": "2026-04-24 09:40",
+      "endTime": "2026-04-24 13:35",
+      "stepCount": 48,
+      "audioCount": 2,
+      "eventCount": 53,
+      "bars": 704,
+      "size": 492279,
+      "createdBy": "human2",
+      "createdAt": 1792507168,
+      "endedAt": 1792507272
+    }
+  ]
+}
