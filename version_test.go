@@ -116,7 +116,7 @@ func TestBuildCmdInjectsAndNamesVersion(t *testing.T) {
 // 产物**不许**再被挪进子目录（用户明确要求：exe 就放在根目录）。
 // 这不只是摆放位置问题：outDir / rawDir 是相对 **exe 所在目录** 展开的，
 // 把 exe 放进 dist\ 就等于让它去读 dist\data\ —— 而那份数据在根目录，
-// 表现成「双击 dist 里的 exe，菜单 2 / 3 说没有数据」。
+// 表现成「双击 dist 里的 exe，菜单 2 说没有数据」。
 //
 // 只看**会被执行的命令行**：rem 注释里提一句历史（「以前放在 dist」）是好事，
 // 不该被这条断言误伤。

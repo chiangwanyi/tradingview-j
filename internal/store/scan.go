@@ -1,6 +1,6 @@
 package store
 
-// 只读扫描：菜单里的「分析已抓取的数据」用它。
+// 只读扫描：菜单里的「网页版分析」用它。
 //
 // 为什么放在 store 里而不是新建一个包：它必须和写入路径共享同一份
 // 「目录结构 + CSV 行格式 + _symbols.json」的规则（readDayFile / readIndexFile）。

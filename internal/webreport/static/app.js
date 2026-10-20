@@ -3,15 +3,16 @@
 // 这里**不计算任何统计量**：根数、断档区间、异常判定、坏行全部由 Go 侧的 store.Scan
 // 算好，通过 /api/analysis 原样送过来。前端只做两件事：格式化显示、按日历摆放。
 // 之所以这么切，是因为统计口径一旦有两份实现（Go 一份、JS 一份），迟早会出现
-// 「终端说这一天 288 根、网页说 287 根」而这种矛盾用户没法自查。
+// 「CSV 里是 288 根、网页说 287 根」而这种矛盾用户没法自查。
 //
 // ↓↓↓ 这一段是纯函数区（不依赖 Vue），可以被 node 直接 eval 出来断言，
-//     见 internal/webreport/testdata/format.test.cjs。下面的期望值刻意和
-//     report_test.go 里的逐条对齐 —— 两边都改才算改对。
+//     见 internal/webreport/testdata/format.test.cjs。
 
 /* ---------- 纯函数：格式化 ---------- */
 
-// num 加千分位：10822 -> 10,822。和 analyze.go 的 comma() 同口径。
+// num 加千分位：10822 -> 10,822。
+// 全程序**只有这一份**千分位实现（终端表格已随菜单 2 一起移除），
+// 所以期望值就以 format.test.cjs 里那张表为准 —— 改这里就得改那张表。
 function num(n) {
   if (n === null || n === undefined || n === '') return '0';
   const v = Number(n);
@@ -27,7 +28,8 @@ function num(n) {
   return sign + out;
 }
 
-// bytes 走人和机器都顺眼的单位切换，和 analyze.go 的 humanBytes() 同口径。
+// bytes 走人和机器都顺眼的单位切换。全程序只有这一份实现，
+// 期望值同样以 format.test.cjs 里那张表为准。
 function bytes(n) {
   const v = Number(n) || 0;
   if (v < 1024) return num(v) + ' B';

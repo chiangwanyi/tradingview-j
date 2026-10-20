@@ -2,7 +2,7 @@ package replay
 
 // 对着**正在运行的服务**做冒烟测试。默认跳过，只有设了 REPLAY_WS 才跑：
 //
-//	go run .            # 另开一个窗口，菜单选 4
+//	go run .            # 另开一个窗口，菜单选 3
 //	REPLAY_WS=ws://127.0.0.1:8790/ws go test ./internal/replay/ -run TestSmoke -v
 //
 // 它和单元测试的区别是：用的是**真实数据目录**（data/ 里那些 CSV）、真实端口、

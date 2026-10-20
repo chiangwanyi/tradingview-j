@@ -1,9 +1,9 @@
 // 前端那一段纯函数（格式化 / 筛选 / 排序）的断言，交给 node 跑。
 //
-// 为什么要单独测：app.js 里的 num / bytes 是 Go 侧 comma / humanBytes 的第二份实现 ——
-// 统计量不会漂移（那部分只在 Go 里算），但**显示出来的数字**会。
-// 一旦有人只改了 Go 那一侧，用户就会看到「终端写 14.7 KB、网页写 15037 B」。
-// 所以这里的期望值刻意照抄 report_test.go 的那张表：两边都改才算改对。
+// 为什么要单独测：app.js 里的 num / bytes 决定**显示出来的数字**。统计量本身不会漂移
+// （那部分只在 Go 里算），但显示格式会 —— 比如把千分位写成 10822 而不是 10,822。
+// 全程序只有这一份格式化实现（终端表格已随菜单 2 一起移除），所以**这张期望值表就是
+// 唯一的事实来源**：改了 app.js 里的 num / bytes，就得同步改这里，两边都改才算改对。
 //
 // 由 Go 侧的 TestFrontendFormattingMatchesGo 调起来（没有 node 就跳过），
 // 也可以手工跑：node internal/webreport/testdata/format.test.cjs
@@ -47,7 +47,7 @@ function ok(cond, label) {
   }
 }
 
-// ---- 这三个的期望值和 report_test.go / analyze.go 逐条对齐 ----
+// ---- 这三个是显示格式的期望值（唯一一份实现，改 app.js 就要改这里） ----
 eq(f.num(0), '0', 'num(0)');
 eq(f.num(999), '999', 'num(999)');
 eq(f.num(1000), '1,000', 'num(1000)');

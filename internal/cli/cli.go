@@ -2,7 +2,7 @@
 //
 // 它只干「和用户打交道」的事：读配置、决定什么时候等输入、把统计结果交给对应的
 // 表现层、决定退出码。业务实现全在别的包 —— 抓取在 internal/capture，
-// 终端报表在 internal/termreport，网页报表在 internal/webreport。
+// 网页报表在 internal/webreport，复盘在 internal/replay。
 //
 // 之所以从 package main 里拆出来：main 只该负责「启动」这一件事。
 package cli

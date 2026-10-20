@@ -100,7 +100,7 @@ try { if (localStorage.getItem('tvj-theme') === 'dark') document.documentElement
         <details class="card flex-1 basis-[420px] px-3.5 py-3">
           <summary class="cursor-pointer select-none text-[12.5px] font-medium">
             统计口径
-            <span class="ml-1 font-normal text-faint">（和终端菜单 2 走同一个 store.Scan，根数一定一样）</span>
+            <span class="ml-1 font-normal text-faint">（根数、断档、异常判定全部由 Go 侧的 store.Scan 算好送过来，网页只做排版）</span>
           </summary>
           <ul class="mt-2 space-y-1 text-[12px] leading-relaxed text-muted">
             <li><b class="text-ink">根数</b> = 该日文件里的 K 线行数（同一时间戳只算一根）。日历格子中间那个大数字就是它。</li>

@@ -40,15 +40,15 @@ type Config struct {
 	CSVHeader bool `json:"csvHeader"` // 是否写表头行 time,open,high,low,close,volume
 
 	// ---- 网页版分析 ----
-	// 「3 网页版分析」起的那个本地服务监听哪个端口。0 = 让系统随便给一个空闲端口。
+	// 「2 网页版分析」起的那个本地服务监听哪个端口。0 = 让系统随便给一个空闲端口。
 	// 给一个固定值是刻意的：端口固定了地址就能收藏，不然每次都要回终端抄一遍。
 	WebPort int `json:"webPort"`
 
-	// ---- 复盘（菜单 4）----
+	// ---- 复盘（菜单 3）----
 	// ReplayPort 是复盘服务的端口（HTTP 与 WebSocket 同一个端口）。
 	ReplayPort int `json:"replayPort"`
 	// ReplayDistDir 是前端构建产物（web/dist）相对 exe 目录的位置。
-	// 开发期用 npm run dev 时不需要它；要用菜单 4 直接打开页面才需要先 npm run build。
+	// 开发期用 npm run dev 时不需要它；要用菜单 3 直接打开页面才需要先 npm run build。
 	ReplayDistDir string `json:"replayDistDir"`
 	// ReplayStateDir 是复盘实例的本地存档目录（replay-instances.json）。
 	// 有了它，关掉服务再打开，实例、游标、标注、挂单、成交都还在。

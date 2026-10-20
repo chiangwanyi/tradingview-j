@@ -53,7 +53,7 @@ type Options struct {
 // New 组装出 HTTP 路由。
 //
 // 只暴露两个入口：`/api/analysis` 给数据，其余交给内嵌的静态文件。
-// 没有「执行动作」的接口 —— 网页版和菜单 2 一样是纯只读的，
+// 没有「执行动作」的接口 —— 网页版是纯只读的，
 // 一个只读工具不需要、也不该有一个能改数据的 API 面。
 func New(opts Options) http.Handler {
 	if opts.Location == nil {
@@ -62,7 +62,7 @@ func New(opts Options) http.Handler {
 	mux := http.NewServeMux()
 
 	mux.HandleFunc("/api/analysis", func(w http.ResponseWriter, r *http.Request) {
-		// 和菜单 2 走的是同一个 store.Scan：不建目录、不写索引、不改文件。
+		// 走的是 store.Scan：不建目录、不写索引、不改文件。
 		start := time.Now()
 		res := store.Scan(opts.Root, opts.Location, opts.Step)
 		rep := Build(res, opts.Location, opts.Version)

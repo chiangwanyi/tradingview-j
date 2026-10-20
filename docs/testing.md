@@ -30,7 +30,6 @@ go test ./internal/cdp/        # 端点发现 / 命令与事件 / 超时 / 断�
 go test ./internal/wsclient/   # 握手 / 大帧 / 分片 / ping-pong
 go test ./internal/config/     # 配置生成 / 缺键补齐 / 非法值回退
 go test ./internal/logx/       # 状态行原地刷新 / 中文按显示宽度擦除 / 重定向不留回车
-go test ./internal/termreport/ # 终端报表排版（中文表头列宽一致，菜单 2）
 go test ./internal/webreport/  # 网页版的 JSON 形状 / 静态资源 / 端口回退 / 只读（含前端格式化交叉校验）
 go test ./internal/replay/     # 复盘：窗口加载 / 撮合与盈亏 / 标注吸附 / 广播隔离 / 机器人 / 真 WS 握手
 go test .                      # 版本号机制的四个落点（VERSION / 兜底值 / build.cmd / winres）
@@ -43,7 +42,7 @@ go test .                      # 版本号机制的四个落点（VERSION / 兜�
 
 ### 只读扫描的测试
 
-菜单选项 2 的统计逻辑有自己的测试（`internal/store/scan_test.go`）：造几个日文件，
+统计逻辑有自己的测试（`internal/store/scan_test.go`）：造几个日文件，
 断言根数、首尾、断档区间的起止、每根 K 线一根、按日期合计、坏行只跳自己、目录不存在只报说明、
 `_symbols.json` 登记与否对标的显示的影响、重复行计入，以及 ——
 **扫描前后把整个目录快照对比，证明它一个字节都没动**。
@@ -56,12 +55,11 @@ go test .                      # 版本号机制的四个落点（VERSION / 兜�
   某个标的当天根本没这份文件（还没抓到）不能当成它抓了 0 根，否则每加一个新标的，
   它入库之前的每一天都会集体误报。
 
-报表排版的测试（`internal/termreport/report_test.go`）用「每行显示宽度必须相等」把口径钉死：
-表头是中文（`日期`、`最大断档`）、数据行几乎全是 ASCII，
-一旦有人把「按显示宽度补齐」换成 `fmt` 的 `%-12s` 或 `len()`，中文列会当场少算一半宽度、
-整张表往左串行 —— 而那种歪斜在代码里看不出来，只有盯着终端才发现。
+> 终端表格那一路（`internal/termreport`）已随菜单 2 一起删掉，它当年用
+> 「每行显示宽度必须相等」把中文列宽钉死的测试也随之没了 ——
+> 现在唯一的中文对齐在 `internal/logx`（状态行原地刷新），那边有对应测试。
 
-### 网页版分析（菜单 3）的测试
+### 网页版分析（菜单 2）的测试
 
 三层，全部离线：
 
@@ -80,7 +78,7 @@ go test .                      # 版本号机制的四个落点（VERSION / 兜�
    最后 —— **分析前后目录快照逐项对比**，证明网页版一个字节都没动。
 3. **`frontend_test.go`** —— 让 node 跑 `testdata/format.test.cjs`：
    把 `app.js` 里 createApp 之前的那段纯函数切出来 eval，逐条断言
-   `num` / `bytes` 与 **`internal/termreport/report_test.go` 里那张期望值表完全一致**，
+   `num` / `bytes` 的**显示格式**（全程序只剩这一份实现，那张期望值表就是唯一事实来源），
    外加判据的转述（`dayAnomaly` / `dayNotes` / `cellSub` / `expectText` / `countsText`）、
    排序（不原地改数组、同值按日期兜底）、告警文案，
    以及**日历的日期算术**（`monthCells` 铺格子、`addMonth` 跨年、`weekday`、
@@ -107,7 +105,7 @@ go test .                      # 版本号机制的四个落点（VERSION / 兜�
 > 模板语法错、指令写错、引用了不存在的方法，都会在这里当场报出来。
 > 这一步既没被 `go test` 覆盖，也是「页面全白」最常见的来源。
 
-### 复盘（菜单 4）的测试
+### 复盘（菜单 3）的测试
 
 `internal/replay` 的设计是**把状态机与网络分开**：`Instance` 不知道有 socket 存在，
 所有动作都落在纯方法上（`advance` / `addAnnotation` / `placeOrder` / `snapshot`）。
@@ -149,7 +147,7 @@ go test .                      # 版本号机制的四个落点（VERSION / 兜�
   落盘路径才用 `filepath`**（现在是 `path.Clean` + `filepath.FromSlash`）。
 
 ```bash
-# A. 对着正在运行的服务（菜单 4）做冒烟 —— 用真实数据目录、真实端口、真实进程
+# A. 对着正在运行的服务（菜单 3）做冒烟 —— 用真实数据目录、真实端口、真实进程
 go run .
 REPLAY_WS=ws://127.0.0.1:8790/ws go test ./internal/replay/ -run TestSmoke -v
 
@@ -374,7 +372,7 @@ meta + 一条携带完整 300 根历史的 `timescale_update` + 一条 `du` + �
 5. 在图表上**往回拖动**几次，或用回放模式跳几个日期
 6. 到 `<数据目录>/<标的>/<今天>.csv` 看文件是否在长大
 7. `Ctrl+C` 停下来，确认打印出「落盘完成」和本次写入统计，然后回到菜单
-8. 在菜单里选 **2**，对着刚才那些文件核一下根数对不对（这是最快的一次自检）
+8. 在菜单里选 **2**（网页版分析），对着刚才那些文件核一下根数对不对（这是最快的一次自检）
 
 ## 排查要点
 
@@ -390,8 +388,8 @@ meta + 一条携带完整 300 根历史的 `timescale_update` + 一条 `du` + �
 | `品种` 显示的标的跟你正在看的图表不一致 | 先看日志里那句 `识别品种：…（会话 … · 品种键 …）` 对不对。实在不放心就把 `config.json` 的 `symbol` 填死（`internal/tvproto` 的归属判定） |
 | CSV 文件被 Excel 占用导致写失败 | 日志会提示「下个周期重试」，关掉 Excel 即可（`internal/store` 的 `writeFileAtomic`） |
 | 菜单里按 `Ctrl+C` 程序直接没了 | 回到菜单后 SIGINT 已经交还给系统（`internal/cli/capture.go` 里 `stop()` 在刷盘之后才调用），此时 Ctrl+C 就是退出程序 |
-| 「分析」里的 `重复N行` 亮了 | 说明日文件被手工改过或被别的工具合并过。正常写入（整体重写 + 原子改名）下同一时间戳不可能出现两次 —— 这是**报警**，不是统计（见 [design.md](design.md) 的「写入语义」） |
-| 「分析」里的缺口看着很大 | 那是期货每日结算休市，不是丢数据。网页版（菜单 3）已经没有「缺口 / 最大断档」这两列了，改用「这一天应当有多少根」判异常（见 [design.md](design.md) 的附录） |
+| 网页上「重复行」亮了 | 说明日文件被手工改过或被别的工具合并过。正常写入（整体重写 + 原子改名）下同一时间戳不可能出现两次 —— 这是**报警**，不是统计（见 [design.md](design.md) 的「写入语义」） |
+| 网页上那一天的根数看着比应有值少 | 期货每日结算休市那天就是这样，不是丢数据。网页上没有「缺口 / 最大断档」这两列，改用「这一天应当有多少根」判异常（见 [design.md](design.md) 的附录） |
 | 网页上某一天**标红** | 两条原因：① 根数与该星期应有的根数不符（鼠标停在格子上会写「周二应当是 276 根」）；② 文件有坏行 / 重复行 / 读不了。点开那一天，明细里的「检查」会逐条列出来 |
 | 网页上某一天**标黄** | 当天各标的的根数不完全相同。点「全部标的按日期合计」里那一天，能看到各标的的分布（`276×2 · 275×1`），不是多数派的那几行也标黄了 —— 美国节假日提前收市就会这样，不同品种的收市时刻本来就不一样 |
 | 日历上满屏标红 | 先看是不是**星期几那张表**跟你的数据对不上（比如标的是 24 小时交易的品种，或者数据不是 5 分钟）。表在 `store.ExpectedBars`，页面的「统计口径」里也印着。**别在 `app.js` 里改** —— 判据只许有一份 |
@@ -401,11 +399,11 @@ meta + 一条携带完整 300 根历史的 `timescale_update` + 一条 `du` + �
 | 跑 `build.cmd` 时冒出 `'xxx' is not recognized as an internal or external command`，而且相邻的 `echo` 整行消失（输出的中文本身却是对的） | 脚本里混进了**中文 / 任何多字节字符**：cmd.exe 按字节偏移回读批处理，多字节字符让偏移和解码后的字符错位，一行的尾段就被当成新命令执行了。这个文件必须纯 ASCII（日志写英文），由 `version_test.go` 的 `TestBuildCmdIsAsciiAndCRLF` 拦 |
 | `go test .` 报「build.cmd 里找不到 …」 | 构建脚本被改动了，版本号机制的某一步没了。这是刻意的断言，看 `version_test.go` 里那条用例的说明 |
 | `go test` / `go run` 报 `An Application Control policy has blocked this file`，同时右下角弹「此应用的一部分已被阻止」 | 智能应用控制拦了 **`go.exe` 启动的**那个二进制，与代码无关。为什么只拦它、以及两种处理方式，见本文档「本机环境：智能应用控制会拦 go test / go run」一节 |
-| 菜单 4 打开是一片「前端还没构建」的说明页 | 托管的是**构建产物** `web/dist`，先 `cd web && npm install && npm run build`。程序启动时也会在终端提示这件事（`internal/cli/replay.go` 里查 `replay.DistExists`） |
+| 菜单 3 打开是一片「前端还没构建」的说明页 | 托管的是**构建产物** `web/dist`，先 `cd web && npm install && npm run build`。程序启动时也会在终端提示这件事（`internal/cli/replay.go` 里查 `replay.DistExists`） |
 | 改了前端代码，刷新页面没变化 | 同上：静态文件是 `dist` 里的快照，要重新 `npm run build`。开发期改用 `cd web && npm run dev`（5173 端口，`/ws` 转给 8790） |
 | 第二个标签页进来点了没反应 | **设计如此**：一人操作、其余观看。页头会显示当前操作者是谁；要操作就点「接管」（`internal/replay/hub.go` 的 `requireOperatorLocked`） |
 | 点「下一根」提示「现在由 human 操作…」 | 你开的是观众标签页。操作者关掉页面会自动释放操作权，也可以让他点「交还」 |
-| dev 模式（5173）连不上 WebSocket | `web/vite.config.ts` 的 `/ws` 代理写死了 8790。菜单 4 的端口被占会自动换端口，换了就要同步改这里（终端会提示） |
+| dev 模式（5173）连不上 WebSocket | `web/vite.config.ts` 的 `/ws` 代理写死了 8790。菜单 3 的端口被占会自动换端口，换了就要同步改这里（终端会提示） |
 | `go test ./internal/capture/ ./internal/replay/ … ` 一起跑时 `internal/capture` 偶发红（`等 CSV 行数 稳定超时（最后 0）`），单跑这个包却是绿的 | 并行跑包时的**竞态**，与业务代码无关：假浏览器把固定帧一口气推完（`pushes` 到头）就再也不推了，而采集端这一次连接可能还没开始解码，于是永远等不到行。已知现象，`go test ./... -p 1` 全绿。碰到就单独重跑那个包（`go test ./internal/capture/ -count=1`），别去调超时 —— 调多大都一样 |
 | 复盘里的标注/挂单在重启后全没了 | 从 v1.1 起会存到 `<replayStateDir>/`（默认 `state/`，相对 exe 目录）：索引 `replay-instances.json` + 每个实例一个 `instances/<id>/` 文件夹。还丢就是没写成：关服务时要等终端打出「实例、标注…都写进了 …」再走；直接关窗口/杀进程可能丢最后两秒（见下一行）。**数据目录始终只读，存档不在 CSV 里** |
 | 重启后出现的是空列表，终端说「存档读不了」 | 索引文件坏了（手工改过、断电写残）。程序**不删它**、只当作没有实例启动 —— 那份文件还在原处，可以打开看/备份后再改名。见 [复盘设计.md](复盘设计.md) 的 4.1 |
@@ -458,7 +456,7 @@ meta + 一条携带完整 300 根历史的 `timescale_update` + 一条 `du` + �
   它自己不知道 276 这个数字）。
   改了 `num` / `bytes` / 判据转述那几个函数或日历的日期算术（`monthCells` / `addMonth` /
   `weekday` / `monthsOf`），就必须同步改 `internal/webreport/testdata/format.test.cjs` 的期望值
-  （其中格式化那张表是照抄 `internal/termreport/report_test.go` 的），
+  （全程序只有这一份格式化实现，那张表就是唯一事实来源），
   否则 `go test ./internal/webreport/` 会红 —— 这是刻意的，两边都改才算改对。
 - **改了 `internal/webreport/static/` 下任何文件都要重新 `go build`**：`//go:embed` 是
   编译期快照，改完不重编，跑起来的还是旧页面 —— 表现是「明明改了，浏览器里没变」。
@@ -478,7 +476,7 @@ meta + 一条携带完整 300 根历史的 `timescale_update` + 一条 `du` + �
 - **改完 `internal/webreport/static/` 下的任何文件都要重新 `go build`**：
   `//go:embed` 是**编译期**快照，不重新构建的话 exe 里还是旧页面，
   而浏览器这边看起来「我明明改了」（这种现象最费时间）。
-- **网页版必须只读、只监听 `127.0.0.1`**：它和菜单 2 一样走 `store.Scan`；
+- **网页版必须只读、只监听 `127.0.0.1`**：它走的是纯只读的 `store.Scan`；
   不要给它加任何能改数据或触发动作的接口（见 [design.md](design.md) 的「网页版分析」）。
 - **复盘写的只有那一个存档，数据目录仍然只读**：它读 CSV 用 `store.ReadDayRows` / `store.Catalog`
   （`internal/store/timebar.go`，和抓取共用同一个行解析器），写盘的那套 `store.Store`
@@ -506,6 +504,7 @@ meta + 一条携带完整 300 根历史的 `timescale_update` + 一条 `du` + �
 - **URL 路径用 `path`，磁盘路径用 `filepath`**：`filepath.Clean` 在 Windows 上会把
   `/assets/x.js` 变成 `\assets\x.js`，任何 `HasPrefix(..., "/assets/")` 都会静默失效
   （踩过一次：静态资源的长缓存头从来没设上过，页面却完全正常）。
-- **不要在 Go 里重写一遍前端排版**：终端报表（`internal/termreport`）和网页的排版是两套，
-  但**统计量只有一份**。想让两边长得一样时，加的是「把同一个数字显示得更清楚」的约定，
-  不是把终端的字符串塞进 JSON。
+- **不要在 Go 里重写一遍前端排版**：网页的显示格式（千分位、KB/MB）在 `app.js` 里，
+  Go 侧只送原始数字。但**统计量只有一份**，且只在 `store.Scan` 里算 ——
+  想让显示更清楚时，加的是「把同一个数字显示得更清楚」的约定，
+  不是把格式化的字符串也塞进 JSON。

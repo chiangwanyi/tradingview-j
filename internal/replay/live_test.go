@@ -27,7 +27,7 @@ import (
 )
 
 // livePort 单独挑一个，避开 config.json 里正式用的 replayPort（8790）：
-// 平时菜单 4 开着的服务就占着 8790，测试要是也用 8790，Start 会换端口（srv.Moved），
+// 平时菜单 3 开着的服务就占着 8790，测试要是也用 8790，Start 会换端口（srv.Moved），
 // 而写死端口的冒烟就会连到那个旧服务上去，把测试实例塞进人家的存档里。
 const livePort = 8799
 

@@ -1,9 +1,9 @@
 package cli
 
-// 菜单里的「3 网页版分析」。
+// 菜单里的「2 网页版分析」。
 //
-// 和「2 分析已抓取的数据」是同一件事的两个界面：数据都来自 store.Scan 那一次只读扫描，
-// 区别只在于一个往终端排版、一个往浏览器送 JSON。所以这里的代码很薄 ——
+// 这一层只做「把 store.Scan 那一次只读扫描的结果搬进浏览器」：数据来自 store.Scan，
+// 区别只在于出口是 JSON 而不是终端表格。所以这里的代码很薄 ——
 // 起服务、开浏览器、等 Ctrl+C、关服务，一行业务逻辑都没有。
 //
 // 网页版**同样是只读的**：它不建目录、不写索引、不改文件，也没有任何能改数据的接口。
@@ -28,7 +28,7 @@ func (a *App) runWeb() int {
 
 	a.Log.Rule(72)
 	a.Log.Plain("  网页版分析 · %s", root)
-	a.Log.Plain("  一根 K 线 %d 秒 · 时区 %s · 与菜单 2 同一份统计代码", cfg.IntervalSeconds, time.Local)
+	a.Log.Plain("  一根 K 线 %d 秒 · 时区 %s · 统计口径在 store.Scan 一处", cfg.IntervalSeconds, time.Local)
 	a.Log.Plain("  只读：页面上的任何操作都不会改动数据目录里的文件")
 	a.Log.Rule(72)
 
