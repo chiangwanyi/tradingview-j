@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
 
+import AudioWave from '@/components/AudioWave.vue'
 import { usePlaybackStore } from '@/stores/playback'
 import { useReplayStore } from '@/stores/replay'
 import type { RecordingSummary } from '@/types/protocol'
@@ -26,6 +27,20 @@ let armTimer = 0
 const total = computed(() => pb.recording?.steps?.length ?? 0)
 const current = computed(() => pb.step)
 const stepAudio = computed(() => pb.clips.length)
+
+/** 本步的录音清单（步进条下面那一行） */
+const clipsNow = computed(() => pb.clips)
+
+function clockMs(ms: number): string {
+  const s = Math.round(ms / 1000)
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`
+}
+
+/** 点一条就播；再点同一条 = 停。 */
+function playClip(file: string): void {
+  const c = clipsNow.value.find((x) => x.file === file)
+  if (c) pb.playClip(c)
+}
 
 function clock(at: number): string {
   const d = new Date(at * 1000)
@@ -211,6 +226,35 @@ const btn =
           @click="pb.spacePlay()"
         >
           空格逐条
+        </button>
+      </div>
+
+      <!-- 本步的录音：波形 + 时长，点一条就播（步进条上那个橙点只是"有录音"的记号，
+           真要听哪一条得在这里点） -->
+      <div
+        v-if="clipsNow.length"
+        class="flex items-center gap-1 overflow-x-auto border-t border-line px-2 py-1"
+      >
+        <span class="shrink-0 text-[10px] text-faint">本步录音</span>
+        <button
+          v-for="(c, i) in clipsNow"
+          :key="c.file"
+          type="button"
+          class="flex shrink-0 items-center gap-1 rounded border px-1 py-0.5 text-[10px] transition"
+          :class="
+            pb.currentClip?.file === c.file
+              ? 'border-amber-500 bg-amber-500/10 text-amber-600 dark:text-amber-400'
+              : 'border-line text-dim hover:border-accent hover:text-accent'
+          "
+          :title="`第 ${i + 1} 条 · ${c.time} · ${(c.durationMs / 1000).toFixed(1)} 秒（点一下播放，再点停止）`"
+          :data-testid="`clip-${c.file}`"
+          @click="playClip(c.file)"
+        >
+          <span>{{ pb.currentClip?.file === c.file ? '⏸' : '▶' }}</span>
+          <span class="h-3 w-14">
+            <AudioWave :url="pb.audioUrl(c)" :active="pb.currentClip?.file === c.file" />
+          </span>
+          <span class="tnum">{{ clockMs(c.durationMs) }}</span>
         </button>
       </div>
 

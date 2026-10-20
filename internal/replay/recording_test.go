@@ -245,7 +245,10 @@ func TestRecordingCapturesOpsAndReplays(t *testing.T) {
 	}
 }
 
-// TestRecordingAudioLimit 钉住「最多 9 条」和「必须是 WAV」。
+// TestRecordingAudioLimit 钉住「**单步**最多 9 条，整条录像不限」和「必须是 WAV」。
+//
+// 这条限制的用处是防止用户在**同一根 K 线**上反复重录；换到下一根 K 线，
+// 额度就该重新从 0 开始 —— 所以下面第 3 段要明确验「步进之后又能录」。
 func TestRecordingAudioLimit(t *testing.T) {
 	hub, _ := newTestHub(t, 2)
 	if err := hub.EnableRecordings(t.TempDir()); err != nil {
@@ -267,16 +270,20 @@ func TestRecordingAudioLimit(t *testing.T) {
 		t.Fatalf("非 WAV 数据应当被拒，实际 %v", e["message"])
 	}
 
+	// 第 1 步：灌满 9 条，计数要按「本步」走
 	wav := testWAV(64)
-	for i := 0; i < maxRecordAudios; i++ {
+	for i := 0; i < maxAudiosPerStep; i++ {
 		ev := sendAudio(t, hub, a, instID, wav)
 		st := ev["payload"].(map[string]any)["state"].(map[string]any)
-		if int(st["audios"].(float64)) != i+1 {
-			t.Fatalf("第 %d 条录音后的计数不对：%v", i+1, st["audios"])
+		if int(st["stepAudios"].(float64)) != i+1 {
+			t.Fatalf("第 %d 条录音后的**本步**计数不对：%v", i+1, st["stepAudios"])
 		}
-	}
-	if len(hub.mustInstance(t, instID).rec.audios) != maxRecordAudios {
-		t.Fatalf("内存里应当有 %d 条录音", maxRecordAudios)
+		if int(st["audios"].(float64)) != i+1 {
+			t.Fatalf("第 %d 条录音后的总数不对：%v", i+1, st["audios"])
+		}
+		if n := len(st["clips"].([]any)); n != i+1 {
+			t.Fatalf("state 里应当带着本步的 %d 条录音，实际 %d", i+1, n)
+		}
 	}
 
 	// 第 10 条：明确报错，而不是静默丢掉
@@ -288,6 +295,119 @@ func TestRecordingAudioLimit(t *testing.T) {
 	e := a.waitFor(MsgError)
 	if msg, _ := e["message"].(string); msg == "" || !strings.Contains(msg, "最多") {
 		t.Fatalf("超限时应当明确报错，实际 %v", e["message"])
+	}
+
+	// 步进一次 → 新的一步，额度重新开始（这就是「整条录像不限」）
+	a.send(hub, map[string]any{"type": "step", "instanceId": instID})
+	a.waitAction(ActBarAdvanced)
+	inst := hub.mustInstance(t, instID)
+	if inst.rec.state().Step != 2 {
+		t.Fatalf("步进之后应当是第 2 步，实际 %d", inst.rec.state().Step)
+	}
+	ev := sendAudio(t, hub, a, instID, wav)
+	st := ev["payload"].(map[string]any)["state"].(map[string]any)
+	if got := int(st["stepAudios"].(float64)); got != 1 {
+		t.Fatalf("新的一步应当从 1 开始计数，实际 %d", got)
+	}
+	if got := int(st["audios"].(float64)); got != maxAudiosPerStep+1 {
+		t.Fatalf("整条录像的总数应当继续累加（%d），实际 %d", maxAudiosPerStep+1, got)
+	}
+	if n := len(hub.mustInstance(t, instID).rec.audios); n != maxAudiosPerStep+1 {
+		t.Fatalf("内存里应当有 %d 条录音，实际 %d", maxAudiosPerStep+1, n)
+	}
+}
+
+// TestRecordingClearStepAudio 钉住「一键清空当前这根 K 线的录音」：
+// 只清本步、磁盘上的文件也删掉、清完还能接着录。
+func TestRecordingClearStepAudio(t *testing.T) {
+	hub, _ := newTestHub(t, 2)
+	recDir := t.TempDir()
+	if err := hub.EnableRecordings(recDir); err != nil {
+		t.Fatalf("启用录像目录失败：%v", err)
+	}
+	a := newFakeClient(t, hub)
+	a.waitFor(MsgWelcome)
+	instID := createInstance(t, hub, a, "2026-01-05 10:00")
+	a.send(hub, map[string]any{"type": "record_start", "instanceId": instID})
+	a.waitAction(ActRecordingStarted)
+
+	wav := testWAV(64)
+	sendAudio(t, hub, a, instID, wav)
+	sendAudio(t, hub, a, instID, wav)
+
+	// 录制中音频已经落盘（HUD 的预览播放要靠它），所以此刻文件就该在
+	inst := hub.mustInstance(t, instID)
+	dir := inst.rec.dir
+	for _, name := range []string{"audio-1.wav", "audio-2.wav"} {
+		if _, err := os.Stat(filepath.Join(dir, name)); err != nil {
+			t.Fatalf("录制中 %s 就该在磁盘上（预览播放要用）：%v", name, err)
+		}
+	}
+
+	// 清空本步
+	a.drain()
+	a.send(hub, map[string]any{"type": "record_audio_delete", "instanceId": instID})
+	ev := a.waitAction(ActRecordingAudioCleared)
+	p := ev["payload"].(map[string]any)
+	if n := len(p["removed"].([]any)); n != 2 {
+		t.Fatalf("应当删掉 2 条，实际 %d", n)
+	}
+	st := p["state"].(map[string]any)
+	if got := int(st["stepAudios"].(float64)); got != 0 {
+		t.Fatalf("清空后本步计数应当是 0，实际 %d", got)
+	}
+	if n := len(st["clips"].([]any)); n != 0 {
+		t.Fatalf("清空后 state 里不该还有录音，实际 %d 条", n)
+	}
+	for _, name := range []string{"audio-1.wav", "audio-2.wav"} {
+		if _, err := os.Stat(filepath.Join(dir, name)); !os.IsNotExist(err) {
+			t.Fatalf("清空后 %s 应该被删掉（err=%v）", name, err)
+		}
+	}
+
+	// 换一步继续录：清空只影响当时那一步，别的步不受影响
+	a.send(hub, map[string]any{"type": "step", "instanceId": instID})
+	a.waitAction(ActBarAdvanced)
+	sendAudio(t, hub, a, instID, wav)
+
+	// 清完还能接着录（同一根 K 线上的额度也回来了）
+	a.send(hub, map[string]any{
+		"type": "record_audio", "instanceId": instID,
+		"audioData": base64.StdEncoding.EncodeToString(wav),
+	})
+	ev = a.waitAction(ActRecordingAudio)
+	if got := int(ev["payload"].(map[string]any)["state"].(map[string]any)["stepAudios"].(float64)); got != 2 {
+		t.Fatalf("第 2 步应当有 2 条录音，实际 %d", got)
+	}
+
+	// 落盘之后：audios 只剩第 2 步那两条，第 1 步被清掉的不能复活
+	a.send(hub, map[string]any{"type": "record_stop", "instanceId": instID})
+	stop := a.waitAction(ActRecordingStopped)
+	id := stop["payload"].(map[string]any)["recording"].(map[string]any)["id"].(string)
+	a.send(hub, map[string]any{"type": "get_recording", "recordingId": id})
+	got := a.waitFor(MsgRecording)
+	var rec Recording
+	raw, _ := json.Marshal(got["recording"])
+	if err := json.Unmarshal(raw, &rec); err != nil {
+		t.Fatalf("录像反序列化失败：%v", err)
+	}
+	if len(rec.Audios) != 2 {
+		t.Fatalf("录像里应当只剩第 2 步的 2 条录音，实际 %d 条：%+v", len(rec.Audios), rec.Audios)
+	}
+	for _, au := range rec.Audios {
+		if au.Step != 2 {
+			t.Fatalf("被清掉的那一步不该留下录音：%+v", au)
+		}
+	}
+	// 目录里也不该留下孤儿音频（audio-1/2 被删了，重录的两条是 audio-3/4）
+	entries, err := os.ReadDir(filepath.Join(recDir, recordingFolder(id)))
+	if err != nil {
+		t.Fatalf("读录像目录失败：%v", err)
+	}
+	for _, e := range entries {
+		if strings.HasPrefix(e.Name(), "audio-") && e.Name() != rec.Audios[0].File && e.Name() != rec.Audios[1].File {
+			t.Fatalf("录完的目录里还有没人引用的音频：%s", e.Name())
+		}
 	}
 }
 

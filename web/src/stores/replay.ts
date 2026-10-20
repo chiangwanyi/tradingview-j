@@ -17,6 +17,7 @@ import type {
   OrderKind,
   Point,
   Recording,
+  RecordingAudioClearedPayload,
   RecordingAudioPayload,
   RecordingState,
   RecordingStoppedPayload,
@@ -275,11 +276,12 @@ export const useReplayStore = defineStore('replay', () => {
     })
     if (log.value.length > MAX_LOG) log.value = log.value.slice(-MAX_LOG)
 
-    // 录制相关的三条不是盘面变化，单独处理（放进 reducer 会让"回放"里也出现录制动作）
+    // 录制相关的四条不是盘面变化，单独处理（放进 reducer 会让"回放"里也出现录制动作）
     if (
       msg.action === ACTION.recordingStarted ||
       msg.action === ACTION.recordingStopped ||
-      msg.action === ACTION.recordingAudio
+      msg.action === ACTION.recordingAudio ||
+      msg.action === ACTION.recordingAudioCleared
     ) {
       applyRecordingEvent(inst, msg)
       return
@@ -298,6 +300,10 @@ export const useReplayStore = defineStore('replay', () => {
         ...inst.recording,
         step: inst.recording.step + 1,
         current: p.bar?.time ?? inst.recording.current,
+        // 新的一步还没有录音：服务端的 stepAudios 要等下一次快照才刷新，
+        // 这里跟着清掉，否则 HUD 会拿上一步的清单当这一步的。
+        stepAudios: 0,
+        clips: [],
       }
     }
 
@@ -329,6 +335,12 @@ export const useReplayStore = defineStore('replay', () => {
         noteNotice(
           `录音 ${p.state.audios}/${p.state.maxAudios} 已挂到 ${p.audio.time}（第 ${p.audio.step} 步 · ${(p.audio.durationMs / 1000).toFixed(1)} 秒）`,
         )
+        break
+      }
+      case ACTION.recordingAudioCleared: {
+        const p = msg.payload as RecordingAudioClearedPayload
+        inst.recording = p.state
+        noteNotice(`已清除这一步的 ${p.removed.length} 条录音`)
         break
       }
       case ACTION.recordingStopped: {
@@ -577,6 +589,12 @@ export const useReplayStore = defineStore('replay', () => {
     send({ type: 'list_recordings' })
   }
 
+  /** 清空**当前这一步**的录音（录坏了重来，不用把整条录像作废）。 */
+  function deleteStepAudio(): boolean {
+    if (!instance.value || !isRecording.value) return false
+    return send({ type: 'record_audio_delete', instanceId: instance.value.id })
+  }
+
   /** 请求一条录像的完整内容；回来之后由回放面板打开播放器。 */
   function requestRecording(id: string): void {
     send({ type: 'get_recording', recordingId: id })
@@ -672,6 +690,7 @@ export const useReplayStore = defineStore('replay', () => {
     stopRecording,
     toggleRecording,
     sendRecordingAudio,
+    deleteStepAudio,
     listRecordings,
     requestRecording,
     deleteRecording,

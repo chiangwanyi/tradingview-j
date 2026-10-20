@@ -243,6 +243,8 @@ func (h *Hub) Handle(c *Client, raw []byte) {
 		h.handleRecordStop(c, req)
 	case ReqRecordAudio:
 		h.handleRecordAudio(c, req)
+	case ReqRecordAudioDelete:
+		h.handleRecordAudioDelete(c, req)
 	case ReqListRecordings:
 		h.handleListRecordings(c)
 	case ReqGetRecording:

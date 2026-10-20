@@ -44,13 +44,14 @@ const (
 	ReqBotStop       = "bot_stop"
 	ReqPing          = "ping"
 
-	// 录制与回放（v0.11.0）
-	ReqRecordStart     = "record_start"    // 开始录制：把当前盘面记为第 1 步
-	ReqRecordStop      = "record_stop"     // 结束录制并落盘
-	ReqRecordAudio     = "record_audio"    // 一条录音，挂在当前那根 K 线上
-	ReqListRecordings  = "list_recordings" // 录像列表
-	ReqGetRecording    = "get_recording"   // 取一条录像的全部内容（回放用）
-	ReqDeleteRecording = "delete_recording"
+	// 录制与回放（v0.11.0 起）
+	ReqRecordStart       = "record_start"        // 开始录制：把当前盘面记为第 1 步
+	ReqRecordStop        = "record_stop"         // 结束录制并落盘
+	ReqRecordAudio       = "record_audio"        // 一条录音，挂在当前那根 K 线上
+	ReqRecordAudioDelete = "record_audio_delete" // 清空**当前这一步**的录音
+	ReqListRecordings    = "list_recordings"     // 录像列表
+	ReqGetRecording      = "get_recording"       // 取一条录像的全部内容（回放用）
+	ReqDeleteRecording   = "delete_recording"
 )
 
 // Request 是一条上行消息。每种类型只读自己那几个字段。
@@ -139,11 +140,12 @@ const (
 	ActBotStarted       = "bot_started"
 	ActBotStopped       = "bot_stopped"
 
-	// 录制（v0.11.0）。这三个动作**不会被录进录像本身** —— 否则回放时会
+	// 录制（v0.11.0）。这四个动作**不会被录进录像本身** —— 否则回放时会
 	// 出现「第 3 步里还有一条开始录制」，那是元信息，不是盘面操作。
-	ActRecordingStarted = "recording_started"
-	ActRecordingStopped = "recording_stopped"
-	ActRecordingAudio   = "recording_audio"
+	ActRecordingStarted      = "recording_started"
+	ActRecordingStopped      = "recording_stopped"
+	ActRecordingAudio        = "recording_audio"
+	ActRecordingAudioCleared = "recording_audio_cleared"
 )
 
 // Point 是标注的一个端点：横坐标是「一根已揭示 K 线的时间 + 向右延伸的根数」，纵坐标是价格。
@@ -563,9 +565,16 @@ type BotPayload struct {
 // RecordingState 是「这个实例现在正在录吗」的实时状态。
 //
 // 它跟着实例快照一起下发，也随 recording_started / recording_stopped /
-// recording_audio 三条广播更新。**步数是服务端数的**，不是前端自己加：
-// 前端数的步数和「录像文件里到底有几段」必须永远是同一个数，否则录完一看
-// 「第 12 步」却只有 11 段，谁也不知道少的是哪一段。
+// recording_audio / recording_audio_cleared 四条广播更新。**步数是服务端数的**，
+// 前端只负责显示 —— 前端数的步数和「录像文件里到底有几段」必须永远是同一个数。
+//
+// 录音的计数分两层，别混：
+//
+//	StepAudios/MaxAudios  当前这一步（这根 K 线）几条、上限几条 —— HUD 显示的就是这个
+//	Audios                整条录像一共几条 —— **不限**，只有单步才限 9 条
+//
+// Clips 是**当前这一步**的录音清单：HUD 要列出来给用户预览、逐条删。
+// 带在 state 里而不是让前端自己攒，是因为「切步」时前端不该自己去猜哪几条属于新的一步。
 type RecordingState struct {
 	Active    bool   `json:"active"`
 	ID        string `json:"id,omitempty"`
@@ -574,8 +583,10 @@ type RecordingState struct {
 	Step      int    `json:"step"`                // 当前第几步（1 = 点录制时那一屏）
 	StartTime string `json:"startTime,omitempty"` // 第 1 步对应的 K 线时间
 	Current   string `json:"current,omitempty"`   // 当前这一步对应的 K 线时间
-	Audios    int    `json:"audios"`              // 已录了几条
-	MaxAudios int    `json:"maxAudios"`           // 上限（9）
+	Audios    int    `json:"audios"`              // 整条录像已录几条（不限）
+	StepAudios int   `json:"stepAudios"`          // 当前这一步已录几条
+	MaxAudios int    `json:"maxAudios"`           // 单步上限（9）
+	Clips     []AudioClip `json:"clips"`          // 当前这一步的录音
 }
 
 // RecordingSummary 是录像列表里的一行。
@@ -684,6 +695,14 @@ type RecordingStoppedPayload struct {
 type RecordingAudioPayload struct {
 	Audio AudioClip      `json:"audio"`
 	State RecordingState `json:"state"`
+}
+
+// RecordingAudioClearedPayload 是「清空当前这一步的录音」的广播。
+//
+// Removed 里是刚被删掉的几条（文件名要一起带，前端可能正在播其中一条，得停下）。
+type RecordingAudioClearedPayload struct {
+	Removed []AudioClip  `json:"removed"`
+	State   RecordingState `json:"state"`
 }
 
 // RecordingsMsg 是录像列表。

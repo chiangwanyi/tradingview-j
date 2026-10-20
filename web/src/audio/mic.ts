@@ -1,5 +1,5 @@
 /**
- * 麦克风录音：枚举设备 → 按住录 → 编成 WAV。
+ * 麦克风录音：枚举设备 → 按一下开始 / 再按一下停 → 编成 WAV。
  *
  * 为什么自己编 WAV 而不用 MediaRecorder 直接产出的 webm/opus：
  * 录像要能长期保存、随手用系统播放器打开听，WAV 是最没有前提的格式；
@@ -7,6 +7,11 @@
  *
  * 为什么列表要「显式」列设备：`enumerateDevices` 在没授权之前拿到的 label 是空的，
  * 所以必须先 getUserMedia 要一次权限（拿到就立刻关掉），设备名才显示得出来。
+ *
+ * 两个给界面用的附加产物：
+ *   - `readWave()`  录制中的**实时波形**（AnalyserNode 的时域数据），HUD 画滚动折线。
+ * 录完之后那条静态波形不在这里算：音频已经写进服务端了，从 URL 取回来解码一次
+ * 更可靠（录制端和回放端用的是同一份代码，见 audio/waveform.ts）。
  */
 
 export interface MicDevice {
@@ -51,13 +56,24 @@ function pickMime(): string {
   return ''
 }
 
-/** 一次录音（按下到松开之间）的抓取器。 */
+/** 一段录音的成品：WAV 字节 + 时长。波形另外算（见 audio/waveform.ts）。 */
+export interface ClipResult {
+  wav: Uint8Array
+  durationMs: number
+}
+
+/** 一次录音（按一下开始、再按一下停）的抓取器。 */
 export class ClipRecorder {
   private stream: MediaStream | null = null
   private rec: MediaRecorder | null = null
   private chunks: Blob[] = []
   private startedAt = 0
   private active = false
+
+  // 实时波形：AnalyserNode 挂在同一条 stream 上，只读不写，不影响录制本身
+  private actx: AudioContext | null = null
+  private analyser: AnalyserNode | null = null
+  private waveBuf: Float32Array | null = null
 
   get recording(): boolean {
     return this.active
@@ -84,15 +100,53 @@ export class ClipRecorder {
     this.rec.start(120)
     this.startedAt = performance.now()
     this.active = true
+    this.startAnalyser()
+  }
+
+  /**
+   * 读一帧时域波形（-1..1），给 HUD 画实时折线。
+   *
+   * 返回的是**内部复用的缓冲区**，调用方应当立刻画掉，不要存起来 ——
+   * 每秒 60 次分配一个新 Float32Array 只为了画 200 个点，没必要。
+   */
+  readWave(): Float32Array | null {
+    if (!this.analyser || !this.waveBuf) return null
+    this.analyser.getFloatTimeDomainData(this.waveBuf as Float32Array<ArrayBuffer>)
+    return this.waveBuf
+  }
+
+  private startAnalyser(): void {
+    if (!this.stream) return
+    try {
+      const Ctx =
+        window.AudioContext ||
+        (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext
+      if (!Ctx) return
+      this.actx = new Ctx()
+      const src = this.actx.createMediaStreamSource(this.stream)
+      const an = this.actx.createAnalyser()
+      an.fftSize = 1024
+      an.smoothingTimeConstant = 0.5
+      src.connect(an)
+      this.analyser = an
+      this.waveBuf = new Float32Array(an.fftSize)
+      // 有些浏览器建出来的 AudioContext 是 suspended（自动播放策略），
+      // 不 resume 的话波形是一条直线 —— 不影响录音，只影响好看。
+      void this.actx.resume()
+    } catch {
+      // 画不出波形不影响录音，安静降级
+      this.analyser = null
+      this.waveBuf = null
+    }
   }
 
   /**
    * 结束并编码成 WAV。
    *
-   * 太短的录音（<250ms）直接丢：按住空格手抖一下产生的「噗」既没有信息，
+   * 太短的录音（<250ms）直接丢：按一下空格马上又按一下产生的「噗」既没有信息，
    * 还会白占一条 9 条上限里的名额。
    */
-  async stop(): Promise<{ wav: Uint8Array; durationMs: number } | null> {
+  async stop(): Promise<ClipResult | null> {
     if (!this.active || !this.rec) {
       this.cleanup()
       return null
@@ -124,13 +178,19 @@ export class ClipRecorder {
     this.stream?.getTracks().forEach((t) => t.stop())
     this.stream = null
     this.chunks = []
+    this.analyser = null
+    this.waveBuf = null
+    if (this.actx) {
+      void this.actx.close().catch(() => {})
+      this.actx = null
+    }
   }
 }
 
 const TARGET_RATE = 16000
 
 /** 任意浏览器能解码的音频 → 16kHz / 16bit / 单声道 WAV。 */
-export async function blobToWav(blob: Blob): Promise<{ wav: Uint8Array; durationMs: number }> {
+export async function blobToWav(blob: Blob): Promise<ClipResult> {
   const bytes = await blob.arrayBuffer()
   const Ctx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext
   const ctx = new Ctx()

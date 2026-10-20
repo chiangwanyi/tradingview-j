@@ -39,6 +39,8 @@ export const usePlaybackStore = defineStore('playback', () => {
   const autoAudio = ref(true)
   const audioPlaying = ref(false)
   const audioLabel = ref('')
+  /** 正在响的那一条（列表里点的那条会高亮，自动播放时也跟上） */
+  const currentClip = ref<AudioClip | null>(null)
   /** 进入回放之前所在的实例：退出时回到它 */
   const restoreInstanceId = ref('')
 
@@ -293,12 +295,14 @@ export const usePlaybackStore = defineStore('playback', () => {
     if (!clip) {
       audioPlaying.value = false
       audioLabel.value = ''
+      currentClip.value = null
       const done = queueDone
       queueDone = null
       done?.()
       return
     }
     audioPlaying.value = true
+    currentClip.value = clip
     audioLabel.value = `${clip.time} 的录音（${(clip.durationMs / 1000).toFixed(1)} 秒）`
     const el = ensureAudio()
     el.src = audioUrl(clip)
@@ -323,11 +327,26 @@ export const usePlaybackStore = defineStore('playback', () => {
     queueDone = null
     audioPlaying.value = false
     audioLabel.value = ''
+    currentClip.value = null
     if (audioEl) {
       audioEl.onended = null
       audioEl.onerror = null
       audioEl.pause()
     }
+  }
+
+  /**
+   * 手动播一条（回放列表里点的那条）。
+   *
+   * 和 spacePlay 的区别：那个是「按顺序挨着放」，这个是「我就想听这一条」。
+   * 再点同一条 = 停。
+   */
+  function playClip(clip: AudioClip): void {
+    if (currentClip.value?.file === clip.file && audioPlaying.value) {
+      stopAudio()
+      return
+    }
+    void playQueue([clip])
   }
 
   /**
@@ -365,6 +384,7 @@ export const usePlaybackStore = defineStore('playback', () => {
     autoAudio,
     audioPlaying,
     audioLabel,
+    currentClip,
     active,
     steps,
     total,
@@ -384,5 +404,6 @@ export const usePlaybackStore = defineStore('playback', () => {
     restart,
     setSpeed,
     spacePlay,
+    playClip,
   }
 })

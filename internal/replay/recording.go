@@ -40,8 +40,12 @@ import (
 )
 
 const (
-	// maxRecordAudios 是一条录像最多挂几段录音（需求写死 9 条）。
-	maxRecordAudios = 9
+	// maxAudiosPerStep 是**单步（单根 K 线）**最多挂几段录音（需求写死 9 条）。
+	//
+	// 注意是「每步」不是「每条录像」：整条录像的录音数量不设上限，这条限制的
+	// 用处只有一个 —— 防止用户在**同一根 K 线**上反复重录，把一步撑成几十条，
+	// 回放时那一步点开是一串听不完的碎片。换到下一根 K 线就重新有 9 条额度。
+	maxAudiosPerStep = 9
 
 	// maxAudioBytes 是单段录音的上限。16kHz / 16bit / 单声道 = 32KB/s，
 	// 2MB 大约 64 秒 —— 一根 K 线上的一句讲解足够了。
@@ -74,8 +78,14 @@ type recorder struct {
 	audios   []pendingAudio
 	audioSeq int
 
-	// dir 是保存目录（开始录制那一刻定下来，之后改配置也不影响这一条）
-	dir string
+	// dir 是这条录像的目录（`<recordings>/<id>`，开始录制那一刻定下来）。
+	// 空 = 没配录像目录，这时录音只留在内存里，停止时 Save 会报错。
+	//
+	// 录音在**录的当下就写进 dir**，不等停止：HUD 里的「预览播放」走的是
+	// /api/recordings/<id>/audio/<file> 这条 HTTP 路由，它从磁盘读 —— 如果
+	// 攒到停止才写，录制中途根本没法听自己刚录的那条。顺带崩溃也不丢音频。
+	dir  string
+	logf func(format string, args ...any)
 }
 
 // pendingAudio 是一段还没落盘的录音：摘要进 JSON，字节等停止时一起写文件。
@@ -85,7 +95,13 @@ type pendingAudio struct {
 }
 
 // newRecorder 以实例当前盘面为第 1 步开一段录制。
-func newRecorder(inst *Instance, by, id, dir string) *recorder {
+//
+// dir 是这条录像的目录（由 RecordingStore.MarkLive 建好）；logf 用来报告
+// 「录音写不进磁盘」这类不影响录制继续的问题。
+func newRecorder(inst *Instance, by, id, dir string, logf func(format string, args ...any)) *recorder {
+	if logf == nil {
+		logf = func(string, ...any) {}
+	}
 	cursor := inst.Cursor
 	if cursor < 0 {
 		cursor = 0
@@ -131,7 +147,7 @@ func newRecorder(inst *Instance, by, id, dir string) *recorder {
 		Steps:  []RecordingStep{{Step: 1, Time: start, Events: []RecordingEvent{}}},
 		Audios: []AudioClip{},
 	}
-	return &recorder{rec: rec, dir: dir}
+	return &recorder{rec: rec, dir: dir, logf: logf}
 }
 
 // recordableAction 决定哪些广播会被录进录像。
@@ -183,30 +199,44 @@ func (r *recorder) observe(action, by string, payload any, seq int) {
 	step.Events = append(step.Events, ev)
 }
 
-// state 组装当前录制状态（给前端显示「第几步 / 录了几条」）。
+// clipsOfStep 列出某一步的录音（按录制顺序）。
+func (r *recorder) clipsOfStep(step int) []AudioClip {
+	out := make([]AudioClip, 0, 2)
+	for _, a := range r.audios {
+		if a.clip.Step == step {
+			out = append(out, a.clip)
+		}
+	}
+	return out
+}
+
+// state 组装当前录制状态（给前端显示「第几步 / 本步几条 / 本步有哪几条」）。
 func (r *recorder) state() RecordingState {
 	if r == nil || r.rec == nil {
-		return RecordingState{}
+		return RecordingState{Clips: []AudioClip{}}
 	}
 	steps := r.rec.Steps
-	cur := ""
+	cur, curTime := 1, ""
 	if len(steps) > 0 {
-		cur = steps[len(steps)-1].Time
+		cur = steps[len(steps)-1].Step
+		curTime = steps[len(steps)-1].Time
 	}
 	start := ""
 	if len(steps) > 0 {
 		start = steps[0].Time
 	}
 	return RecordingState{
-		Active:    true,
-		ID:        r.rec.ID,
-		By:        r.rec.CreatedBy,
-		StartedAt: r.rec.CreatedAt,
-		Step:      len(steps),
-		StartTime: start,
-		Current:   cur,
-		Audios:    len(r.audios),
-		MaxAudios: maxRecordAudios,
+		Active:     true,
+		ID:         r.rec.ID,
+		By:         r.rec.CreatedBy,
+		StartedAt:  r.rec.CreatedAt,
+		Step:       cur,
+		StartTime:  start,
+		Current:    curTime,
+		Audios:     len(r.audios),
+		StepAudios: len(r.clipsOfStep(cur)),
+		MaxAudios:  maxAudiosPerStep,
+		Clips:      r.clipsOfStep(cur),
 	}
 }
 
@@ -215,12 +245,15 @@ func (r *recorder) state() RecordingState {
 // 校验顺序是「先便宜后贵」：条数、长度、文件头。文件头必须是 RIFF/WAVE ——
 // 这段音频之后会用 audio/wav 发给浏览器，收一个任意二进制进来等于开了一个
 // 内容不明的本地文件服务。
+//
+// 条数上限是**按这一步数**的：换到下一根 K 线，额度重新从 0 开始。
 func (r *recorder) addAudio(data []byte, durationMs int) (AudioClip, error) {
 	if r == nil || r.rec == nil {
 		return AudioClip{}, errors.New("现在没有在录制")
 	}
-	if len(r.audios) >= maxRecordAudios {
-		return AudioClip{}, fmt.Errorf("一条录像最多 %d 段录音，已经录满了", maxRecordAudios)
+	step := r.rec.Steps[len(r.rec.Steps)-1]
+	if n := len(r.clipsOfStep(step.Step)); n >= maxAudiosPerStep {
+		return AudioClip{}, fmt.Errorf("一根 K 线（一步）最多 %d 段录音，这一步已经录满了；点【下一根】可以接着录", maxAudiosPerStep)
 	}
 	if len(data) == 0 {
 		return AudioClip{}, errors.New("录音是空的")
@@ -235,7 +268,6 @@ func (r *recorder) addAudio(data []byte, durationMs int) (AudioClip, error) {
 		// 采样率 16kHz、16bit、单声道：一秒 32000 字节
 		durationMs = int(float64(len(data)-44) / 32.0)
 	}
-	step := r.rec.Steps[len(r.rec.Steps)-1]
 	r.audioSeq++
 	clip := AudioClip{
 		ID:         fmt.Sprintf("au%d", r.audioSeq),
@@ -246,9 +278,53 @@ func (r *recorder) addAudio(data []byte, durationMs int) (AudioClip, error) {
 		Size:       int64(len(data)),
 		CreatedAt:  time.Now().Unix(),
 	}
+	// 立刻写盘：HUD 的预览播放要走 HTTP，而 HTTP 只认磁盘。写失败不打断录制 ——
+	// 内存里那份还在，停止时 Save 会再补一次。
+	if r.dir != "" {
+		if err := os.WriteFile(filepath.Join(r.dir, clip.File), data, 0o644); err != nil {
+			r.logf("[replay] 录音 %s 没能即时写盘（停止时会重试）：%v", clip.File, err)
+		}
+	}
 	r.audios = append(r.audios, pendingAudio{clip: clip, data: data})
 	r.rec.Audios = append(r.rec.Audios, clip)
 	return clip, nil
+}
+
+// clearAudioOfStep 删掉某一步的全部录音，返回被删掉的清单。
+//
+// 磁盘上的文件也一起删：录制中它们已经落地了（预览播放要用），留着会变成
+// 永远不会被引用的垃圾 —— 而停止时 Save 只认 audios 列表里的文件名。
+func (r *recorder) clearAudioOfStep(step int) []AudioClip {
+	if r == nil || r.rec == nil {
+		return []AudioClip{}
+	}
+	removed := r.clipsOfStep(step)
+	if len(removed) == 0 {
+		return []AudioClip{}
+	}
+	kept := r.audios[:0]
+	for _, a := range r.audios {
+		if a.clip.Step == step {
+			if r.dir != "" {
+				if err := os.Remove(filepath.Join(r.dir, a.clip.File)); err != nil && !os.IsNotExist(err) {
+					r.logf("[replay] 录音 %s 删不掉：%v", a.clip.File, err)
+				}
+			}
+			continue
+		}
+		kept = append(kept, a)
+	}
+	r.audios = kept
+
+	left := r.rec.Audios[:0]
+	for _, a := range r.rec.Audios {
+		if a.Step == step {
+			continue
+		}
+		left = append(left, a)
+	}
+	r.rec.Audios = left
+	return removed
 }
 
 // finish 收尾：填统计字段，返回录像本体（音频字节另外交给 Save）。
@@ -295,7 +371,13 @@ type RecordingStore struct {
 	mu    sync.Mutex
 	dir   string
 	items []RecordingSummary
-	logf  func(format string, args ...any)
+	// live 是「正在录、还没提交」的录像 id。
+	//
+	// 录制期间录音已经写进磁盘了（HUD 的预览播放走 HTTP，HTTP 只认磁盘），
+	// 但那一刻还没有 recording.json，所以不在索引里。AudioFile 得认这几个 id，
+	// 否则「录到一半点一下听听」会 404。
+	live map[string]bool
+	logf func(format string, args ...any)
 }
 
 type recordingsIndex struct {
@@ -312,7 +394,7 @@ func OpenRecordingStore(dir string, logf func(format string, args ...any)) (*Rec
 	if logf == nil {
 		logf = func(string, ...any) {}
 	}
-	s := &RecordingStore{dir: strings.TrimSpace(dir), logf: logf}
+	s := &RecordingStore{dir: strings.TrimSpace(dir), logf: logf, live: map[string]bool{}}
 	if s.dir == "" {
 		return s, nil
 	}
@@ -373,6 +455,61 @@ func (s *RecordingStore) NewID(now time.Time) string {
 	}
 }
 
+// MarkLive 为「正在录的这一条」建好目录并登记成 live，返回目录路径。
+//
+// 录制的第一件事就是调它：录音要在录的当下写进这个目录，预览播放才拿得到。
+// 目录建不出来不拦住录制（录音还能留在内存里），只是预览会取不到。
+func (s *RecordingStore) MarkLive(id string) (string, error) {
+	if s == nil || s.dir == "" || id == "" {
+		return "", nil
+	}
+	folder := filepath.Join(s.dir, recordingFolder(id))
+	if err := os.MkdirAll(folder, 0o755); err != nil {
+		return "", fmt.Errorf("创建录像目录 %s 失败：%w", folder, err)
+	}
+	s.mu.Lock()
+	if s.live == nil {
+		s.live = map[string]bool{}
+	}
+	s.live[id] = true
+	s.mu.Unlock()
+	return folder, nil
+}
+
+// UnmarkLive 取消登记（录像保存完成，或者被放弃）。
+func (s *RecordingStore) UnmarkLive(id string) {
+	if s == nil {
+		return
+	}
+	s.mu.Lock()
+	delete(s.live, id)
+	s.mu.Unlock()
+}
+
+func (s *RecordingStore) isLive(id string) bool {
+	if s == nil {
+		return false
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.live[id]
+}
+
+// Drop 丢掉一条没保存成的录像目录（连录音一起）。
+//
+// 没有 recording.json 的文件夹在列表里看不见（scan 会跳过），留着只会变成
+// 谁也认不出来的垃圾，所以保存失败就删掉 —— 内容本来也只在内存里，删掉的
+// 不是「已经录好的东西」。
+func (s *RecordingStore) Drop(id string) {
+	if s == nil || s.dir == "" || id == "" {
+		return
+	}
+	s.UnmarkLive(id)
+	if err := os.RemoveAll(filepath.Join(s.dir, recordingFolder(id))); err != nil {
+		s.logf("[replay] 录像目录 %s 清不掉：%v", id, err)
+	}
+}
+
 // Save 把一条录好的录像写进 <dir>/<id>/。
 //
 // 顺序：先写音频、再写 recording.json、最后更新索引。recording.json 是「这一条
@@ -388,13 +525,35 @@ func (s *RecordingStore) Save(rec *Recording, audios []pendingAudio) (RecordingS
 	if err := os.MkdirAll(folder, 0o755); err != nil {
 		return RecordingSummary{}, err
 	}
+	keep := map[string]bool{}
 	var size int64
 	for _, a := range audios {
-		name := filepath.Join(folder, filepath.Base(a.clip.File))
-		if err := os.WriteFile(name, a.data, 0o644); err != nil {
+		name := filepath.Base(a.clip.File)
+		keep[name] = true
+		path := filepath.Join(folder, name)
+		// 录制中已经写过一次（预览播放要用），存在就不必重写；只有当时写失败
+		// 的那种才在这里补上。
+		if fi, err := os.Stat(path); err == nil && fi.Size() == a.clip.Size {
+			size += fi.Size()
+			continue
+		}
+		if err := os.WriteFile(path, a.data, 0o644); err != nil {
 			return RecordingSummary{}, fmt.Errorf("写录音 %s 失败：%w", a.clip.File, err)
 		}
 		size += int64(len(a.data))
+	}
+	// 清掉没人引用的 audio-*.wav：录制中被「清空本步」删过的，或者上一次录制
+	// 留下的残留 —— 它们会让「目录占用」和列表里的录音数对不上。
+	if entries, err := os.ReadDir(folder); err == nil {
+		for _, e := range entries {
+			n := e.Name()
+			if e.IsDir() || keep[n] || !strings.HasPrefix(n, "audio-") || !strings.HasSuffix(n, ".wav") {
+				continue
+			}
+			if err := os.Remove(filepath.Join(folder, n)); err != nil {
+				s.logf("[replay] 多余的录音 %s 删不掉：%v", n, err)
+			}
+		}
 	}
 	if err := writeJSONAtomic(filepath.Join(folder, recordingFileName), rec); err != nil {
 		return RecordingSummary{}, fmt.Errorf("写 %s 失败：%w", recordingFileName, err)
@@ -409,6 +568,7 @@ func (s *RecordingStore) Save(rec *Recording, audios []pendingAudio) (RecordingS
 	s.items = append(s.items, sum)
 	sortSummaries(s.items)
 	s.writeIndexLocked()
+	delete(s.live, rec.ID) // 已提交：从此列表里能看见，AudioFile 走索引那道门
 	s.mu.Unlock()
 	return sum, nil
 }
@@ -456,13 +616,14 @@ func (s *RecordingStore) Delete(id string) error {
 
 // AudioFile 返回某条录像里一段录音的磁盘路径。
 //
-// 两道门：id 必须在索引里（不是随便拼一个目录名），文件名必须是 audio-N.wav
-// 且没有路径分隔符 —— 这个接口会把文件内容发到浏览器，不能让它读到目录外的东西。
+// 两道门：id 必须在索引里**或者正在录制中**（录制时录音已经落地，用户要在
+// HUD 里预览自己刚录的那条），文件名必须是 audio-N.wav 且没有路径分隔符 ——
+// 这个接口会把文件内容发到浏览器，不能让它读到目录外的东西。
 func (s *RecordingStore) AudioFile(id, name string) (string, error) {
 	if s == nil || s.dir == "" {
 		return "", errors.New("没有配置录像目录")
 	}
-	if !s.has(id) {
+	if !s.has(id) && !s.isLive(id) {
 		return "", fmt.Errorf("没有这条录像：%s", id)
 	}
 	if name == "" || name != filepath.Base(name) || strings.ContainsAny(name, `/\`) {
@@ -630,7 +791,12 @@ func (h *Hub) handleRecordStart(c *Client, req Request) {
 		return
 	}
 	id := h.records.NewID(time.Now())
-	inst.rec = newRecorder(inst, c.Name, id, h.records.Dir())
+	// 先把目录建出来：录制中每录一条就写进去，HUD 的预览播放靠它。
+	folder, err := h.records.MarkLive(id)
+	if err != nil {
+		h.log("[replay] 录像目录不可用，这条录像的录音只会留在内存里：%v", err)
+	}
+	inst.rec = newRecorder(inst, c.Name, id, folder, h.log)
 	// 录制状态不进快照的持久化（重启后不该「接着录」），所以这里不标脏。
 	st := inst.rec.state()
 	h.broadcastInstanceLocked(inst, ActRecordingStarted, st, c.Name)
@@ -696,6 +862,35 @@ func (h *Hub) handleRecordAudio(c *Client, req Request) {
 	}, c.Name)
 }
 
+// handleRecordAudioDelete 清空**当前这一步**已经录下的全部录音。
+//
+// 需求是「一键清除当前 K 线的音频」：录坏了、说错了，重来一遍不用把整条录像作废。
+// 只清当前这一步 —— 别的步里录的东西跟这根 K 线没关系，不该被顺手删掉。
+func (h *Hub) handleRecordAudioDelete(c *Client, req Request) {
+	inst, ok := h.instanceLocked(c, req)
+	if !ok {
+		return
+	}
+	if !h.requireOperatorLocked(c, req, inst) {
+		return
+	}
+	if inst.rec == nil {
+		h.fail(c, req, "现在没有在录制")
+		return
+	}
+	step := inst.rec.state().Step
+	removed := inst.rec.clearAudioOfStep(step)
+	if len(removed) == 0 {
+		h.fail(c, req, "这一步还没有录音")
+		return
+	}
+	h.broadcastInstanceLocked(inst, ActRecordingAudioCleared, RecordingAudioClearedPayload{
+		Removed: removed,
+		State:   inst.rec.state(),
+	}, c.Name)
+	h.log("[replay] 第 %d 步的 %d 条录音已清除", step, len(removed))
+}
+
 func (h *Hub) handleListRecordings(c *Client) {
 	h.reply(c, RecordingsMsg{Type: MsgRecordings, Dir: h.records.Dir(), Recordings: h.records.List()})
 }
@@ -754,6 +949,8 @@ func (h *Hub) saveRecording(s pendingSave) {
 	sum, err := h.records.Save(s.rec, s.audios)
 	if err != nil {
 		h.log("[replay] 录像 %s 没保存成：%v", s.rec.ID, err)
+		// 没有 recording.json 的目录在列表里看不见，留着谁也认不出来
+		h.records.Drop(s.rec.ID)
 		return
 	}
 	h.log("[replay] 录像已保存：%s（%d 步 / %d 条录音 / %d 个操作 / %d KB）→ %s",

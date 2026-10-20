@@ -398,6 +398,7 @@ export const ACTION = {
   recordingStarted: 'recording_started',
   recordingStopped: 'recording_stopped',
   recordingAudio: 'recording_audio',
+  recordingAudioCleared: 'recording_audio_cleared',
 } as const
 
 /**
@@ -433,8 +434,14 @@ export interface RecordingState {
   startTime?: string
   /** 当前这一步对应的 K 线时间 */
   current?: string
+  /** 整条录像已录几条（**不限**） */
   audios: number
+  /** 当前这一步已录几条（HUD 显示的就是这个） */
+  stepAudios: number
+  /** 单步上限（9） */
   maxAudios: number
+  /** 当前这一步的录音清单（HUD 里列出来、预览、清空） */
+  clips: AudioClip[]
 }
 
 /** 录像列表里的一行。 */
@@ -531,5 +538,11 @@ export interface RecordingStoppedPayload {
 
 export interface RecordingAudioPayload {
   audio: AudioClip
+  state: RecordingState
+}
+
+/** 「清空当前这一步的录音」的广播：removed 是刚被删掉的那几条。 */
+export interface RecordingAudioClearedPayload {
+  removed: AudioClip[]
   state: RecordingState
 }

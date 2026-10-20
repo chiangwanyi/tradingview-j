@@ -34,7 +34,7 @@ import (
 // 它必须留在 main 包：-X 只能设置包级字符串变量，而 build.cmd 里写死的是
 // -X main.version（version_test.go 会把这一条钉住）。所以是把这个值**传进去**，
 // 而不是把启动逻辑留在这里。
-var version = "0.11.0"
+var version = "0.11.1"
 
 func main() {
 	os.Exit(cli.Run(version))
