@@ -6,7 +6,7 @@ import { orderKindFor, orderKindLabel } from '@/components/chart/orders'
 import { ORDER_RESERVE_RIGHT, drawChart, themeOf, type HoverState } from '@/components/chart/render'
 import { ChartScale, TIME_AXIS_HEIGHT, clamp, formatAxisTime, formatPrice, snapToTick } from '@/components/chart/scale'
 import { nearestOHLC, snapAtCursor, OHLC_LABEL } from '@/components/chart/snap'
-import { closedTrades, type ClosedTrade } from '@/components/chart/trades'
+import { type ClosedTrade } from '@/components/chart/trades'
 import TradeTipCard from '@/components/TradeTipCard.vue'
 import { TOOL_LABEL, isDrawTool, useReplayStore, type DrawTool } from '@/stores/replay'
 import type { Order, OrderKind, Point, Side } from '@/types/protocol'
@@ -206,8 +206,8 @@ function effectiveOrders(): Order[] {
   return d ? inst.orders.map((o) => (o.id === d.id ? { ...o, price: d.price } : o)) : inst.orders
 }
 
-/** 已配好对的「开仓 → 平仓」，画线、命中、信息卡用的是同一份 */
-const closed = computed(() => closedTrades(store.instance?.trades ?? []))
+/** 已配好对的「开仓 → 平仓」，画线、命中、信息卡用的是同一份（数据与盈亏都来自后端） */
+const closed = computed(() => store.instance?.closedLots ?? [])
 /** 加粗哪一条挂单：拖动优先于悬停（拖动时鼠标其实一直在线上） */
 const activeOrderId = computed(() => orderDrag.value?.id ?? hoverOrderId.value)
 /** 加粗哪一条平仓线：跟随卡优先，其次是钉住的卡 */

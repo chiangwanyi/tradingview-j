@@ -675,6 +675,98 @@ func (inst *Instance) unrealizedPnl() float64 {
 }
 
 // ---------------------------------------------------------------------------
+// 逐批平仓（画布上那些虚线的数据源）
+// ---------------------------------------------------------------------------
+
+// openLot 是「还没被平掉的一批开仓」。
+type openLot struct {
+	time  string
+	price float64
+	qty   float64 // 剩余未平手数
+}
+
+// closedLots 把成交流水按 FIFO 批次还原成「一批开仓 → 一次平仓」，并给每批算它自己的盈亏。
+//
+// 为什么要单独一遍：applyFill 用**平均成本法**记账，一个方向只留一个均价，
+// 「这一手当初是在哪个价位开的」在持仓里已经找不回来了 —— 而画布上每根平仓虚线
+// 恰恰是从那个开仓三角出发的。所以这里按成交顺序重放一遍，把批次一一配对，
+// 顺带算出每一批的真实盈亏：`(平仓价 - 该批开仓价) × 手数 × 方向 × 每点价值`。
+//
+// ⚠️ 为什么不能拿 applyFill 的结果按手数摊（前端曾经就是这么做的，是错的）：
+// 5 笔空单分别开在 7076.14 / 7081 / 7083.25 / 7081.5 / 7082.5，一起在 7079.25 平掉，
+// 后端按均价算出这一笔总共 +40.70；再把这 40.70 平均摊成 5 份，
+// 每条线都显示 +8.14 —— **完全抹掉了各批开仓价之间的差别**，也让 7076.14 那笔明明
+// 亏了 3.11 点却显示盈利。按各自开仓价算才是真实的逐笔归因（-15.55 / +8.75 / +20 /
+// +11.25 / +16.25），而且加起来正好等于后端那一笔的 +40.70。
+//
+// 这是**纯函数、只读**：不改持仓、不改成交、不改盈亏，随时可以重算。
+// 画线、命中测试、信息卡共用这一份结果，所以三处显示的永远是同一批数据。
+func (inst *Instance) closedLots() []ClosedLot {
+	var out []ClosedLot
+	var lots []openLot
+	qty := 0.0   // 净头寸（带符号）
+	pv := inst.pointValue()
+
+	for _, t := range inst.Trades {
+		signed := t.Quantity
+		if t.Side == "sell" {
+			signed = -t.Quantity
+		}
+		prev := qty
+
+		if prev == 0 || (prev > 0) == (signed > 0) {
+			// 空仓开仓 / 同向加仓：各记一批（不摊平已有批次的价格）
+			if prev == 0 {
+				lots = nil
+			}
+			lots = append(lots, openLot{time: t.Time, price: t.Price, qty: math.Abs(signed)})
+			qty += signed
+			continue
+		}
+
+		// 反向成交 = 平仓：从最早的批次开始消耗，消耗几批就产出几条虚线
+		dir := 1.0
+		if prev < 0 {
+			dir = -1
+		}
+		side := "long"
+		if prev < 0 {
+			side = "short"
+		}
+		left := math.Abs(signed)
+		for left > 1e-9 && len(lots) > 0 {
+			lot := &lots[0]
+			take := math.Min(lot.qty, left)
+			out = append(out, ClosedLot{
+				OpenTime:    lot.time,
+				OpenPrice:   lot.price,
+				CloseTime:   t.Time,
+				ClosePrice:  t.Price,
+				Side:        side,
+				Quantity:    take,
+				RealizedPnl: (t.Price - lot.price) * take * dir * pv,
+			})
+			lot.qty -= take
+			left -= take
+			if lot.qty <= 1e-9 {
+				lots = lots[1:]
+			}
+		}
+		qty += signed
+
+		switch {
+		case math.Abs(qty) < 1e-9:
+			qty = 0
+			lots = nil
+		case (qty > 0) != (prev > 0):
+			// 反手：剩下的部分是这一笔新开的仓，成本 = 本笔成交价
+			lots = []openLot{{time: t.Time, price: t.Price, qty: math.Abs(qty)}}
+		}
+	}
+	return out
+}
+
+// ---------------------------------------------------------------------------
 // 快照
 // ---------------------------------------------------------------------------
 
@@ -721,6 +813,7 @@ func (inst *Instance) snapshot(members []Member) InstanceDTO {
 		Annotations:   anns,
 		Orders:        orders,
 		Trades:        trades,
+		ClosedLots:    inst.closedLots(),
 		Position:      inst.position(),
 		RealizedPnl:   inst.RealizedPnl,
 		UnrealizedPnl: inst.unrealizedPnl(),

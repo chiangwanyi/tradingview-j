@@ -455,3 +455,158 @@ func TestMoveOrderRejectsClosedAndBadPrice(t *testing.T) {
 		}
 	}
 }
+
+// fillAndRecord 走和 marketOrder / advance 完全一样的两步：applyFill 算持仓和盈亏、
+// 返回成交流水，由调用方追加进 Trades。closedLots 只读 Trades，所以测试必须照这个约定来。
+func fillAndRecord(inst *Instance, o Order, price float64, t string) Trade {
+	tr := inst.applyFill(o, price, t)
+	inst.Trades = append(inst.Trades, tr)
+	return tr
+}
+
+// TestClosedLotsPerLotPnlNotAveragedShare 钉住「分批开、一次平」时每根平仓虚线各自的盈亏。
+//
+// 复现的是真实场景：5 手空单分批开在 5 个不同价位（7076.14 / 7081 / 7083.25 /
+// 7081.5 / 7082.5），然后一张市价多单 5 手一次全平（7079.25）。
+//
+// 这 5 笔的开仓价各不相同，盈亏**本来就该有正有负**（第一笔开在平仓价之下，是亏的）。
+// 旧实现把后端那一笔的总盈亏（平均成本法算出的 +40.70）按手数平均摊成 5 份，
+// 于是 5 根虚线**全部显示 +8.14** —— 既抹掉了各批开仓价的差别，又把亏损的一笔显示成盈利。
+//
+// 这里钉三件事：
+//  1. 5 根虚线各自的开仓价对得上原来那 5 笔（没有配错批次）；
+//  2. 每根的盈亏等于**用自己开仓价算**的真实值，且五根**互不相同**、有正有负；
+//  3. 五根加起来 = 后端那一笔的总盈亏（不是近似相等，是同一个数）。
+func TestClosedLotsPerLotPnlNotAveragedShare(t *testing.T) {
+	// MES：0.25 一跳、1.25 美元一跳 -> 每点 5 美元
+	inst := &Instance{ID: "ins-lot", Symbol: "CME_MINI:MES1!", Folder: "CME_MINI_MES1!", Tick: 0.25, TickValue: 1.25}
+	inst.Bars = []Bar{{Time: "2026-02-25 07:05", Open: 7079.25, High: 7080, Low: 7079, Close: 7079.25}}
+	inst.Cursor = 0
+
+	// 5 手空单分批开在 5 个价位
+	opens := []float64{7076.14, 7081, 7083.25, 7081.5, 7082.5}
+	for _, p := range opens {
+		fillAndRecord(inst, Order{ID: "o", Side: "sell", Quantity: 1, Price: p}, p, inst.Bars[0].Time)
+	}
+	if inst.Position.Quantity != -5 {
+		t.Fatalf("应当是 5 手空头，实际 %v", inst.Position.Quantity)
+	}
+
+	// 一次平掉 5 手
+	closeTr := fillAndRecord(inst, Order{ID: "oc", Side: "buy", Quantity: 5, Price: 7079.25}, 7079.25, inst.Bars[0].Time)
+	if inst.Position.Quantity != 0 {
+		t.Fatalf("应当回到空仓，实际 %v", inst.Position.Quantity)
+	}
+
+	lots := inst.closedLots()
+	if len(lots) != 5 {
+		t.Fatalf("5 笔分批开的空仓应当配出 5 根平仓虚线，实际 %d 根", len(lots))
+	}
+
+	// 每点 5 美元；空头的盈亏是 (平仓价 - 开仓价) × 手数 × (-1) × 每点价值
+	want := []float64{-15.55, 8.75, 20.00, 11.25, 16.25}
+	seen := map[float64]bool{}
+	sum := 0.0
+	for i, c := range lots {
+		if c.Side != "short" {
+			t.Fatalf("第 %d 根应当是平掉的空头，实际 side=%q", i, c.Side)
+		}
+		if c.OpenPrice != opens[i] {
+			t.Fatalf("第 %d 根配错批次：开仓价应当是 %v，实际 %v", i, opens[i], c.OpenPrice)
+		}
+		if c.ClosePrice != 7079.25 || c.Quantity != 1 {
+			t.Fatalf("第 %d 根的平仓价/手数不对：%+v", i, c)
+		}
+		if math.Abs(c.RealizedPnl-want[i]) > 1e-6 {
+			t.Fatalf("第 %d 根盈亏应当是 %v，实际 %v", i, want[i], c.RealizedPnl)
+		}
+		// 关键回归点：五根不能是同一个数（摊平成本法的旧 bug）
+		if seen[c.RealizedPnl] {
+			t.Fatalf("第 %d 根的盈亏和前面的某根重复了（%v）—— 说明还是在按总量摊", i, c.RealizedPnl)
+		}
+		seen[c.RealizedPnl] = true
+		sum += c.RealizedPnl
+	}
+
+	// 有正有负：第一笔开在平仓价之下，必须是亏的
+	if lots[0].RealizedPnl >= 0 {
+		t.Fatalf("开在 %v、平在 %v 的空头必须是亏损，实际 %v", opens[0], 7079.25, lots[0].RealizedPnl)
+	}
+	// 逐批之和 = 后端那一笔的总盈亏
+	if math.Abs(sum-closeTr.RealizedPnl) > 1e-6 {
+		t.Fatalf("逐批之和 %v 应当等于该笔总盈亏 %v", sum, closeTr.RealizedPnl)
+	}
+	if math.Abs(sum-40.70) > 1e-6 {
+		t.Fatalf("这个场景的总盈亏应当是 40.70，实际 %v", sum)
+	}
+}
+
+// TestClosedLotsPartialCloseKeepsOwnPrice 确认**部分平仓**时也不串味：
+// 平掉 2 手只该产出 2 根虚线，且盈亏按被消耗的那两批的开仓价算，
+// 剩下 3 手的批次原样留着给下一次平仓。
+func TestClosedLotsPartialCloseKeepsOwnPrice(t *testing.T) {
+	inst := &Instance{ID: "ins-part", Symbol: testSymbol, Folder: testFolder, Tick: 0.25, TickValue: 0.5} // 每点 2 美元
+	inst.Bars = []Bar{{Time: "2026-01-05 09:00", Open: 100, High: 101, Low: 99, Close: 100}}
+	inst.Cursor = 0
+
+	for _, p := range []float64{100, 102, 104} {
+		fillAndRecord(inst, Order{Side: "buy", Quantity: 1, Price: p}, p, inst.Bars[0].Time)
+	}
+	// 平掉 2 手（只够吃掉最早的两批）
+	fillAndRecord(inst, Order{Side: "sell", Quantity: 2, Price: 110}, 110, inst.Bars[0].Time)
+
+	lots := inst.closedLots()
+	if len(lots) != 2 {
+		t.Fatalf("平掉 2 手只该有 2 根虚线，实际 %d", len(lots))
+	}
+	// 多头：(110 - 开仓价) × 1 × 2 美元/点
+	if math.Abs(lots[0].RealizedPnl-20) > 1e-9 || math.Abs(lots[1].RealizedPnl-16) > 1e-9 {
+		t.Fatalf("前两批的盈亏应当是 20 / 16，实际 %v / %v", lots[0].RealizedPnl, lots[1].RealizedPnl)
+	}
+	if lots[0].OpenPrice != 100 || lots[1].OpenPrice != 102 {
+		t.Fatalf("应当配到最早的两批（100 / 102），实际 %v / %v", lots[0].OpenPrice, lots[1].OpenPrice)
+	}
+	// 账户口径是平均成本法：均价仍是三批的加权平均 102，**不会**变成最后一批的 104。
+	// （批次 104 只存在于 closedLots 的 FIFO 队列里 —— 这正是两者的分工。）
+	if inst.Position.Quantity != 1 || inst.Position.AveragePrice != 102 {
+		t.Fatalf("剩下一手多头、均价应当仍是 102，实际 %+v", inst.Position)
+	}
+
+	// 把最后 1 手也平掉：第三根虚线必须接在 104 那批上，盈亏 (112-104)×2 美元/点 = 16
+	fillAndRecord(inst, Order{Side: "sell", Quantity: 1, Price: 112}, 112, inst.Bars[0].Time)
+	lots = inst.closedLots()
+	if len(lots) != 3 {
+		t.Fatalf("全部平掉后应当有 3 根虚线，实际 %d", len(lots))
+	}
+	if lots[2].OpenPrice != 104 || math.Abs(lots[2].RealizedPnl-16) > 1e-9 {
+		t.Fatalf("第三根应当配到 104 那批、盈亏 16，实际 %+v", lots[2])
+	}
+	// 先平掉的两批不能因为后面又平了一次而改变盈亏
+	if math.Abs(lots[0].RealizedPnl-20) > 1e-9 || math.Abs(lots[1].RealizedPnl-16) > 1e-9 {
+		t.Fatalf("前两批的盈亏被后续成交改动了：%v / %v", lots[0].RealizedPnl, lots[1].RealizedPnl)
+	}
+}
+
+// TestClosedLotsPureReadOnly 确认 closedLots 只是重算：不改持仓、不改成交流水、不改累计盈亏。
+func TestClosedLotsPureReadOnly(t *testing.T) {
+	inst := &Instance{ID: "ins-ro", Symbol: testSymbol, Folder: testFolder}
+	inst.Bars = []Bar{{Time: "2026-01-05 09:00", Open: 100, High: 101, Low: 99, Close: 100}}
+	inst.Cursor = 0
+	fillAndRecord(inst, Order{Side: "sell", Quantity: 2, Price: 100}, 100, inst.Bars[0].Time)
+	fillAndRecord(inst, Order{Side: "buy", Quantity: 2, Price: 95}, 95, inst.Bars[0].Time)
+
+	pos, trades, pnl := inst.Position, len(inst.Trades), inst.RealizedPnl
+	first := inst.closedLots()
+	second := inst.closedLots()
+
+	if len(first) != 1 {
+		t.Fatalf("应当只有 1 根虚线，实际 %d", len(first))
+	}
+	if inst.Position != pos || len(inst.Trades) != trades || inst.RealizedPnl != pnl {
+		t.Fatalf("closedLots 不该改任何状态：%+v trades=%d pnl=%v", inst.Position, len(inst.Trades), inst.RealizedPnl)
+	}
+	// 重算要稳定：画线、命中测试、信息卡是分开调的，结果必须一致
+	if len(second) != len(first) || second[0].RealizedPnl != first[0].RealizedPnl {
+		t.Fatalf("两次重算结果不一致：%+v vs %+v", first[0], second[0])
+	}
+}

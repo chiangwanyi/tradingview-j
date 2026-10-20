@@ -238,6 +238,7 @@ export const useReplayStore = defineStore('replay', () => {
         inst.hasMore = p.hasMore
         inst.orders = p.orders
         inst.trades = p.trades
+        inst.closedLots = p.closedLots
         inst.position = p.position
         inst.realizedPnl = p.realizedPnl
         inst.unrealizedPnl = p.unrealizedPnl
@@ -278,6 +279,7 @@ export const useReplayStore = defineStore('replay', () => {
         const p = msg.payload as OrderFilledPayload
         inst.orders = p.orders
         inst.trades = p.trades
+        inst.closedLots = p.closedLots
         inst.position = p.position
         inst.realizedPnl = p.realizedPnl
         inst.unrealizedPnl = p.unrealizedPnl

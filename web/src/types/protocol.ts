@@ -114,6 +114,28 @@ export interface Trade {
   realizedPnl: number
 }
 
+/**
+ * 一批被平掉的仓位 = 画布上的一根平仓虚线。
+ *
+ * 配对和盈亏都由后端算好（`instance.go: closedLots`）：每一批用**自己的开仓价**算
+ * `(平仓价 - 开仓价) × 手数 × 方向 × 每点价值`，不是把某一笔的总盈亏摊给各批。
+ * 前端只排版，不做任何乘法。
+ */
+export interface ClosedLot {
+  /** 开仓成交的 K 线时间（= 那个三角的横坐标） */
+  openTime: string
+  /** 开仓的真实成交价（三角的纵坐标） */
+  openPrice: number
+  closeTime: string
+  closePrice: number
+  /** 被平掉那批的方向：long = 买开的仓，short = 卖开的仓 */
+  side: 'long' | 'short'
+  /** 这一批被平掉的手数（部分平仓时小于开仓量） */
+  quantity: number
+  /** 这一批自己的已实现盈亏（美元） */
+  realizedPnl: number
+}
+
 export interface Position {
   quantity: number
   side: 'long' | 'short' | 'flat'
@@ -151,6 +173,8 @@ export interface InstanceDetail {
   annotations: Annotation[]
   orders: Order[]
   trades: Trade[]
+  /** 逐批平仓记录（画布上那些平仓虚线的数据源，盈亏已由后端算好） */
+  closedLots: ClosedLot[]
   position: Position
   realizedPnl: number
   unrealizedPnl: number
@@ -284,6 +308,8 @@ export interface BarAdvancedPayload {
   hasMore: boolean
   orders: Order[]
   trades: Trade[]
+  /** 逐批平仓记录（画布上那些平仓虚线的数据源，盈亏已由后端算好） */
+  closedLots: ClosedLot[]
   position: Position
   realizedPnl: number
   unrealizedPnl: number
@@ -323,6 +349,8 @@ export interface OrderFilledPayload {
   trade: Trade
   orders: Order[]
   trades: Trade[]
+  /** 逐批平仓记录（画布上那些平仓虚线的数据源，盈亏已由后端算好） */
+  closedLots: ClosedLot[]
   position: Position
   realizedPnl: number
   unrealizedPnl: number

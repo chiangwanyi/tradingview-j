@@ -14,7 +14,8 @@ import { useReplayStore } from '@/stores/replay'
  * （比如「手数」从标题挪到行里时，跟随卡改了、钉住卡没改）。
  *
  * 内容就是需求里的六项：手数、方向（都在标题里）、开仓价、平仓价、持仓时长、已实现盈亏。
- * 盈亏按 FIFO 批次摊到这一笔上（见 chart/trades.ts 的说明），只用于展示，不参与结算。
+ * 盈亏由后端按 FIFO 批次用**这一批自己的开仓价**算好（见 chart/trades.ts 的说明），
+ * 和上面那两个价格是同一套口径 —— 前端不参与计算，只排版。
  */
 defineProps<{ trade: ClosedTrade; pinned?: boolean }>()
 defineEmits<{ close: [] }>()
@@ -56,14 +57,14 @@ const store = useReplayStore()
       <dd
         class="tnum text-right font-medium"
         :class="
-          trade.pnl > 0
+          trade.realizedPnl > 0
             ? 'text-emerald-600 dark:text-emerald-400'
-            : trade.pnl < 0
+            : trade.realizedPnl < 0
               ? 'text-red-600 dark:text-red-400'
               : 'text-dim'
         "
       >
-        {{ formatSigned(trade.pnl) }}
+        {{ formatSigned(trade.realizedPnl) }}
       </dd>
     </dl>
 

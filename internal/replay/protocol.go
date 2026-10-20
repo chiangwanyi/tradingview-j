@@ -262,6 +262,30 @@ type Trade struct {
 	RealizedPnl float64 `json:"realizedPnl"` // 这一笔平掉的部分实现的盈亏；开仓/加仓为 0
 }
 
+// ClosedLot 是**一批已经平掉的仓位**：从哪一批开仓成交来、在哪一次平仓成交结束、
+// 平掉多少手，以及这一批自己实现盈亏多少。
+//
+// 它和 Trade 的分工：Trade 是「一笔成交」（可能开仓/加仓/平仓/反手都算），
+// ClosedLot 是「一批仓位的完整生命周期」。一笔平仓成交可以同时平掉好几批，
+// 那就产出好几条 ClosedLot —— 画布上每根平仓虚线对应其中一条。
+//
+// 盈亏用**这一批自己的开仓价**算，不用平均成本：画布上那条线的两个端点就是
+// 「这一批的开仓价」和「平仓价」，信息卡里也照这两个数显示已实现盈亏，
+// 三者必须是同一个算法算出来的。用均价会把 5 笔不同价位的空单显示成一模一样的数。
+//
+// ⚠️ 一笔平仓成交把**全部**持仓平掉时，各批盈亏之和与该笔 Trade.RealizedPnl
+// （平均成本法）完全相等；只平掉一部分时两者会不同 —— 那是两种成本法的固有差异，
+// 不是算错。仓位与账户口径一律以 applyFill 的平均成本法为准，这里只负责「逐批归因」。
+type ClosedLot struct {
+	OpenTime    string  `json:"openTime"`  // 开仓成交的 K 线时间（= 那个三角的横坐标）
+	OpenPrice   float64 `json:"openPrice"` // 开仓的真实成交价（三角的纵坐标）
+	CloseTime   string  `json:"closeTime"`
+	ClosePrice  float64 `json:"closePrice"`
+	Side        string  `json:"side"`   // long = 买开的仓，short = 卖开的仓
+	Quantity    float64 `json:"quantity"` // 这一批被平掉的手数
+	RealizedPnl float64 `json:"realizedPnl"` // 这一批自己的已实现盈亏（美元）
+}
+
 // Position 是净头寸（带符号的数量 + 平均成本）。
 type Position struct {
 	Quantity     float64 `json:"quantity"` // 正=多 负=空 0=空仓
@@ -322,6 +346,7 @@ type InstanceDTO struct {
 	Annotations   []Annotation `json:"annotations"`
 	Orders        []Order      `json:"orders"`
 	Trades        []Trade      `json:"trades"`
+	ClosedLots    []ClosedLot  `json:"closedLots"` // 逐批平仓记录（画布上那些虚线的数据源）
 	Position      Position     `json:"position"`
 	RealizedPnl   float64      `json:"realizedPnl"`
 	UnrealizedPnl float64      `json:"unrealizedPnl"`
@@ -436,6 +461,7 @@ type BarAdvancedPayload struct {
 	HasMore       bool     `json:"hasMore"`
 	Orders        []Order  `json:"orders"`
 	Trades        []Trade  `json:"trades"`
+	ClosedLots    []ClosedLot `json:"closedLots"`
 	Position      Position `json:"position"`
 	RealizedPnl   float64  `json:"realizedPnl"`
 	UnrealizedPnl float64  `json:"unrealizedPnl"`
@@ -484,6 +510,7 @@ type OrderFilledPayload struct {
 	Trade         Trade    `json:"trade"`
 	Orders        []Order  `json:"orders"`
 	Trades        []Trade  `json:"trades"`
+	ClosedLots    []ClosedLot `json:"closedLots"`
 	Position      Position `json:"position"`
 	RealizedPnl   float64  `json:"realizedPnl"`
 	UnrealizedPnl float64  `json:"unrealizedPnl"`
