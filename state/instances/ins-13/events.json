@@ -1,0 +1,64 @@
+[
+  {
+    "seq": 1,
+    "at": 1792510153,
+    "by": "human",
+    "action": "recording_started",
+    "payload": {
+      "active": true,
+      "id": "rec-20261020-232913",
+      "by": "human",
+      "startedAt": 1792510153,
+      "step": 1,
+      "startTime": "2025-06-19 17:05",
+      "current": "2025-06-19 17:05",
+      "audios": 0,
+      "stepAudios": 0,
+      "maxAudios": 9,
+      "clips": []
+    }
+  },
+  {
+    "seq": 2,
+    "at": 1792511112,
+    "by": "human",
+    "action": "control_changed",
+    "payload": {
+      "operator": ""
+    }
+  },
+  {
+    "seq": 3,
+    "at": 1792511112,
+    "by": "system",
+    "action": "recording_stopped",
+    "payload": {
+      "recording": {
+        "id": "rec-20261020-232913",
+        "name": "CME_MINI:MES1! · 2025-06-19 17:05 · 1 步",
+        "symbol": "CME_MINI:MES1!",
+        "folder": "CME_MINI_MES1!",
+        "anchor": "2025-06-19 17:05",
+        "endTime": "2025-06-19 17:05",
+        "stepCount": 1,
+        "audioCount": 0,
+        "eventCount": 0,
+        "bars": 470,
+        "size": 0,
+        "createdBy": "human",
+        "createdAt": 1792510153,
+        "endedAt": 1792511112
+      },
+      "dir": "D:\\Workspaces\\tradingview-j\\recordings"
+    }
+  },
+  {
+    "seq": 4,
+    "at": 1792511112,
+    "by": "system",
+    "action": "members_changed",
+    "payload": {
+      "members": []
+    }
+  }
+]
