@@ -4,7 +4,15 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { buildFigure, resolveStyle, type Figure, type FigureView } from '@/components/chart/annotations'
 import { orderKindFor, orderKindLabel } from '@/components/chart/orders'
 import { ORDER_RESERVE_RIGHT, drawChart, themeOf, type HoverState } from '@/components/chart/render'
-import { ChartScale, TIME_AXIS_HEIGHT, clamp, formatAxisTime, formatPrice, snapToTick } from '@/components/chart/scale'
+import {
+  ChartScale,
+  MAX_FORWARD_OFFSET,
+  TIME_AXIS_HEIGHT,
+  clamp,
+  formatAxisTime,
+  formatPrice,
+  snapToTick,
+} from '@/components/chart/scale'
 import { nearestOHLC, snapAtCursor, OHLC_LABEL } from '@/components/chart/snap'
 import { type ClosedTrade } from '@/components/chart/trades'
 import TradeTipCard from '@/components/TradeTipCard.vue'
@@ -342,7 +350,12 @@ function pointAt(x: number, y: number, snap: boolean): ChartPoint | null {
   if (!hit) return null
   // 吸附用的是**锚点**那根 K 线：偏移出去的地方一根 K 线都没有，没有 OHLC 可吸。
   // 后端 resolvePoint 也是拿锚点那根吸的，所以预览和定稿结果一致。
-  const price = snap ? nearestOHLC(hit.bar, scale.priceAtY(y)).price : scale.priceAtY(y)
+  //
+  // `nearestOHLC` 返回的是**数字本身**，不是 SnapResult（那是 `snapAtCursor` 的返回形状）。
+  // 这里曾经写成 `nearestOHLC(...).price` —— 结果是 undefined，ChartPoint.price 是可选字段，
+  // TS 不报错，于是「按 Ctrl 单击画射线」画出来的是**价格缺失**的端点，后端再一吸附就歪了。
+  // 返回值上现在有显式类型（见 snap.ts），这类错误会当场被 TS 挡住。
+  const price = snap ? nearestOHLC(hit.bar, scale.priceAtY(y)) : scale.priceAtY(y)
   return { time: hit.ref.time, offset: hit.ref.offset, price }
 }
 
@@ -506,7 +519,7 @@ function clickToDraw(p: { x: number; y: number }, ev: PointerEvent): void {
     return
   }
 
-  const end = constrainEnd(tool, cur.start, hit, ev.shiftKey)
+  const end = constrainEnd(tool, cur.start, hit, ev.shiftKey, ev.ctrlKey)
   if (degenerate(cur.start, end)) {
     // 两次点在同一根 K 线的同一个价位：当成「重新开始」，不产生一个看不见的零长度图形
     pending.value = { kind: tool, start: hit, end: hit, snap: ev.ctrlKey, shift: ev.shiftKey }
@@ -523,29 +536,67 @@ function clickToDraw(p: { x: number; y: number }, ev: PointerEvent): void {
  * 真正画到哪儿由 `clipRay` 按当前视图裁到价格区右边缘。因此这里只要保证
  * 「终点严格在起点右边、且价格与起点相同」，画出来就是一条通到底的水平线。
  *
- * 终点取「往右一整屏」：`indexAtX(plot.right)` 换算成数据下标再取 barRef。
+ * **两个端点必须锚在同一根 K 线上**（终点 = 起点的锚点 + 往右 `rayForwardBars` 根）。
+ * 这不是为了省事，是按 Ctrl 时不歪的唯一办法：后端 `resolvePoint` 对**每个端点各自**
+ * 做一次 OHLC 吸附，用的是**该端点自己锚定的那根 K 线**（见 instance.go）。
+ * 起点锚在用户点的那根、终点锚在视口右边缘那根（多半是另一根），按下 Ctrl 之后
+ * 起点吸到 A 根的某个 OHLC、终点吸到 B 根的某个 OHLC —— 两个价不再相等，线就歪了。
+ * 锚同一根则两次吸的是同一组 OHLC，**结果必然相同**，横线在任何缩放下都是水平的。
+ *
+ * 往右多少根：够越过整个可视区就行（`visibleBarSpan` 是当前屏幕上能放多少根）。
  * 为什么不写死一个根数（比方说 50 根）—— 用户放大到 barWidth=40 时 50 根只有
  * 2000px，射线会被裁在一个莫名其妙的位置；按当前视口算则在任何缩放下
- * 都至少越过整个可视区。取不到（右边就是当前那根）时退回 +1 根，
- * 保证方向成立，哪怕线短 —— 方向对了才谈得上「水平朝右」。
+ * 都至少越过整个可视区。上限按 `MAX_FORWARD_OFFSET` 夹住，与后端一致。
  */
+const RAY_EXTRA_BARS = 8
+
 function rayEndAt(start: ChartPoint): ChartPoint {
-  const beyond = scale.indexAtX(scale.layout.plot.right) + 1
-  const vi = scale.virtualIndexOf(start)
-  const end = scale.barRefAt(beyond > (vi ?? 0) ? beyond : (vi ?? 0) + 1)
-  if (!end) return { time: start.time, offset: start.offset + 1, price: start.price }
-  return { time: end.time, offset: end.offset, price: start.price }
+  const span = Math.ceil(scale.visibleBarSpan) + RAY_EXTRA_BARS
+  const offset = Math.min(start.offset + span, MAX_FORWARD_OFFSET)
+  // 起点已经在偏移上限（理论上不可能：可视区再宽也放不下 5000 根）时，
+  // 宁可给一个「差一根」的方向，也不能让 dx = 0 退化成零长度。
+  return { time: start.time, offset: Math.max(offset, start.offset + 1), price: start.price }
 }
 
 /**
  * Shift 约束：趋势线/射线/箭头线按住 Shift 就是水平线（两个端点同一个价格）。
  * 矩形和斐波那契不受影响 —— 它们的语义本来就是「一个区间」。
+ *
+ * 横向（锚点 + 偏移）**原样保留终点那一项**，只把价格改成起点的价格 —— 这样
+ * 往左画的线不会被拽回起点那根 K 线上。
+ *
+ * 但光改价格还不够：按住 Ctrl 时后端 `resolvePoint` 会拿**每个端点自己锚定的那根**
+ * K 线的 OHLC 各吸一遍（见 instance.go）。起点锚在用户点的那根、终点锚在鼠标所在的
+ * 另一根，两次吸附的结果不同，**落成正式图形就歪了** —— 而用户按住 Shift 看到的预览是平的。
+ *
+ * 所以这里把终点**预先吸到起点那根 K 线的 OHLC 上**，并且必须吸到**与后端会选中的那一个
+ * 完全相同**的值：后端拿 `nearestOHLC(终点那根 bar, 这个价)` 再吸一次，如果这个价已经
+ * 精确等于终点那根 bar 的某个 OHLC，第二次吸附是**幂等**的（距离 0，严格更小才替换，
+ * 见 snap.ts 的逐字约定），结果不会再变。两个端点于是落在同一个价上。
+ *
+ * 吸附成「最近的那个 OHLC」而不是碰运气：起点已经按 Ctrl 吸过了（见 `pointAt`），
+ * 它的价精确等于起点那根的某个 OHLC；对终点那根来说它只是个普通价格，取最近的即可。
  */
-function constrainEnd(kind: DrawTool, start: ChartPoint, end: ChartPoint, shift: boolean): ChartPoint {
+function constrainEnd(
+  kind: DrawTool,
+  start: ChartPoint,
+  end: ChartPoint,
+  shift: boolean,
+  snap: boolean,
+): ChartPoint {
   const lineLike = kind === 'trend' || kind === 'ray' || kind === 'arrow'
   if (!shift || !lineLike) return end
-  // 只改价格，横向（锚点 + 偏移）保持鼠标指的位置 —— 否则 Shift 会把线拽回起点那根 K 线上
-  return { time: end.time, offset: end.offset, price: start.price }
+  const price = start.price
+  if (!snap) return { time: end.time, offset: end.offset, price }
+  // 吸附用的是**锚点**那根 K 线：偏移出去的地方一根 K 线都没有，没有 OHLC 可吸。
+  // 和 `pointAt` / 后端 `resolvePoint` 同一个口径，所以吸完的值后端不会再改。
+  // 取不到那根（锚点不在已揭示数据里）就原样返回 price —— 宁可水平线在 Ctrl 下偏一点，
+  // 也不要把图形弄丢。
+  // `nearestOHLC` 返回的是**数字本身**（不是 SnapResult 对象 —— 那是 `snapAtCursor` 的形状），
+  // 所以这里直接用返回值，不要再取 `.price`（那会得到 undefined，把吸附变成「价格被抹掉」）。
+  const idx = scale.indexOfTime(end.time)
+  const bar = idx === undefined ? undefined : scale.bars[idx]
+  return { time: end.time, offset: end.offset, price: bar ? nearestOHLC(bar, price) : price }
 }
 
 /** 两个端点完全重合 = 没画出东西（横坐标和时间都相同、价格也相同） */
@@ -627,12 +678,12 @@ function onWindowPointerMove(ev: PointerEvent): void {
       start: {
         time: refStart.time,
         offset: refStart.offset,
-        price: drag.snap ? nearestOHLC(barStart, rawStart).price : rawStart,
+        price: drag.snap ? nearestOHLC(barStart, rawStart) : rawStart,
       },
       end: {
         time: refEnd.time,
         offset: refEnd.offset,
-        price: drag.snap ? nearestOHLC(barEnd, rawEnd).price : rawEnd,
+        price: drag.snap ? nearestOHLC(barEnd, rawEnd) : rawEnd,
       },
     }
     drag.moved = true
@@ -685,7 +736,7 @@ function onPointerMove(ev: PointerEvent): void {
     if (aim) {
       pending.value = {
         ...pending.value,
-        end: constrainEnd(pending.value.kind, pending.value.start, aim, ev.shiftKey),
+        end: constrainEnd(pending.value.kind, pending.value.start, aim, ev.shiftKey, ev.ctrlKey),
         snap: ev.ctrlKey,
         shift: ev.shiftKey,
       }
