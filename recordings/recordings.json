@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "savedAt": 1792511112,
+  "savedAt": 1792585547,
   "items": [
     {
       "id": "rec-20261020-232913",
@@ -13,7 +13,7 @@
       "audioCount": 0,
       "eventCount": 0,
       "bars": 470,
-      "size": 98156,
+      "size": 102428,
       "createdBy": "human",
       "createdAt": 1792510153,
       "endedAt": 1792511112
@@ -29,7 +29,7 @@
       "audioCount": 6,
       "eventCount": 30,
       "bars": 613,
-      "size": 1233675,
+      "size": 1241126,
       "createdBy": "human",
       "createdAt": 1792509889,
       "endedAt": 1792510044
@@ -45,7 +45,7 @@
       "audioCount": 9,
       "eventCount": 5,
       "bars": 561,
-      "size": 512567,
+      "size": 517880,
       "createdBy": "human",
       "createdAt": 1792507415,
       "endedAt": 1792507456
@@ -61,7 +61,7 @@
       "audioCount": 2,
       "eventCount": 53,
       "bars": 704,
-      "size": 492279,
+      "size": 504632,
       "createdBy": "human2",
       "createdAt": 1792507168,
       "endedAt": 1792507272

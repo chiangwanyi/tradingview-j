@@ -1,0 +1,4232 @@
+[
+  {
+    "seq": 1,
+    "at": 1792583771,
+    "by": "human",
+    "action": "order_filled",
+    "payload": {
+      "order": {
+        "id": "o1",
+        "side": "buy",
+        "kind": "market",
+        "price": 24799.25,
+        "quantity": 1,
+        "status": "filled",
+        "placedAt": "2025-09-04 17:45",
+        "placedIndex": 477,
+        "filledAt": "2025-09-04 17:45",
+        "filledIndex": 477,
+        "fillPrice": 24799.25
+      },
+      "trade": {
+        "id": "t1",
+        "orderId": "o1",
+        "time": "2025-09-04 17:45",
+        "side": "buy",
+        "kind": "market",
+        "price": 24799.25,
+        "quantity": 1,
+        "realizedPnl": 0
+      },
+      "orders": [
+        {
+          "id": "o1",
+          "side": "buy",
+          "kind": "market",
+          "price": 24799.25,
+          "quantity": 1,
+          "status": "filled",
+          "placedAt": "2025-09-04 17:45",
+          "placedIndex": 477,
+          "filledAt": "2025-09-04 17:45",
+          "filledIndex": 477,
+          "fillPrice": 24799.25
+        }
+      ],
+      "trades": [
+        {
+          "id": "t1",
+          "orderId": "o1",
+          "time": "2025-09-04 17:45",
+          "side": "buy",
+          "kind": "market",
+          "price": 24799.25,
+          "quantity": 1,
+          "realizedPnl": 0
+        }
+      ],
+      "closedLots": null,
+      "position": {
+        "quantity": 1,
+        "side": "long",
+        "averagePrice": 24799.25
+      },
+      "realizedPnl": 0,
+      "unrealizedPnl": 0
+    }
+  },
+  {
+    "seq": 2,
+    "at": 1792583773,
+    "by": "human",
+    "action": "bar_advanced",
+    "payload": {
+      "bar": {
+        "time": "2025-09-04 17:50",
+        "open": 24799,
+        "high": 24799,
+        "low": 24788.5,
+        "close": 24794,
+        "volume": 860,
+        "ema20": 24789.274920040833
+      },
+      "cursor": 478,
+      "hiddenBars": 1177,
+      "hasMore": true,
+      "orders": [
+        {
+          "id": "o1",
+          "side": "buy",
+          "kind": "market",
+          "price": 24799.25,
+          "quantity": 1,
+          "status": "filled",
+          "placedAt": "2025-09-04 17:45",
+          "placedIndex": 477,
+          "filledAt": "2025-09-04 17:45",
+          "filledIndex": 477,
+          "fillPrice": 24799.25
+        }
+      ],
+      "trades": [
+        {
+          "id": "t1",
+          "orderId": "o1",
+          "time": "2025-09-04 17:45",
+          "side": "buy",
+          "kind": "market",
+          "price": 24799.25,
+          "quantity": 1,
+          "realizedPnl": 0
+        }
+      ],
+      "closedLots": null,
+      "position": {
+        "quantity": 1,
+        "side": "long",
+        "averagePrice": 24799.25
+      },
+      "realizedPnl": 0,
+      "unrealizedPnl": -10.5,
+      "fills": []
+    }
+  },
+  {
+    "seq": 3,
+    "at": 1792583775,
+    "by": "human",
+    "action": "order_filled",
+    "payload": {
+      "order": {
+        "id": "o2",
+        "side": "buy",
+        "kind": "market",
+        "price": 24794,
+        "quantity": 1,
+        "status": "filled",
+        "placedAt": "2025-09-04 17:50",
+        "placedIndex": 478,
+        "filledAt": "2025-09-04 17:50",
+        "filledIndex": 478,
+        "fillPrice": 24794
+      },
+      "trade": {
+        "id": "t2",
+        "orderId": "o2",
+        "time": "2025-09-04 17:50",
+        "side": "buy",
+        "kind": "market",
+        "price": 24794,
+        "quantity": 1,
+        "realizedPnl": 0
+      },
+      "orders": [
+        {
+          "id": "o1",
+          "side": "buy",
+          "kind": "market",
+          "price": 24799.25,
+          "quantity": 1,
+          "status": "filled",
+          "placedAt": "2025-09-04 17:45",
+          "placedIndex": 477,
+          "filledAt": "2025-09-04 17:45",
+          "filledIndex": 477,
+          "fillPrice": 24799.25
+        },
+        {
+          "id": "o2",
+          "side": "buy",
+          "kind": "market",
+          "price": 24794,
+          "quantity": 1,
+          "status": "filled",
+          "placedAt": "2025-09-04 17:50",
+          "placedIndex": 478,
+          "filledAt": "2025-09-04 17:50",
+          "filledIndex": 478,
+          "fillPrice": 24794
+        }
+      ],
+      "trades": [
+        {
+          "id": "t1",
+          "orderId": "o1",
+          "time": "2025-09-04 17:45",
+          "side": "buy",
+          "kind": "market",
+          "price": 24799.25,
+          "quantity": 1,
+          "realizedPnl": 0
+        },
+        {
+          "id": "t2",
+          "orderId": "o2",
+          "time": "2025-09-04 17:50",
+          "side": "buy",
+          "kind": "market",
+          "price": 24794,
+          "quantity": 1,
+          "realizedPnl": 0
+        }
+      ],
+      "closedLots": null,
+      "position": {
+        "quantity": 2,
+        "side": "long",
+        "averagePrice": 24796.625
+      },
+      "realizedPnl": 0,
+      "unrealizedPnl": -10.5
+    }
+  },
+  {
+    "seq": 4,
+    "at": 1792583775,
+    "by": "human",
+    "action": "bar_advanced",
+    "payload": {
+      "bar": {
+        "time": "2025-09-04 17:55",
+        "open": 24794.25,
+        "high": 24807.25,
+        "low": 24792.75,
+        "close": 24805.5,
+        "volume": 1410,
+        "ema20": 24790.82016575123
+      },
+      "cursor": 479,
+      "hiddenBars": 1176,
+      "hasMore": true,
+      "orders": [
+        {
+          "id": "o1",
+          "side": "buy",
+          "kind": "market",
+          "price": 24799.25,
+          "quantity": 1,
+          "status": "filled",
+          "placedAt": "2025-09-04 17:45",
+          "placedIndex": 477,
+          "filledAt": "2025-09-04 17:45",
+          "filledIndex": 477,
+          "fillPrice": 24799.25
+        },
+        {
+          "id": "o2",
+          "side": "buy",
+          "kind": "market",
+          "price": 24794,
+          "quantity": 1,
+          "status": "filled",
+          "placedAt": "2025-09-04 17:50",
+          "placedIndex": 478,
+          "filledAt": "2025-09-04 17:50",
+          "filledIndex": 478,
+          "fillPrice": 24794
+        }
+      ],
+      "trades": [
+        {
+          "id": "t1",
+          "orderId": "o1",
+          "time": "2025-09-04 17:45",
+          "side": "buy",
+          "kind": "market",
+          "price": 24799.25,
+          "quantity": 1,
+          "realizedPnl": 0
+        },
+        {
+          "id": "t2",
+          "orderId": "o2",
+          "time": "2025-09-04 17:50",
+          "side": "buy",
+          "kind": "market",
+          "price": 24794,
+          "quantity": 1,
+          "realizedPnl": 0
+        }
+      ],
+      "closedLots": null,
+      "position": {
+        "quantity": 2,
+        "side": "long",
+        "averagePrice": 24796.625
+      },
+      "realizedPnl": 0,
+      "unrealizedPnl": 35.5,
+      "fills": []
+    }
+  },
+  {
+    "seq": 5,
+    "at": 1792583779,
+    "by": "human",
+    "action": "order_filled",
+    "payload": {
+      "order": {
+        "id": "o3",
+        "side": "sell",
+        "kind": "market",
+        "price": 24805.5,
+        "quantity": 2,
+        "status": "filled",
+        "placedAt": "2025-09-04 17:55",
+        "placedIndex": 479,
+        "filledAt": "2025-09-04 17:55",
+        "filledIndex": 479,
+        "fillPrice": 24805.5
+      },
+      "trade": {
+        "id": "t3",
+        "orderId": "o3",
+        "time": "2025-09-04 17:55",
+        "side": "sell",
+        "kind": "market",
+        "price": 24805.5,
+        "quantity": 2,
+        "realizedPnl": 35.5
+      },
+      "orders": [
+        {
+          "id": "o1",
+          "side": "buy",
+          "kind": "market",
+          "price": 24799.25,
+          "quantity": 1,
+          "status": "filled",
+          "placedAt": "2025-09-04 17:45",
+          "placedIndex": 477,
+          "filledAt": "2025-09-04 17:45",
+          "filledIndex": 477,
+          "fillPrice": 24799.25
+        },
+        {
+          "id": "o2",
+          "side": "buy",
+          "kind": "market",
+          "price": 24794,
+          "quantity": 1,
+          "status": "filled",
+          "placedAt": "2025-09-04 17:50",
+          "placedIndex": 478,
+          "filledAt": "2025-09-04 17:50",
+          "filledIndex": 478,
+          "fillPrice": 24794
+        },
+        {
+          "id": "o3",
+          "side": "sell",
+          "kind": "market",
+          "price": 24805.5,
+          "quantity": 2,
+          "status": "filled",
+          "placedAt": "2025-09-04 17:55",
+          "placedIndex": 479,
+          "filledAt": "2025-09-04 17:55",
+          "filledIndex": 479,
+          "fillPrice": 24805.5
+        }
+      ],
+      "trades": [
+        {
+          "id": "t1",
+          "orderId": "o1",
+          "time": "2025-09-04 17:45",
+          "side": "buy",
+          "kind": "market",
+          "price": 24799.25,
+          "quantity": 1,
+          "realizedPnl": 0
+        },
+        {
+          "id": "t2",
+          "orderId": "o2",
+          "time": "2025-09-04 17:50",
+          "side": "buy",
+          "kind": "market",
+          "price": 24794,
+          "quantity": 1,
+          "realizedPnl": 0
+        },
+        {
+          "id": "t3",
+          "orderId": "o3",
+          "time": "2025-09-04 17:55",
+          "side": "sell",
+          "kind": "market",
+          "price": 24805.5,
+          "quantity": 2,
+          "realizedPnl": 35.5
+        }
+      ],
+      "closedLots": [
+        {
+          "openTime": "2025-09-04 17:45",
+          "openPrice": 24799.25,
+          "closeTime": "2025-09-04 17:55",
+          "closePrice": 24805.5,
+          "side": "long",
+          "quantity": 1,
+          "realizedPnl": 12.5
+        },
+        {
+          "openTime": "2025-09-04 17:50",
+          "openPrice": 24794,
+          "closeTime": "2025-09-04 17:55",
+          "closePrice": 24805.5,
+          "side": "long",
+          "quantity": 1,
+          "realizedPnl": 23
+        }
+      ],
+      "position": {
+        "quantity": 0,
+        "side": "flat",
+        "averagePrice": 0
+      },
+      "realizedPnl": 35.5,
+      "unrealizedPnl": 0
+    }
+  },
+  {
+    "seq": 6,
+    "at": 1792583786,
+    "by": "human",
+    "action": "order_filled",
+    "payload": {
+      "order": {
+        "id": "o4",
+        "side": "buy",
+        "kind": "market",
+        "price": 24805.5,
+        "quantity": 2,
+        "status": "filled",
+        "placedAt": "2025-09-04 17:55",
+        "placedIndex": 479,
+        "filledAt": "2025-09-04 17:55",
+        "filledIndex": 479,
+        "fillPrice": 24805.5
+      },
+      "trade": {
+        "id": "t4",
+        "orderId": "o4",
+        "time": "2025-09-04 17:55",
+        "side": "buy",
+        "kind": "market",
+        "price": 24805.5,
+        "quantity": 2,
+        "realizedPnl": 0
+      },
+      "orders": [
+        {
+          "id": "o1",
+          "side": "buy",
+          "kind": "market",
+          "price": 24799.25,
+          "quantity": 1,
+          "status": "filled",
+          "placedAt": "2025-09-04 17:45",
+          "placedIndex": 477,
+          "filledAt": "2025-09-04 17:45",
+          "filledIndex": 477,
+          "fillPrice": 24799.25
+        },
+        {
+          "id": "o2",
+          "side": "buy",
+          "kind": "market",
+          "price": 24794,
+          "quantity": 1,
+          "status": "filled",
+          "placedAt": "2025-09-04 17:50",
+          "placedIndex": 478,
+          "filledAt": "2025-09-04 17:50",
+          "filledIndex": 478,
+          "fillPrice": 24794
+        },
+        {
+          "id": "o3",
+          "side": "sell",
+          "kind": "market",
+          "price": 24805.5,
+          "quantity": 2,
+          "status": "filled",
+          "placedAt": "2025-09-04 17:55",
+          "placedIndex": 479,
+          "filledAt": "2025-09-04 17:55",
+          "filledIndex": 479,
+          "fillPrice": 24805.5
+        },
+        {
+          "id": "o4",
+          "side": "buy",
+          "kind": "market",
+          "price": 24805.5,
+          "quantity": 2,
+          "status": "filled",
+          "placedAt": "2025-09-04 17:55",
+          "placedIndex": 479,
+          "filledAt": "2025-09-04 17:55",
+          "filledIndex": 479,
+          "fillPrice": 24805.5
+        }
+      ],
+      "trades": [
+        {
+          "id": "t1",
+          "orderId": "o1",
+          "time": "2025-09-04 17:45",
+          "side": "buy",
+          "kind": "market",
+          "price": 24799.25,
+          "quantity": 1,
+          "realizedPnl": 0
+        },
+        {
+          "id": "t2",
+          "orderId": "o2",
+          "time": "2025-09-04 17:50",
+          "side": "buy",
+          "kind": "market",
+          "price": 24794,
+          "quantity": 1,
+          "realizedPnl": 0
+        },
+        {
+          "id": "t3",
+          "orderId": "o3",
+          "time": "2025-09-04 17:55",
+          "side": "sell",
+          "kind": "market",
+          "price": 24805.5,
+          "quantity": 2,
+          "realizedPnl": 35.5
+        },
+        {
+          "id": "t4",
+          "orderId": "o4",
+          "time": "2025-09-04 17:55",
+          "side": "buy",
+          "kind": "market",
+          "price": 24805.5,
+          "quantity": 2,
+          "realizedPnl": 0
+        }
+      ],
+      "closedLots": [
+        {
+          "openTime": "2025-09-04 17:45",
+          "openPrice": 24799.25,
+          "closeTime": "2025-09-04 17:55",
+          "closePrice": 24805.5,
+          "side": "long",
+          "quantity": 1,
+          "realizedPnl": 12.5
+        },
+        {
+          "openTime": "2025-09-04 17:50",
+          "openPrice": 24794,
+          "closeTime": "2025-09-04 17:55",
+          "closePrice": 24805.5,
+          "side": "long",
+          "quantity": 1,
+          "realizedPnl": 23
+        }
+      ],
+      "position": {
+        "quantity": 2,
+        "side": "long",
+        "averagePrice": 24805.5
+      },
+      "realizedPnl": 35.5,
+      "unrealizedPnl": 0
+    }
+  },
+  {
+    "seq": 7,
+    "at": 1792583787,
+    "by": "human",
+    "action": "bar_advanced",
+    "payload": {
+      "bar": {
+        "time": "2025-09-04 18:00",
+        "open": 24805.25,
+        "high": 24816,
+        "low": 24804,
+        "close": 24812.75,
+        "volume": 2424,
+        "ema20": 24792.90872139397
+      },
+      "cursor": 480,
+      "hiddenBars": 1175,
+      "hasMore": true,
+      "orders": [
+        {
+          "id": "o1",
+          "side": "buy",
+          "kind": "market",
+          "price": 24799.25,
+          "quantity": 1,
+          "status": "filled",
+          "placedAt": "2025-09-04 17:45",
+          "placedIndex": 477,
+          "filledAt": "2025-09-04 17:45",
+          "filledIndex": 477,
+          "fillPrice": 24799.25
+        },
+        {
+          "id": "o2",
+          "side": "buy",
+          "kind": "market",
+          "price": 24794,
+          "quantity": 1,
+          "status": "filled",
+          "placedAt": "2025-09-04 17:50",
+          "placedIndex": 478,
+          "filledAt": "2025-09-04 17:50",
+          "filledIndex": 478,
+          "fillPrice": 24794
+        },
+        {
+          "id": "o3",
+          "side": "sell",
+          "kind": "market",
+          "price": 24805.5,
+          "quantity": 2,
+          "status": "filled",
+          "placedAt": "2025-09-04 17:55",
+          "placedIndex": 479,
+          "filledAt": "2025-09-04 17:55",
+          "filledIndex": 479,
+          "fillPrice": 24805.5
+        },
+        {
+          "id": "o4",
+          "side": "buy",
+          "kind": "market",
+          "price": 24805.5,
+          "quantity": 2,
+          "status": "filled",
+          "placedAt": "2025-09-04 17:55",
+          "placedIndex": 479,
+          "filledAt": "2025-09-04 17:55",
+          "filledIndex": 479,
+          "fillPrice": 24805.5
+        }
+      ],
+      "trades": [
+        {
+          "id": "t1",
+          "orderId": "o1",
+          "time": "2025-09-04 17:45",
+          "side": "buy",
+          "kind": "market",
+          "price": 24799.25,
+          "quantity": 1,
+          "realizedPnl": 0
+        },
+        {
+          "id": "t2",
+          "orderId": "o2",
+          "time": "2025-09-04 17:50",
+          "side": "buy",
+          "kind": "market",
+          "price": 24794,
+          "quantity": 1,
+          "realizedPnl": 0
+        },
+        {
+          "id": "t3",
+          "orderId": "o3",
+          "time": "2025-09-04 17:55",
+          "side": "sell",
+          "kind": "market",
+          "price": 24805.5,
+          "quantity": 2,
+          "realizedPnl": 35.5
+        },
+        {
+          "id": "t4",
+          "orderId": "o4",
+          "time": "2025-09-04 17:55",
+          "side": "buy",
+          "kind": "market",
+          "price": 24805.5,
+          "quantity": 2,
+          "realizedPnl": 0
+        }
+      ],
+      "closedLots": [
+        {
+          "openTime": "2025-09-04 17:45",
+          "openPrice": 24799.25,
+          "closeTime": "2025-09-04 17:55",
+          "closePrice": 24805.5,
+          "side": "long",
+          "quantity": 1,
+          "realizedPnl": 12.5
+        },
+        {
+          "openTime": "2025-09-04 17:50",
+          "openPrice": 24794,
+          "closeTime": "2025-09-04 17:55",
+          "closePrice": 24805.5,
+          "side": "long",
+          "quantity": 1,
+          "realizedPnl": 23
+        }
+      ],
+      "position": {
+        "quantity": 2,
+        "side": "long",
+        "averagePrice": 24805.5
+      },
+      "realizedPnl": 35.5,
+      "unrealizedPnl": 29,
+      "fills": []
+    }
+  },
+  {
+    "seq": 8,
+    "at": 1792583789,
+    "by": "human",
+    "action": "order_filled",
+    "payload": {
+      "order": {
+        "id": "o5",
+        "side": "sell",
+        "kind": "market",
+        "price": 24812.75,
+        "quantity": 2,
+        "status": "filled",
+        "placedAt": "2025-09-04 18:00",
+        "placedIndex": 480,
+        "filledAt": "2025-09-04 18:00",
+        "filledIndex": 480,
+        "fillPrice": 24812.75
+      },
+      "trade": {
+        "id": "t5",
+        "orderId": "o5",
+        "time": "2025-09-04 18:00",
+        "side": "sell",
+        "kind": "market",
+        "price": 24812.75,
+        "quantity": 2,
+        "realizedPnl": 29
+      },
+      "orders": [
+        {
+          "id": "o1",
+          "side": "buy",
+          "kind": "market",
+          "price": 24799.25,
+          "quantity": 1,
+          "status": "filled",
+          "placedAt": "2025-09-04 17:45",
+          "placedIndex": 477,
+          "filledAt": "2025-09-04 17:45",
+          "filledIndex": 477,
+          "fillPrice": 24799.25
+        },
+        {
+          "id": "o2",
+          "side": "buy",
+          "kind": "market",
+          "price": 24794,
+          "quantity": 1,
+          "status": "filled",
+          "placedAt": "2025-09-04 17:50",
+          "placedIndex": 478,
+          "filledAt": "2025-09-04 17:50",
+          "filledIndex": 478,
+          "fillPrice": 24794
+        },
+        {
+          "id": "o3",
+          "side": "sell",
+          "kind": "market",
+          "price": 24805.5,
+          "quantity": 2,
+          "status": "filled",
+          "placedAt": "2025-09-04 17:55",
+          "placedIndex": 479,
+          "filledAt": "2025-09-04 17:55",
+          "filledIndex": 479,
+          "fillPrice": 24805.5
+        },
+        {
+          "id": "o4",
+          "side": "buy",
+          "kind": "market",
+          "price": 24805.5,
+          "quantity": 2,
+          "status": "filled",
+          "placedAt": "2025-09-04 17:55",
+          "placedIndex": 479,
+          "filledAt": "2025-09-04 17:55",
+          "filledIndex": 479,
+          "fillPrice": 24805.5
+        },
+        {
+          "id": "o5",
+          "side": "sell",
+          "kind": "market",
+          "price": 24812.75,
+          "quantity": 2,
+          "status": "filled",
+          "placedAt": "2025-09-04 18:00",
+          "placedIndex": 480,
+          "filledAt": "2025-09-04 18:00",
+          "filledIndex": 480,
+          "fillPrice": 24812.75
+        }
+      ],
+      "trades": [
+        {
+          "id": "t1",
+          "orderId": "o1",
+          "time": "2025-09-04 17:45",
+          "side": "buy",
+          "kind": "market",
+          "price": 24799.25,
+          "quantity": 1,
+          "realizedPnl": 0
+        },
+        {
+          "id": "t2",
+          "orderId": "o2",
+          "time": "2025-09-04 17:50",
+          "side": "buy",
+          "kind": "market",
+          "price": 24794,
+          "quantity": 1,
+          "realizedPnl": 0
+        },
+        {
+          "id": "t3",
+          "orderId": "o3",
+          "time": "2025-09-04 17:55",
+          "side": "sell",
+          "kind": "market",
+          "price": 24805.5,
+          "quantity": 2,
+          "realizedPnl": 35.5
+        },
+        {
+          "id": "t4",
+          "orderId": "o4",
+          "time": "2025-09-04 17:55",
+          "side": "buy",
+          "kind": "market",
+          "price": 24805.5,
+          "quantity": 2,
+          "realizedPnl": 0
+        },
+        {
+          "id": "t5",
+          "orderId": "o5",
+          "time": "2025-09-04 18:00",
+          "side": "sell",
+          "kind": "market",
+          "price": 24812.75,
+          "quantity": 2,
+          "realizedPnl": 29
+        }
+      ],
+      "closedLots": [
+        {
+          "openTime": "2025-09-04 17:45",
+          "openPrice": 24799.25,
+          "closeTime": "2025-09-04 17:55",
+          "closePrice": 24805.5,
+          "side": "long",
+          "quantity": 1,
+          "realizedPnl": 12.5
+        },
+        {
+          "openTime": "2025-09-04 17:50",
+          "openPrice": 24794,
+          "closeTime": "2025-09-04 17:55",
+          "closePrice": 24805.5,
+          "side": "long",
+          "quantity": 1,
+          "realizedPnl": 23
+        },
+        {
+          "openTime": "2025-09-04 17:55",
+          "openPrice": 24805.5,
+          "closeTime": "2025-09-04 18:00",
+          "closePrice": 24812.75,
+          "side": "long",
+          "quantity": 2,
+          "realizedPnl": 29
+        }
+      ],
+      "position": {
+        "quantity": 0,
+        "side": "flat",
+        "averagePrice": 0
+      },
+      "realizedPnl": 64.5,
+      "unrealizedPnl": 0
+    }
+  },
+  {
+    "seq": 9,
+    "at": 1792583793,
+    "by": "human",
+    "action": "bar_advanced",
+    "payload": {
+      "bar": {
+        "time": "2025-09-04 18:05",
+        "open": 24812.75,
+        "high": 24818,
+        "low": 24809.75,
+        "close": 24814.25,
+        "volume": 1348,
+        "ema20": 24794.941224118356
+      },
+      "cursor": 481,
+      "hiddenBars": 1174,
+      "hasMore": true,
+      "orders": [
+        {
+          "id": "o1",
+          "side": "buy",
+          "kind": "market",
+          "price": 24799.25,
+          "quantity": 1,
+          "status": "filled",
+          "placedAt": "2025-09-04 17:45",
+          "placedIndex": 477,
+          "filledAt": "2025-09-04 17:45",
+          "filledIndex": 477,
+          "fillPrice": 24799.25
+        },
+        {
+          "id": "o2",
+          "side": "buy",
+          "kind": "market",
+          "price": 24794,
+          "quantity": 1,
+          "status": "filled",
+          "placedAt": "2025-09-04 17:50",
+          "placedIndex": 478,
+          "filledAt": "2025-09-04 17:50",
+          "filledIndex": 478,
+          "fillPrice": 24794
+        },
+        {
+          "id": "o3",
+          "side": "sell",
+          "kind": "market",
+          "price": 24805.5,
+          "quantity": 2,
+          "status": "filled",
+          "placedAt": "2025-09-04 17:55",
+          "placedIndex": 479,
+          "filledAt": "2025-09-04 17:55",
+          "filledIndex": 479,
+          "fillPrice": 24805.5
+        },
+        {
+          "id": "o4",
+          "side": "buy",
+          "kind": "market",
+          "price": 24805.5,
+          "quantity": 2,
+          "status": "filled",
+          "placedAt": "2025-09-04 17:55",
+          "placedIndex": 479,
+          "filledAt": "2025-09-04 17:55",
+          "filledIndex": 479,
+          "fillPrice": 24805.5
+        },
+        {
+          "id": "o5",
+          "side": "sell",
+          "kind": "market",
+          "price": 24812.75,
+          "quantity": 2,
+          "status": "filled",
+          "placedAt": "2025-09-04 18:00",
+          "placedIndex": 480,
+          "filledAt": "2025-09-04 18:00",
+          "filledIndex": 480,
+          "fillPrice": 24812.75
+        }
+      ],
+      "trades": [
+        {
+          "id": "t1",
+          "orderId": "o1",
+          "time": "2025-09-04 17:45",
+          "side": "buy",
+          "kind": "market",
+          "price": 24799.25,
+          "quantity": 1,
+          "realizedPnl": 0
+        },
+        {
+          "id": "t2",
+          "orderId": "o2",
+          "time": "2025-09-04 17:50",
+          "side": "buy",
+          "kind": "market",
+          "price": 24794,
+          "quantity": 1,
+          "realizedPnl": 0
+        },
+        {
+          "id": "t3",
+          "orderId": "o3",
+          "time": "2025-09-04 17:55",
+          "side": "sell",
+          "kind": "market",
+          "price": 24805.5,
+          "quantity": 2,
+          "realizedPnl": 35.5
+        },
+        {
+          "id": "t4",
+          "orderId": "o4",
+          "time": "2025-09-04 17:55",
+          "side": "buy",
+          "kind": "market",
+          "price": 24805.5,
+          "quantity": 2,
+          "realizedPnl": 0
+        },
+        {
+          "id": "t5",
+          "orderId": "o5",
+          "time": "2025-09-04 18:00",
+          "side": "sell",
+          "kind": "market",
+          "price": 24812.75,
+          "quantity": 2,
+          "realizedPnl": 29
+        }
+      ],
+      "closedLots": [
+        {
+          "openTime": "2025-09-04 17:45",
+          "openPrice": 24799.25,
+          "closeTime": "2025-09-04 17:55",
+          "closePrice": 24805.5,
+          "side": "long",
+          "quantity": 1,
+          "realizedPnl": 12.5
+        },
+        {
+          "openTime": "2025-09-04 17:50",
+          "openPrice": 24794,
+          "closeTime": "2025-09-04 17:55",
+          "closePrice": 24805.5,
+          "side": "long",
+          "quantity": 1,
+          "realizedPnl": 23
+        },
+        {
+          "openTime": "2025-09-04 17:55",
+          "openPrice": 24805.5,
+          "closeTime": "2025-09-04 18:00",
+          "closePrice": 24812.75,
+          "side": "long",
+          "quantity": 2,
+          "realizedPnl": 29
+        }
+      ],
+      "position": {
+        "quantity": 0,
+        "side": "flat",
+        "averagePrice": 0
+      },
+      "realizedPnl": 64.5,
+      "unrealizedPnl": 0,
+      "fills": []
+    }
+  },
+  {
+    "seq": 10,
+    "at": 1792583795,
+    "by": "human",
+    "action": "order_filled",
+    "payload": {
+      "order": {
+        "id": "o6",
+        "side": "sell",
+        "kind": "market",
+        "price": 24814.25,
+        "quantity": 2,
+        "status": "filled",
+        "placedAt": "2025-09-04 18:05",
+        "placedIndex": 481,
+        "filledAt": "2025-09-04 18:05",
+        "filledIndex": 481,
+        "fillPrice": 24814.25
+      },
+      "trade": {
+        "id": "t6",
+        "orderId": "o6",
+        "time": "2025-09-04 18:05",
+        "side": "sell",
+        "kind": "market",
+        "price": 24814.25,
+        "quantity": 2,
+        "realizedPnl": 0
+      },
+      "orders": [
+        {
+          "id": "o1",
+          "side": "buy",
+          "kind": "market",
+          "price": 24799.25,
+          "quantity": 1,
+          "status": "filled",
+          "placedAt": "2025-09-04 17:45",
+          "placedIndex": 477,
+          "filledAt": "2025-09-04 17:45",
+          "filledIndex": 477,
+          "fillPrice": 24799.25
+        },
+        {
+          "id": "o2",
+          "side": "buy",
+          "kind": "market",
+          "price": 24794,
+          "quantity": 1,
+          "status": "filled",
+          "placedAt": "2025-09-04 17:50",
+          "placedIndex": 478,
+          "filledAt": "2025-09-04 17:50",
+          "filledIndex": 478,
+          "fillPrice": 24794
+        },
+        {
+          "id": "o3",
+          "side": "sell",
+          "kind": "market",
+          "price": 24805.5,
+          "quantity": 2,
+          "status": "filled",
+          "placedAt": "2025-09-04 17:55",
+          "placedIndex": 479,
+          "filledAt": "2025-09-04 17:55",
+          "filledIndex": 479,
+          "fillPrice": 24805.5
+        },
+        {
+          "id": "o4",
+          "side": "buy",
+          "kind": "market",
+          "price": 24805.5,
+          "quantity": 2,
+          "status": "filled",
+          "placedAt": "2025-09-04 17:55",
+          "placedIndex": 479,
+          "filledAt": "2025-09-04 17:55",
+          "filledIndex": 479,
+          "fillPrice": 24805.5
+        },
+        {
+          "id": "o5",
+          "side": "sell",
+          "kind": "market",
+          "price": 24812.75,
+          "quantity": 2,
+          "status": "filled",
+          "placedAt": "2025-09-04 18:00",
+          "placedIndex": 480,
+          "filledAt": "2025-09-04 18:00",
+          "filledIndex": 480,
+          "fillPrice": 24812.75
+        },
+        {
+          "id": "o6",
+          "side": "sell",
+          "kind": "market",
+          "price": 24814.25,
+          "quantity": 2,
+          "status": "filled",
+          "placedAt": "2025-09-04 18:05",
+          "placedIndex": 481,
+          "filledAt": "2025-09-04 18:05",
+          "filledIndex": 481,
+          "fillPrice": 24814.25
+        }
+      ],
+      "trades": [
+        {
+          "id": "t1",
+          "orderId": "o1",
+          "time": "2025-09-04 17:45",
+          "side": "buy",
+          "kind": "market",
+          "price": 24799.25,
+          "quantity": 1,
+          "realizedPnl": 0
+        },
+        {
+          "id": "t2",
+          "orderId": "o2",
+          "time": "2025-09-04 17:50",
+          "side": "buy",
+          "kind": "market",
+          "price": 24794,
+          "quantity": 1,
+          "realizedPnl": 0
+        },
+        {
+          "id": "t3",
+          "orderId": "o3",
+          "time": "2025-09-04 17:55",
+          "side": "sell",
+          "kind": "market",
+          "price": 24805.5,
+          "quantity": 2,
+          "realizedPnl": 35.5
+        },
+        {
+          "id": "t4",
+          "orderId": "o4",
+          "time": "2025-09-04 17:55",
+          "side": "buy",
+          "kind": "market",
+          "price": 24805.5,
+          "quantity": 2,
+          "realizedPnl": 0
+        },
+        {
+          "id": "t5",
+          "orderId": "o5",
+          "time": "2025-09-04 18:00",
+          "side": "sell",
+          "kind": "market",
+          "price": 24812.75,
+          "quantity": 2,
+          "realizedPnl": 29
+        },
+        {
+          "id": "t6",
+          "orderId": "o6",
+          "time": "2025-09-04 18:05",
+          "side": "sell",
+          "kind": "market",
+          "price": 24814.25,
+          "quantity": 2,
+          "realizedPnl": 0
+        }
+      ],
+      "closedLots": [
+        {
+          "openTime": "2025-09-04 17:45",
+          "openPrice": 24799.25,
+          "closeTime": "2025-09-04 17:55",
+          "closePrice": 24805.5,
+          "side": "long",
+          "quantity": 1,
+          "realizedPnl": 12.5
+        },
+        {
+          "openTime": "2025-09-04 17:50",
+          "openPrice": 24794,
+          "closeTime": "2025-09-04 17:55",
+          "closePrice": 24805.5,
+          "side": "long",
+          "quantity": 1,
+          "realizedPnl": 23
+        },
+        {
+          "openTime": "2025-09-04 17:55",
+          "openPrice": 24805.5,
+          "closeTime": "2025-09-04 18:00",
+          "closePrice": 24812.75,
+          "side": "long",
+          "quantity": 2,
+          "realizedPnl": 29
+        }
+      ],
+      "position": {
+        "quantity": -2,
+        "side": "short",
+        "averagePrice": 24814.25
+      },
+      "realizedPnl": 64.5,
+      "unrealizedPnl": -0
+    }
+  },
+  {
+    "seq": 11,
+    "at": 1792583796,
+    "by": "human",
+    "action": "bar_advanced",
+    "payload": {
+      "bar": {
+        "time": "2025-09-04 18:10",
+        "open": 24814.25,
+        "high": 24825,
+        "low": 24807.5,
+        "close": 24820.75,
+        "volume": 2426,
+        "ema20": 24797.399202773748
+      },
+      "cursor": 482,
+      "hiddenBars": 1173,
+      "hasMore": true,
+      "orders": [
+        {
+          "id": "o1",
+          "side": "buy",
+          "kind": "market",
+          "price": 24799.25,
+          "quantity": 1,
+          "status": "filled",
+          "placedAt": "2025-09-04 17:45",
+          "placedIndex": 477,
+          "filledAt": "2025-09-04 17:45",
+          "filledIndex": 477,
+          "fillPrice": 24799.25
+        },
+        {
+          "id": "o2",
+          "side": "buy",
+          "kind": "market",
+          "price": 24794,
+          "quantity": 1,
+          "status": "filled",
+          "placedAt": "2025-09-04 17:50",
+          "placedIndex": 478,
+          "filledAt": "2025-09-04 17:50",
+          "filledIndex": 478,
+          "fillPrice": 24794
+        },
+        {
+          "id": "o3",
+          "side": "sell",
+          "kind": "market",
+          "price": 24805.5,
+          "quantity": 2,
+          "status": "filled",
+          "placedAt": "2025-09-04 17:55",
+          "placedIndex": 479,
+          "filledAt": "2025-09-04 17:55",
+          "filledIndex": 479,
+          "fillPrice": 24805.5
+        },
+        {
+          "id": "o4",
+          "side": "buy",
+          "kind": "market",
+          "price": 24805.5,
+          "quantity": 2,
+          "status": "filled",
+          "placedAt": "2025-09-04 17:55",
+          "placedIndex": 479,
+          "filledAt": "2025-09-04 17:55",
+          "filledIndex": 479,
+          "fillPrice": 24805.5
+        },
+        {
+          "id": "o5",
+          "side": "sell",
+          "kind": "market",
+          "price": 24812.75,
+          "quantity": 2,
+          "status": "filled",
+          "placedAt": "2025-09-04 18:00",
+          "placedIndex": 480,
+          "filledAt": "2025-09-04 18:00",
+          "filledIndex": 480,
+          "fillPrice": 24812.75
+        },
+        {
+          "id": "o6",
+          "side": "sell",
+          "kind": "market",
+          "price": 24814.25,
+          "quantity": 2,
+          "status": "filled",
+          "placedAt": "2025-09-04 18:05",
+          "placedIndex": 481,
+          "filledAt": "2025-09-04 18:05",
+          "filledIndex": 481,
+          "fillPrice": 24814.25
+        }
+      ],
+      "trades": [
+        {
+          "id": "t1",
+          "orderId": "o1",
+          "time": "2025-09-04 17:45",
+          "side": "buy",
+          "kind": "market",
+          "price": 24799.25,
+          "quantity": 1,
+          "realizedPnl": 0
+        },
+        {
+          "id": "t2",
+          "orderId": "o2",
+          "time": "2025-09-04 17:50",
+          "side": "buy",
+          "kind": "market",
+          "price": 24794,
+          "quantity": 1,
+          "realizedPnl": 0
+        },
+        {
+          "id": "t3",
+          "orderId": "o3",
+          "time": "2025-09-04 17:55",
+          "side": "sell",
+          "kind": "market",
+          "price": 24805.5,
+          "quantity": 2,
+          "realizedPnl": 35.5
+        },
+        {
+          "id": "t4",
+          "orderId": "o4",
+          "time": "2025-09-04 17:55",
+          "side": "buy",
+          "kind": "market",
+          "price": 24805.5,
+          "quantity": 2,
+          "realizedPnl": 0
+        },
+        {
+          "id": "t5",
+          "orderId": "o5",
+          "time": "2025-09-04 18:00",
+          "side": "sell",
+          "kind": "market",
+          "price": 24812.75,
+          "quantity": 2,
+          "realizedPnl": 29
+        },
+        {
+          "id": "t6",
+          "orderId": "o6",
+          "time": "2025-09-04 18:05",
+          "side": "sell",
+          "kind": "market",
+          "price": 24814.25,
+          "quantity": 2,
+          "realizedPnl": 0
+        }
+      ],
+      "closedLots": [
+        {
+          "openTime": "2025-09-04 17:45",
+          "openPrice": 24799.25,
+          "closeTime": "2025-09-04 17:55",
+          "closePrice": 24805.5,
+          "side": "long",
+          "quantity": 1,
+          "realizedPnl": 12.5
+        },
+        {
+          "openTime": "2025-09-04 17:50",
+          "openPrice": 24794,
+          "closeTime": "2025-09-04 17:55",
+          "closePrice": 24805.5,
+          "side": "long",
+          "quantity": 1,
+          "realizedPnl": 23
+        },
+        {
+          "openTime": "2025-09-04 17:55",
+          "openPrice": 24805.5,
+          "closeTime": "2025-09-04 18:00",
+          "closePrice": 24812.75,
+          "side": "long",
+          "quantity": 2,
+          "realizedPnl": 29
+        }
+      ],
+      "position": {
+        "quantity": -2,
+        "side": "short",
+        "averagePrice": 24814.25
+      },
+      "realizedPnl": 64.5,
+      "unrealizedPnl": -26,
+      "fills": []
+    }
+  },
+  {
+    "seq": 12,
+    "at": 1792583796,
+    "by": "human",
+    "action": "bar_advanced",
+    "payload": {
+      "bar": {
+        "time": "2025-09-04 18:15",
+        "open": 24820.5,
+        "high": 24823.75,
+        "low": 24809.75,
+        "close": 24811,
+        "volume": 1572,
+        "ema20": 24798.694516795298
+      },
+      "cursor": 483,
+      "hiddenBars": 1172,
+      "hasMore": true,
+      "orders": [
+        {
+          "id": "o1",
+          "side": "buy",
+          "kind": "market",
+          "price": 24799.25,
+          "quantity": 1,
+          "status": "filled",
+          "placedAt": "2025-09-04 17:45",
+          "placedIndex": 477,
+          "filledAt": "2025-09-04 17:45",
+          "filledIndex": 477,
+          "fillPrice": 24799.25
+        },
+        {
+          "id": "o2",
+          "side": "buy",
+          "kind": "market",
+          "price": 24794,
+          "quantity": 1,
+          "status": "filled",
+          "placedAt": "2025-09-04 17:50",
+          "placedIndex": 478,
+          "filledAt": "2025-09-04 17:50",
+          "filledIndex": 478,
+          "fillPrice": 24794
+        },
+        {
+          "id": "o3",
+          "side": "sell",
+          "kind": "market",
+          "price": 24805.5,
+          "quantity": 2,
+          "status": "filled",
+          "placedAt": "2025-09-04 17:55",
+          "placedIndex": 479,
+          "filledAt": "2025-09-04 17:55",
+          "filledIndex": 479,
+          "fillPrice": 24805.5
+        },
+        {
+          "id": "o4",
+          "side": "buy",
+          "kind": "market",
+          "price": 24805.5,
+          "quantity": 2,
+          "status": "filled",
+          "placedAt": "2025-09-04 17:55",
+          "placedIndex": 479,
+          "filledAt": "2025-09-04 17:55",
+          "filledIndex": 479,
+          "fillPrice": 24805.5
+        },
+        {
+          "id": "o5",
+          "side": "sell",
+          "kind": "market",
+          "price": 24812.75,
+          "quantity": 2,
+          "status": "filled",
+          "placedAt": "2025-09-04 18:00",
+          "placedIndex": 480,
+          "filledAt": "2025-09-04 18:00",
+          "filledIndex": 480,
+          "fillPrice": 24812.75
+        },
+        {
+          "id": "o6",
+          "side": "sell",
+          "kind": "market",
+          "price": 24814.25,
+          "quantity": 2,
+          "status": "filled",
+          "placedAt": "2025-09-04 18:05",
+          "placedIndex": 481,
+          "filledAt": "2025-09-04 18:05",
+          "filledIndex": 481,
+          "fillPrice": 24814.25
+        }
+      ],
+      "trades": [
+        {
+          "id": "t1",
+          "orderId": "o1",
+          "time": "2025-09-04 17:45",
+          "side": "buy",
+          "kind": "market",
+          "price": 24799.25,
+          "quantity": 1,
+          "realizedPnl": 0
+        },
+        {
+          "id": "t2",
+          "orderId": "o2",
+          "time": "2025-09-04 17:50",
+          "side": "buy",
+          "kind": "market",
+          "price": 24794,
+          "quantity": 1,
+          "realizedPnl": 0
+        },
+        {
+          "id": "t3",
+          "orderId": "o3",
+          "time": "2025-09-04 17:55",
+          "side": "sell",
+          "kind": "market",
+          "price": 24805.5,
+          "quantity": 2,
+          "realizedPnl": 35.5
+        },
+        {
+          "id": "t4",
+          "orderId": "o4",
+          "time": "2025-09-04 17:55",
+          "side": "buy",
+          "kind": "market",
+          "price": 24805.5,
+          "quantity": 2,
+          "realizedPnl": 0
+        },
+        {
+          "id": "t5",
+          "orderId": "o5",
+          "time": "2025-09-04 18:00",
+          "side": "sell",
+          "kind": "market",
+          "price": 24812.75,
+          "quantity": 2,
+          "realizedPnl": 29
+        },
+        {
+          "id": "t6",
+          "orderId": "o6",
+          "time": "2025-09-04 18:05",
+          "side": "sell",
+          "kind": "market",
+          "price": 24814.25,
+          "quantity": 2,
+          "realizedPnl": 0
+        }
+      ],
+      "closedLots": [
+        {
+          "openTime": "2025-09-04 17:45",
+          "openPrice": 24799.25,
+          "closeTime": "2025-09-04 17:55",
+          "closePrice": 24805.5,
+          "side": "long",
+          "quantity": 1,
+          "realizedPnl": 12.5
+        },
+        {
+          "openTime": "2025-09-04 17:50",
+          "openPrice": 24794,
+          "closeTime": "2025-09-04 17:55",
+          "closePrice": 24805.5,
+          "side": "long",
+          "quantity": 1,
+          "realizedPnl": 23
+        },
+        {
+          "openTime": "2025-09-04 17:55",
+          "openPrice": 24805.5,
+          "closeTime": "2025-09-04 18:00",
+          "closePrice": 24812.75,
+          "side": "long",
+          "quantity": 2,
+          "realizedPnl": 29
+        }
+      ],
+      "position": {
+        "quantity": -2,
+        "side": "short",
+        "averagePrice": 24814.25
+      },
+      "realizedPnl": 64.5,
+      "unrealizedPnl": 13,
+      "fills": []
+    }
+  },
+  {
+    "seq": 13,
+    "at": 1792583800,
+    "by": "human",
+    "action": "order_filled",
+    "payload": {
+      "order": {
+        "id": "o7",
+        "side": "buy",
+        "kind": "market",
+        "price": 24811,
+        "quantity": 2,
+        "status": "filled",
+        "placedAt": "2025-09-04 18:15",
+        "placedIndex": 483,
+        "filledAt": "2025-09-04 18:15",
+        "filledIndex": 483,
+        "fillPrice": 24811
+      },
+      "trade": {
+        "id": "t7",
+        "orderId": "o7",
+        "time": "2025-09-04 18:15",
+        "side": "buy",
+        "kind": "market",
+        "price": 24811,
+        "quantity": 2,
+        "realizedPnl": 13
+      },
+      "orders": [
+        {
+          "id": "o1",
+          "side": "buy",
+          "kind": "market",
+          "price": 24799.25,
+          "quantity": 1,
+          "status": "filled",
+          "placedAt": "2025-09-04 17:45",
+          "placedIndex": 477,
+          "filledAt": "2025-09-04 17:45",
+          "filledIndex": 477,
+          "fillPrice": 24799.25
+        },
+        {
+          "id": "o2",
+          "side": "buy",
+          "kind": "market",
+          "price": 24794,
+          "quantity": 1,
+          "status": "filled",
+          "placedAt": "2025-09-04 17:50",
+          "placedIndex": 478,
+          "filledAt": "2025-09-04 17:50",
+          "filledIndex": 478,
+          "fillPrice": 24794
+        },
+        {
+          "id": "o3",
+          "side": "sell",
+          "kind": "market",
+          "price": 24805.5,
+          "quantity": 2,
+          "status": "filled",
+          "placedAt": "2025-09-04 17:55",
+          "placedIndex": 479,
+          "filledAt": "2025-09-04 17:55",
+          "filledIndex": 479,
+          "fillPrice": 24805.5
+        },
+        {
+          "id": "o4",
+          "side": "buy",
+          "kind": "market",
+          "price": 24805.5,
+          "quantity": 2,
+          "status": "filled",
+          "placedAt": "2025-09-04 17:55",
+          "placedIndex": 479,
+          "filledAt": "2025-09-04 17:55",
+          "filledIndex": 479,
+          "fillPrice": 24805.5
+        },
+        {
+          "id": "o5",
+          "side": "sell",
+          "kind": "market",
+          "price": 24812.75,
+          "quantity": 2,
+          "status": "filled",
+          "placedAt": "2025-09-04 18:00",
+          "placedIndex": 480,
+          "filledAt": "2025-09-04 18:00",
+          "filledIndex": 480,
+          "fillPrice": 24812.75
+        },
+        {
+          "id": "o6",
+          "side": "sell",
+          "kind": "market",
+          "price": 24814.25,
+          "quantity": 2,
+          "status": "filled",
+          "placedAt": "2025-09-04 18:05",
+          "placedIndex": 481,
+          "filledAt": "2025-09-04 18:05",
+          "filledIndex": 481,
+          "fillPrice": 24814.25
+        },
+        {
+          "id": "o7",
+          "side": "buy",
+          "kind": "market",
+          "price": 24811,
+          "quantity": 2,
+          "status": "filled",
+          "placedAt": "2025-09-04 18:15",
+          "placedIndex": 483,
+          "filledAt": "2025-09-04 18:15",
+          "filledIndex": 483,
+          "fillPrice": 24811
+        }
+      ],
+      "trades": [
+        {
+          "id": "t1",
+          "orderId": "o1",
+          "time": "2025-09-04 17:45",
+          "side": "buy",
+          "kind": "market",
+          "price": 24799.25,
+          "quantity": 1,
+          "realizedPnl": 0
+        },
+        {
+          "id": "t2",
+          "orderId": "o2",
+          "time": "2025-09-04 17:50",
+          "side": "buy",
+          "kind": "market",
+          "price": 24794,
+          "quantity": 1,
+          "realizedPnl": 0
+        },
+        {
+          "id": "t3",
+          "orderId": "o3",
+          "time": "2025-09-04 17:55",
+          "side": "sell",
+          "kind": "market",
+          "price": 24805.5,
+          "quantity": 2,
+          "realizedPnl": 35.5
+        },
+        {
+          "id": "t4",
+          "orderId": "o4",
+          "time": "2025-09-04 17:55",
+          "side": "buy",
+          "kind": "market",
+          "price": 24805.5,
+          "quantity": 2,
+          "realizedPnl": 0
+        },
+        {
+          "id": "t5",
+          "orderId": "o5",
+          "time": "2025-09-04 18:00",
+          "side": "sell",
+          "kind": "market",
+          "price": 24812.75,
+          "quantity": 2,
+          "realizedPnl": 29
+        },
+        {
+          "id": "t6",
+          "orderId": "o6",
+          "time": "2025-09-04 18:05",
+          "side": "sell",
+          "kind": "market",
+          "price": 24814.25,
+          "quantity": 2,
+          "realizedPnl": 0
+        },
+        {
+          "id": "t7",
+          "orderId": "o7",
+          "time": "2025-09-04 18:15",
+          "side": "buy",
+          "kind": "market",
+          "price": 24811,
+          "quantity": 2,
+          "realizedPnl": 13
+        }
+      ],
+      "closedLots": [
+        {
+          "openTime": "2025-09-04 17:45",
+          "openPrice": 24799.25,
+          "closeTime": "2025-09-04 17:55",
+          "closePrice": 24805.5,
+          "side": "long",
+          "quantity": 1,
+          "realizedPnl": 12.5
+        },
+        {
+          "openTime": "2025-09-04 17:50",
+          "openPrice": 24794,
+          "closeTime": "2025-09-04 17:55",
+          "closePrice": 24805.5,
+          "side": "long",
+          "quantity": 1,
+          "realizedPnl": 23
+        },
+        {
+          "openTime": "2025-09-04 17:55",
+          "openPrice": 24805.5,
+          "closeTime": "2025-09-04 18:00",
+          "closePrice": 24812.75,
+          "side": "long",
+          "quantity": 2,
+          "realizedPnl": 29
+        },
+        {
+          "openTime": "2025-09-04 18:05",
+          "openPrice": 24814.25,
+          "closeTime": "2025-09-04 18:15",
+          "closePrice": 24811,
+          "side": "short",
+          "quantity": 2,
+          "realizedPnl": 13
+        }
+      ],
+      "position": {
+        "quantity": 0,
+        "side": "flat",
+        "averagePrice": 0
+      },
+      "realizedPnl": 77.5,
+      "unrealizedPnl": 0
+    }
+  },
+  {
+    "seq": 14,
+    "at": 1792583803,
+    "by": "human",
+    "action": "bar_advanced",
+    "payload": {
+      "bar": {
+        "time": "2025-09-04 18:20",
+        "open": 24811,
+        "high": 24812,
+        "low": 24801.5,
+        "close": 24802,
+        "volume": 1450,
+        "ema20": 24799.009324719555
+      },
+      "cursor": 484,
+      "hiddenBars": 1171,
+      "hasMore": true,
+      "orders": [
+        {
+          "id": "o1",
+          "side": "buy",
+          "kind": "market",
+          "price": 24799.25,
+          "quantity": 1,
+          "status": "filled",
+          "placedAt": "2025-09-04 17:45",
+          "placedIndex": 477,
+          "filledAt": "2025-09-04 17:45",
+          "filledIndex": 477,
+          "fillPrice": 24799.25
+        },
+        {
+          "id": "o2",
+          "side": "buy",
+          "kind": "market",
+          "price": 24794,
+          "quantity": 1,
+          "status": "filled",
+          "placedAt": "2025-09-04 17:50",
+          "placedIndex": 478,
+          "filledAt": "2025-09-04 17:50",
+          "filledIndex": 478,
+          "fillPrice": 24794
+        },
+        {
+          "id": "o3",
+          "side": "sell",
+          "kind": "market",
+          "price": 24805.5,
+          "quantity": 2,
+          "status": "filled",
+          "placedAt": "2025-09-04 17:55",
+          "placedIndex": 479,
+          "filledAt": "2025-09-04 17:55",
+          "filledIndex": 479,
+          "fillPrice": 24805.5
+        },
+        {
+          "id": "o4",
+          "side": "buy",
+          "kind": "market",
+          "price": 24805.5,
+          "quantity": 2,
+          "status": "filled",
+          "placedAt": "2025-09-04 17:55",
+          "placedIndex": 479,
+          "filledAt": "2025-09-04 17:55",
+          "filledIndex": 479,
+          "fillPrice": 24805.5
+        },
+        {
+          "id": "o5",
+          "side": "sell",
+          "kind": "market",
+          "price": 24812.75,
+          "quantity": 2,
+          "status": "filled",
+          "placedAt": "2025-09-04 18:00",
+          "placedIndex": 480,
+          "filledAt": "2025-09-04 18:00",
+          "filledIndex": 480,
+          "fillPrice": 24812.75
+        },
+        {
+          "id": "o6",
+          "side": "sell",
+          "kind": "market",
+          "price": 24814.25,
+          "quantity": 2,
+          "status": "filled",
+          "placedAt": "2025-09-04 18:05",
+          "placedIndex": 481,
+          "filledAt": "2025-09-04 18:05",
+          "filledIndex": 481,
+          "fillPrice": 24814.25
+        },
+        {
+          "id": "o7",
+          "side": "buy",
+          "kind": "market",
+          "price": 24811,
+          "quantity": 2,
+          "status": "filled",
+          "placedAt": "2025-09-04 18:15",
+          "placedIndex": 483,
+          "filledAt": "2025-09-04 18:15",
+          "filledIndex": 483,
+          "fillPrice": 24811
+        }
+      ],
+      "trades": [
+        {
+          "id": "t1",
+          "orderId": "o1",
+          "time": "2025-09-04 17:45",
+          "side": "buy",
+          "kind": "market",
+          "price": 24799.25,
+          "quantity": 1,
+          "realizedPnl": 0
+        },
+        {
+          "id": "t2",
+          "orderId": "o2",
+          "time": "2025-09-04 17:50",
+          "side": "buy",
+          "kind": "market",
+          "price": 24794,
+          "quantity": 1,
+          "realizedPnl": 0
+        },
+        {
+          "id": "t3",
+          "orderId": "o3",
+          "time": "2025-09-04 17:55",
+          "side": "sell",
+          "kind": "market",
+          "price": 24805.5,
+          "quantity": 2,
+          "realizedPnl": 35.5
+        },
+        {
+          "id": "t4",
+          "orderId": "o4",
+          "time": "2025-09-04 17:55",
+          "side": "buy",
+          "kind": "market",
+          "price": 24805.5,
+          "quantity": 2,
+          "realizedPnl": 0
+        },
+        {
+          "id": "t5",
+          "orderId": "o5",
+          "time": "2025-09-04 18:00",
+          "side": "sell",
+          "kind": "market",
+          "price": 24812.75,
+          "quantity": 2,
+          "realizedPnl": 29
+        },
+        {
+          "id": "t6",
+          "orderId": "o6",
+          "time": "2025-09-04 18:05",
+          "side": "sell",
+          "kind": "market",
+          "price": 24814.25,
+          "quantity": 2,
+          "realizedPnl": 0
+        },
+        {
+          "id": "t7",
+          "orderId": "o7",
+          "time": "2025-09-04 18:15",
+          "side": "buy",
+          "kind": "market",
+          "price": 24811,
+          "quantity": 2,
+          "realizedPnl": 13
+        }
+      ],
+      "closedLots": [
+        {
+          "openTime": "2025-09-04 17:45",
+          "openPrice": 24799.25,
+          "closeTime": "2025-09-04 17:55",
+          "closePrice": 24805.5,
+          "side": "long",
+          "quantity": 1,
+          "realizedPnl": 12.5
+        },
+        {
+          "openTime": "2025-09-04 17:50",
+          "openPrice": 24794,
+          "closeTime": "2025-09-04 17:55",
+          "closePrice": 24805.5,
+          "side": "long",
+          "quantity": 1,
+          "realizedPnl": 23
+        },
+        {
+          "openTime": "2025-09-04 17:55",
+          "openPrice": 24805.5,
+          "closeTime": "2025-09-04 18:00",
+          "closePrice": 24812.75,
+          "side": "long",
+          "quantity": 2,
+          "realizedPnl": 29
+        },
+        {
+          "openTime": "2025-09-04 18:05",
+          "openPrice": 24814.25,
+          "closeTime": "2025-09-04 18:15",
+          "closePrice": 24811,
+          "side": "short",
+          "quantity": 2,
+          "realizedPnl": 13
+        }
+      ],
+      "position": {
+        "quantity": 0,
+        "side": "flat",
+        "averagePrice": 0
+      },
+      "realizedPnl": 77.5,
+      "unrealizedPnl": 0,
+      "fills": []
+    }
+  },
+  {
+    "seq": 15,
+    "at": 1792583804,
+    "by": "human",
+    "action": "order_filled",
+    "payload": {
+      "order": {
+        "id": "o8",
+        "side": "buy",
+        "kind": "market",
+        "price": 24802,
+        "quantity": 2,
+        "status": "filled",
+        "placedAt": "2025-09-04 18:20",
+        "placedIndex": 484,
+        "filledAt": "2025-09-04 18:20",
+        "filledIndex": 484,
+        "fillPrice": 24802
+      },
+      "trade": {
+        "id": "t8",
+        "orderId": "o8",
+        "time": "2025-09-04 18:20",
+        "side": "buy",
+        "kind": "market",
+        "price": 24802,
+        "quantity": 2,
+        "realizedPnl": 0
+      },
+      "orders": [
+        {
+          "id": "o1",
+          "side": "buy",
+          "kind": "market",
+          "price": 24799.25,
+          "quantity": 1,
+          "status": "filled",
+          "placedAt": "2025-09-04 17:45",
+          "placedIndex": 477,
+          "filledAt": "2025-09-04 17:45",
+          "filledIndex": 477,
+          "fillPrice": 24799.25
+        },
+        {
+          "id": "o2",
+          "side": "buy",
+          "kind": "market",
+          "price": 24794,
+          "quantity": 1,
+          "status": "filled",
+          "placedAt": "2025-09-04 17:50",
+          "placedIndex": 478,
+          "filledAt": "2025-09-04 17:50",
+          "filledIndex": 478,
+          "fillPrice": 24794
+        },
+        {
+          "id": "o3",
+          "side": "sell",
+          "kind": "market",
+          "price": 24805.5,
+          "quantity": 2,
+          "status": "filled",
+          "placedAt": "2025-09-04 17:55",
+          "placedIndex": 479,
+          "filledAt": "2025-09-04 17:55",
+          "filledIndex": 479,
+          "fillPrice": 24805.5
+        },
+        {
+          "id": "o4",
+          "side": "buy",
+          "kind": "market",
+          "price": 24805.5,
+          "quantity": 2,
+          "status": "filled",
+          "placedAt": "2025-09-04 17:55",
+          "placedIndex": 479,
+          "filledAt": "2025-09-04 17:55",
+          "filledIndex": 479,
+          "fillPrice": 24805.5
+        },
+        {
+          "id": "o5",
+          "side": "sell",
+          "kind": "market",
+          "price": 24812.75,
+          "quantity": 2,
+          "status": "filled",
+          "placedAt": "2025-09-04 18:00",
+          "placedIndex": 480,
+          "filledAt": "2025-09-04 18:00",
+          "filledIndex": 480,
+          "fillPrice": 24812.75
+        },
+        {
+          "id": "o6",
+          "side": "sell",
+          "kind": "market",
+          "price": 24814.25,
+          "quantity": 2,
+          "status": "filled",
+          "placedAt": "2025-09-04 18:05",
+          "placedIndex": 481,
+          "filledAt": "2025-09-04 18:05",
+          "filledIndex": 481,
+          "fillPrice": 24814.25
+        },
+        {
+          "id": "o7",
+          "side": "buy",
+          "kind": "market",
+          "price": 24811,
+          "quantity": 2,
+          "status": "filled",
+          "placedAt": "2025-09-04 18:15",
+          "placedIndex": 483,
+          "filledAt": "2025-09-04 18:15",
+          "filledIndex": 483,
+          "fillPrice": 24811
+        },
+        {
+          "id": "o8",
+          "side": "buy",
+          "kind": "market",
+          "price": 24802,
+          "quantity": 2,
+          "status": "filled",
+          "placedAt": "2025-09-04 18:20",
+          "placedIndex": 484,
+          "filledAt": "2025-09-04 18:20",
+          "filledIndex": 484,
+          "fillPrice": 24802
+        }
+      ],
+      "trades": [
+        {
+          "id": "t1",
+          "orderId": "o1",
+          "time": "2025-09-04 17:45",
+          "side": "buy",
+          "kind": "market",
+          "price": 24799.25,
+          "quantity": 1,
+          "realizedPnl": 0
+        },
+        {
+          "id": "t2",
+          "orderId": "o2",
+          "time": "2025-09-04 17:50",
+          "side": "buy",
+          "kind": "market",
+          "price": 24794,
+          "quantity": 1,
+          "realizedPnl": 0
+        },
+        {
+          "id": "t3",
+          "orderId": "o3",
+          "time": "2025-09-04 17:55",
+          "side": "sell",
+          "kind": "market",
+          "price": 24805.5,
+          "quantity": 2,
+          "realizedPnl": 35.5
+        },
+        {
+          "id": "t4",
+          "orderId": "o4",
+          "time": "2025-09-04 17:55",
+          "side": "buy",
+          "kind": "market",
+          "price": 24805.5,
+          "quantity": 2,
+          "realizedPnl": 0
+        },
+        {
+          "id": "t5",
+          "orderId": "o5",
+          "time": "2025-09-04 18:00",
+          "side": "sell",
+          "kind": "market",
+          "price": 24812.75,
+          "quantity": 2,
+          "realizedPnl": 29
+        },
+        {
+          "id": "t6",
+          "orderId": "o6",
+          "time": "2025-09-04 18:05",
+          "side": "sell",
+          "kind": "market",
+          "price": 24814.25,
+          "quantity": 2,
+          "realizedPnl": 0
+        },
+        {
+          "id": "t7",
+          "orderId": "o7",
+          "time": "2025-09-04 18:15",
+          "side": "buy",
+          "kind": "market",
+          "price": 24811,
+          "quantity": 2,
+          "realizedPnl": 13
+        },
+        {
+          "id": "t8",
+          "orderId": "o8",
+          "time": "2025-09-04 18:20",
+          "side": "buy",
+          "kind": "market",
+          "price": 24802,
+          "quantity": 2,
+          "realizedPnl": 0
+        }
+      ],
+      "closedLots": [
+        {
+          "openTime": "2025-09-04 17:45",
+          "openPrice": 24799.25,
+          "closeTime": "2025-09-04 17:55",
+          "closePrice": 24805.5,
+          "side": "long",
+          "quantity": 1,
+          "realizedPnl": 12.5
+        },
+        {
+          "openTime": "2025-09-04 17:50",
+          "openPrice": 24794,
+          "closeTime": "2025-09-04 17:55",
+          "closePrice": 24805.5,
+          "side": "long",
+          "quantity": 1,
+          "realizedPnl": 23
+        },
+        {
+          "openTime": "2025-09-04 17:55",
+          "openPrice": 24805.5,
+          "closeTime": "2025-09-04 18:00",
+          "closePrice": 24812.75,
+          "side": "long",
+          "quantity": 2,
+          "realizedPnl": 29
+        },
+        {
+          "openTime": "2025-09-04 18:05",
+          "openPrice": 24814.25,
+          "closeTime": "2025-09-04 18:15",
+          "closePrice": 24811,
+          "side": "short",
+          "quantity": 2,
+          "realizedPnl": 13
+        }
+      ],
+      "position": {
+        "quantity": 2,
+        "side": "long",
+        "averagePrice": 24802
+      },
+      "realizedPnl": 77.5,
+      "unrealizedPnl": 0
+    }
+  },
+  {
+    "seq": 16,
+    "at": 1792583805,
+    "by": "human",
+    "action": "bar_advanced",
+    "payload": {
+      "bar": {
+        "time": "2025-09-04 18:25",
+        "open": 24801.5,
+        "high": 24802.25,
+        "low": 24792.25,
+        "close": 24794.25,
+        "volume": 1710,
+        "ema20": 24798.556055698642
+      },
+      "cursor": 485,
+      "hiddenBars": 1170,
+      "hasMore": true,
+      "orders": [
+        {
+          "id": "o1",
+          "side": "buy",
+          "kind": "market",
+          "price": 24799.25,
+          "quantity": 1,
+          "status": "filled",
+          "placedAt": "2025-09-04 17:45",
+          "placedIndex": 477,
+          "filledAt": "2025-09-04 17:45",
+          "filledIndex": 477,
+          "fillPrice": 24799.25
+        },
+        {
+          "id": "o2",
+          "side": "buy",
+          "kind": "market",
+          "price": 24794,
+          "quantity": 1,
+          "status": "filled",
+          "placedAt": "2025-09-04 17:50",
+          "placedIndex": 478,
+          "filledAt": "2025-09-04 17:50",
+          "filledIndex": 478,
+          "fillPrice": 24794
+        },
+        {
+          "id": "o3",
+          "side": "sell",
+          "kind": "market",
+          "price": 24805.5,
+          "quantity": 2,
+          "status": "filled",
+          "placedAt": "2025-09-04 17:55",
+          "placedIndex": 479,
+          "filledAt": "2025-09-04 17:55",
+          "filledIndex": 479,
+          "fillPrice": 24805.5
+        },
+        {
+          "id": "o4",
+          "side": "buy",
+          "kind": "market",
+          "price": 24805.5,
+          "quantity": 2,
+          "status": "filled",
+          "placedAt": "2025-09-04 17:55",
+          "placedIndex": 479,
+          "filledAt": "2025-09-04 17:55",
+          "filledIndex": 479,
+          "fillPrice": 24805.5
+        },
+        {
+          "id": "o5",
+          "side": "sell",
+          "kind": "market",
+          "price": 24812.75,
+          "quantity": 2,
+          "status": "filled",
+          "placedAt": "2025-09-04 18:00",
+          "placedIndex": 480,
+          "filledAt": "2025-09-04 18:00",
+          "filledIndex": 480,
+          "fillPrice": 24812.75
+        },
+        {
+          "id": "o6",
+          "side": "sell",
+          "kind": "market",
+          "price": 24814.25,
+          "quantity": 2,
+          "status": "filled",
+          "placedAt": "2025-09-04 18:05",
+          "placedIndex": 481,
+          "filledAt": "2025-09-04 18:05",
+          "filledIndex": 481,
+          "fillPrice": 24814.25
+        },
+        {
+          "id": "o7",
+          "side": "buy",
+          "kind": "market",
+          "price": 24811,
+          "quantity": 2,
+          "status": "filled",
+          "placedAt": "2025-09-04 18:15",
+          "placedIndex": 483,
+          "filledAt": "2025-09-04 18:15",
+          "filledIndex": 483,
+          "fillPrice": 24811
+        },
+        {
+          "id": "o8",
+          "side": "buy",
+          "kind": "market",
+          "price": 24802,
+          "quantity": 2,
+          "status": "filled",
+          "placedAt": "2025-09-04 18:20",
+          "placedIndex": 484,
+          "filledAt": "2025-09-04 18:20",
+          "filledIndex": 484,
+          "fillPrice": 24802
+        }
+      ],
+      "trades": [
+        {
+          "id": "t1",
+          "orderId": "o1",
+          "time": "2025-09-04 17:45",
+          "side": "buy",
+          "kind": "market",
+          "price": 24799.25,
+          "quantity": 1,
+          "realizedPnl": 0
+        },
+        {
+          "id": "t2",
+          "orderId": "o2",
+          "time": "2025-09-04 17:50",
+          "side": "buy",
+          "kind": "market",
+          "price": 24794,
+          "quantity": 1,
+          "realizedPnl": 0
+        },
+        {
+          "id": "t3",
+          "orderId": "o3",
+          "time": "2025-09-04 17:55",
+          "side": "sell",
+          "kind": "market",
+          "price": 24805.5,
+          "quantity": 2,
+          "realizedPnl": 35.5
+        },
+        {
+          "id": "t4",
+          "orderId": "o4",
+          "time": "2025-09-04 17:55",
+          "side": "buy",
+          "kind": "market",
+          "price": 24805.5,
+          "quantity": 2,
+          "realizedPnl": 0
+        },
+        {
+          "id": "t5",
+          "orderId": "o5",
+          "time": "2025-09-04 18:00",
+          "side": "sell",
+          "kind": "market",
+          "price": 24812.75,
+          "quantity": 2,
+          "realizedPnl": 29
+        },
+        {
+          "id": "t6",
+          "orderId": "o6",
+          "time": "2025-09-04 18:05",
+          "side": "sell",
+          "kind": "market",
+          "price": 24814.25,
+          "quantity": 2,
+          "realizedPnl": 0
+        },
+        {
+          "id": "t7",
+          "orderId": "o7",
+          "time": "2025-09-04 18:15",
+          "side": "buy",
+          "kind": "market",
+          "price": 24811,
+          "quantity": 2,
+          "realizedPnl": 13
+        },
+        {
+          "id": "t8",
+          "orderId": "o8",
+          "time": "2025-09-04 18:20",
+          "side": "buy",
+          "kind": "market",
+          "price": 24802,
+          "quantity": 2,
+          "realizedPnl": 0
+        }
+      ],
+      "closedLots": [
+        {
+          "openTime": "2025-09-04 17:45",
+          "openPrice": 24799.25,
+          "closeTime": "2025-09-04 17:55",
+          "closePrice": 24805.5,
+          "side": "long",
+          "quantity": 1,
+          "realizedPnl": 12.5
+        },
+        {
+          "openTime": "2025-09-04 17:50",
+          "openPrice": 24794,
+          "closeTime": "2025-09-04 17:55",
+          "closePrice": 24805.5,
+          "side": "long",
+          "quantity": 1,
+          "realizedPnl": 23
+        },
+        {
+          "openTime": "2025-09-04 17:55",
+          "openPrice": 24805.5,
+          "closeTime": "2025-09-04 18:00",
+          "closePrice": 24812.75,
+          "side": "long",
+          "quantity": 2,
+          "realizedPnl": 29
+        },
+        {
+          "openTime": "2025-09-04 18:05",
+          "openPrice": 24814.25,
+          "closeTime": "2025-09-04 18:15",
+          "closePrice": 24811,
+          "side": "short",
+          "quantity": 2,
+          "realizedPnl": 13
+        }
+      ],
+      "position": {
+        "quantity": 2,
+        "side": "long",
+        "averagePrice": 24802
+      },
+      "realizedPnl": 77.5,
+      "unrealizedPnl": -31,
+      "fills": []
+    }
+  },
+  {
+    "seq": 17,
+    "at": 1792583807,
+    "by": "human",
+    "action": "order_filled",
+    "payload": {
+      "order": {
+        "id": "o9",
+        "side": "buy",
+        "kind": "market",
+        "price": 24794.25,
+        "quantity": 2,
+        "status": "filled",
+        "placedAt": "2025-09-04 18:25",
+        "placedIndex": 485,
+        "filledAt": "2025-09-04 18:25",
+        "filledIndex": 485,
+        "fillPrice": 24794.25
+      },
+      "trade": {
+        "id": "t9",
+        "orderId": "o9",
+        "time": "2025-09-04 18:25",
+        "side": "buy",
+        "kind": "market",
+        "price": 24794.25,
+        "quantity": 2,
+        "realizedPnl": 0
+      },
+      "orders": [
+        {
+          "id": "o1",
+          "side": "buy",
+          "kind": "market",
+          "price": 24799.25,
+          "quantity": 1,
+          "status": "filled",
+          "placedAt": "2025-09-04 17:45",
+          "placedIndex": 477,
+          "filledAt": "2025-09-04 17:45",
+          "filledIndex": 477,
+          "fillPrice": 24799.25
+        },
+        {
+          "id": "o2",
+          "side": "buy",
+          "kind": "market",
+          "price": 24794,
+          "quantity": 1,
+          "status": "filled",
+          "placedAt": "2025-09-04 17:50",
+          "placedIndex": 478,
+          "filledAt": "2025-09-04 17:50",
+          "filledIndex": 478,
+          "fillPrice": 24794
+        },
+        {
+          "id": "o3",
+          "side": "sell",
+          "kind": "market",
+          "price": 24805.5,
+          "quantity": 2,
+          "status": "filled",
+          "placedAt": "2025-09-04 17:55",
+          "placedIndex": 479,
+          "filledAt": "2025-09-04 17:55",
+          "filledIndex": 479,
+          "fillPrice": 24805.5
+        },
+        {
+          "id": "o4",
+          "side": "buy",
+          "kind": "market",
+          "price": 24805.5,
+          "quantity": 2,
+          "status": "filled",
+          "placedAt": "2025-09-04 17:55",
+          "placedIndex": 479,
+          "filledAt": "2025-09-04 17:55",
+          "filledIndex": 479,
+          "fillPrice": 24805.5
+        },
+        {
+          "id": "o5",
+          "side": "sell",
+          "kind": "market",
+          "price": 24812.75,
+          "quantity": 2,
+          "status": "filled",
+          "placedAt": "2025-09-04 18:00",
+          "placedIndex": 480,
+          "filledAt": "2025-09-04 18:00",
+          "filledIndex": 480,
+          "fillPrice": 24812.75
+        },
+        {
+          "id": "o6",
+          "side": "sell",
+          "kind": "market",
+          "price": 24814.25,
+          "quantity": 2,
+          "status": "filled",
+          "placedAt": "2025-09-04 18:05",
+          "placedIndex": 481,
+          "filledAt": "2025-09-04 18:05",
+          "filledIndex": 481,
+          "fillPrice": 24814.25
+        },
+        {
+          "id": "o7",
+          "side": "buy",
+          "kind": "market",
+          "price": 24811,
+          "quantity": 2,
+          "status": "filled",
+          "placedAt": "2025-09-04 18:15",
+          "placedIndex": 483,
+          "filledAt": "2025-09-04 18:15",
+          "filledIndex": 483,
+          "fillPrice": 24811
+        },
+        {
+          "id": "o8",
+          "side": "buy",
+          "kind": "market",
+          "price": 24802,
+          "quantity": 2,
+          "status": "filled",
+          "placedAt": "2025-09-04 18:20",
+          "placedIndex": 484,
+          "filledAt": "2025-09-04 18:20",
+          "filledIndex": 484,
+          "fillPrice": 24802
+        },
+        {
+          "id": "o9",
+          "side": "buy",
+          "kind": "market",
+          "price": 24794.25,
+          "quantity": 2,
+          "status": "filled",
+          "placedAt": "2025-09-04 18:25",
+          "placedIndex": 485,
+          "filledAt": "2025-09-04 18:25",
+          "filledIndex": 485,
+          "fillPrice": 24794.25
+        }
+      ],
+      "trades": [
+        {
+          "id": "t1",
+          "orderId": "o1",
+          "time": "2025-09-04 17:45",
+          "side": "buy",
+          "kind": "market",
+          "price": 24799.25,
+          "quantity": 1,
+          "realizedPnl": 0
+        },
+        {
+          "id": "t2",
+          "orderId": "o2",
+          "time": "2025-09-04 17:50",
+          "side": "buy",
+          "kind": "market",
+          "price": 24794,
+          "quantity": 1,
+          "realizedPnl": 0
+        },
+        {
+          "id": "t3",
+          "orderId": "o3",
+          "time": "2025-09-04 17:55",
+          "side": "sell",
+          "kind": "market",
+          "price": 24805.5,
+          "quantity": 2,
+          "realizedPnl": 35.5
+        },
+        {
+          "id": "t4",
+          "orderId": "o4",
+          "time": "2025-09-04 17:55",
+          "side": "buy",
+          "kind": "market",
+          "price": 24805.5,
+          "quantity": 2,
+          "realizedPnl": 0
+        },
+        {
+          "id": "t5",
+          "orderId": "o5",
+          "time": "2025-09-04 18:00",
+          "side": "sell",
+          "kind": "market",
+          "price": 24812.75,
+          "quantity": 2,
+          "realizedPnl": 29
+        },
+        {
+          "id": "t6",
+          "orderId": "o6",
+          "time": "2025-09-04 18:05",
+          "side": "sell",
+          "kind": "market",
+          "price": 24814.25,
+          "quantity": 2,
+          "realizedPnl": 0
+        },
+        {
+          "id": "t7",
+          "orderId": "o7",
+          "time": "2025-09-04 18:15",
+          "side": "buy",
+          "kind": "market",
+          "price": 24811,
+          "quantity": 2,
+          "realizedPnl": 13
+        },
+        {
+          "id": "t8",
+          "orderId": "o8",
+          "time": "2025-09-04 18:20",
+          "side": "buy",
+          "kind": "market",
+          "price": 24802,
+          "quantity": 2,
+          "realizedPnl": 0
+        },
+        {
+          "id": "t9",
+          "orderId": "o9",
+          "time": "2025-09-04 18:25",
+          "side": "buy",
+          "kind": "market",
+          "price": 24794.25,
+          "quantity": 2,
+          "realizedPnl": 0
+        }
+      ],
+      "closedLots": [
+        {
+          "openTime": "2025-09-04 17:45",
+          "openPrice": 24799.25,
+          "closeTime": "2025-09-04 17:55",
+          "closePrice": 24805.5,
+          "side": "long",
+          "quantity": 1,
+          "realizedPnl": 12.5
+        },
+        {
+          "openTime": "2025-09-04 17:50",
+          "openPrice": 24794,
+          "closeTime": "2025-09-04 17:55",
+          "closePrice": 24805.5,
+          "side": "long",
+          "quantity": 1,
+          "realizedPnl": 23
+        },
+        {
+          "openTime": "2025-09-04 17:55",
+          "openPrice": 24805.5,
+          "closeTime": "2025-09-04 18:00",
+          "closePrice": 24812.75,
+          "side": "long",
+          "quantity": 2,
+          "realizedPnl": 29
+        },
+        {
+          "openTime": "2025-09-04 18:05",
+          "openPrice": 24814.25,
+          "closeTime": "2025-09-04 18:15",
+          "closePrice": 24811,
+          "side": "short",
+          "quantity": 2,
+          "realizedPnl": 13
+        }
+      ],
+      "position": {
+        "quantity": 4,
+        "side": "long",
+        "averagePrice": 24798.125
+      },
+      "realizedPnl": 77.5,
+      "unrealizedPnl": -31
+    }
+  },
+  {
+    "seq": 18,
+    "at": 1792583807,
+    "by": "human",
+    "action": "bar_advanced",
+    "payload": {
+      "bar": {
+        "time": "2025-09-04 18:30",
+        "open": 24793.75,
+        "high": 24805,
+        "low": 24792.5,
+        "close": 24800.25,
+        "volume": 2128,
+        "ema20": 24798.717383727344
+      },
+      "cursor": 486,
+      "hiddenBars": 1169,
+      "hasMore": true,
+      "orders": [
+        {
+          "id": "o1",
+          "side": "buy",
+          "kind": "market",
+          "price": 24799.25,
+          "quantity": 1,
+          "status": "filled",
+          "placedAt": "2025-09-04 17:45",
+          "placedIndex": 477,
+          "filledAt": "2025-09-04 17:45",
+          "filledIndex": 477,
+          "fillPrice": 24799.25
+        },
+        {
+          "id": "o2",
+          "side": "buy",
+          "kind": "market",
+          "price": 24794,
+          "quantity": 1,
+          "status": "filled",
+          "placedAt": "2025-09-04 17:50",
+          "placedIndex": 478,
+          "filledAt": "2025-09-04 17:50",
+          "filledIndex": 478,
+          "fillPrice": 24794
+        },
+        {
+          "id": "o3",
+          "side": "sell",
+          "kind": "market",
+          "price": 24805.5,
+          "quantity": 2,
+          "status": "filled",
+          "placedAt": "2025-09-04 17:55",
+          "placedIndex": 479,
+          "filledAt": "2025-09-04 17:55",
+          "filledIndex": 479,
+          "fillPrice": 24805.5
+        },
+        {
+          "id": "o4",
+          "side": "buy",
+          "kind": "market",
+          "price": 24805.5,
+          "quantity": 2,
+          "status": "filled",
+          "placedAt": "2025-09-04 17:55",
+          "placedIndex": 479,
+          "filledAt": "2025-09-04 17:55",
+          "filledIndex": 479,
+          "fillPrice": 24805.5
+        },
+        {
+          "id": "o5",
+          "side": "sell",
+          "kind": "market",
+          "price": 24812.75,
+          "quantity": 2,
+          "status": "filled",
+          "placedAt": "2025-09-04 18:00",
+          "placedIndex": 480,
+          "filledAt": "2025-09-04 18:00",
+          "filledIndex": 480,
+          "fillPrice": 24812.75
+        },
+        {
+          "id": "o6",
+          "side": "sell",
+          "kind": "market",
+          "price": 24814.25,
+          "quantity": 2,
+          "status": "filled",
+          "placedAt": "2025-09-04 18:05",
+          "placedIndex": 481,
+          "filledAt": "2025-09-04 18:05",
+          "filledIndex": 481,
+          "fillPrice": 24814.25
+        },
+        {
+          "id": "o7",
+          "side": "buy",
+          "kind": "market",
+          "price": 24811,
+          "quantity": 2,
+          "status": "filled",
+          "placedAt": "2025-09-04 18:15",
+          "placedIndex": 483,
+          "filledAt": "2025-09-04 18:15",
+          "filledIndex": 483,
+          "fillPrice": 24811
+        },
+        {
+          "id": "o8",
+          "side": "buy",
+          "kind": "market",
+          "price": 24802,
+          "quantity": 2,
+          "status": "filled",
+          "placedAt": "2025-09-04 18:20",
+          "placedIndex": 484,
+          "filledAt": "2025-09-04 18:20",
+          "filledIndex": 484,
+          "fillPrice": 24802
+        },
+        {
+          "id": "o9",
+          "side": "buy",
+          "kind": "market",
+          "price": 24794.25,
+          "quantity": 2,
+          "status": "filled",
+          "placedAt": "2025-09-04 18:25",
+          "placedIndex": 485,
+          "filledAt": "2025-09-04 18:25",
+          "filledIndex": 485,
+          "fillPrice": 24794.25
+        }
+      ],
+      "trades": [
+        {
+          "id": "t1",
+          "orderId": "o1",
+          "time": "2025-09-04 17:45",
+          "side": "buy",
+          "kind": "market",
+          "price": 24799.25,
+          "quantity": 1,
+          "realizedPnl": 0
+        },
+        {
+          "id": "t2",
+          "orderId": "o2",
+          "time": "2025-09-04 17:50",
+          "side": "buy",
+          "kind": "market",
+          "price": 24794,
+          "quantity": 1,
+          "realizedPnl": 0
+        },
+        {
+          "id": "t3",
+          "orderId": "o3",
+          "time": "2025-09-04 17:55",
+          "side": "sell",
+          "kind": "market",
+          "price": 24805.5,
+          "quantity": 2,
+          "realizedPnl": 35.5
+        },
+        {
+          "id": "t4",
+          "orderId": "o4",
+          "time": "2025-09-04 17:55",
+          "side": "buy",
+          "kind": "market",
+          "price": 24805.5,
+          "quantity": 2,
+          "realizedPnl": 0
+        },
+        {
+          "id": "t5",
+          "orderId": "o5",
+          "time": "2025-09-04 18:00",
+          "side": "sell",
+          "kind": "market",
+          "price": 24812.75,
+          "quantity": 2,
+          "realizedPnl": 29
+        },
+        {
+          "id": "t6",
+          "orderId": "o6",
+          "time": "2025-09-04 18:05",
+          "side": "sell",
+          "kind": "market",
+          "price": 24814.25,
+          "quantity": 2,
+          "realizedPnl": 0
+        },
+        {
+          "id": "t7",
+          "orderId": "o7",
+          "time": "2025-09-04 18:15",
+          "side": "buy",
+          "kind": "market",
+          "price": 24811,
+          "quantity": 2,
+          "realizedPnl": 13
+        },
+        {
+          "id": "t8",
+          "orderId": "o8",
+          "time": "2025-09-04 18:20",
+          "side": "buy",
+          "kind": "market",
+          "price": 24802,
+          "quantity": 2,
+          "realizedPnl": 0
+        },
+        {
+          "id": "t9",
+          "orderId": "o9",
+          "time": "2025-09-04 18:25",
+          "side": "buy",
+          "kind": "market",
+          "price": 24794.25,
+          "quantity": 2,
+          "realizedPnl": 0
+        }
+      ],
+      "closedLots": [
+        {
+          "openTime": "2025-09-04 17:45",
+          "openPrice": 24799.25,
+          "closeTime": "2025-09-04 17:55",
+          "closePrice": 24805.5,
+          "side": "long",
+          "quantity": 1,
+          "realizedPnl": 12.5
+        },
+        {
+          "openTime": "2025-09-04 17:50",
+          "openPrice": 24794,
+          "closeTime": "2025-09-04 17:55",
+          "closePrice": 24805.5,
+          "side": "long",
+          "quantity": 1,
+          "realizedPnl": 23
+        },
+        {
+          "openTime": "2025-09-04 17:55",
+          "openPrice": 24805.5,
+          "closeTime": "2025-09-04 18:00",
+          "closePrice": 24812.75,
+          "side": "long",
+          "quantity": 2,
+          "realizedPnl": 29
+        },
+        {
+          "openTime": "2025-09-04 18:05",
+          "openPrice": 24814.25,
+          "closeTime": "2025-09-04 18:15",
+          "closePrice": 24811,
+          "side": "short",
+          "quantity": 2,
+          "realizedPnl": 13
+        }
+      ],
+      "position": {
+        "quantity": 4,
+        "side": "long",
+        "averagePrice": 24798.125
+      },
+      "realizedPnl": 77.5,
+      "unrealizedPnl": 17,
+      "fills": []
+    }
+  },
+  {
+    "seq": 19,
+    "at": 1792583809,
+    "by": "human",
+    "action": "order_filled",
+    "payload": {
+      "order": {
+        "id": "o10",
+        "side": "buy",
+        "kind": "market",
+        "price": 24800.25,
+        "quantity": 2,
+        "status": "filled",
+        "placedAt": "2025-09-04 18:30",
+        "placedIndex": 486,
+        "filledAt": "2025-09-04 18:30",
+        "filledIndex": 486,
+        "fillPrice": 24800.25
+      },
+      "trade": {
+        "id": "t10",
+        "orderId": "o10",
+        "time": "2025-09-04 18:30",
+        "side": "buy",
+        "kind": "market",
+        "price": 24800.25,
+        "quantity": 2,
+        "realizedPnl": 0
+      },
+      "orders": [
+        {
+          "id": "o1",
+          "side": "buy",
+          "kind": "market",
+          "price": 24799.25,
+          "quantity": 1,
+          "status": "filled",
+          "placedAt": "2025-09-04 17:45",
+          "placedIndex": 477,
+          "filledAt": "2025-09-04 17:45",
+          "filledIndex": 477,
+          "fillPrice": 24799.25
+        },
+        {
+          "id": "o2",
+          "side": "buy",
+          "kind": "market",
+          "price": 24794,
+          "quantity": 1,
+          "status": "filled",
+          "placedAt": "2025-09-04 17:50",
+          "placedIndex": 478,
+          "filledAt": "2025-09-04 17:50",
+          "filledIndex": 478,
+          "fillPrice": 24794
+        },
+        {
+          "id": "o3",
+          "side": "sell",
+          "kind": "market",
+          "price": 24805.5,
+          "quantity": 2,
+          "status": "filled",
+          "placedAt": "2025-09-04 17:55",
+          "placedIndex": 479,
+          "filledAt": "2025-09-04 17:55",
+          "filledIndex": 479,
+          "fillPrice": 24805.5
+        },
+        {
+          "id": "o4",
+          "side": "buy",
+          "kind": "market",
+          "price": 24805.5,
+          "quantity": 2,
+          "status": "filled",
+          "placedAt": "2025-09-04 17:55",
+          "placedIndex": 479,
+          "filledAt": "2025-09-04 17:55",
+          "filledIndex": 479,
+          "fillPrice": 24805.5
+        },
+        {
+          "id": "o5",
+          "side": "sell",
+          "kind": "market",
+          "price": 24812.75,
+          "quantity": 2,
+          "status": "filled",
+          "placedAt": "2025-09-04 18:00",
+          "placedIndex": 480,
+          "filledAt": "2025-09-04 18:00",
+          "filledIndex": 480,
+          "fillPrice": 24812.75
+        },
+        {
+          "id": "o6",
+          "side": "sell",
+          "kind": "market",
+          "price": 24814.25,
+          "quantity": 2,
+          "status": "filled",
+          "placedAt": "2025-09-04 18:05",
+          "placedIndex": 481,
+          "filledAt": "2025-09-04 18:05",
+          "filledIndex": 481,
+          "fillPrice": 24814.25
+        },
+        {
+          "id": "o7",
+          "side": "buy",
+          "kind": "market",
+          "price": 24811,
+          "quantity": 2,
+          "status": "filled",
+          "placedAt": "2025-09-04 18:15",
+          "placedIndex": 483,
+          "filledAt": "2025-09-04 18:15",
+          "filledIndex": 483,
+          "fillPrice": 24811
+        },
+        {
+          "id": "o8",
+          "side": "buy",
+          "kind": "market",
+          "price": 24802,
+          "quantity": 2,
+          "status": "filled",
+          "placedAt": "2025-09-04 18:20",
+          "placedIndex": 484,
+          "filledAt": "2025-09-04 18:20",
+          "filledIndex": 484,
+          "fillPrice": 24802
+        },
+        {
+          "id": "o9",
+          "side": "buy",
+          "kind": "market",
+          "price": 24794.25,
+          "quantity": 2,
+          "status": "filled",
+          "placedAt": "2025-09-04 18:25",
+          "placedIndex": 485,
+          "filledAt": "2025-09-04 18:25",
+          "filledIndex": 485,
+          "fillPrice": 24794.25
+        },
+        {
+          "id": "o10",
+          "side": "buy",
+          "kind": "market",
+          "price": 24800.25,
+          "quantity": 2,
+          "status": "filled",
+          "placedAt": "2025-09-04 18:30",
+          "placedIndex": 486,
+          "filledAt": "2025-09-04 18:30",
+          "filledIndex": 486,
+          "fillPrice": 24800.25
+        }
+      ],
+      "trades": [
+        {
+          "id": "t1",
+          "orderId": "o1",
+          "time": "2025-09-04 17:45",
+          "side": "buy",
+          "kind": "market",
+          "price": 24799.25,
+          "quantity": 1,
+          "realizedPnl": 0
+        },
+        {
+          "id": "t2",
+          "orderId": "o2",
+          "time": "2025-09-04 17:50",
+          "side": "buy",
+          "kind": "market",
+          "price": 24794,
+          "quantity": 1,
+          "realizedPnl": 0
+        },
+        {
+          "id": "t3",
+          "orderId": "o3",
+          "time": "2025-09-04 17:55",
+          "side": "sell",
+          "kind": "market",
+          "price": 24805.5,
+          "quantity": 2,
+          "realizedPnl": 35.5
+        },
+        {
+          "id": "t4",
+          "orderId": "o4",
+          "time": "2025-09-04 17:55",
+          "side": "buy",
+          "kind": "market",
+          "price": 24805.5,
+          "quantity": 2,
+          "realizedPnl": 0
+        },
+        {
+          "id": "t5",
+          "orderId": "o5",
+          "time": "2025-09-04 18:00",
+          "side": "sell",
+          "kind": "market",
+          "price": 24812.75,
+          "quantity": 2,
+          "realizedPnl": 29
+        },
+        {
+          "id": "t6",
+          "orderId": "o6",
+          "time": "2025-09-04 18:05",
+          "side": "sell",
+          "kind": "market",
+          "price": 24814.25,
+          "quantity": 2,
+          "realizedPnl": 0
+        },
+        {
+          "id": "t7",
+          "orderId": "o7",
+          "time": "2025-09-04 18:15",
+          "side": "buy",
+          "kind": "market",
+          "price": 24811,
+          "quantity": 2,
+          "realizedPnl": 13
+        },
+        {
+          "id": "t8",
+          "orderId": "o8",
+          "time": "2025-09-04 18:20",
+          "side": "buy",
+          "kind": "market",
+          "price": 24802,
+          "quantity": 2,
+          "realizedPnl": 0
+        },
+        {
+          "id": "t9",
+          "orderId": "o9",
+          "time": "2025-09-04 18:25",
+          "side": "buy",
+          "kind": "market",
+          "price": 24794.25,
+          "quantity": 2,
+          "realizedPnl": 0
+        },
+        {
+          "id": "t10",
+          "orderId": "o10",
+          "time": "2025-09-04 18:30",
+          "side": "buy",
+          "kind": "market",
+          "price": 24800.25,
+          "quantity": 2,
+          "realizedPnl": 0
+        }
+      ],
+      "closedLots": [
+        {
+          "openTime": "2025-09-04 17:45",
+          "openPrice": 24799.25,
+          "closeTime": "2025-09-04 17:55",
+          "closePrice": 24805.5,
+          "side": "long",
+          "quantity": 1,
+          "realizedPnl": 12.5
+        },
+        {
+          "openTime": "2025-09-04 17:50",
+          "openPrice": 24794,
+          "closeTime": "2025-09-04 17:55",
+          "closePrice": 24805.5,
+          "side": "long",
+          "quantity": 1,
+          "realizedPnl": 23
+        },
+        {
+          "openTime": "2025-09-04 17:55",
+          "openPrice": 24805.5,
+          "closeTime": "2025-09-04 18:00",
+          "closePrice": 24812.75,
+          "side": "long",
+          "quantity": 2,
+          "realizedPnl": 29
+        },
+        {
+          "openTime": "2025-09-04 18:05",
+          "openPrice": 24814.25,
+          "closeTime": "2025-09-04 18:15",
+          "closePrice": 24811,
+          "side": "short",
+          "quantity": 2,
+          "realizedPnl": 13
+        }
+      ],
+      "position": {
+        "quantity": 6,
+        "side": "long",
+        "averagePrice": 24798.833333333332
+      },
+      "realizedPnl": 77.5,
+      "unrealizedPnl": 17.000000000014552
+    }
+  },
+  {
+    "seq": 20,
+    "at": 1792583810,
+    "by": "human",
+    "action": "bar_advanced",
+    "payload": {
+      "bar": {
+        "time": "2025-09-04 18:35",
+        "open": 24800.5,
+        "high": 24805.5,
+        "low": 24799.5,
+        "close": 24803.25,
+        "volume": 899,
+        "ema20": 24799.149061467597
+      },
+      "cursor": 487,
+      "hiddenBars": 1168,
+      "hasMore": true,
+      "orders": [
+        {
+          "id": "o1",
+          "side": "buy",
+          "kind": "market",
+          "price": 24799.25,
+          "quantity": 1,
+          "status": "filled",
+          "placedAt": "2025-09-04 17:45",
+          "placedIndex": 477,
+          "filledAt": "2025-09-04 17:45",
+          "filledIndex": 477,
+          "fillPrice": 24799.25
+        },
+        {
+          "id": "o2",
+          "side": "buy",
+          "kind": "market",
+          "price": 24794,
+          "quantity": 1,
+          "status": "filled",
+          "placedAt": "2025-09-04 17:50",
+          "placedIndex": 478,
+          "filledAt": "2025-09-04 17:50",
+          "filledIndex": 478,
+          "fillPrice": 24794
+        },
+        {
+          "id": "o3",
+          "side": "sell",
+          "kind": "market",
+          "price": 24805.5,
+          "quantity": 2,
+          "status": "filled",
+          "placedAt": "2025-09-04 17:55",
+          "placedIndex": 479,
+          "filledAt": "2025-09-04 17:55",
+          "filledIndex": 479,
+          "fillPrice": 24805.5
+        },
+        {
+          "id": "o4",
+          "side": "buy",
+          "kind": "market",
+          "price": 24805.5,
+          "quantity": 2,
+          "status": "filled",
+          "placedAt": "2025-09-04 17:55",
+          "placedIndex": 479,
+          "filledAt": "2025-09-04 17:55",
+          "filledIndex": 479,
+          "fillPrice": 24805.5
+        },
+        {
+          "id": "o5",
+          "side": "sell",
+          "kind": "market",
+          "price": 24812.75,
+          "quantity": 2,
+          "status": "filled",
+          "placedAt": "2025-09-04 18:00",
+          "placedIndex": 480,
+          "filledAt": "2025-09-04 18:00",
+          "filledIndex": 480,
+          "fillPrice": 24812.75
+        },
+        {
+          "id": "o6",
+          "side": "sell",
+          "kind": "market",
+          "price": 24814.25,
+          "quantity": 2,
+          "status": "filled",
+          "placedAt": "2025-09-04 18:05",
+          "placedIndex": 481,
+          "filledAt": "2025-09-04 18:05",
+          "filledIndex": 481,
+          "fillPrice": 24814.25
+        },
+        {
+          "id": "o7",
+          "side": "buy",
+          "kind": "market",
+          "price": 24811,
+          "quantity": 2,
+          "status": "filled",
+          "placedAt": "2025-09-04 18:15",
+          "placedIndex": 483,
+          "filledAt": "2025-09-04 18:15",
+          "filledIndex": 483,
+          "fillPrice": 24811
+        },
+        {
+          "id": "o8",
+          "side": "buy",
+          "kind": "market",
+          "price": 24802,
+          "quantity": 2,
+          "status": "filled",
+          "placedAt": "2025-09-04 18:20",
+          "placedIndex": 484,
+          "filledAt": "2025-09-04 18:20",
+          "filledIndex": 484,
+          "fillPrice": 24802
+        },
+        {
+          "id": "o9",
+          "side": "buy",
+          "kind": "market",
+          "price": 24794.25,
+          "quantity": 2,
+          "status": "filled",
+          "placedAt": "2025-09-04 18:25",
+          "placedIndex": 485,
+          "filledAt": "2025-09-04 18:25",
+          "filledIndex": 485,
+          "fillPrice": 24794.25
+        },
+        {
+          "id": "o10",
+          "side": "buy",
+          "kind": "market",
+          "price": 24800.25,
+          "quantity": 2,
+          "status": "filled",
+          "placedAt": "2025-09-04 18:30",
+          "placedIndex": 486,
+          "filledAt": "2025-09-04 18:30",
+          "filledIndex": 486,
+          "fillPrice": 24800.25
+        }
+      ],
+      "trades": [
+        {
+          "id": "t1",
+          "orderId": "o1",
+          "time": "2025-09-04 17:45",
+          "side": "buy",
+          "kind": "market",
+          "price": 24799.25,
+          "quantity": 1,
+          "realizedPnl": 0
+        },
+        {
+          "id": "t2",
+          "orderId": "o2",
+          "time": "2025-09-04 17:50",
+          "side": "buy",
+          "kind": "market",
+          "price": 24794,
+          "quantity": 1,
+          "realizedPnl": 0
+        },
+        {
+          "id": "t3",
+          "orderId": "o3",
+          "time": "2025-09-04 17:55",
+          "side": "sell",
+          "kind": "market",
+          "price": 24805.5,
+          "quantity": 2,
+          "realizedPnl": 35.5
+        },
+        {
+          "id": "t4",
+          "orderId": "o4",
+          "time": "2025-09-04 17:55",
+          "side": "buy",
+          "kind": "market",
+          "price": 24805.5,
+          "quantity": 2,
+          "realizedPnl": 0
+        },
+        {
+          "id": "t5",
+          "orderId": "o5",
+          "time": "2025-09-04 18:00",
+          "side": "sell",
+          "kind": "market",
+          "price": 24812.75,
+          "quantity": 2,
+          "realizedPnl": 29
+        },
+        {
+          "id": "t6",
+          "orderId": "o6",
+          "time": "2025-09-04 18:05",
+          "side": "sell",
+          "kind": "market",
+          "price": 24814.25,
+          "quantity": 2,
+          "realizedPnl": 0
+        },
+        {
+          "id": "t7",
+          "orderId": "o7",
+          "time": "2025-09-04 18:15",
+          "side": "buy",
+          "kind": "market",
+          "price": 24811,
+          "quantity": 2,
+          "realizedPnl": 13
+        },
+        {
+          "id": "t8",
+          "orderId": "o8",
+          "time": "2025-09-04 18:20",
+          "side": "buy",
+          "kind": "market",
+          "price": 24802,
+          "quantity": 2,
+          "realizedPnl": 0
+        },
+        {
+          "id": "t9",
+          "orderId": "o9",
+          "time": "2025-09-04 18:25",
+          "side": "buy",
+          "kind": "market",
+          "price": 24794.25,
+          "quantity": 2,
+          "realizedPnl": 0
+        },
+        {
+          "id": "t10",
+          "orderId": "o10",
+          "time": "2025-09-04 18:30",
+          "side": "buy",
+          "kind": "market",
+          "price": 24800.25,
+          "quantity": 2,
+          "realizedPnl": 0
+        }
+      ],
+      "closedLots": [
+        {
+          "openTime": "2025-09-04 17:45",
+          "openPrice": 24799.25,
+          "closeTime": "2025-09-04 17:55",
+          "closePrice": 24805.5,
+          "side": "long",
+          "quantity": 1,
+          "realizedPnl": 12.5
+        },
+        {
+          "openTime": "2025-09-04 17:50",
+          "openPrice": 24794,
+          "closeTime": "2025-09-04 17:55",
+          "closePrice": 24805.5,
+          "side": "long",
+          "quantity": 1,
+          "realizedPnl": 23
+        },
+        {
+          "openTime": "2025-09-04 17:55",
+          "openPrice": 24805.5,
+          "closeTime": "2025-09-04 18:00",
+          "closePrice": 24812.75,
+          "side": "long",
+          "quantity": 2,
+          "realizedPnl": 29
+        },
+        {
+          "openTime": "2025-09-04 18:05",
+          "openPrice": 24814.25,
+          "closeTime": "2025-09-04 18:15",
+          "closePrice": 24811,
+          "side": "short",
+          "quantity": 2,
+          "realizedPnl": 13
+        }
+      ],
+      "position": {
+        "quantity": 6,
+        "side": "long",
+        "averagePrice": 24798.833333333332
+      },
+      "realizedPnl": 77.5,
+      "unrealizedPnl": 53.00000000001455,
+      "fills": []
+    }
+  },
+  {
+    "seq": 21,
+    "at": 1792583823,
+    "by": "human",
+    "action": "order_filled",
+    "payload": {
+      "order": {
+        "id": "o11",
+        "side": "sell",
+        "kind": "market",
+        "price": 24803.25,
+        "quantity": 6,
+        "status": "filled",
+        "placedAt": "2025-09-04 18:35",
+        "placedIndex": 487,
+        "filledAt": "2025-09-04 18:35",
+        "filledIndex": 487,
+        "fillPrice": 24803.25
+      },
+      "trade": {
+        "id": "t11",
+        "orderId": "o11",
+        "time": "2025-09-04 18:35",
+        "side": "sell",
+        "kind": "market",
+        "price": 24803.25,
+        "quantity": 6,
+        "realizedPnl": 53.00000000001455
+      },
+      "orders": [
+        {
+          "id": "o1",
+          "side": "buy",
+          "kind": "market",
+          "price": 24799.25,
+          "quantity": 1,
+          "status": "filled",
+          "placedAt": "2025-09-04 17:45",
+          "placedIndex": 477,
+          "filledAt": "2025-09-04 17:45",
+          "filledIndex": 477,
+          "fillPrice": 24799.25
+        },
+        {
+          "id": "o2",
+          "side": "buy",
+          "kind": "market",
+          "price": 24794,
+          "quantity": 1,
+          "status": "filled",
+          "placedAt": "2025-09-04 17:50",
+          "placedIndex": 478,
+          "filledAt": "2025-09-04 17:50",
+          "filledIndex": 478,
+          "fillPrice": 24794
+        },
+        {
+          "id": "o3",
+          "side": "sell",
+          "kind": "market",
+          "price": 24805.5,
+          "quantity": 2,
+          "status": "filled",
+          "placedAt": "2025-09-04 17:55",
+          "placedIndex": 479,
+          "filledAt": "2025-09-04 17:55",
+          "filledIndex": 479,
+          "fillPrice": 24805.5
+        },
+        {
+          "id": "o4",
+          "side": "buy",
+          "kind": "market",
+          "price": 24805.5,
+          "quantity": 2,
+          "status": "filled",
+          "placedAt": "2025-09-04 17:55",
+          "placedIndex": 479,
+          "filledAt": "2025-09-04 17:55",
+          "filledIndex": 479,
+          "fillPrice": 24805.5
+        },
+        {
+          "id": "o5",
+          "side": "sell",
+          "kind": "market",
+          "price": 24812.75,
+          "quantity": 2,
+          "status": "filled",
+          "placedAt": "2025-09-04 18:00",
+          "placedIndex": 480,
+          "filledAt": "2025-09-04 18:00",
+          "filledIndex": 480,
+          "fillPrice": 24812.75
+        },
+        {
+          "id": "o6",
+          "side": "sell",
+          "kind": "market",
+          "price": 24814.25,
+          "quantity": 2,
+          "status": "filled",
+          "placedAt": "2025-09-04 18:05",
+          "placedIndex": 481,
+          "filledAt": "2025-09-04 18:05",
+          "filledIndex": 481,
+          "fillPrice": 24814.25
+        },
+        {
+          "id": "o7",
+          "side": "buy",
+          "kind": "market",
+          "price": 24811,
+          "quantity": 2,
+          "status": "filled",
+          "placedAt": "2025-09-04 18:15",
+          "placedIndex": 483,
+          "filledAt": "2025-09-04 18:15",
+          "filledIndex": 483,
+          "fillPrice": 24811
+        },
+        {
+          "id": "o8",
+          "side": "buy",
+          "kind": "market",
+          "price": 24802,
+          "quantity": 2,
+          "status": "filled",
+          "placedAt": "2025-09-04 18:20",
+          "placedIndex": 484,
+          "filledAt": "2025-09-04 18:20",
+          "filledIndex": 484,
+          "fillPrice": 24802
+        },
+        {
+          "id": "o9",
+          "side": "buy",
+          "kind": "market",
+          "price": 24794.25,
+          "quantity": 2,
+          "status": "filled",
+          "placedAt": "2025-09-04 18:25",
+          "placedIndex": 485,
+          "filledAt": "2025-09-04 18:25",
+          "filledIndex": 485,
+          "fillPrice": 24794.25
+        },
+        {
+          "id": "o10",
+          "side": "buy",
+          "kind": "market",
+          "price": 24800.25,
+          "quantity": 2,
+          "status": "filled",
+          "placedAt": "2025-09-04 18:30",
+          "placedIndex": 486,
+          "filledAt": "2025-09-04 18:30",
+          "filledIndex": 486,
+          "fillPrice": 24800.25
+        },
+        {
+          "id": "o11",
+          "side": "sell",
+          "kind": "market",
+          "price": 24803.25,
+          "quantity": 6,
+          "status": "filled",
+          "placedAt": "2025-09-04 18:35",
+          "placedIndex": 487,
+          "filledAt": "2025-09-04 18:35",
+          "filledIndex": 487,
+          "fillPrice": 24803.25
+        }
+      ],
+      "trades": [
+        {
+          "id": "t1",
+          "orderId": "o1",
+          "time": "2025-09-04 17:45",
+          "side": "buy",
+          "kind": "market",
+          "price": 24799.25,
+          "quantity": 1,
+          "realizedPnl": 0
+        },
+        {
+          "id": "t2",
+          "orderId": "o2",
+          "time": "2025-09-04 17:50",
+          "side": "buy",
+          "kind": "market",
+          "price": 24794,
+          "quantity": 1,
+          "realizedPnl": 0
+        },
+        {
+          "id": "t3",
+          "orderId": "o3",
+          "time": "2025-09-04 17:55",
+          "side": "sell",
+          "kind": "market",
+          "price": 24805.5,
+          "quantity": 2,
+          "realizedPnl": 35.5
+        },
+        {
+          "id": "t4",
+          "orderId": "o4",
+          "time": "2025-09-04 17:55",
+          "side": "buy",
+          "kind": "market",
+          "price": 24805.5,
+          "quantity": 2,
+          "realizedPnl": 0
+        },
+        {
+          "id": "t5",
+          "orderId": "o5",
+          "time": "2025-09-04 18:00",
+          "side": "sell",
+          "kind": "market",
+          "price": 24812.75,
+          "quantity": 2,
+          "realizedPnl": 29
+        },
+        {
+          "id": "t6",
+          "orderId": "o6",
+          "time": "2025-09-04 18:05",
+          "side": "sell",
+          "kind": "market",
+          "price": 24814.25,
+          "quantity": 2,
+          "realizedPnl": 0
+        },
+        {
+          "id": "t7",
+          "orderId": "o7",
+          "time": "2025-09-04 18:15",
+          "side": "buy",
+          "kind": "market",
+          "price": 24811,
+          "quantity": 2,
+          "realizedPnl": 13
+        },
+        {
+          "id": "t8",
+          "orderId": "o8",
+          "time": "2025-09-04 18:20",
+          "side": "buy",
+          "kind": "market",
+          "price": 24802,
+          "quantity": 2,
+          "realizedPnl": 0
+        },
+        {
+          "id": "t9",
+          "orderId": "o9",
+          "time": "2025-09-04 18:25",
+          "side": "buy",
+          "kind": "market",
+          "price": 24794.25,
+          "quantity": 2,
+          "realizedPnl": 0
+        },
+        {
+          "id": "t10",
+          "orderId": "o10",
+          "time": "2025-09-04 18:30",
+          "side": "buy",
+          "kind": "market",
+          "price": 24800.25,
+          "quantity": 2,
+          "realizedPnl": 0
+        },
+        {
+          "id": "t11",
+          "orderId": "o11",
+          "time": "2025-09-04 18:35",
+          "side": "sell",
+          "kind": "market",
+          "price": 24803.25,
+          "quantity": 6,
+          "realizedPnl": 53.00000000001455
+        }
+      ],
+      "closedLots": [
+        {
+          "openTime": "2025-09-04 17:45",
+          "openPrice": 24799.25,
+          "closeTime": "2025-09-04 17:55",
+          "closePrice": 24805.5,
+          "side": "long",
+          "quantity": 1,
+          "realizedPnl": 12.5
+        },
+        {
+          "openTime": "2025-09-04 17:50",
+          "openPrice": 24794,
+          "closeTime": "2025-09-04 17:55",
+          "closePrice": 24805.5,
+          "side": "long",
+          "quantity": 1,
+          "realizedPnl": 23
+        },
+        {
+          "openTime": "2025-09-04 17:55",
+          "openPrice": 24805.5,
+          "closeTime": "2025-09-04 18:00",
+          "closePrice": 24812.75,
+          "side": "long",
+          "quantity": 2,
+          "realizedPnl": 29
+        },
+        {
+          "openTime": "2025-09-04 18:05",
+          "openPrice": 24814.25,
+          "closeTime": "2025-09-04 18:15",
+          "closePrice": 24811,
+          "side": "short",
+          "quantity": 2,
+          "realizedPnl": 13
+        },
+        {
+          "openTime": "2025-09-04 18:20",
+          "openPrice": 24802,
+          "closeTime": "2025-09-04 18:35",
+          "closePrice": 24803.25,
+          "side": "long",
+          "quantity": 2,
+          "realizedPnl": 5
+        },
+        {
+          "openTime": "2025-09-04 18:25",
+          "openPrice": 24794.25,
+          "closeTime": "2025-09-04 18:35",
+          "closePrice": 24803.25,
+          "side": "long",
+          "quantity": 2,
+          "realizedPnl": 36
+        },
+        {
+          "openTime": "2025-09-04 18:30",
+          "openPrice": 24800.25,
+          "closeTime": "2025-09-04 18:35",
+          "closePrice": 24803.25,
+          "side": "long",
+          "quantity": 2,
+          "realizedPnl": 12
+        }
+      ],
+      "position": {
+        "quantity": 0,
+        "side": "flat",
+        "averagePrice": 0
+      },
+      "realizedPnl": 130.50000000001455,
+      "unrealizedPnl": 0
+    }
+  },
+  {
+    "seq": 22,
+    "at": 1792584277,
+    "by": "human",
+    "action": "control_changed",
+    "payload": {
+      "operator": ""
+    }
+  },
+  {
+    "seq": 23,
+    "at": 1792584277,
+    "by": "system",
+    "action": "members_changed",
+    "payload": {
+      "members": []
+    }
+  }
+]
