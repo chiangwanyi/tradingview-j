@@ -26,10 +26,15 @@ import type { Order, OrderKind, Point, Side } from '@/types/protocol'
  *   - K 线一次几百根、每帧重画，Canvas 最快；
  *   - 标注要能被指针命中、能拖、能选中，SVG 元素天然有 hit-test，不用自己写拾取算法。
  *
- * 四种模式（`store.tool`），指针行为完全不同：
+ * 状态只有一层：`store.tool` 要么是**指针**（默认），要么是**五种绘图工具之一**。
+ * **没有「修改模式」这个开关** —— 点中图形就是编辑它，点空白/点 K 线就退出：
  *
- *   - 指针 `select`：只缩放/平移，不碰标注；
- *   - 修改 `modify`：点选标注、拖端点改端点、拖线身整体移动、Del 删除；
+ *   - 指针 `select`：
+ *       · 按下落在**某个图形**上 → 那一个成为唯一的编辑对象（拖端点改端点、拖线身整体移动、
+ *         Del 删除），按下位置同时决定这次是拖整体还是拖某个端点；
+ *       · 按下落在**别的地方**（空白 / K 线 / 坐标轴）→ 立刻清掉选中，回到纯指针：
+ *         滚动缩放、拖动平移、拖挂单线改价都照旧。
+ *     这两条就是全部规则，切换编辑对象只是「把 id 换成新的那个」，没有中间态。
  *   - 射线 `ray`：**单击即完成**，画出一条水平朝右的射线（预览跟着鼠标走，落下之前就看得见）。
  *     金融工具里「水平线 + 价位」是最常用的一笔，两次单击 + Shift 水平纯属多余步骤。
  *     按住 **Shift** 退回两次单击，需要斜射线时才用；
@@ -37,7 +42,9 @@ import type { Order, OrderKind, Point, Side } from '@/types/protocol'
  *     （不再是按住拖动：拖动手势在触控板和大图上都容易画歪，两次单击可以慢慢找位置。）
  *     终点可以越过最后一根 K 线往右画：横坐标存成「锚点 K 线 + 向右几根」（见 scale.ts 的 barRefAt），
  *     所以它既在右侧空白区里，又仍然严格落在时间-价格坐标系上。
- *     **定稿后工具自动交回指针**（见 commitPending），下一次单击回到平移/缩放的常规手势。
+ *     **定稿后工具自动交回指针**（见 commitPending），下一次按下回到平移/缩放/选图形。
+ *     手里拿着笔时图形**不接点击**（SVG 那一层 pointer-events 关掉），否则没法在已有的线上
+ *     再画一条 —— 想改图形先把笔放下（画完自动放下，或者再点一次工具、按 Esc）。
  *
  * 「前端预览、后端定稿」没变：绘制过程只更新本地的预览（`pending` / `rayHover`），
  * 定稿那一刻才把 **时间 + 价格 + 样式**发往后端；后端校验、编号后广播回来，
@@ -117,8 +124,6 @@ const pending = ref<PendingShape | null>(null)
  */
 const rayHover = ref<ChartPoint | null>(null)
 const moving = ref<MovingShape | null>(null)
-/** 上一次拖动是否真的移动过：拖完松手会补一个 click，别让它把选中状态点没了 */
-let lastDragMoved = false
 
 /**
  * 拖动中的挂单：这一份只在本机显示，松手才发给后端。
@@ -157,7 +162,14 @@ const TIP_W = 196
 const TIP_H = 132
 
 const drawMode = computed(() => isDrawTool(store.tool))
-const modifyMode = computed(() => store.tool === 'modify')
+/**
+ * 指针模式：手里没拿笔。**编辑态是它的子状态**，不是另一个模式 ——
+ * 所以「点图形进入修改」只是给 `selectedAnnotation` 赋了个 id，
+ * 「点空白退出」就是把它清成 null，两者不会各自留存、事后还要对齐。
+ */
+const pointerMode = computed(() => store.pointerMode)
+/** 当前有没有图形在编辑态（= 指针模式 + 选中了某一个） */
+const editing = computed(() => store.editing)
 /** 线类工具（趋势线 / 射线 / 箭头线）：只有它们支持 Shift 画水平线 */
 const isLineTool = computed(
   () => store.tool === 'trend' || store.tool === 'ray' || store.tool === 'arrow',
@@ -279,14 +291,21 @@ watch(
   },
 )
 
-// 换工具 = 放弃手里那次没画完的图形，并清掉选中（两种模式管的东西不一样）
+/*
+ * 换工具 = 放弃手里那次没画完的图形，并退出编辑态。
+ *
+ * 拿起笔（`select` → 某个绘图工具）时必须清选中：编辑和绘制是两套手势，
+ * 而且图形在绘图工具下不再接指针事件，留着一个「编辑中」的 id 只会让手柄悬空。
+ * 放下笔（绘图工具 → `select`）时这个值本来就是 null（见 commitPending / Esc），
+ * 这里清一次也不算多余 —— 无论从哪条路换工具，都不会带着旧选中进新工具。
+ */
 watch(
   () => store.tool,
   () => {
     pending.value = null
     rayHover.value = null
     moving.value = null
-    store.selectedAnnotation = null
+    store.selectAnnotation(null)
     requestDraw()
   },
 )
@@ -457,7 +476,18 @@ function onPointerDown(ev: PointerEvent): void {
     return
   }
 
-  // 指针 / 修改模式：先看有没有按在**挂单线**上（画在 Canvas 上，没有 DOM 命中测试）。
+  /*
+   * 能走到这里，说明这一下**没有落在任何图形上** —— 图形自己的 pointerdown 都 stopPropagation 了
+   * （见 beginAnnotationDrag / 端点手柄上的 .stop）。空白、K 线、坐标轴、画在 Canvas 上的
+   * 挂单线都算「非图形」：一律先退出编辑态。
+   *
+   * 为什么放在**按下**而不是松手：按下的那一刻用户已经决定了「我要动视图 / 我要改这张单」，
+   * 图形的手柄留着会挡住这一下要拖的东西；而且中途拖了一屏平移再松手，选中还挂着的话，
+   * 下一次 Del 删掉的会是那个早就不在视线里的图形。
+   */
+  store.selectAnnotation(null)
+
+  // 指针模式：先看有没有按在**挂单线**上（画在 Canvas 上，没有 DOM 命中测试）。
   // 挂单在网格、K 线之上，视觉上就是可以抓的东西，所以优先于平移。
   const hitOrder = orderAt(p.x, p.y)
   if (hitOrder) {
@@ -483,7 +513,7 @@ function onPointerDown(ev: PointerEvent): void {
     return
   }
 
-  // 指针 / 修改模式在空白处按下 = 平移（修改模式下按在图形上的事件被 SVG 拦掉了）
+  // 剩下的位置 = 平移（按在图形上的事件被 SVG 拦掉了，不会走到这里）
   drag = { ...emptyDrag(), mode: 'pan', startX: p.x, startY: p.y, lastX: p.x, lastY: p.y, snap: ev.ctrlKey }
   beginPointerCapture()
 }
@@ -697,12 +727,10 @@ function onWindowPointerUp(): void {
     // 只在真的换了价格时才发：点一下（没拖）等于什么都没发生，
     // 否则操作记录里会多出一条「改价 6484.00 → 6484.00」的噪音
     if (moved && drag.moved && Math.abs(moved.price - drag.basePrice) > 1e-9) {
-      lastDragMoved = true
       store.moveOrder(moved.id, moved.price)
     }
     orderDrag.value = null
   } else if (drag.mode === 'move' && moving.value && drag.moved) {
-    lastDragMoved = true
     const m = moving.value
     // 整个端点对象发过去（含 offset）：只发 time+price 的话，服务端会把「越过最后一根」
     // 的端点吸回锚点那根 K 线上，松手即跳。只动一个端点时另一个原样发回。
@@ -712,10 +740,10 @@ function onWindowPointerUp(): void {
       { ...m.end, price: round(m.end.price) },
       drag.snap,
     )
-  } else if (drag.mode === 'pan' && !drag.moved) {
-    // 在空白处点一下 = 取消选中（和桌面上点空白处一个意思）
-    store.selectedAnnotation = null
   }
+  // 平移之后不需要再补一次「取消选中」：空白处按下时就已经退出了编辑态
+  // （见 onPointerDown）。留在这里的话，拖完一屏还会多清一次，
+  // 而且让「点空白退出」的时机出现两处，改起来容易只改到一半。
   moving.value = null
   drag = emptyDrag()
   endPointerCapture()
@@ -1065,24 +1093,39 @@ function commitPending(p: PendingShape): void {
 
 // ---------------- 标注的命中、选中与拖动 ----------------
 
-/** 在「修改」模式下按下图形本体：整体移动。 */
+/**
+ * 按下图形本体（线身 / 矩形内部 / 斐波那契的某条线）：它成为唯一的编辑对象，
+ * 有操作权时同一手势继续拖动整体。
+ *
+ * **按下即选中**是新交互的全部实现：点哪个图形就只有哪个进入编辑态（手柄 + 虚线框），
+ * 点另一个就切过去。旧版是「pointerdown 起拖、click 再切换选中」，两件事分开写，
+ * 拖完松手浏览器补的那个 click 还会把选中翻掉，于是要靠 `lastDragMoved` 挡一下 ——
+ * 现在按下就定选中，那套补丁连同 click 处理一起删了。
+ */
 function beginBodyDrag(ev: PointerEvent, id: string): void {
   beginAnnotationDrag(ev, id, -1)
 }
 
-/** 按下端点手柄：只移动这一个端点。 */
+/** 按下端点手柄：只移动这一个端点（手柄只在已选中时存在，所以这里不必再选一次） */
 function beginAnchorDrag(ev: PointerEvent, id: string, anchor: 0 | 1): void {
   beginAnnotationDrag(ev, id, anchor)
 }
 
 function beginAnnotationDrag(ev: PointerEvent, id: string, anchor: -1 | 0 | 1): void {
-  if (!modifyMode.value || !store.canOperate) return
+  // 绘图工具下图形这一层根本不接指针事件（模板里 pointer-events 关掉了），这里只是兜底
+  if (!pointerMode.value) return
   const a = (store.instance?.annotations ?? []).find((item) => item.id === id)
   if (!a) return
+  // 选中先做、且不受操作权限制：只读观众也应该能点开一个图形看端点，只是拖不动、Del 删不掉
+  store.selectAnnotation(id)
+  /*
+   * 必须 stopPropagation：这一下按在**图形**上，不是「点空白」。
+   * 放行的话会冒到画布的 onPointerDown，而那里对「非图形区域」的第一步就是退出编辑态 ——
+   * 刚设好的选中会立刻被自己抹掉，图形永远选不上。
+   */
   ev.stopPropagation()
+  if (!store.canOperate) return
   ev.preventDefault()
-  // 这里**不置选中**：选中交给 click（没拖动才会走到）。否则 pointerdown 先选中、
-  // click 又按「再点一次取消」把它翻掉，拖完一手图形就变回未选中。
   const p = localPoint(ev)
   if (!p) return
   const idxStart = scale.indexOfTime(a.start.time)
@@ -1116,16 +1159,6 @@ function beginAnnotationDrag(ev: PointerEvent, id: string, anchor: -1 | 0 | 1): 
     end: { time: a.end.time, offset: a.end.offset ?? 0, price: a.end.price },
   }
   beginPointerCapture()
-}
-
-/** 点一下（没拖动）就选中/取消选中。 */
-function onAnnotationClick(id: string): void {
-  if (!modifyMode.value) return
-  if (lastDragMoved) {
-    lastDragMoved = false
-    return
-  }
-  store.selectedAnnotation = store.selectedAnnotation === id ? null : id
 }
 
 // ---------------- 右键小菜单 ----------------
@@ -1222,7 +1255,7 @@ function menuClearAnnotations(): void {
   store.clearAnnotations()
   pending.value = null
   moving.value = null
-  store.selectedAnnotation = null
+  store.selectAnnotation(null)
   clearArmed.value = false
   closeMenu()
   requestDraw()
@@ -1327,17 +1360,19 @@ function onKeyDown(ev: KeyboardEvent): void {
   if (isTypingTarget(ev.target)) return
 
   if (ev.key === 'Escape') {
+    // Esc 的含义是「退掉最上面那一层」，一次退一层：
+    //   ① 手里没画完的图形 → ② 正在编辑的图形 → ③ 画笔（回到指针）
+    // （点击空白也能退出编辑，Esc 只是不用把手从键盘上移开的那条路。）
     if (pending.value) {
-      // 第一次：只是放弃手里这次没画完的图形
       pending.value = null
+    } else if (store.editing) {
+      store.selectAnnotation(null)
     } else if (drawMode.value) {
-      // 第二次：退出绘图工具回到指针模式
       store.tool = 'select'
     }
     moving.value = null
     drag = emptyDrag()
     endPointerCapture()
-    store.selectedAnnotation = null
     closeMenu()
     // 钉住的信息卡也一起收掉：Esc 在这个画布上的含义是「退掉最上面那一层」
     pinned.value = null
@@ -1345,11 +1380,14 @@ function onKeyDown(ev: KeyboardEvent): void {
     requestDraw()
     return
   }
-  // 回放是只读的：Delete 不能把「录像里的图形」发一条删除请求出去
-  if ((ev.key === 'Delete' || ev.key === 'Backspace') && store.selectedAnnotation && store.canOperate) {
+  // 回放是只读的：Delete 不能把「录像里的图形」发一条删除请求出去。
+  //
+  // 判定用 selectedId（= 真的画出来、带手柄的那一个），不是 store.selectedAnnotation：
+  // 图形因为锚点不在已揭示数据里而暂时没画出来时，选中不该还能删掉一个看不见的东西。
+  if ((ev.key === 'Delete' || ev.key === 'Backspace') && selectedId.value && store.canOperate) {
     ev.preventDefault()
-    store.deleteAnnotation(store.selectedAnnotation)
-    store.selectedAnnotation = null
+    store.deleteAnnotation(selectedId.value)
+    store.selectAnnotation(null)
   }
 }
 
@@ -1416,8 +1454,20 @@ const ghost = computed<Figure | null>(() => {
   return null
 })
 
-/** 选中时显示端点手柄（只有修改模式才有「选中的图形」这个概念） */
-const selectedId = computed(() => (modifyMode.value ? store.selectedAnnotation : null))
+/**
+ * 正在编辑的图形 id —— 手柄、虚线框、「当前可编辑的是哪一个」全靠它。
+ *
+ * 三层收窄，缺一层就会露出「残留选中」：
+ *   1. `store.editingId`：绘图工具在手时必然是 null（拿起笔 = 放下编辑）；
+ *   2. 这个 id 必须**真的被画出来了**（`figures` 里找得到）：端点所在的 K 线被换掉、
+ *      或者图形已被别人删掉时，手柄不会挂在一个不存在的图形上；
+ *   3. 拿到它之后界面上所有「编辑中」的表现都只读这一个值，没有第二份状态。
+ */
+const selectedId = computed(() => {
+  const id = store.editingId
+  if (!id) return null
+  return figures.value.some((f) => f.id === id) ? id : null
+})
 
 const hint = computed(() => {
   if (drawMode.value) {
@@ -1435,10 +1485,11 @@ const hint = computed(() => {
       ? `${name}：移动鼠标找终点，再单击一下定稿${extra}${beyond}${snap} · Esc 取消`
       : `${name}：单击定起点${extra}${beyond}${snap} · 滚轮缩放 · 中键拖动平移`
   }
-  if (modifyMode.value) {
-    return '单击选中 · 拖端点改端点 · 拖线身整体移动 · Ctrl 吸附 OHLC · Del 删除 · 空白处拖动平移 · 拖挂单线改价'
+  // 指针模式下的两句话：编辑中说什么能做，没编辑时说什么能点
+  if (editing.value) {
+    return '拖端点改端点 · 拖线身整体移动 · Ctrl 吸附 OHLC · Del 删除 · 点空白退出编辑'
   }
-  return '滚轮缩放 · 右轴滚轮缩价格 · 拖动平移 · 拖挂单线改价 · 双击重置价格 · 右键挂单'
+  return '点图形即可编辑 · 滚轮缩放 · 右轴滚轮缩价格 · 拖动平移 · 拖挂单线改价 · 双击重置价格 · 右键挂单'
 })
 
 /**
@@ -1526,16 +1577,19 @@ defineExpose({ requestDraw })
       style="pointer-events: none"
     >
       <!--
-        已画好的图形。只有「修改」模式下才对指针可见 —— 其他模式下鼠标事件要落到
-        下面的画布上（平移、绘制起点），不能让一条线挡住。
+        已画好的图形。
+
+        指针模式下这一层**始终**接指针事件 —— 这是「点一下图形就进入编辑」的前提：
+        点中哪条线/哪个框，那一个就成为编辑对象。反过来，手里拿着绘图工具时，
+        图形必须让位（pointer-events: none），鼠标事件要落到下面的画布上定起点，
+        否则在已有的线附近根本落不下笔。
       -->
       <g
         v-for="f in figures"
         :key="f.id"
-        :style="{ pointerEvents: modifyMode ? 'auto' : 'none' }"
-        :class="modifyMode ? 'cursor-move' : ''"
+        :style="{ pointerEvents: pointerMode ? 'auto' : 'none' }"
+        :class="pointerMode ? 'cursor-move' : ''"
         @pointerdown="beginBodyDrag($event, f.id)"
-        @click.stop="onAnnotationClick(f.id)"
       >
         <!-- 矩形：填充 + 边框 -->
         <rect
@@ -1562,8 +1616,12 @@ defineExpose({ requestDraw })
             :stroke-dasharray="s.dash"
             :opacity="s.opacity"
           />
+          <!--
+            12px 的透明命中区：只在指针模式下有意义（绘图工具下整组 pointer-events: none，
+            它跟着不接事件），但**渲染上不再按模式增删** —— 一条线的 DOM 节点数量
+            不随模式变化，点下去时不会有「这一下算哪一层」的歧义。
+          -->
           <line
-            v-if="modifyMode"
             :x1="s.x1"
             :y1="s.y1"
             :x2="s.x2"

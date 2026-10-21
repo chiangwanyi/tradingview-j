@@ -32,10 +32,18 @@ import type {
   You,
 } from '@/types/protocol'
 
-/** 画布上当前的工作模式。缩放/平移不属于工具，任何模式下都能用。 */
-export type ChartTool = 'select' | 'modify' | 'trend' | 'ray' | 'rect' | 'arrow' | 'fib'
+/**
+ * 画布上当前手里的工具。缩放/平移不属于工具，任何工具下都能用。
+ *
+ * 只有两类状态：**指针**（`select`，默认）和**五种绘图工具**。
+ * 编辑图形不再是一种「工具」—— 它是指针模式下「选中了某个图形」的派生态，
+ * 由 `selectedAnnotation` 一个值决定（见 `selectAnnotation` / `editingId`）。
+ * 以前那种「指针 / 修改」两个模式按钮 + 选中项的写法有两份状态要互相对齐，
+ * 关掉修改模式时漏清一次选中，就会留下一个看不见却还能被 Del 删掉的图形。
+ */
+export type ChartTool = 'select' | DrawTool
 
-/** 五种绘图工具（不含指针/修改）。模板、样式、绘制规则都按它分类。 */
+/** 五种绘图工具（不含指针）。模板、样式、绘制规则都按它分类。 */
 export type DrawTool = 'trend' | 'ray' | 'rect' | 'arrow' | 'fib'
 
 export const DRAW_TOOLS: DrawTool[] = ['trend', 'ray', 'rect', 'arrow', 'fib']
@@ -43,7 +51,6 @@ export const DRAW_TOOLS: DrawTool[] = ['trend', 'ray', 'rect', 'arrow', 'fib']
 /** 工具名。界面上的中文只在这里写一次。 */
 export const TOOL_LABEL: Record<ChartTool, string> = {
   select: '指针',
-  modify: '修改',
   trend: '趋势线',
   ray: '射线',
   rect: '矩形',
@@ -52,7 +59,7 @@ export const TOOL_LABEL: Record<ChartTool, string> = {
 }
 
 export function isDrawTool(tool: ChartTool): tool is DrawTool {
-  return tool !== 'select' && tool !== 'modify'
+  return tool !== 'select'
 }
 
 /** 界面配色。只影响显示（画布配色 + 页面语义色），跟后端无关。 */
@@ -100,7 +107,39 @@ export const useReplayStore = defineStore('replay', () => {
 
   // 界面状态（只影响显示，不属于业务状态，所以不发给后端）
   const tool = ref<ChartTool>('select')
+  /**
+   * 正在编辑的图形 id。`null` = 指针的常规状态（只缩放平移）。
+   *
+   * **这是「修改态」的唯一真相**：画布上点中哪个图形就只有哪个可编辑，
+   * 点空白/点 K 线就把它清成 null —— 「退出修改」不需要另设一个模式去切，
+   * 也就不存在「模式退了、选中还留着」这种不一致。
+   */
   const selectedAnnotation = ref<string | null>(null)
+  /** 是不是指针模式（= 手里没拿笔）。编辑态只在它下面成立。 */
+  const pointerMode = computed(() => tool.value === 'select')
+  /**
+   * 真正生效的编辑对象：绘图工具在手时一律为空。
+   *
+   * 不只是保险 —— 画布模板里的 pointer-events、端点手柄、Del 删除全都读这一个值，
+   * 所以「拿起笔」和「退出编辑」是同一个动作，不会出现笔在手却还能拖图形的中间态。
+   */
+  const editingId = computed(() => (tool.value === 'select' ? selectedAnnotation.value : null))
+  const editing = computed(() => editingId.value !== null)
+
+  /**
+   * 进入 / 切换 / 退出编辑。
+   *
+   * 界面上的三条规则（点图形进入、点另一个切过去、点空白退出）全部收敛到这一个入口，
+   * 所以「切换过程」只是把 id 换个值：被点中的那个立刻显示手柄，上一个同时失去手柄，
+   * 中间没有第二个状态需要清。传 `null` 永远有效（清不了选中才是残留的来源）。
+   */
+  function selectAnnotation(id: string | null): void {
+    // 手上还拿着绘图工具时点哪儿都是「落笔」，不接选中 —— 界面那边图形本身也不接指针事件，
+    // 这里再挡一次，免得将来多出别的调用方绕过画布直接改选中。
+    if (id !== null && tool.value !== 'select') return
+    selectedAnnotation.value = id
+  }
+
   /**
    * 标注模板：后端存的全量列表 + 「每个工具上次用的是哪一条」。
    *
@@ -296,7 +335,8 @@ export const useReplayStore = defineStore('replay', () => {
     instance.value = { ...inst, bars: inst.bars ?? [], recording: inst.recording ?? null }
     you.value = msg.you
     log.value = [...(inst.events ?? [])].slice(-MAX_LOG)
-    selectedAnnotation.value = null
+    // 快照 = 换了一块盘面：上一条实例的选中在这条里没有对应图形，必须一起丢掉
+    selectAnnotation(null)
   }
 
   function applyEvent(msg: ServerEvent): void {
@@ -346,9 +386,11 @@ export const useReplayStore = defineStore('replay', () => {
     // 下面是界面状态，不属于盘面
     if (msg.action === ACTION.annotationDeleted) {
       const p = msg.payload as AnnotationDeletedPayload
-      if (selectedAnnotation.value === p.annotationId) selectedAnnotation.value = null
+      // 别人（或机器人）删掉了我正在编辑的那个：选中必须跟着失效，
+      // 否则手柄会画在一个已经不存在的图形上，下一次 Del 打到空气。
+      if (editingId.value === p.annotationId) selectAnnotation(null)
     } else if (msg.action === ACTION.annotationCleared) {
-      selectedAnnotation.value = null
+      selectAnnotation(null)
     } else if (msg.action === ACTION.controlChanged) {
       const p = msg.payload as ControlChangedPayload
       if (you.value) {
@@ -702,6 +744,10 @@ export const useReplayStore = defineStore('replay', () => {
     errorKey,
     tool,
     selectedAnnotation,
+    selectAnnotation,
+    pointerMode,
+    editingId,
+    editing,
     templates,
     activeTemplate,
     theme,

@@ -3,7 +3,7 @@ import { computed } from 'vue'
 
 import AnnotationTemplates from '@/components/AnnotationTemplates.vue'
 import BotMenu from '@/components/BotMenu.vue'
-import { TOOL_LABEL, isDrawTool, useReplayStore, type ChartTool, type DrawTool } from '@/stores/replay'
+import { TOOL_LABEL, isDrawTool, useReplayStore, type DrawTool } from '@/stores/replay'
 
 /**
  * 图表上方的操作条。
@@ -11,7 +11,10 @@ import { TOOL_LABEL, isDrawTool, useReplayStore, type ChartTool, type DrawTool }
  * 工具按钮只改本地工具状态；真正会改数据的动作（步进、接管、机器人）一律发消息给后端，
  * 由后端校验、执行、广播回来 —— 所以这里的按钮只是「请求」，不是「直接生效」。
  *
- * 工具分两组：**模式**（指针 / 修改）和**五种绘图工具**。
+ * 工具只剩一组：**五种绘图工具**。指针不再是按钮（它就是默认状态：画完自动交回、
+ * Esc 收起画笔、点空白退出编辑），「修改」更不是按钮 —— 画布上点一下图形就进入编辑，
+ * 点空白/点 K 线就退出。两个按钮删掉之后，工具栏上不会再有「当前在哪个模式」这种
+ * 需要用户自己记、又容易和实际行为不一致的开关。
  *
  * 射线是唯一**单击即完成**的：点一下就是一条水平朝右的射线（预览跟着鼠标走），
  * 因为「水平线 + 价位」是复盘里最常用的一笔，两次单击纯属多余动作。
@@ -21,13 +24,7 @@ import { TOOL_LABEL, isDrawTool, useReplayStore, type ChartTool, type DrawTool }
 
 const store = useReplayStore()
 
-const modeTools: ChartTool[] = ['select', 'modify']
 const drawTools: DrawTool[] = ['trend', 'ray', 'rect', 'arrow', 'fib']
-
-const modeHint: Record<string, string> = {
-  select: '指针：只缩放/平移，不碰标注',
-  modify: '修改：点选标注 → 拖端点改端点 / 拖线身整体移动 / Del 删除',
-}
 
 const drawHint: Record<DrawTool, string> = {
   trend: '趋势线：两次单击（起点 → 终点），按住 Shift 画水平线',
@@ -68,19 +65,10 @@ const btnActive = 'border-accent bg-accent-soft text-accent'
 <template>
   <div class="flex flex-wrap items-center gap-2 border-b border-line px-2 py-1.5">
     <div class="flex items-center gap-1">
-      <button
-        v-for="t in modeTools"
-        :key="t"
-        type="button"
-        :title="modeHint[t]"
-        :class="[btn, store.tool === t ? btnActive : btnIdle]"
-        @click="store.tool = t"
-      >
-        {{ TOOL_LABEL[t] }}
-      </button>
-
-      <span class="mx-1 h-4 w-px bg-line" />
-
+      <!--
+        只有绘图工具。指针 / 修改两个按钮已经删掉：
+        「没拿笔」本身就是指针状态（画完自动交回），「改一个图形」靠直接点它。
+      -->
       <button
         v-for="t in drawTools"
         :key="t"
@@ -88,7 +76,7 @@ const btnActive = 'border-accent bg-accent-soft text-accent'
         :title="drawHint[t]"
         :class="[btn, store.tool === t ? btnActive : btnIdle]"
         :disabled="!canEdit"
-        @click="store.tool = t"
+        @click="store.tool = store.tool === t ? 'select' : t"
       >
         {{ TOOL_LABEL[t] }}
       </button>

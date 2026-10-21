@@ -156,8 +156,9 @@ export const usePlaybackStore = defineStore('playback', () => {
     step.value = 1
     playing.value = false
     replay.playbackActive = true
-    replay.selectedAnnotation = null
+    // 回放的是一盘历史 K 线：手先放回指针，正在编辑的图形也一起放掉（否则手柄会挂在新盘面上）
     replay.tool = 'select'
+    replay.selectAnnotation(null)
     replay.log = []
     replay.you = null
     replay.instance = buildState(rec, 1)
