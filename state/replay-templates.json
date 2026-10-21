@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "nextId": 11,
+  "nextId": 12,
   "templates": [
     {
       "id": "tpl-1",
@@ -27,13 +27,24 @@
     {
       "id": "tpl-11",
       "kind": "ray",
+      "name": "多头突破",
+      "style": {
+        "color": "#65a30d",
+        "width": 2,
+        "dash": "solid"
+      },
+      "createdAt": 1792417243
+    },
+    {
+      "id": "tpl-12",
+      "kind": "ray",
       "name": "空头突破",
       "style": {
         "color": "#ef4444",
         "width": 2,
         "dash": "solid"
       },
-      "createdAt": 1792417243
+      "createdAt": 1792586223
     },
     {
       "id": "tpl-7",

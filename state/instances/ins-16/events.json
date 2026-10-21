@@ -1,0 +1,81 @@
+[
+  {
+    "seq": 1,
+    "at": 1792590565,
+    "by": "human",
+    "action": "annotation_added",
+    "payload": {
+      "annotation": {
+        "createdAt": 1792590565,
+        "createdBy": "human",
+        "end": {
+          "offset": 205,
+          "price": 22175.5,
+          "time": "2024-11-05 19:45"
+        },
+        "id": "a1",
+        "kind": "ray",
+        "snapped": true,
+        "start": {
+          "price": 22175.5,
+          "time": "2024-11-05 19:45"
+        },
+        "style": {
+          "color": "#65a30d",
+          "dash": "solid",
+          "width": 2
+        }
+      }
+    }
+  },
+  {
+    "seq": 2,
+    "at": 1792593756,
+    "by": "human2",
+    "action": "control_changed",
+    "payload": {
+      "operator": "human2"
+    }
+  },
+  {
+    "seq": 3,
+    "at": 1792593756,
+    "by": "system",
+    "action": "members_changed",
+    "payload": {
+      "members": [
+        {
+          "clientId": "c2",
+          "connected": true,
+          "name": "human2",
+          "operator": true
+        }
+      ]
+    }
+  },
+  {
+    "seq": 4,
+    "at": 1792594498,
+    "by": "human2",
+    "action": "control_changed",
+    "payload": {
+      "operator": "human2"
+    }
+  },
+  {
+    "seq": 5,
+    "at": 1792594498,
+    "by": "system",
+    "action": "members_changed",
+    "payload": {
+      "members": [
+        {
+          "clientId": "c2",
+          "name": "human2",
+          "operator": true,
+          "connected": true
+        }
+      ]
+    }
+  }
+]

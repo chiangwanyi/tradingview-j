@@ -1,0 +1,22 @@
+{
+  "id": "ins-16",
+  "symbol": "CME_MINI:MNQ1!",
+  "folder": "CME_MINI_MNQ1!",
+  "tick": 0.25,
+  "tickValue": 0.5,
+  "anchor": "2024-11-06 00:55",
+  "cursor": 491,
+  "position": {
+    "quantity": 0,
+    "side": "",
+    "averagePrice": 0
+  },
+  "realizedPnl": 0,
+  "createdBy": "human",
+  "createdAt": 1792590230,
+  "seq": 5,
+  "notes": [],
+  "seqAnnotation": 1,
+  "seqOrder": 0,
+  "seqTrade": 0
+}

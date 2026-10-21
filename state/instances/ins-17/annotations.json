@@ -1,0 +1,44 @@
+[
+  {
+    "id": "a1",
+    "kind": "trend",
+    "start": {
+      "time": "2026-07-21 23:30",
+      "price": 7612.25
+    },
+    "end": {
+      "time": "2026-07-22 01:15",
+      "price": 7612.25,
+      "offset": 4
+    },
+    "style": {
+      "color": "#f59e0b",
+      "width": 1.6,
+      "dash": "solid"
+    },
+    "snapped": false,
+    "createdBy": "human",
+    "createdAt": 1792594512
+  },
+  {
+    "id": "a2",
+    "kind": "ray",
+    "start": {
+      "time": "2026-07-22 00:50",
+      "price": 7616
+    },
+    "end": {
+      "time": "2026-07-22 00:50",
+      "price": 7616,
+      "offset": 148
+    },
+    "style": {
+      "color": "#ef4444",
+      "width": 2,
+      "dash": "solid"
+    },
+    "snapped": true,
+    "createdBy": "human",
+    "createdAt": 1792594528
+  }
+]
