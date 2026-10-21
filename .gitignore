@@ -1,5 +1,7 @@
 # 构建产物：build.cmd 就地生成 tv-capture-v<版本>.exe（根目录，无 dist）
 *.exe
+# 同一份产物在 macOS 上没有扩展名（build.sh 生成），一并忽略
+/tv-capture-v*
 
 # go-winres 生成的 Windows 资源对象（exe 属性里的版本信息）：
 # 它是编译期快照，每次构建由 build.cmd 重新生成，不进仓库

@@ -3,6 +3,10 @@
 *.cmd text eol=crlf
 *.bat text eol=crlf
 
+# shell 脚本反过来必须是 LF：CRLF 的 shebang 在 bash 看来是
+# "#!.../bash\r"，连解释器都定位不到，直接 Permission denied / bad interpreter。
+*.sh text eol=lf
+
 # 版本号文件由 build.cmd 用 set /p 读，保持 Windows 行尾
 VERSION text eol=crlf
 
