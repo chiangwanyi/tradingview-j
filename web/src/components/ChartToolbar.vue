@@ -2,6 +2,7 @@
 import { computed } from 'vue'
 
 import AnnotationTemplates from '@/components/AnnotationTemplates.vue'
+import BotMenu from '@/components/BotMenu.vue'
 import { TOOL_LABEL, isDrawTool, useReplayStore, type ChartTool, type DrawTool } from '@/stores/replay'
 
 /**
@@ -52,11 +53,6 @@ const operator = computed(() => store.operatorLabel)
 /** 当前是不是绘图工具 —— 模板条只在绘图工具下出现（v-if 用得到，也顺手做类型收窄） */
 const drawKind = computed<DrawTool | null>(() => (isDrawTool(store.tool) ? store.tool : null))
 
-const canStartBot = computed(() => {
-  const inst = store.instance
-  if (!inst || inst.bot || store.playbackActive) return false
-  return inst.operator === '' || store.isOperator
-})
 const hasMoreHint = computed(() => {
   const inst = store.instance
   if (!inst) return ''
@@ -164,24 +160,8 @@ const btnActive = 'border-accent bg-accent-soft text-accent'
       接管
     </button>
 
-    <button
-      v-if="!store.botRunning"
-      type="button"
-      :class="[btn, 'border-sky-600 text-sky-600 hover:bg-sky-600/10 dark:text-sky-400']"
-      :disabled="!canStartBot"
-      title="机器人会接管操作权，自动步进/画标注/下单（用于演示与联调）"
-      @click="store.startBot()"
-    >
-      启动机器人
-    </button>
-    <button
-      v-else
-      type="button"
-      class="rounded bg-sky-600 px-2 py-1 text-[12px] text-white hover:bg-sky-500"
-      @click="store.stopBot()"
-    >
-      停止机器人
-    </button>
+    <!-- 机器人的启动入口单独一个组件：里面要选策略、调参数，塞进这一行太挤 -->
+    <BotMenu />
 
     <div class="ml-auto flex items-center gap-3 text-[11px] text-dim">
       <span v-if="store.playbackActive" class="text-red-600 dark:text-red-400">回放模式（只读）</span>

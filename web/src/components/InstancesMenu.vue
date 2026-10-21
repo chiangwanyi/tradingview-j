@@ -66,10 +66,18 @@ function remove(id: string): void {
   }
 }
 
-function statusOf(operator: string, bot: boolean): string {
-  if (bot) return '机器人'
-  if (!operator) return '无人操作'
-  return operator
+/**
+ * 一行状态文字：机器人在跑时把策略名带上。
+ * 列表里只存 id，名字从策略清单查 —— 清单没到就退回显示 id，总之不显示空白。
+ */
+function statusOf(inst: { operator: string; bot: boolean; botStrategy?: string }): string {
+  if (inst.bot) {
+    if (!inst.botStrategy) return '机器人'
+    const name = store.strategies.find((s) => s.id === inst.botStrategy)?.name ?? inst.botStrategy
+    return `机器人 · ${name}`
+  }
+  if (!inst.operator) return '无人操作'
+  return inst.operator
 }
 </script>
 
@@ -172,7 +180,7 @@ function statusOf(operator: string, bot: boolean): string {
           <div class="mt-0.5 flex flex-wrap items-center gap-x-2 text-[11px] text-faint">
             <span>第 {{ inst.cursor + 1 }} 根</span>
             <span>· {{ inst.members }} 人</span>
-            <span>· {{ statusOf(inst.operator, inst.bot) }}</span>
+            <span>· {{ statusOf(inst) }}</span>
             <span v-if="inst.trades > 0">· {{ inst.trades }} 笔</span>
             <span
               v-if="inst.realizedPnl !== 0"

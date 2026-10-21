@@ -610,3 +610,67 @@ func TestClosedLotsPureReadOnly(t *testing.T) {
 		t.Fatalf("两次重算结果不一致：%+v vs %+v", first[0], second[0])
 	}
 }
+
+// 同一根 K 线同时穿过止损和止盈（一根长影线两头都扎）：只成交**先挂**的那张，
+// 另一张按 OCO 自动撤销。
+//
+// 这是 5 分钟粒度绕不过去的限制：一根 K 线只有最高/最低价，看不出先摸到哪边。
+// 不成组的话，止损平完仓之后止盈接着成交，会把仓位平过头、凭空开出一个反向仓 ——
+// 在真实数据上跑一天能出现好几次，而且从成交流水里很难看出来。
+func TestOCOGroupFillsOnlyTheFirstOrder(t *testing.T) {
+	inst := newTradingInstance()
+	ds := emptyDS()
+	// 09:05 那根：最高 102、最低 98 —— 101 的 stop 和 99 的 limit 都会判为触发。
+	// 先挂 stop，所以它优先成交（保守方向：先认止损）。
+	stop, err := inst.placeOrderGrouped("human", "buy", KindStop, 101, 1, "g1")
+	if err != nil {
+		t.Fatalf("挂止损失败：%v", err)
+	}
+	limit, err := inst.placeOrderGrouped("human", "buy", KindLimit, 99, 1, "g1")
+	if err != nil {
+		t.Fatalf("挂止盈失败：%v", err)
+	}
+
+	_, fills, err := inst.advance(ds)
+	if err != nil {
+		t.Fatalf("步进失败：%v", err)
+	}
+	if len(fills) != 1 {
+		t.Fatalf("同组只该成交 1 张，实际 %d 张：%+v", len(fills), fills)
+	}
+	if fills[0].OrderID != stop.ID {
+		t.Fatalf("应当成交先挂的止损单 %s，实际 %s", stop.ID, fills[0].OrderID)
+	}
+	if inst.Orders[0].Status != OrderFilled {
+		t.Fatalf("止损单应当成交，实际 %s", inst.Orders[0].Status)
+	}
+	if inst.Orders[1].Status != OrderCancelled || inst.Orders[1].ID != limit.ID {
+		t.Fatalf("止盈单应当被自动撤销，实际 %s（%s）", inst.Orders[1].Status, inst.Orders[1].ID)
+	}
+	// 关键：仓位是 +1（只成交一张），不是 +2，也不是「平完又反手」
+	if inst.Position.Quantity != 1 {
+		t.Fatalf("只该成交 1 手，实际持仓 %v", inst.Position.Quantity)
+	}
+}
+
+// 不同组之间互不影响：两张单各自都能成交。
+func TestOrdersInDifferentGroupsAllFill(t *testing.T) {
+	inst := newTradingInstance()
+	ds := emptyDS()
+	if _, err := inst.placeOrderGrouped("human", "buy", KindStop, 101, 1, "g1"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := inst.placeOrderGrouped("human", "buy", KindLimit, 99, 2, "g2"); err != nil {
+		t.Fatal(err)
+	}
+	_, fills, err := inst.advance(ds)
+	if err != nil {
+		t.Fatalf("步进失败：%v", err)
+	}
+	if len(fills) != 2 {
+		t.Fatalf("不同组应当各成交一张，实际 %d 张", len(fills))
+	}
+	if inst.Position.Quantity != 3 {
+		t.Fatalf("持仓应当是 3 手，实际 %v", inst.Position.Quantity)
+	}
+}

@@ -12,7 +12,10 @@ package replay
 import (
 	"fmt"
 	"math"
+	"strings"
 	"time"
+
+	"tradingview-j/internal/strategy"
 )
 
 const (
@@ -38,28 +41,69 @@ func (h *Hub) handleBotStart(c *Client, req Request) {
 		h.fail(c, req, fmt.Sprintf("现在由 %s 操作，机器人起不来；等他交还或退出", inst.Operator))
 		return
 	}
-	interval := req.IntervalMs
-	if interval <= 0 {
-		interval = botDefaultIntervalMs
+
+	// 先把策略造出来再接管操作权：参数不合法（策略 id 打错、手数是小数）就直接报错。
+	// 反过来先接管再失败的话，界面上会显示「机器人操作中」，实际什么都不会发生，
+	// 用户只能干等 —— 这种「看起来在跑其实没跑」的状态是最难排查的。
+	var run *strategyRun
+	payload := BotPayload{}
+	defaultInterval, minInterval, maxInterval := botDefaultIntervalMs, botMinIntervalMs, botMaxIntervalMs
+	if id := strings.TrimSpace(req.Strategy); id != "" {
+		strat, err := strategy.New(id, strategy.Values(req.Params))
+		if err != nil {
+			h.fail(c, req, err.Error())
+			return
+		}
+		qty, err := strategyQuantity(req.Quantity)
+		if err != nil {
+			h.fail(c, req, err.Error())
+			return
+		}
+		run = newStrategyRun(strat, qty)
+		payload.Strategy = strat.ID()
+		payload.Name = strat.Name()
+		payload.Quantity = qty
+		// 策略机器人跑得比演示快：一天 276 根，300ms 一根约 85 秒。
+		defaultInterval, minInterval, maxInterval = botStrategyDefaultIntervalMs, botStrategyMinIntervalMs, botStrategyMaxIntervalMs
 	}
-	if interval < botMinIntervalMs {
-		interval = botMinIntervalMs
-	}
-	if interval > botMaxIntervalMs {
-		interval = botMaxIntervalMs
-	}
+
+	interval := clampBotInterval(req.IntervalMs, defaultInterval, minInterval, maxInterval)
+	payload.IntervalMs = interval
 
 	stop := make(chan struct{})
 	inst.botStop = stop
 	inst.botInterval = time.Duration(interval) * time.Millisecond
 	inst.Operator = "bot"
+	inst.run = run
+	inst.botStrategy = payload.Strategy
+	inst.botQty = payload.Quantity
 
 	h.broadcastInstanceLocked(inst, ActControlChanged, ControlChangedPayload{Operator: "bot"}, c.Name)
-	h.broadcastInstanceLocked(inst, ActBotStarted, BotPayload{IntervalMs: interval}, c.Name)
+	h.broadcastInstanceLocked(inst, ActBotStarted, payload, c.Name)
 	h.broadcastInstancesLocked()
-	h.log("[replay] 机器人接管实例 %s，每 %dms 动作一次", inst.ID, interval)
+	if run != nil {
+		h.log("[replay] 策略机器人 %s 接管实例 %s：每笔 %.0f 手，每 %dms 推进一根",
+			payload.Name, inst.ID, payload.Quantity, interval)
+	} else {
+		h.log("[replay] 随机演示机器人接管实例 %s，每 %dms 动作一次", inst.ID, interval)
+	}
 
 	go h.runBot(inst, stop, inst.botInterval)
+}
+
+// clampBotInterval 收敛步进节奏。两种机器人的上下限不同（演示要慢、策略要快），
+// 所以区间由调用方传入，而不是在这里按类型分支。
+func clampBotInterval(v, def, lo, hi int) int {
+	if v <= 0 {
+		return def
+	}
+	if v < lo {
+		return lo
+	}
+	if v > hi {
+		return hi
+	}
+	return v
 }
 
 func (h *Hub) handleBotStop(c *Client, req Request) {
@@ -86,11 +130,31 @@ func (h *Hub) stopBotLocked(inst *Instance, restore string) {
 	if inst.botStop == nil {
 		return
 	}
+
+	// 停之前撤掉这次运行挂的保护单。**仓位不平**：用户可能只是想暂停、自己接手接着做，
+	// 界面上的持仓和盈亏都还在，他看得见。但保护单必须撤 —— 它记在这次运行的编号里，
+	// 不撤就会在盘面上留下两张没人管的挂单，下次启动机器人时又挂两张，越积越多。
+	if inst.run != nil {
+		inst.run.cancelProtectionLocked(h, inst)
+	}
+
+	payload := BotPayload{
+		IntervalMs: int(inst.botInterval / time.Millisecond),
+		Strategy:   inst.botStrategy,
+		Quantity:   inst.botQty,
+	}
+	if payload.Strategy != "" {
+		payload.Name = strategyName(payload.Strategy)
+	}
+
 	close(inst.botStop)
 	inst.botStop = nil
 	inst.botInterval = 0
+	inst.botStrategy = ""
+	inst.botQty = 0
+	inst.run = nil
 	inst.Operator = restore
-	h.broadcastInstanceLocked(inst, ActBotStopped, nil, "bot")
+	h.broadcastInstanceLocked(inst, ActBotStopped, payload, "bot")
 	h.broadcastInstanceLocked(inst, ActControlChanged, ControlChangedPayload{Operator: restore}, "bot")
 }
 
@@ -114,9 +178,17 @@ func (h *Hub) runBot(inst *Instance, stop chan struct{}, interval time.Duration)
 	}
 }
 
-// botTickLocked 随机挑一个动作执行。权重刻意偏向「步进」：
-// 演示时最想看到的是行情一根根往前走，标注和下单是穿插着发生的。
+// botTickLocked 每拍做一件事。
+//
+// 两种机器人共用同一个循环和同一把锁，区别只在「这一拍干什么」：
+// 随机演示机器人抽签决定动作；策略机器人固定「推进一根 → 让策略看一眼」。
 func (h *Hub) botTickLocked(inst *Instance) {
+	if inst.run != nil {
+		h.botStrategyTickLocked(inst, inst.run)
+		return
+	}
+	// 随机挑一个动作执行。权重刻意偏向「步进」：
+	// 演示时最想看到的是行情一根根往前走，标注和下单是穿插着发生的。
 	switch n := h.rnd.Intn(100); {
 	case n < 50:
 		// 走到数据末尾是正常的：机器人接着画标注、挂单，不再步进。

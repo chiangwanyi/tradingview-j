@@ -20,6 +20,7 @@ import type {
   AnnotationDeletedPayload,
   AnnotationPayload,
   BarAdvancedPayload,
+  BotPayload,
   ControlChangedPayload,
   InstanceDetail,
   MembersChangedPayload,
@@ -99,11 +100,19 @@ export function applyInstanceEvent(inst: InstanceDetail, action: string, payload
       inst.operator = p.operator
       break
     }
-    case ACTION.botStarted:
+    case ACTION.botStarted: {
+      // 带上策略 id：界面上要能说清「跑的是 Caveman 还是随机演示」。
+      // 停止时对应地清空，否则下次启动随机演示还会顶着上一次的策略名。
+      const p = payload as BotPayload | undefined
       inst.bot = true
+      inst.botStrategy = p?.strategy ?? ''
+      inst.botQuantity = p?.quantity ?? 0
       break
+    }
     case ACTION.botStopped:
       inst.bot = false
+      inst.botStrategy = ''
+      inst.botQuantity = 0
       break
     default:
       break

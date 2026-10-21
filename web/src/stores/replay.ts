@@ -26,6 +26,7 @@ import type {
   ServerEvent,
   ServerMessage,
   Side,
+  StrategyInfo,
   SymbolInfo,
   Template,
   You,
@@ -108,6 +109,12 @@ export const useReplayStore = defineStore('replay', () => {
    */
   const templates = ref<Template[]>([])
   const activeTemplate = ref<Record<string, string>>({})
+  /**
+   * 可加载的策略清单（后端注册表里有什么）。
+   *
+   * 连上就取一次：策略是编译期注册的，运行期不会变，没必要轮询或者做失效。
+   */
+  const strategies = ref<StrategyInfo[]>([])
   /** 已保存的录像列表（后端扫录像目录得到的，新→旧） */
   const recordings = ref<RecordingSummary[]>([])
   /** 录像目录的绝对路径，显示在回放 Tab 上，方便用户去文件夹里找 */
@@ -145,12 +152,26 @@ export const useReplayStore = defineStore('replay', () => {
   const recording = computed<RecordingState | null>(() => instance.value?.recording ?? null)
   const isRecording = computed(() => recording.value?.active === true)
   const botRunning = computed(() => instance.value?.bot === true)
+  /**
+   * 机器人正在跑的策略叫什么名字。
+   *
+   * 实例上只存 id（协议里也只传 id），名字从策略清单里查 —— 清单可能还没到，
+   * 那时退回显示 id：显示 id 比显示空白强，至少能看出「跑的不是随机演示」。
+   */
+  const botStrategyLabel = computed(() => {
+    const id = instance.value?.botStrategy
+    if (!id) return ''
+    return strategies.value.find((s) => s.id === id)?.name ?? id
+  })
   /** 能操作 = 拿到操作权，且不是机器人在跑（机器人跑着的时候真人只能看，这就是演示模式） */
   const canOperate = computed(() => isOperator.value && !botRunning.value && !playbackActive.value)
   const operatorLabel = computed(() => {
     const inst = instance.value
     if (!inst) return ''
-    if (inst.bot) return '机器人'
+    if (inst.bot) {
+      const name = botStrategyLabel.value
+      return name ? `机器人 · ${name}` : '机器人'
+    }
     return inst.operator || ''
   })
   const openOrders = computed(() => (instance.value?.orders ?? []).filter((o) => o.status === 'open'))
@@ -197,6 +218,8 @@ export const useReplayStore = defineStore('replay', () => {
     switch (msg.type) {
       case 'welcome':
         me.value = { clientId: msg.clientId, name: msg.name, version: msg.version }
+        // 连上就顺手把策略清单拉下来：启动面板要用，晚一天取就是白等一次往返
+        listStrategies()
         break
       case 'symbols':
         symbols.value = msg.symbols
@@ -246,6 +269,9 @@ export const useReplayStore = defineStore('replay', () => {
         // 一条录像的完整内容到了：交给播放器（组件的 watch 会接住）
         loadedRecording.value = msg.recording ?? null
         loadedSeq.value += 1
+        break
+      case 'strategies':
+        strategies.value = msg.strategies ?? []
         break
       case 'templates':
         templates.value = msg.templates ?? []
@@ -618,9 +644,35 @@ export const useReplayStore = defineStore('replay', () => {
     loadedRecording.value = null
   }
 
-  function startBot(intervalMs = 1200): void {
+  /** 请求策略清单。连上会自动取一次；用户重开启动面板时也可以手动再取。 */
+  function listStrategies(): void {
+    send({ type: 'list_strategies' })
+  }
+
+  /**
+   * 启动机器人。
+   *
+   * 不填 strategy 就是原来的「随机演示机器人」：只会步进、乱画线、乱下单，
+   * 用来验证链路。填了策略 id 就是策略机器人：每推进一根 K 线问策略一次该不该开仓，
+   * 该开就市价进、挂止损和止盈两张保护单，收盘前平掉。
+   *
+   * intervalMs 传 0 = 让后端按类型给默认节奏（演示 1.2 秒、策略 0.3 秒）。
+   * quantity 传 0 = 1 手。
+   */
+  function startBot(
+    opts: { strategy?: string; quantity?: number; intervalMs?: number; params?: Record<string, number> } = {},
+  ): void {
     if (!instance.value) return
-    send({ type: 'bot_start', instanceId: instance.value.id, intervalMs })
+    send({
+      type: 'bot_start',
+      instanceId: instance.value.id,
+      intervalMs: opts.intervalMs ?? 0,
+      strategy: opts.strategy ?? '',
+      quantity: opts.quantity ?? 0,
+      // 没填参数就不发这个键：后端拿到 undefined 会整份用默认值，
+      // 传 {} 和传 undefined 在 Go 里是同一个 nil map，但少一个键日志更干净。
+      params: opts.params,
+    })
   }
 
   function stopBot(): void {
@@ -663,8 +715,10 @@ export const useReplayStore = defineStore('replay', () => {
     currentBar,
     isOperator,
     botRunning,
+    botStrategyLabel,
     canOperate,
     operatorLabel,
+    strategies,
     openOrders,
     // 动作
     connect,
@@ -693,6 +747,7 @@ export const useReplayStore = defineStore('replay', () => {
     cancelOrder,
     startBot,
     stopBot,
+    listStrategies,
     clearError,
     noteNotice,
     clearNotice,

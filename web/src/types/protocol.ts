@@ -101,6 +101,11 @@ export interface Order {
   filledAt?: string
   filledIndex: number
   fillPrice?: number
+  /**
+   * OCO 组：同一组最多成交一张，其余同根自动撤销。
+   * 空 = 独立挂单（用户手下的都是这种）；机器人的止损/止盈共用一组。
+   */
+  group?: string
 }
 
 export interface Trade {
@@ -181,6 +186,10 @@ export interface InstanceDetail {
   operator: string
   members: Member[]
   bot: boolean
+  /** 机器人正在跑的策略 id（空 = 老式的随机演示机器人） */
+  botStrategy?: string
+  /** 策略每笔下多少手 */
+  botQuantity?: number
   seq: number
   events: ReplayEvent[]
   notes: string[]
@@ -199,6 +208,8 @@ export interface InstanceSummary {
   members: number
   operator: string
   bot: boolean
+  /** 机器人正在跑的策略 id（空 = 随机演示机器人），列表里用来显示「机器人 · Caveman」 */
+  botStrategy?: string
   createdBy: string
   createdAt: number
   realizedPnl: number
@@ -300,6 +311,7 @@ export type ServerMessage =
   | DeletedMessage
   | PongMessage
   | TemplatesMessage
+  | StrategiesMessage
   | RecordingsMessage
   | RecordingMessage
 
@@ -370,6 +382,44 @@ export interface MembersChangedPayload {
 
 export interface BotPayload {
   intervalMs: number
+  /** 策略 id；空 = 随机演示机器人 */
+  strategy?: string
+  /** 策略的中文名（只用于显示） */
+  name?: string
+  /** 策略每笔下多少手 */
+  quantity?: number
+}
+
+// ---------------- 策略 ----------------
+
+/**
+ * 一个策略参数的描述。前端不解释这些含义，只负责把默认值列出来、
+ * 让用户知道「跑之前有哪些旋钮」。
+ */
+export interface StrategyParam {
+  key: string
+  label: string
+  default: number
+  min: number
+  max: number
+  step: number
+  help: string
+}
+
+/**
+ * 一个可加载的策略。策略是**编译期注册**在后端的，运行期不会变，
+ * 所以这条消息一次性下发全量、前端缓存着用。
+ */
+export interface StrategyInfo {
+  id: string
+  name: string
+  summary: string
+  params: StrategyParam[]
+}
+
+export interface StrategiesMessage {
+  type: 'strategies'
+  strategies: StrategyInfo[]
 }
 
 // ---------------- 上行消息 ----------------

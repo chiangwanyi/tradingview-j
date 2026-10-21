@@ -132,12 +132,12 @@ func TestAnnotationOffsetSurvivesWire(t *testing.T) {
 	last := bars[len(bars)-1].(map[string]any)["time"].(string)
 
 	send(t, c, map[string]any{
-		"type":          "annotation_add",
-		"instanceId":    id,
-		"kind":          "trend",
-		"start":         map[string]any{"time": last, "price": 100},
-		"end":           map[string]any{"time": last, "price": 101.5, "offset": 40},
-		"snap":          false,
+		"type":       "annotation_add",
+		"instanceId": id,
+		"kind":       "trend",
+		"start":      map[string]any{"time": last, "price": 100},
+		"end":        map[string]any{"time": last, "price": 101.5, "offset": 40},
+		"snap":       false,
 	})
 	ev := readAction(t, c, ActAnnotationAdded)
 	payload := ev["payload"].(map[string]any)

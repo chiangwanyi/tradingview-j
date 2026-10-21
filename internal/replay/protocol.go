@@ -19,30 +19,31 @@ import "encoding/json"
 
 // 请求类型常量。字面量就写在这里，前端 types/protocol.ts 里有同名的一份。
 const (
-	ReqHello         = "hello"
-	ReqListSymbols   = "list_symbols"
-	ReqListInstances = "list_instances"
-	ReqCreate        = "create_instance"
-	ReqJoin          = "join_instance"
-	ReqLeave         = "leave_instance"
-	ReqDelete        = "delete_instance"
-	ReqTakeControl   = "take_control"
-	ReqRelease       = "release_control"
-	ReqStep          = "step"
-	ReqAnnAdd        = "annotation_add"
-	ReqAnnMove       = "annotation_move"
-	ReqAnnDelete     = "annotation_delete"
-	ReqAnnClear      = "annotation_clear" // 一次清掉当前实例的全部绘图（画布右键菜单「移除 N 个绘图」）
-	ReqListTemplates = "list_templates"
-	ReqSaveTemplate  = "save_template"
-	ReqDelTemplate   = "delete_template"
-	ReqOrderPlace    = "order_place"
-	ReqOrderMarket   = "order_market"
-	ReqOrderModify   = "order_modify" // 改挂单价：画布上拖动挂单线走这条
-	ReqOrderCancel   = "order_cancel"
-	ReqBotStart      = "bot_start"
-	ReqBotStop       = "bot_stop"
-	ReqPing          = "ping"
+	ReqHello          = "hello"
+	ReqListSymbols    = "list_symbols"
+	ReqListInstances  = "list_instances"
+	ReqCreate         = "create_instance"
+	ReqJoin           = "join_instance"
+	ReqLeave          = "leave_instance"
+	ReqDelete         = "delete_instance"
+	ReqTakeControl    = "take_control"
+	ReqRelease        = "release_control"
+	ReqStep           = "step"
+	ReqAnnAdd         = "annotation_add"
+	ReqAnnMove        = "annotation_move"
+	ReqAnnDelete      = "annotation_delete"
+	ReqAnnClear       = "annotation_clear" // 一次清掉当前实例的全部绘图（画布右键菜单「移除 N 个绘图」）
+	ReqListTemplates  = "list_templates"
+	ReqSaveTemplate   = "save_template"
+	ReqDelTemplate    = "delete_template"
+	ReqOrderPlace     = "order_place"
+	ReqOrderMarket    = "order_market"
+	ReqOrderModify    = "order_modify" // 改挂单价：画布上拖动挂单线走这条
+	ReqOrderCancel    = "order_cancel"
+	ReqBotStart       = "bot_start"
+	ReqBotStop        = "bot_stop"
+	ReqListStrategies = "list_strategies" // 有哪些策略可加载（启动面板用）
+	ReqPing           = "ping"
 
 	// 录制与回放（v0.11.0 起）
 	ReqRecordStart       = "record_start"        // 开始录制：把当前盘面记为第 1 步
@@ -86,7 +87,8 @@ type Request struct {
 	// delete_template
 	TemplateID string `json:"templateId"`
 
-	// order_place / order_market
+	// order_place / order_market / bot_start
+	// bot_start 用 Quantity 当「策略每笔下多少手」，所以这条请求也要校验它。
 	Side     string  `json:"side"` // buy | sell
 	Price    float64 `json:"price"`
 	Quantity float64 `json:"quantity"`
@@ -95,7 +97,12 @@ type Request struct {
 	OrderID string `json:"orderId"`
 
 	// bot_start
-	IntervalMs int `json:"intervalMs"`
+	//
+	// Strategy 空 = 原来的「随机演示机器人」：只会步进、乱画线、乱下单，
+	// 用来验证链路。填了策略 id 就是策略机器人，每根 K 线问策略一次该不该开仓。
+	IntervalMs int                `json:"intervalMs"`
+	Strategy   string             `json:"strategy"`
+	Params     map[string]float64 `json:"params"` // 策略参数覆盖；缺省用策略自己的默认值
 
 	// record_audio：一段 WAV 的 base64。**不走文件上传** —— 录音只有几十 KB
 	// 到几百 KB，和别的动作一样走这条有序的消息流，顺序天然和操作对得上。
@@ -120,6 +127,7 @@ const (
 	MsgDeleted       = "deleted"
 	MsgPong          = "pong"
 	MsgTemplates     = "templates"
+	MsgStrategies    = "strategies" // 可加载的策略清单
 	MsgRecordings    = "recordings" // 录像列表（摘要）
 	MsgRecording     = "recording"  // 一条录像的完整内容（回放用）
 )
@@ -275,6 +283,12 @@ type Order struct {
 	FilledAt    string  `json:"filledAt,omitempty"`
 	FilledIndex int     `json:"filledIndex"` // -1 = 没成交
 	FillPrice   float64 `json:"fillPrice,omitempty"`
+
+	// Group 是 OCO 组：同一组最多成交一张，其余在本根自动撤销。
+	// 空 = 独立挂单（用户手动下的单都是这种）。
+	// 机器人开仓时给止损和止盈打上同一组 —— 5 分钟 K 线看不出高低点谁先出现，
+	// 不打组的话同根双触发会把仓位平两遍，凭空多出一个反向仓。
+	Group string `json:"group,omitempty"`
 }
 
 // Trade 是一笔成交（= 一次挂单被触发）。不做手续费/滑点；成交价通常等于挂单价，
@@ -349,8 +363,10 @@ type InstanceSummary struct {
 	Members    int    `json:"members"`
 	Operator   string `json:"operator"`
 	Bot        bool   `json:"bot"`
-	CreatedBy  string `json:"createdBy"`
-	CreatedAt  int64  `json:"createdAt"`
+	// BotStrategy 是机器人正在跑的策略 id；空 = 随机演示机器人。
+	BotStrategy string `json:"botStrategy,omitempty"`
+	CreatedBy   string `json:"createdBy"`
+	CreatedAt   int64  `json:"createdAt"`
 	// 实时盈亏摘要：列表上就能看到这个实例做到哪儿了
 	RealizedPnl float64 `json:"realizedPnl"`
 	Trades      int     `json:"trades"`
@@ -381,11 +397,15 @@ type InstanceDTO struct {
 	Operator      string       `json:"operator"`
 	Members       []Member     `json:"members"`
 	Bot           bool         `json:"bot"`
-	Seq           int          `json:"seq"`
-	Events        []Event      `json:"events"`
-	Notes         []string     `json:"notes"`
-	CreatedBy     string       `json:"createdBy"`
-	CreatedAt     int64        `json:"createdAt"`
+	// BotStrategy / BotQuantity 让「刷新页面之后」的界面还能说清机器人在跑什么。
+	// 只存在内存里：机器人是进程内的运行状态，不跟存档走（见 persist.go）。
+	BotStrategy string   `json:"botStrategy,omitempty"`
+	BotQuantity float64  `json:"botQuantity,omitempty"`
+	Seq         int      `json:"seq"`
+	Events      []Event  `json:"events"`
+	Notes       []string `json:"notes"`
+	CreatedBy   string   `json:"createdBy"`
+	CreatedAt   int64    `json:"createdAt"`
 	// Recording 是这个实例当前的录制状态（没在录时是 null）。
 	// 只有操作者能开始录制，但**所有人都能看到这个标记** —— 演示时观众要知道
 	// 屏幕上正在被录，否则「刚才那段怎么没录进去」根本无从判断。
@@ -556,8 +576,44 @@ type MembersChangedPayload struct {
 	Members []Member `json:"members"`
 }
 
+// BotPayload 是机器人启动的广播负载。
+//
+// Strategy 为空表示老式的随机演示机器人；非空时是策略 id，Name 是给人看的名字。
+// 前端靠这两个字段把「启动机器人」按钮改成「停止 Caveman」。
 type BotPayload struct {
-	IntervalMs int `json:"intervalMs"`
+	IntervalMs int     `json:"intervalMs"`
+	Strategy   string  `json:"strategy,omitempty"`
+	Name       string  `json:"name,omitempty"`
+	Quantity   float64 `json:"quantity,omitempty"`
+}
+
+// StrategyParam 是一个策略参数的描述（前端启动面板按它列出旋钮）。
+type StrategyParam struct {
+	Key     string  `json:"key"`
+	Label   string  `json:"label"`
+	Default float64 `json:"default"`
+	Min     float64 `json:"min"`
+	Max     float64 `json:"max"`
+	Step    float64 `json:"step"`
+	Help    string  `json:"help"`
+}
+
+// StrategyInfo 是「有一个什么策略可以跑」。
+//
+// 只发描述，不发实现：前端不需要知道策略内部怎么判断，
+// 它只负责把 id 回传过来启动，剩下的全在后端。
+type StrategyInfo struct {
+	ID      string          `json:"id"`
+	Name    string          `json:"name"`
+	Summary string          `json:"summary"`
+	Params  []StrategyParam `json:"params"`
+}
+
+// StrategiesMsg 是策略清单。策略是编译期注册的，运行期不会变，
+// 但每次请求都发全量 —— 前端连上就要一次，没有必要做缓存失效。
+type StrategiesMsg struct {
+	Type       string         `json:"type"`
+	Strategies []StrategyInfo `json:"strategies"`
 }
 
 // ---------------- 录制与回放（v0.11.0） ----------------
@@ -576,17 +632,17 @@ type BotPayload struct {
 // Clips 是**当前这一步**的录音清单：HUD 要列出来给用户预览、逐条删。
 // 带在 state 里而不是让前端自己攒，是因为「切步」时前端不该自己去猜哪几条属于新的一步。
 type RecordingState struct {
-	Active    bool   `json:"active"`
-	ID        string `json:"id,omitempty"`
-	By        string `json:"by,omitempty"`        // 谁在录
-	StartedAt int64  `json:"startedAt,omitempty"` // 开始录制的时间（Unix 秒）
-	Step      int    `json:"step"`                // 当前第几步（1 = 点录制时那一屏）
-	StartTime string `json:"startTime,omitempty"` // 第 1 步对应的 K 线时间
-	Current   string `json:"current,omitempty"`   // 当前这一步对应的 K 线时间
-	Audios    int    `json:"audios"`              // 整条录像已录几条（不限）
-	StepAudios int   `json:"stepAudios"`          // 当前这一步已录几条
-	MaxAudios int    `json:"maxAudios"`           // 单步上限（9）
-	Clips     []AudioClip `json:"clips"`          // 当前这一步的录音
+	Active     bool        `json:"active"`
+	ID         string      `json:"id,omitempty"`
+	By         string      `json:"by,omitempty"`        // 谁在录
+	StartedAt  int64       `json:"startedAt,omitempty"` // 开始录制的时间（Unix 秒）
+	Step       int         `json:"step"`                // 当前第几步（1 = 点录制时那一屏）
+	StartTime  string      `json:"startTime,omitempty"` // 第 1 步对应的 K 线时间
+	Current    string      `json:"current,omitempty"`   // 当前这一步对应的 K 线时间
+	Audios     int         `json:"audios"`              // 整条录像已录几条（不限）
+	StepAudios int         `json:"stepAudios"`          // 当前这一步已录几条
+	MaxAudios  int         `json:"maxAudios"`           // 单步上限（9）
+	Clips      []AudioClip `json:"clips"`               // 当前这一步的录音
 }
 
 // RecordingSummary 是录像列表里的一行。
@@ -701,7 +757,7 @@ type RecordingAudioPayload struct {
 //
 // Removed 里是刚被删掉的几条（文件名要一起带，前端可能正在播其中一条，得停下）。
 type RecordingAudioClearedPayload struct {
-	Removed []AudioClip  `json:"removed"`
+	Removed []AudioClip    `json:"removed"`
 	State   RecordingState `json:"state"`
 }
 

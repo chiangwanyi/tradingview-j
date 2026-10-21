@@ -235,6 +235,8 @@ func (h *Hub) Handle(c *Client, raw []byte) {
 		h.handleBotStart(c, req)
 	case ReqBotStop:
 		h.handleBotStop(c, req)
+	case ReqListStrategies:
+		h.handleListStrategies(c)
 	case ReqPing:
 		h.reply(c, PongMsg{Type: MsgPong})
 	case ReqRecordStart:
@@ -611,7 +613,12 @@ func (h *Hub) doClearAnnotationsLocked(inst *Instance, by string) (int, error) {
 }
 
 func (h *Hub) doPlaceOrderLocked(inst *Instance, by, side, kind string, price, qty float64) (Order, error) {
-	o, err := inst.placeOrder(by, side, kind, price, qty)
+	return h.doPlaceOrderGroupedLocked(inst, by, side, kind, price, qty, "")
+}
+
+// doPlaceOrderGroupedLocked 挂一张带 OCO 组的单（只有机器人用得到，见 bot_strategy.go）。
+func (h *Hub) doPlaceOrderGroupedLocked(inst *Instance, by, side, kind string, price, qty float64, group string) (Order, error) {
+	o, err := inst.placeOrderGrouped(by, side, kind, price, qty, group)
 	if err != nil {
 		return Order{}, err
 	}

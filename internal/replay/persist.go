@@ -636,6 +636,9 @@ func (h *Hub) restoreInstanceLocked(inst *Instance) bool {
 	inst.Operator = ""
 	inst.botStop = nil
 	inst.botInterval = 0
+	inst.botStrategy = ""
+	inst.botQty = 0
+	inst.run = nil
 	inst.deleted = false
 	h.reindexLocked(inst)
 	// 0.5.0 建出来的实例，存档里锚点日之后缺一整段（见 repairDayGapsLocked）。

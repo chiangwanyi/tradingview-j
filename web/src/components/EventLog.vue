@@ -129,7 +129,15 @@ function detail(ev: ReplayEvent): string {
     }
     case ACTION.botStarted: {
       const p = ev.payload as BotPayload
-      return `每 ${p.intervalMs}ms 动作一次`
+      // 策略机器人：写清跑的是哪个策略、每笔几手、推进节奏
+      if (p.strategy) {
+        return `${p.name || p.strategy} · 每笔 ${p.quantity} 手 · 每 ${p.intervalMs}ms 推进一根`
+      }
+      return `随机演示 · 每 ${p.intervalMs}ms 动作一次`
+    }
+    case ACTION.botStopped: {
+      const p = ev.payload as BotPayload | undefined
+      return p?.name ? `${p.name} 已停止` : '已停止'
     }
     default:
       return ''

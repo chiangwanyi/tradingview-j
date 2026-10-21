@@ -67,10 +67,18 @@ type Instance struct {
 	seqAnn   int
 	seqOrder int
 	seqTrade int
+	seqGroup int // OCO 组号（同一组里最多成交一张，见 advance）
 
 	botStop     chan struct{}
 	botInterval time.Duration
 	deleted     bool
+
+	// 策略机器人（bot_strategy.go）。run 非空 = 跑的是策略；
+	// botStrategy 是策略 id（空 = 老式的随机演示机器人），botQty 是每笔手数。
+	// 三者都只活在内存里：重启进程后机器人不会自己接着跑（不落进存档）。
+	botStrategy string
+	botQty      float64
+	run         *strategyRun
 
 	// rec 是「正在录制的那一份」（v0.11.0）。nil = 没在录。
 	// 它挂在实例上而不是 Hub 上：录制属于「这一个盘面」，换实例就该换一段录像。
@@ -106,6 +114,14 @@ func (inst *Instance) nextOrderID() string {
 func (inst *Instance) nextTradeID() string {
 	inst.seqTrade++
 	return fmt.Sprintf("t%d", inst.seqTrade)
+}
+
+// nextGroupID 给一次「开仓 + 两张保护单」发一个组号。
+// 不复用、不回退：旧单已经成交或撤掉，组号重复没有意义，但唯一能保证
+// 万一有残留单时不会跟新单串成一组。
+func (inst *Instance) nextGroupID() string {
+	inst.seqGroup++
+	return fmt.Sprintf("g%d", inst.seqGroup)
 }
 
 // ---------------------------------------------------------------------------
@@ -337,6 +353,12 @@ func (inst *Instance) clearAnnotations() []string {
 // 等于一张已经触发的市价单，撮合时按开盘价成交（见 fillPriceFor），不会凭空拿到更好的价格。
 // 界面上的右键菜单会按方向自动选单型，手填价格的下单框允许用户自己决定。
 func (inst *Instance) placeOrder(by, side, kind string, price, qty float64) (Order, error) {
+	return inst.placeOrderGrouped(by, side, kind, price, qty, "")
+}
+
+// placeOrderGrouped 是 placeOrder 的加强版：多一个 OCO 组名。
+// 手动下单永远走 placeOrder（组为空）；机器人开仓时用它把止损和止盈绑成一组。
+func (inst *Instance) placeOrderGrouped(by, side, kind string, price, qty float64, group string) (Order, error) {
 	if err := validateSide(side); err != nil {
 		return Order{}, err
 	}
@@ -361,6 +383,7 @@ func (inst *Instance) placeOrder(by, side, kind string, price, qty float64) (Ord
 		PlacedAt:    bar.Time,
 		PlacedIndex: inst.Cursor,
 		FilledIndex: -1,
+		Group:       group,
 	}
 	inst.Orders = append(inst.Orders, o)
 	return o, nil
@@ -503,6 +526,9 @@ func finitePositive(v float64) bool {
 //   - 数量按挂单数量一次成交，不做部分成交
 //   - 只撮合「上一根或更早」挂的单：本根挂的单从下一根开始参与，避免用已经收完的
 //     K 线的最高最低价倒推成交
+//   - **同一组（Group 非空）的挂单最多成交一张**，其余自动撤销。这一条是 OCO：
+//     5 分钟 K 线看不出「最高价和最低价谁先出现」，止损和止盈可能同时被判为触发。
+//     不拦的话，一张止盈单平完仓，止损单接着成交，会把仓位平过头、开出一个反向仓。
 func (inst *Instance) advance(ds *DataSource) (Bar, []Trade, error) {
 	if inst.Cursor+1 >= len(inst.Bars) {
 		if err := inst.ensureFuture(ds); err != nil {
@@ -513,9 +539,19 @@ func (inst *Instance) advance(ds *DataSource) (Bar, []Trade, error) {
 	bar := inst.Bars[inst.Cursor]
 
 	var fills []Trade
+	// 本根已经成交过的组。**同组先挂的那张优先**：机器人开仓时先挂止损、后挂止盈，
+	// 所以同根双触发时判的是止损 —— 这是保守的方向，也是能写进文档的唯一口径。
+	fired := map[string]bool{}
+
 	for i := range inst.Orders {
 		o := &inst.Orders[i]
 		if o.Status != OrderOpen || o.PlacedIndex >= inst.Cursor {
+			continue
+		}
+		if o.Group != "" && fired[o.Group] {
+			// 同组另一张已经成交：这张按 OCO 规则自动撤销。
+			// 记成 cancelled 而不是静默丢弃，是因为界面上要能看出「它为什么没成交」。
+			o.Status = OrderCancelled
 			continue
 		}
 		if !orderTriggered(*o, bar) {
@@ -529,6 +565,9 @@ func (inst *Instance) advance(ds *DataSource) (Bar, []Trade, error) {
 		inst.Trades = append(inst.Trades, tr)
 		inst.RealizedPnl += tr.RealizedPnl
 		fills = append(fills, tr)
+		if o.Group != "" {
+			fired[o.Group] = true
+		}
 	}
 	inst.Position = inst.position()
 	return bar, fills, nil
@@ -824,6 +863,8 @@ func (inst *Instance) snapshot(members []Member) InstanceDTO {
 		Operator:      inst.Operator,
 		Members:       members,
 		Bot:           inst.botStop != nil,
+		BotStrategy:   inst.botStrategy,
+		BotQuantity:   inst.botQty,
 		Seq:           inst.Seq,
 		Events:        evs,
 		Notes:         notes,
@@ -853,6 +894,7 @@ func (inst *Instance) summary(members int) InstanceSummary {
 		Members:     members,
 		Operator:    inst.Operator,
 		Bot:         inst.botStop != nil,
+		BotStrategy: inst.botStrategy,
 		CreatedBy:   inst.CreatedBy,
 		CreatedAt:   inst.CreatedAt,
 		RealizedPnl: inst.RealizedPnl,
