@@ -1,0 +1,32 @@
+
+ //@version=4
+study("Doji X + Blue ZigZag", overlay=true)
+
+// 参数
+lookback = input(6, "Lag |2..n|", minval=2)
+dojiSize = input(0.15, "Doji Size", minval=0.01, step=0.01)
+
+// ===== 蓝色 ZigZag 原始逻辑 =====
+dema = ema(ema(close, lookback), lookback)
+mom1 = mom(dema, round(lookback / 2))
+mom2 = mom(mom1, round(lookback / 2))
+
+crossmomover  = crossover(mom2, 0)
+crossmomunder = crossunder(mom2, 0)
+
+ll = lowest(low, lookback)
+hh = highest(high, lookback)
+
+plot(crossmomover ? ll : crossmomunder ? hh : na,
+     title="Blue ZigZag", color=color.blue, linewidth=2)
+
+// ===== Doji X 原始逻辑 =====
+doji = abs(open - close) <= (high - low) * dojiSize
+
+plotchar((open - close) < 0 ? doji : na,
+     title="Bearish Doji", char="✖",
+     location=location.abovebar, color=color.black)
+
+plotchar((open - close) > 0 ? doji : na,
+     title="Bullish Doji", char="✖",
+     location=location.belowbar, color=color.black)
