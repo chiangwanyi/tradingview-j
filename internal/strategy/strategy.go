@@ -370,6 +370,41 @@ func SessionEnd(t string) bool {
 	return m >= sessionEndMinute && m < sessionOpenMinute
 }
 
+// dayCloseMinute 是一个**日历日**里最后一根 5 分钟 K 线的开盘时刻（本地 23:55）。
+//
+// 它和 sessionEndMinute（04:50）是两回事，别混：
+//
+//	sessionEndMinute  04:50  CME 结算断档（05:00~05:55 没有数据）之前收摊
+//	dayCloseMinute    23:55  **CSV 文件按天切分的边界**，一天里最后一根就是它
+//
+// 之所以要两条：CSV 一天是本地 00:00~23:55，而一个 CME 交易日是 06:00~次日 05:00，
+// 两者错开了 6 小时 —— 一个交易日在文件上被切成两半（前一日 06:00~23:55 +
+// 次日 00:00~05:00）。要求「持仓绝不过夜」指的是**文件上的这一夜**，所以判据在 23:55。
+const dayCloseMinute = 23*60 + 55
+
+// DayClose 表示这根 K 线是「当天最后一根」：机器人必须在这里把仓位平掉，绝不留过夜。
+//
+// 用「>= 23:55」而不是「== 23:55」：正常数据最后一根就是 23:55，
+// 但万一数据里出现了 23:56/23:59 这种非 5 分钟对齐的行，也不该漏掉。
+func DayClose(t string) bool {
+	m := MinutesOfDay(t)
+	if m < 0 {
+		return false
+	}
+	return m >= dayCloseMinute
+}
+
+// CalendarDay 取 "yyyy-MM-dd HH:MM" 里的日期部分 —— **日历日**，不是交易日。
+//
+// 用来兜住「那一天缺了 23:55 那根」的情况：日历日一变，说明已经跨过午夜了，
+// 还有仓位就必须马上平（见 bot_strategy.go 的跨日兜底）。
+func CalendarDay(t string) string {
+	if len(t) < 10 {
+		return ""
+	}
+	return t[:10]
+}
+
 // AlignTickUp / AlignTickDown 把价格对齐到最小跳动的整数倍，方向必须指定。
 //
 // 为什么不四舍五入：止损/止盈的对齐偏差如果随机分布，一半会让目标更容易打到、

@@ -529,6 +529,7 @@ func finitePositive(v float64) bool {
 //   - **同一组（Group 非空）的挂单最多成交一张**，其余自动撤销。这一条是 OCO：
 //     5 分钟 K 线看不出「最高价和最低价谁先出现」，止损和止盈可能同时被判为触发。
 //     不拦的话，一张止盈单平完仓，止损单接着成交，会把仓位平过头、开出一个反向仓。
+//   - **同组内谁成交：止损优先**，与挂单先后无关（见 ocoWinner）。
 func (inst *Instance) advance(ds *DataSource) (Bar, []Trade, error) {
 	if inst.Cursor+1 >= len(inst.Bars) {
 		if err := inst.ensureFuture(ds); err != nil {
@@ -539,20 +540,27 @@ func (inst *Instance) advance(ds *DataSource) (Bar, []Trade, error) {
 	bar := inst.Bars[inst.Cursor]
 
 	var fills []Trade
-	// 本根已经成交过的组。**同组先挂的那张优先**：机器人开仓时先挂止损、后挂止盈，
-	// 所以同根双触发时判的是止损 —— 这是保守的方向，也是能写进文档的唯一口径。
-	fired := map[string]bool{}
+	// 先算出本根里每个 OCO 组「该成交哪一张」。规则写在 ocoWinner 里：**止损优先**。
+	//
+	// 为什么不在循环里靠「谁先挂谁先成交」：那是调用顺序的副产品。机器人现在恰好先挂止损，
+	// 所以结果对；但顺序一旦被人调换（或将来别的调用方先挂止盈），同根双触发就会静默
+	// 变成「止盈算成」的乐观口径 —— 而回测结果是看不出来的，只会显得策略更好。
+	winner := inst.ocoWinner(bar)
 
 	for i := range inst.Orders {
 		o := &inst.Orders[i]
 		if o.Status != OrderOpen || o.PlacedIndex >= inst.Cursor {
 			continue
 		}
-		if o.Group != "" && fired[o.Group] {
-			// 同组另一张已经成交：这张按 OCO 规则自动撤销。
-			// 记成 cancelled 而不是静默丢弃，是因为界面上要能看出「它为什么没成交」。
-			o.Status = OrderCancelled
-			continue
+		if o.Group != "" {
+			if w, ok := winner[o.Group]; ok && w != i {
+				// 同组另一张才是本根的成交方：这张按 OCO 规则自动撤销。
+				// 记成 cancelled 而不是静默丢弃，是因为界面上要能看出「它为什么没成交」。
+				// 注意这里**不看这张自己有没有触发**：OCO 是「一张成交、另一张作废」，
+				// 不是「两张都触发才二选一」。
+				o.Status = OrderCancelled
+				continue
+			}
 		}
 		if !orderTriggered(*o, bar) {
 			continue
@@ -565,12 +573,55 @@ func (inst *Instance) advance(ds *DataSource) (Bar, []Trade, error) {
 		inst.Trades = append(inst.Trades, tr)
 		inst.RealizedPnl += tr.RealizedPnl
 		fills = append(fills, tr)
-		if o.Group != "" {
-			fired[o.Group] = true
-		}
 	}
 	inst.Position = inst.position()
 	return bar, fills, nil
+}
+
+// ocoWinner 算出本根里每个 OCO 组应该成交哪一张单（返回值是 inst.Orders 的下标）。
+//
+// **规则：止损优先于限价单；同为一种类型时，先挂的优先。**
+//
+// 为什么是「止损优先」而不是「止盈优先」：一根 5 分钟 K 线只有 open/high/low/close，
+// 两头都扎到的时候，内部到底是先破上还是先破下，数据里根本没有。这时唯一诚实的做法
+// 是取对持仓更不利的那一侧 —— 止损成交、止盈当作没发生。反过来（算成止盈）等于
+// 在每一次「说不清」的地方都替策略选了好结果，回测数字会系统性偏乐观，实盘一跑就露馅。
+//
+// 这条规则**不依赖挂单顺序**。曾经依赖过：早先的实现是「同组先挂的成交」，因为机器人
+// 恰好先挂止损，结果碰巧正确；但那是隐式契约，改一行挂单顺序就会静默翻转成乐观口径，
+// 所以改成显式比较优先级（TestOCOStopWinsEvenWhenPlacedLast 钉住）。
+//
+// 只在「组内至少有一张本根触发」时才返回该组；两张都没触发的组不出现在结果里，
+// 循环里也就不会误撤。
+func (inst *Instance) ocoWinner(bar Bar) map[string]int {
+	winner := make(map[string]int)
+	for i := range inst.Orders {
+		o := &inst.Orders[i]
+		if o.Group == "" || o.Status != OrderOpen || o.PlacedIndex >= inst.Cursor {
+			continue
+		}
+		if !orderTriggered(*o, bar) {
+			continue
+		}
+		cur, ok := winner[o.Group]
+		if !ok {
+			winner[o.Group] = i
+			continue
+		}
+		// 严格更小才替换：优先级相同时保留先挂的那张（下标更小）。
+		if ocoRank(*o) < ocoRank(inst.Orders[cur]) {
+			winner[o.Group] = i
+		}
+	}
+	return winner
+}
+
+// ocoRank 是同组内的成交优先级，数字小的优先。目前只有两类单，止损排在限价前面。
+func ocoRank(o Order) int {
+	if o.Kind == KindStop {
+		return 0
+	}
+	return 1
 }
 
 // orderTriggered 判断一张挂单是否被这根 K 线触发。

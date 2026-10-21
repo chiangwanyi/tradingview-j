@@ -31,8 +31,8 @@ go test ./internal/wsclient/   # 握手 / 大帧 / 分片 / ping-pong
 go test ./internal/config/     # 配置生成 / 缺键补齐 / 非法值回退
 go test ./internal/logx/       # 状态行原地刷新 / 中文按显示宽度擦除 / 重定向不留回车
 go test ./internal/webreport/  # 网页版的 JSON 形状 / 静态资源 / 端口回退 / 只读（含前端格式化交叉校验）
-go test ./internal/strategy/   # 策略：Caveman 形态识别 / 参数合并 / 交易日与收尾时段 / 价格对齐 / 注册表
-go test ./internal/replay/     # 复盘：窗口加载 / 撮合与盈亏（含 OCO 组）/ 标注吸附 / 广播隔离 / 两种机器人 / 真 WS 握手
+go test ./internal/strategy/   # 策略：Caveman 形态识别 / 参数合并 / 交易日与收尾时段 / 23:55 日历日收盘 / 价格对齐 / 注册表
+go test ./internal/replay/     # 复盘：窗口加载 / 撮合与盈亏（含 OCO 组）/ 23:55 日终强平 / 标注吸附 / 广播隔离 / 两种机器人 / 真 WS 握手
 go test .                      # 版本号机制的四个落点（VERSION / 兜底值 / build.cmd / winres）
 ```
 

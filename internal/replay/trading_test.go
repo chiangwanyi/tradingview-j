@@ -611,7 +611,7 @@ func TestClosedLotsPureReadOnly(t *testing.T) {
 	}
 }
 
-// 同一根 K 线同时穿过止损和止盈（一根长影线两头都扎）：只成交**先挂**的那张，
+// 同一根 K 线同时穿过止损和止盈（一根长影线两头都扎）：只成交**止损**那一张，
 // 另一张按 OCO 自动撤销。
 //
 // 这是 5 分钟粒度绕不过去的限制：一根 K 线只有最高/最低价，看不出先摸到哪边。
@@ -621,7 +621,7 @@ func TestOCOGroupFillsOnlyTheFirstOrder(t *testing.T) {
 	inst := newTradingInstance()
 	ds := emptyDS()
 	// 09:05 那根：最高 102、最低 98 —— 101 的 stop 和 99 的 limit 都会判为触发。
-	// 先挂 stop，所以它优先成交（保守方向：先认止损）。
+	// 两张都触发时判止损（保守方向），见 ocoWinner。
 	stop, err := inst.placeOrderGrouped("human", "buy", KindStop, 101, 1, "g1")
 	if err != nil {
 		t.Fatalf("挂止损失败：%v", err)
@@ -639,7 +639,7 @@ func TestOCOGroupFillsOnlyTheFirstOrder(t *testing.T) {
 		t.Fatalf("同组只该成交 1 张，实际 %d 张：%+v", len(fills), fills)
 	}
 	if fills[0].OrderID != stop.ID {
-		t.Fatalf("应当成交先挂的止损单 %s，实际 %s", stop.ID, fills[0].OrderID)
+		t.Fatalf("应当成交止损单 %s，实际 %s", stop.ID, fills[0].OrderID)
 	}
 	if inst.Orders[0].Status != OrderFilled {
 		t.Fatalf("止损单应当成交，实际 %s", inst.Orders[0].Status)
@@ -650,6 +650,68 @@ func TestOCOGroupFillsOnlyTheFirstOrder(t *testing.T) {
 	// 关键：仓位是 +1（只成交一张），不是 +2，也不是「平完又反手」
 	if inst.Position.Quantity != 1 {
 		t.Fatalf("只该成交 1 手，实际持仓 %v", inst.Position.Quantity)
+	}
+}
+
+// 反过来挂：先挂止盈、后挂止损，同根双触发时**仍然判止损**。
+//
+// 这条是「止损优先」是否真的与挂单顺序无关的唯一证据。改回「先挂的优先」这个测试就红。
+func TestOCOStopWinsEvenWhenPlacedLast(t *testing.T) {
+	inst := newTradingInstance()
+	ds := emptyDS()
+	limit, err := inst.placeOrderGrouped("human", "buy", KindLimit, 99, 1, "g1")
+	if err != nil {
+		t.Fatalf("挂止盈失败：%v", err)
+	}
+	stop, err := inst.placeOrderGrouped("human", "buy", KindStop, 101, 1, "g1")
+	if err != nil {
+		t.Fatalf("挂止损失败：%v", err)
+	}
+
+	_, fills, err := inst.advance(ds)
+	if err != nil {
+		t.Fatalf("步进失败：%v", err)
+	}
+	if len(fills) != 1 {
+		t.Fatalf("同组只该成交 1 张，实际 %d 张：%+v", len(fills), fills)
+	}
+	if fills[0].OrderID != stop.ID {
+		t.Fatalf("后挂的止损也该赢，实际成交 %s", fills[0].OrderID)
+	}
+	if inst.Orders[0].Status != OrderCancelled || inst.Orders[0].ID != limit.ID {
+		t.Fatalf("先挂的止盈单应当被撤销，实际 %s（%s）", inst.Orders[0].Status, inst.Orders[0].ID)
+	}
+	if inst.Position.Quantity != 1 {
+		t.Fatalf("只该成交 1 手，实际持仓 %v", inst.Position.Quantity)
+	}
+}
+
+// 只有止盈触发时：止盈成交，止损**当场作废**（不用等机器人下一次同步）。
+//
+// OCO 是「一张成交、另一张作废」，不是「两张都触发才二选一」。仓位已经平掉了，
+// 止损再挂着就会在下一次被触发时开出一个没人要的反向仓。
+func TestOCOCancelsSiblingWhenOnlyTargetTriggers(t *testing.T) {
+	inst := newTradingInstance()
+	ds := emptyDS()
+	// 09:05 那根最高 102、最低 98。止损放在 105（没触发），止盈 99（触发）。
+	stop, err := inst.placeOrderGrouped("human", "buy", KindStop, 105, 1, "g1")
+	if err != nil {
+		t.Fatalf("挂止损失败：%v", err)
+	}
+	limit, err := inst.placeOrderGrouped("human", "buy", KindLimit, 99, 1, "g1")
+	if err != nil {
+		t.Fatalf("挂止盈失败：%v", err)
+	}
+
+	_, fills, err := inst.advance(ds)
+	if err != nil {
+		t.Fatalf("步进失败：%v", err)
+	}
+	if len(fills) != 1 || fills[0].OrderID != limit.ID {
+		t.Fatalf("应当只成交止盈单，实际 %+v", fills)
+	}
+	if inst.Orders[0].Status != OrderCancelled {
+		t.Fatalf("没触发的止损单也该被 OCO 撤销，实际 %s（%s）", inst.Orders[0].Status, stop.ID)
 	}
 }
 

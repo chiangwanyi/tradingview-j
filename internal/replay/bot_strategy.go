@@ -14,11 +14,17 @@ package replay
 //
 // 一个交易日内的完整循环（每推进一根 K 线走一遍）：
 //
-//	步进一根  ->  advance 撮合上一根挂着的止损/止盈单（bot 不用管价格怎么穿）
-//	换日检查  ->  交易日变了：清仓 + 撤残留保护单（绝不隔夜）
+//	步进一根   ->  advance 撮合上一根挂着的止损/止盈单（bot 不用管价格怎么穿）
+//	跨日兜底   ->  日历日变了还有仓位：上一日漏了 23:55，立刻平（吃掉隔夜跳空）
+//	换日检查   ->  交易日变了：清仓 + 撤残留保护单（绝不隔夜）
 //	同步保护单 ->  止损或止盈成交了，撤掉另一张（这就是 OCO）
-//	收盘收尾  ->  04:50 之后：清仓，不再开新仓
+//	23:55 收摊 ->  日历日最后一根：**无条件平仓 + 撤光所有挂单**，本根不问策略
+//	结算收尾   ->  04:50 之后：清仓，不再开新仓
 //	空仓才问策略 ->  有信号就市价开仓 + 挂止损 + 挂止盈
+//
+// 「23:55 收摊」是**全局硬约束**：不管哪个策略、多大手数、什么方向，一律在
+// 日历日最后一根上被平掉，任何仓位都不留过夜。判据只看 K 线时间（CSV 里的本地
+// 明文，就是北京时间），不做时区换算。
 //
 // 每一单的成交价都来自复盘台自己的撮合：**零滑点、零手续费**，市价单按当根收盘价成交。
 // 这是需求里明确的假设，也意味着界面上跑出来的盈亏是「最有利情况」，不是实盘结果。
@@ -52,6 +58,10 @@ type strategyRun struct {
 
 	day string // 当前交易日（06:00 口径）；换日时清仓
 
+	// calDay 是当前**日历日**（CSV 文件那一天）。和 day 差 6 小时：
+	// 23:55 是日历日的最后一根，06:00 才是交易日的开始。跨日历日时兜底平仓。
+	calDay string
+
 	// 这一单的两张保护单。空串 = 没有。
 	// 只认自己记下的编号：盘面上用户手动挂的单，机器人一律不碰。
 	stopOrder   string
@@ -84,7 +94,7 @@ func (run *strategyRun) revealedBars(inst *Instance) []strategy.Bar {
 	return run.bars[:need]
 }
 
-// botStrategyTickLocked 是策略机器人的一拍：推进一根，然后把上面那五步走一遍。
+// botStrategyTickLocked 是策略机器人的一拍：推进一根，然后把上面那七步走一遍。
 func (h *Hub) botStrategyTickLocked(inst *Instance, run *strategyRun) {
 	// 1. 推进一根。这一步顺便撮合了上一根挂着的止损/止盈 —— 不需要机器人自己判价格。
 	if err := h.doStepLocked(inst, "bot"); err != nil {
@@ -104,10 +114,25 @@ func (h *Hub) botStrategyTickLocked(inst *Instance, run *strategyRun) {
 
 	bar := inst.currentBar()
 	day := strategy.TradeDay(bar.Time)
+	cal := strategy.CalendarDay(bar.Time)
 
-	// 2. 换交易日：上一日的仓位和残留保护单必须清掉。
-	//    这一步和「04:50 收盘收尾」是两道路闸 —— 万一某天的数据缺了最后一根，
-	//    靠这里也不会把仓位带过夜。
+	// 2. 跨日历日兜底（正常数据走不到这里，见第 5 步）。
+	//     如果上一日没能在 23:55 平掉（那天缺了最后一根、或者当时平仓失败），
+	//     时间已经跨过午夜，这一刻必须无条件清空 —— 会吃一次隔夜跳空，
+	//     但比「留着仓位继续跑」诚实：那是真的过夜了，就该按过夜的代价算。
+	//
+	//     清完就 return，不在同一根上再开新仓：这是异常路径，先把账面擦干净，
+	//     想接着做就等下一根（和 23:55 的处理保持同一个形状）。
+	crossed := run.calDay != "" && cal != "" && cal != run.calDay
+	run.calDay = cal
+	if crossed && inst.Position.Quantity != 0 {
+		h.closeOutLocked(inst, run, "跨日兜底：上一日没能按 23:55 平仓")
+		return
+	}
+
+	// 3. 换交易日：上一日的仓位和残留保护单必须清掉。
+	//     这一步和「23:55 日历日收盘」「04:50 结算收尾」是三道路闸 —— 万一某天的数据
+	//     缺了最后一根，靠这里也不会把仓位带过夜。
 	if run.day != "" && day != run.day {
 		run.cancelProtectionLocked(h, inst)
 		if inst.Position.Quantity != 0 {
@@ -116,20 +141,28 @@ func (h *Hub) botStrategyTickLocked(inst *Instance, run *strategyRun) {
 	}
 	run.day = day
 
-	// 3. 止损/止盈成交之后撤掉另一张。放在开新仓之前：同一根里刚平掉的仓
+	// 4. 止损/止盈成交之后撤掉另一张。放在开新仓之前：同一根里刚平掉的仓
 	//    不能还被当成「有仓位」，否则下一个信号要等到下一根。
 	run.syncProtectionLocked(h, inst)
 
-	// 4. 收盘收尾时段：清仓，不再开新仓。
-	if strategy.SessionEnd(bar.Time) {
-		if inst.Position.Quantity != 0 {
-			h.botClosePositionLocked(inst, run)
-		}
-		run.cancelProtectionLocked(h, inst)
+	// 5. 日历日收盘（23:55 那根）：**无条件平仓 + 撤掉所有未成交挂单**，并且本根不问策略。
+	//
+	//     为什么 return 而不是继续往下走：下面第 7 步会问策略要不要开仓，
+	//     23:55 开的仓没人接、必然留过夜 —— 刚平完又开一张是最荒谬的结果。
+	//     为什么撤「所有」挂单而不只是自己那两张：残留的任何一张（用户睡前的挂单、
+	//     以前某次运行漏下的）都可能在 00:00 之后被触发，凭空开出一个过夜仓。
+	if strategy.DayClose(bar.Time) {
+		h.closeOutLocked(inst, run, "23:55 日历日收盘")
 		return
 	}
 
-	// 5. 有仓位就不问策略。策略自己也只在空仓时出信号（双保险）：
+	// 6. 结算收尾时段（04:50~05:55）：清仓，不再开新仓。
+	if strategy.SessionEnd(bar.Time) {
+		h.closeOutLocked(inst, run, "04:50 结算收尾")
+		return
+	}
+
+	// 7. 有仓位就不问策略。策略自己也只在空仓时出信号（双保险）：
 	//    万一以后有个策略忘了判断，也不会在同一个方向上叠成一堆。
 	if inst.Position.Quantity != 0 {
 		return
@@ -148,6 +181,42 @@ func (h *Hub) botStrategyTickLocked(inst *Instance, run *strategyRun) {
 	// 一根 K 线最多开一单：策略返回多个信号时只认第一个，
 	// 否则同一根柱子上会把同一个理由做成好几笔重复的仓。
 	h.botEnterLocked(inst, run, sigs[0], bar)
+}
+
+// closeOutLocked 是「收摊」的唯一实现：市价平掉仓位 + 撤掉盘面上**所有**还挂着的单。
+//
+// 三处都调它（23:55 日历日收盘、跨日兜底、04:50 结算收尾），保证口径只有一份：
+// 不会出现「23:55 撤了保护单但漏了用户挂的那张」「04:50 只平仓不撤单」这类分叉。
+//
+// 平仓价是**当根 K 线的收盘价**（复盘台的市价单口径，零滑点）：23:55 那根的 close
+// 就是 00:00 之前的最后一个成交价，所以「23:55 收盘时平掉」在数据上就是这一格。
+func (h *Hub) closeOutLocked(inst *Instance, run *strategyRun, reason string) {
+	if inst.Position.Quantity != 0 {
+		h.log("[replay] %s：市价平掉 %.0f 手（实例 %s）", reason, inst.Position.Quantity, inst.ID)
+		h.botClosePositionLocked(inst, run) // 里面会撤掉两张保护单
+	} else {
+		run.clearProtection()
+	}
+	h.cancelAllOrdersLocked(inst, "bot")
+}
+
+// cancelAllOrdersLocked 撤掉这个实例上所有还挂着的单。
+//
+// 先收集编号再逐张撤：doCancelOrderLocked 会改 inst.Orders 里的状态（并广播），
+// 边遍历边改会让断言和回调都变得不好推理。
+func (h *Hub) cancelAllOrdersLocked(inst *Instance, by string) {
+	var ids []string
+	for i := range inst.Orders {
+		if inst.Orders[i].Status == OrderOpen {
+			ids = append(ids, inst.Orders[i].ID)
+		}
+	}
+	for _, id := range ids {
+		if err := h.doCancelOrderLocked(inst, by, id); err != nil {
+			// 撤不掉（已经被撮合掉了之类）不算错误，记一行就够 —— 关键是别静默。
+			h.log("[replay] 收摊时撤单 %s 失败：%v", id, err)
+		}
+	}
 }
 
 // botEnterLocked 按信号开仓，并挂上止损和止盈两张保护单。

@@ -49,6 +49,54 @@ func TestSessionEndWindow(t *testing.T) {
 	}
 }
 
+// 日历日收盘只认 23:55 及以后；04:50~05:55 的结算收尾是另一条规则，两者不重叠。
+func TestDayCloseWindow(t *testing.T) {
+	cases := []struct {
+		at   string
+		want bool
+	}{
+		{"2026-10-21 23:45", false},
+		{"2026-10-21 23:50", false},
+		{"2026-10-21 23:55", true},
+		{"2026-10-21 23:59", true}, // 非 5 分钟对齐的异常行也不该漏
+		{"2026-10-21 00:00", false},
+		{"2026-10-21 04:50", false}, // 结算收尾不是日历日收盘
+		{"2026-10-21 09:30", false},
+		{"2026-10-21", false}, // 没有时刻
+		{"", false},
+	}
+	for _, c := range cases {
+		if got := DayClose(c.at); got != c.want {
+			t.Errorf("DayClose(%q) = %v，期望 %v", c.at, got, c.want)
+		}
+	}
+}
+
+// 日历日和交易日差 6 小时：00:00~05:59 属于「前一晚」这个日历日的文件，交易日照旧归前一天。
+func TestCalendarDayVersusTradeDay(t *testing.T) {
+	cases := []struct {
+		at      string
+		cal     string
+		tradeDy string
+	}{
+		{"2026-10-21 23:55", "2026-10-21", "2026-10-21"},
+		{"2026-10-22 00:00", "2026-10-22", "2026-10-21"},
+		{"2026-10-22 05:55", "2026-10-22", "2026-10-21"},
+		{"2026-10-22 06:00", "2026-10-22", "2026-10-22"},
+	}
+	for _, c := range cases {
+		if got := CalendarDay(c.at); got != c.cal {
+			t.Errorf("CalendarDay(%q) = %q，期望 %q", c.at, got, c.cal)
+		}
+		if got := TradeDay(c.at); got != c.tradeDy {
+			t.Errorf("TradeDay(%q) = %q，期望 %q", c.at, got, c.tradeDy)
+		}
+	}
+	if got := CalendarDay("bad"); got != "" {
+		t.Errorf("畸形输入该返回空串，实际 %q", got)
+	}
+}
+
 // 时间解析要能扛住各种畸形输入，不能 panic 也不能把 24:00 当成有效时间。
 func TestMinutesOfDayRejectsGarbage(t *testing.T) {
 	for _, bad := range []string{"", "2026-10-20", "2026-10-20 2:00", "2026-10-20 24:00", "2026-10-20 12:60"} {
