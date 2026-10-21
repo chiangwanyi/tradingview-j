@@ -1,5 +1,6 @@
 import type { Order, Position, Trade } from '@/types/protocol'
 
+import { indicatorSeries, type IndicatorSettings } from './indicators'
 import { snapAtCursor, type OHLCItem } from './snap'
 import type { ClosedTrade } from './trades'
 import {
@@ -16,7 +17,7 @@ import {
 } from './scale'
 
 /**
- * Canvas 上画的东西：网格、坐标轴、K 线、EMA20、挂单价线、十字光标。
+ * Canvas 上画的东西：网格、坐标轴、K 线、EMA20、Doji X + Blue ZigZag、挂单价线、十字光标。
  *
  * 标注不在这里画 —— 标注是 SVG 图层（便于命中测试与拖动），见 ChartPanel.vue。
  * 两层的坐标换算都来自同一个 ChartScale，不会出现「图形和 K 线对不上」。
@@ -46,6 +47,11 @@ export interface ChartTheme {
   down: CandleColors
   flat: CandleColors
   ema: string
+  /** Doji X + Blue ZigZag 的两个颜色：蓝点（Pine 的 color.blue）、✖（Pine 的 color.black） */
+  zigzag: string
+  /** 连蓝点的那条折线：同色但压低透明度，免得比 K 线还抢眼 */
+  zigzagLine: string
+  doji: string
   /** 现价标签（价格轴上的实心小块） */
   lastBoxBg: string
   lastBoxText: string
@@ -87,6 +93,9 @@ export const DARK_THEME: ChartTheme = {
   down: { stroke: '#ef4444', fill: '#ef4444' },
   flat: { stroke: '#94a3b8', fill: '#94a3b8' },
   ema: '#fbbf24',
+  zigzag: '#60a5fa',
+  zigzagLine: 'rgba(96, 165, 250, 0.72)',
+  doji: '#e2e8f0',
   lastBoxBg: '#22c55e',
   lastBoxText: '#04130a',
   crossBoxBg: '#334155',
@@ -121,6 +130,9 @@ export const LIGHT_THEME: ChartTheme = {
   down: { stroke: '#111827', fill: '#111827' },
   flat: { stroke: '#6b7280', fill: '#ffffff' },
   ema: '#b45309',
+  zigzag: '#1d4ed8',
+  zigzagLine: 'rgba(29, 78, 216, 0.5)',
+  doji: '#0f172a',
   lastBoxBg: '#111827',
   lastBoxText: '#ffffff',
   crossBoxBg: '#475569',
@@ -177,6 +189,8 @@ export interface DrawInput {
   /** 浮动盈亏（后端按当前 K 线收盘价算好，美元） */
   unrealizedPnl: number
   showEma: boolean
+  /** Doji X + Blue ZigZag 的开关与参数（纯显示设置，值在 chart/indicators.ts 里算） */
+  indicator: IndicatorSettings
   /** 最小跳动，来自 _symbols.json（0.25 / 0.1 / 0.01…） */
   tick: number
   /**
@@ -213,6 +227,7 @@ export function drawChart(input: DrawInput): void {
     position,
     unrealizedPnl,
     showEma,
+    indicator,
     tick,
     activeOrderId = null,
     activeClosed = null,
@@ -240,6 +255,8 @@ export function drawChart(input: DrawInput): void {
 
   drawGrid(ctx, scale, theme, priceTicks)
   drawCandles(ctx, scale, theme, showEma)
+  // 指标压在 K 线之上、成交标记之下：蓝点要落在影线尖端上，不能被后面的三角盖住
+  drawIndicator(ctx, scale, theme, indicator)
   // 成交标记压在 K 线上面：复盘时要一眼看到「哪里开、哪里平」
   drawTradeMarks(ctx, scale, theme, trades, closed, activeClosed)
   drawOrders(ctx, scale, theme, orders, activeOrderId, decimals)
@@ -360,6 +377,111 @@ function drawCandles(
     }
   }
   ctx.stroke()
+}
+
+/**
+ * Doji X + Blue ZigZag（Pine 脚本的移植，算式全在 chart/indicators.ts）。
+ *
+ * 画法是有意「比原脚本多一点」的：
+ *   - 原脚本用 `plot()` 画蓝点，na 一断，孤立的那几个点在实际渲染里几乎看不见；
+ *     这里画成**实心圆点 + 背景色描边**，扎在影线尖端上，一眼能数清有几个转折；
+ *     点与点之间再连一条同色细线（原脚本没有），高低点连起来就是一条 ZigZag。
+ *   - 原脚本的 `✖` 是 `color.black`，在深色底上等于没画。这里按主题取色
+ *     （浅色近黑、深色近白），形状和位置保持「阳线在上、阴线在下」不变。
+ *
+ * 只画可见区间里的点：几百根 K 线的指标数组每帧都扫一遍是最容易白烧 CPU 的地方。
+ * 折线例外 —— 左右各多取一个屏外的点，否则跨出屏幕的那一段会贴边断掉。
+ */
+function drawIndicator(
+  ctx: CanvasRenderingContext2D,
+  scale: ChartScale,
+  theme: ChartTheme,
+  indicator: IndicatorSettings,
+): void {
+  if (!indicator.show) return
+  const series = indicatorSeries(scale.bars, indicator.lookback, indicator.dojiSize)
+  if (series.doji.length === 0 && series.zigzag.length === 0) return
+
+  const { plot } = scale.layout
+  const { from, to } = scale.visibleRange()
+
+  ctx.save()
+
+  // 折线：把相邻的两个转折点连起来。
+  //
+  // 原脚本只有 `plot(cond ? low : na)`，na 一断就是散点 —— 这里按需求补一条连线。
+  // 只连**相邻两个转折点**，不跨断开区间补点：每个转折点本身就是真实的高低点，
+  // 连线只是把它们按时间顺序串起来，不改变任何一个点的价格与位置。
+  //
+  // 两侧各多画一个屏外的点：`from`/`to` 是可见区间，只画区间内的点的话，
+  // 跨出屏幕的那一段会贴边断掉，看起来像线头。多画一个点再交给 clip 去裁，边缘就自然了。
+  const pts = series.zigzag
+  let lo = 0
+  let hi = pts.length
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1
+    if (pts[mid].index < from) lo = mid + 1
+    else hi = mid
+  }
+  const startAt = Math.max(0, lo - 1)
+  if (startAt < pts.length - 1) {
+    ctx.save()
+    ctx.beginPath()
+    ctx.rect(plot.left, plot.top, plot.width, plot.height)
+    ctx.clip()
+    ctx.beginPath()
+    ctx.lineWidth = 1.25
+    ctx.lineJoin = 'round'
+    ctx.lineCap = 'round'
+    ctx.strokeStyle = theme.zigzagLine
+    let started = false
+    for (let i = startAt; i < pts.length; i += 1) {
+      const p = pts[i]
+      const x = scale.xOf(p.index)
+      const y = scale.yOf(p.price)
+      if (started) ctx.lineTo(x, y)
+      else {
+        ctx.moveTo(x, y)
+        started = true
+      }
+      // 已经越过右边界还多画一个点，就够把出屏那一段连上了
+      if (p.index > to) break
+    }
+    ctx.stroke()
+    ctx.restore()
+  }
+
+  // ✖ 先画：小标记，别压在蓝点上面（同一个转折上两样都出现时，蓝点才是重点）
+  ctx.font = '600 11px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace'
+  ctx.textAlign = 'center'
+  ctx.fillStyle = theme.doji
+  for (const d of series.doji) {
+    if (d.index < from || d.index > to) continue
+    const bar = scale.bars[d.index]
+    if (!bar) continue
+    // Pine 的 location.abovebar 是「顶在这根的最高价上方」，belowbar 是「吊在最低价下方」
+    const y = d.above ? scale.yOf(bar.high) - 4 : scale.yOf(bar.low) + 4
+    if (y < plot.top - 2 || y > plot.bottom + 2) continue
+    ctx.textBaseline = d.above ? 'bottom' : 'top'
+    ctx.fillText('✖', Math.round(scale.xOf(d.index)) + 0.5, y)
+  }
+
+  // 蓝点
+  for (const p of series.zigzag) {
+    if (p.index < from || p.index > to) continue
+    const x = Math.round(scale.xOf(p.index)) + 0.5
+    const y = scale.yOf(p.price)
+    if (y < plot.top - 4 || y > plot.bottom + 4) continue
+    ctx.beginPath()
+    ctx.arc(x, y, 3.2, 0, Math.PI * 2)
+    ctx.fillStyle = theme.zigzag
+    ctx.fill()
+    ctx.lineWidth = 1
+    ctx.strokeStyle = theme.bg
+    ctx.stroke()
+  }
+
+  ctx.restore()
 }
 
 /**

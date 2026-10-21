@@ -223,6 +223,7 @@ function draw(): void {
     position: inst?.position ?? { quantity: 0, side: 'flat', averagePrice: 0 },
     unrealizedPnl: inst?.unrealizedPnl ?? 0,
     showEma: store.showEma,
+    indicator: store.indicator,
     tick: store.tick,
     activeOrderId: activeOrderId.value,
     activeClosed: activeClosed.value,
@@ -351,6 +352,8 @@ watch(
 // 换主题要立刻重画（Canvas 的像素不会跟着 CSS 变量变）
 watch(() => store.theme, () => requestDraw())
 watch(() => store.showEma, () => requestDraw())
+// 指标设置：开关和两个参数都会整份换新对象，watch 一次就够（见 store.setIndicator）
+watch(() => store.indicator, () => requestDraw())
 
 // ---------------- 坐标换算 ----------------
 

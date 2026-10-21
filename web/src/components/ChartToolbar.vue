@@ -60,6 +60,26 @@ const hasMoreHint = computed(() => {
 const btn = 'rounded border border-line px-2 py-1 text-[12px] transition disabled:cursor-not-allowed disabled:opacity-40'
 const btnIdle = 'bg-panel text-dim hover:border-accent hover:text-accent'
 const btnActive = 'border-accent bg-accent-soft text-accent'
+
+/** 参数输入框：小一号、贴边，和按钮同一行不显胖 */
+const num = 'w-12 rounded border border-line bg-panel px-1 py-0.5 text-[11px] text-ink'
+
+/**
+ * 指标参数用 `change` 而不是 `input`：输到一半的「0.」「1」不该立刻被夹成 0.01，
+ * 等回车 / 失焦再一次性生效（和 TradingView 的设置框同一个手感）。
+ * 生效后把夹过的真实值写回 DOM —— 否则输入框里会留着用户敲的那个越界值。
+ */
+function onLag(e: Event): void {
+  const el = e.target as HTMLInputElement
+  store.setIndicator({ lookback: Number(el.value) })
+  el.value = String(store.indicator.lookback)
+}
+
+function onDojiSize(e: Event): void {
+  const el = e.target as HTMLInputElement
+  store.setIndicator({ dojiSize: Number(el.value) })
+  el.value = String(store.indicator.dojiSize)
+}
 </script>
 
 <template>
@@ -95,6 +115,54 @@ const btnActive = 'border-accent bg-accent-soft text-accent'
     >
       EMA20
     </button>
+
+    <div class="h-4 w-px bg-line" />
+
+    <!--
+      Doji X + Blue ZigZag：一键开关 + 两个参数。
+      参数名沿用 Pine 脚本里的 input 名（Lag / Doji Size），
+      这样对着原始脚本核数的时候不用再翻译一层。
+    -->
+    <div class="flex items-center gap-1">
+      <button
+        type="button"
+        :class="[btn, store.indicator.show ? btnActive : btnIdle]"
+        title="Doji X + Blue ZigZag：蓝点标出动量转折（上穿画最低点、下穿画最高点），✖ 标出十字星（阳线在上、阴线在下）"
+        @click="store.setIndicator({ show: !store.indicator.show })"
+      >
+        Doji X + ZigZag
+      </button>
+      <label
+        class="flex items-center gap-1 text-[11px] text-dim"
+        title="Lag：EMA 周期，同时是高低点的回看窗口（Pine 的 lookback，2..50）"
+      >
+        Lag
+        <input
+          type="number"
+          min="2"
+          max="50"
+          step="1"
+          :class="num"
+          :value="store.indicator.lookback"
+          @change="onLag"
+        />
+      </label>
+      <label
+        class="flex items-center gap-1 text-[11px] text-dim"
+        title="Doji Size：实体不超过振幅的这个比例就算十字星（Pine 的 dojiSize，0.01..1）"
+      >
+        Doji
+        <input
+          type="number"
+          min="0.01"
+          max="1"
+          step="0.01"
+          :class="num"
+          :value="store.indicator.dojiSize"
+          @change="onDojiSize"
+        />
+      </label>
+    </div>
 
     <div class="h-4 w-px bg-line" />
 

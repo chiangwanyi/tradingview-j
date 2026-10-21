@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
 
+import { DEFAULT_INDICATOR, sanitizeIndicator, type IndicatorSettings } from '@/components/chart/indicators'
 import { ReplaySocket, defaultSocketUrl } from '@/net/socket'
 import { applyInstanceEvent } from '@/stores/instance-reducer'
 import { ACTION } from '@/types/protocol'
@@ -67,6 +68,8 @@ export type ThemeMode = 'light' | 'dark'
 
 const MAX_LOG = 200
 const THEME_KEY = 'tv-replay-theme'
+/** 指标的开关与参数记在本机：它是显示偏好，换实例、重启程序都不该被重置 */
+const INDICATOR_KEY = 'tv-replay-doji-zigzag'
 
 function readTheme(): ThemeMode {
   try {
@@ -81,6 +84,26 @@ function readTheme(): ThemeMode {
 function applyTheme(mode: ThemeMode): void {
   // 挂在 <html> 上，style.css 里的 [data-theme='light'] 靠它切换 CSS 变量
   document.documentElement.dataset.theme = mode
+}
+
+/**
+ * 读回上次的指标设置。
+ *
+ * 存的是整份 JSON：以后加参数（比如给蓝点换颜色）不用再动存档格式，
+ * 读回来先过一遍 `sanitizeIndicator` —— 手改过 localStorage、或者旧版本留了半份
+ * 字段，都不该让指标在一屏上直接消失。
+ */
+function readIndicator(): IndicatorSettings {
+  try {
+    const raw = localStorage.getItem(INDICATOR_KEY)
+    if (raw) {
+      const saved = JSON.parse(raw) as Partial<IndicatorSettings>
+      return sanitizeIndicator({ ...DEFAULT_INDICATOR, ...saved })
+    }
+  } catch {
+    // 隐私模式 / 存的是坏 JSON：回到出厂值，不影响本次使用
+  }
+  return { ...DEFAULT_INDICATOR }
 }
 
 export const useReplayStore = defineStore('replay', () => {
@@ -166,6 +189,13 @@ export const useReplayStore = defineStore('replay', () => {
   applyTheme(theme.value)
   /** 是否显示 EMA20（纯显示开关，跟后端无关） */
   const showEma = ref(true)
+  /**
+   * Doji X + Blue ZigZag 的开关与两个参数。
+   *
+   * 和 EMA20 一样是纯显示状态：不发消息、不进存档、不影响任何人的盘面。
+   * 它和「Zoom / 平移」属于同一类 —— 各人看各人的，别人不该看到我的指标被关掉。
+   */
+  const indicator = ref<IndicatorSettings>(readIndicator())
   /**
    * 下单数量（手）。**只能是正整数**：期货没有「0.4 手」这种报单，
    * 允许小数会让持仓、成交、平仓配对全都出现半手。
@@ -476,6 +506,22 @@ export const useReplayStore = defineStore('replay', () => {
     setTheme(theme.value === 'dark' ? 'light' : 'dark')
   }
 
+  /**
+   * 改指标设置。
+   *
+   * 整体换一份新对象（而不是原地改字段）：画布那边 watch 的是 `store.indicator`，
+   * 原地改属性不会触发重画 —— 用户拧了输入框却看不到图变，是最典型的「没生效」。
+   * 夹值也在这里做，输入框、开关、以后别的入口共用一道闸。
+   */
+  function setIndicator(patch: Partial<IndicatorSettings>): void {
+    indicator.value = sanitizeIndicator({ ...indicator.value, ...patch })
+    try {
+      localStorage.setItem(INDICATOR_KEY, JSON.stringify(indicator.value))
+    } catch {
+      // 记不住就算了，不影响本次使用
+    }
+  }
+
   function refresh(): void {
     send({ type: 'list_symbols' })
     send({ type: 'list_instances' })
@@ -752,6 +798,8 @@ export const useReplayStore = defineStore('replay', () => {
     activeTemplate,
     theme,
     showEma,
+    indicator,
+    setIndicator,
     orderQuantity,
     tick,
     priceDecimals,
