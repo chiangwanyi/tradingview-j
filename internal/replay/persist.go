@@ -15,6 +15,8 @@ package replay
 //	<stateDir>/instances/<实例 id>/orders.json      挂单
 //	<stateDir>/instances/<实例 id>/trades.json      成交流水
 //	<stateDir>/instances/<实例 id>/events.json      操作记录
+//	<stateDir>/instances/<实例 id>/voice.json       语音讲解的元数据（v0.16.0）
+//	<stateDir>/instances/<实例 id>/voice/voice-N.wav 语音音频（v0.16.0）
 //
 // 为什么不再用一个 JSON：v1 把所有实例的 K 线、标注、成交全塞进一个文件，
 // 一个实例 20 万字节、几个实例就是几百 KB；每 2 秒整份重写，改一个标注也要重写
@@ -54,6 +56,7 @@ const (
 	orderFileName   = "orders.json"
 	tradeFileName   = "trades.json"
 	eventFileName   = "events.json"
+	voiceMetaName   = voiceFileName // voice.json（见 voice.go；音频在同目录的 voice/ 下）
 
 	// legacyBackupSuffix 是 v1 单文件存档迁移前的备份后缀。
 	// 迁移会重写 replay-instances.json，但原文件里那一大堆数据只在这里留底。
@@ -115,6 +118,9 @@ type instanceFiles struct {
 	Orders      []Order
 	Trades      []Trade
 	Events      []Event
+	// Voice 是语音讲解的元数据（v0.16.0）。音频不在这里 —— 它是 voice/ 下的 wav，
+	// 和录像里的音频同一个理由：JSON 只记「哪一段、多长、哪个文件」。
+	Voice []AudioClip
 }
 
 // legacyInstance 是 v1 单文件存档里的实例（字段与旧 persistedInstance 完全一致）。
@@ -184,6 +190,7 @@ func (inst *Instance) toFiles() instanceFiles {
 		Orders:      copies(inst.Orders),
 		Trades:      copies(inst.Trades),
 		Events:      copies(events),
+		Voice:       inst.voiceNotes().all(),
 	}
 }
 
@@ -211,6 +218,9 @@ func (f instanceFiles) toInstance() *Instance {
 		seqAnn:      m.SeqAnn,
 		seqOrder:    m.SeqOrd,
 		seqTrade:    m.SeqTrd,
+		// 先只带上清单；落盘目录由 restoreInstanceLocked 里的 attachVoiceLocked 补
+		// （目录要知道 statePath，而这一层不该知道状态目录在哪）。
+		voice: newVoiceStore("", f.Voice, nil),
 	}
 }
 
@@ -436,6 +446,7 @@ func writeInstanceFiles(instRoot, id string, f instanceFiles) error {
 		{orderFileName, f.Orders},
 		{tradeFileName, f.Trades},
 		{eventFileName, f.Events},
+		{voiceMetaName, f.Voice},
 		{metaFileName, f.Meta},
 	}
 	for _, item := range files {
@@ -466,6 +477,9 @@ func readInstanceFiles(dir string, logf func(format string, args ...any)) (insta
 		{orderFileName, &f.Orders},
 		{tradeFileName, &f.Trades},
 		{eventFileName, &f.Events},
+		// 语音清单缺了就当没有（旧存档、或者刚被清空）：音频文件还在也别去猜，
+		// 猜错了会出现「清单里没有、文件夹里有」的幽灵录音。
+		{voiceMetaName, &f.Voice},
 	}
 	for _, item := range optional {
 		if err := readJSONFile(filepath.Join(dir, item.name), item.dst); err != nil && !os.IsNotExist(err) {
@@ -648,6 +662,9 @@ func (h *Hub) restoreInstanceLocked(inst *Instance) bool {
 		h.markDirtyLocked(inst.ID)
 		h.log("[replay] 实例 %s 的存档缺口已按日文件补齐（锚点 %s）", inst.ID, inst.Anchor)
 	}
+	// 语音讲解的目录（instances/<id>/voice）在恢复时才定得下来：它靠 statePath 展开。
+	// 放在最后是因为 attachVoiceLocked 会拿「读回来的清单」重建 store（含编号计数器）。
+	h.attachVoiceLocked(inst)
 	h.instances[inst.ID] = inst
 	h.order = append(h.order, inst.ID)
 	return true

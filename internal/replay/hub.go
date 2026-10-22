@@ -247,6 +247,10 @@ func (h *Hub) Handle(c *Client, raw []byte) {
 		h.handleRecordAudio(c, req)
 	case ReqRecordAudioDelete:
 		h.handleRecordAudioDelete(c, req)
+	case ReqVoiceAdd:
+		h.handleVoiceAdd(c, req)
+	case ReqVoiceClear:
+		h.handleVoiceClear(c, req)
 	case ReqListRecordings:
 		h.handleListRecordings(c)
 	case ReqGetRecording:
@@ -310,6 +314,8 @@ func (h *Hub) handleCreate(c *Client, req Request) {
 	}
 	c.InstanceID = inst.ID
 	inst.Operator = c.Name
+	// 语音讲解的落盘目录跟着实例 id 走，所以建实例这一处就要挂上（不能等第一次录音）
+	h.attachVoiceLocked(inst)
 
 	h.instances[inst.ID] = inst
 	h.order = append(h.order, inst.ID)
@@ -566,6 +572,8 @@ func (h *Hub) doStepLocked(inst *Instance, by string) error {
 		RealizedPnl:   inst.RealizedPnl,
 		UnrealizedPnl: inst.unrealizedPnl(),
 		Fills:         fills,
+		// 换了一根 K 线：语音的「本根 x/9」与清单整体换成新那根的
+		Voice: inst.voiceState(),
 	}, by)
 	return nil
 }

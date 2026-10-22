@@ -83,8 +83,46 @@ func NewHandler(hub *Hub, distDir string) http.Handler {
 		http.ServeFile(w, r, path)
 	})
 
+	// 语音讲解的音频：/api/instances/<实例 id>/voice/<voice-N.wav>
+	//
+	// 和上面那条录像音频**并列**而不是复用：语音属于实例（随实例存档走），
+	// 录像里的 audio-N.wav 属于录像。两边的存活条件不一样，路径也就不该合成一条
+	// （合成之后「删了实例还能不能放旧录像」会变成一个要猜的问题）。
+	mux.HandleFunc("/api/instances/", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet && r.Method != http.MethodHead {
+			http.Error(w, "只支持 GET", http.StatusMethodNotAllowed)
+			return
+		}
+		id, file, ok := parseVoicePath(r.URL.Path)
+		if !ok {
+			http.NotFound(w, r)
+			return
+		}
+		path, err := hub.VoiceFile(id, file)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusNotFound)
+			return
+		}
+		// 语音录完就不会再变（重录是另一个文件名），可以让浏览器缓存一会儿。
+		// 清空之后再点旧条目的缓存请求会 404 —— 那是正确的结果。
+		w.Header().Set("Cache-Control", "private, max-age=3600")
+		w.Header().Set("Content-Type", "audio/wav")
+		http.ServeFile(w, r, path)
+	})
+
 	mux.Handle("/", staticHandler(distDir))
 	return mux
+}
+
+// parseVoicePath 把 /api/instances/<id>/voice/<file> 拆成两段。
+// 形状在这里就把死，越权防护在 Hub.VoiceFile（实例必须在内存里、文件名必须是 voice-N.wav）。
+func parseVoicePath(p string) (id, file string, ok bool) {
+	rest := strings.TrimPrefix(p, "/api/instances/")
+	parts := strings.Split(rest, "/")
+	if len(parts) != 3 || parts[0] == "" || parts[1] != voiceDirName || parts[2] == "" {
+		return "", "", false
+	}
+	return parts[0], parts[2], true
 }
 
 // parseAudioPath 把 /api/recordings/<id>/audio/<file> 拆成两段。

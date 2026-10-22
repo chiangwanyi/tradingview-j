@@ -197,6 +197,20 @@ export interface InstanceDetail {
   createdAt: number
   /** 正在录制时的状态；没在录是 null/undefined */
   recording?: RecordingState | null
+  /**
+   * 当前这根 K 线上的语音讲解（v0.16.0）。
+   *
+   * **永远是对象**（没录过就是空清单），且**不依赖 recording** —— 不录制也能录，
+   * 这就是「语音从录制里解耦出来」在协议上的样子。
+   */
+  voice: VoiceState
+  /**
+   * 整个实例的语音清单（按 K 线时间排序）。
+   *
+   * 复盘只能往前走、不能倒回：只有当前那根的清单的话，离开一根就再也听不到了。
+   * 这份全量清单只在快照和语音广播时下发，`bar_advanced` 不带（它只换当前那根）。
+   */
+  voiceAll: AudioClip[]
 }
 
 export interface InstanceSummary {
@@ -337,6 +351,8 @@ export interface BarAdvancedPayload {
   realizedPnl: number
   unrealizedPnl: number
   fills: Trade[]
+  /** 换根之后的语音状态（清单和「本根 x/9」跟着走，v0.16.0） */
+  voice: VoiceState
 }
 
 export interface AnnotationPayload {
@@ -456,6 +472,8 @@ export const ACTION = {
   recordingStopped: 'recording_stopped',
   recordingAudio: 'recording_audio',
   recordingAudioCleared: 'recording_audio_cleared',
+  voiceAdded: 'voice_added',
+  voiceCleared: 'voice_cleared',
 } as const
 
 /**
@@ -502,11 +520,17 @@ export interface RecordingState {
   current?: string
   /** 整条录像已录几条（**不限**） */
   audios: number
-  /** 当前**这根 K 线**上已录几条（HUD 显示的就是这个） */
+  /**
+   * 当前**这根 K 线**上已录几条。
+   *
+   * v0.16.0 起这几个录音计数**不再是界面的事实来源**：语音讲解有自己的
+   * VoiceState（不录制也成立），HUD 显示的是它。这里的 barAudios / maxBarAudios /
+   * clips 保留给旧客户端和录像自身的口径，两边数出来必须是同一个值。
+   */
   barAudios: number
   /** 同一根 K 线的上限（9） */
   maxBarAudios: number
-  /** 当前这根 K 线上的录音清单（HUD 里列出来、预览、清空） */
+  /** 当前这根 K 线上的录音清单（录像口径；盘面请用 instance.voice） */
   clips: AudioClip[]
 }
 
@@ -591,13 +615,33 @@ export interface RecordingStep {
 /** 一段挂在某根 K 线上的录音。`time` 是 K 线时间（存储键）。 */
 export interface AudioClip {
   id: string
+  /** 在录像里是第几步；0 = 录制之外录的（v0.16.0 起语音可以独立于录制存在） */
   step: number
   time: string
   durationMs: number
-  /** 录像目录里的文件名（audio-N.wav），音频本身走 HTTP 取 */
+  /** 文件名（录像里是 audio-N.wav，实例上的语音是 voice-N.wav），音频本身走 HTTP 取 */
   file: string
   size: number
   createdAt: number
+  /** 谁录的（human / bot）；旧录像里没有这个字段 */
+  by?: string
+}
+
+/**
+ * 当前这根 K 线上的语音讲解（v0.16.0）。
+ *
+ * 服务端数的，界面只显示 —— 和录制状态一个道理：界面写「9/9」而磁盘上只有 8 条
+ * 这种事，一旦出现就查不清是谁算错了。
+ */
+export interface VoiceState {
+  /** 这份清单属于哪根 K 线（换根就整体换一份） */
+  barTime: string
+  /** 这根 K 线上的语音（按录制顺序，含更早几步里录的） */
+  clips: AudioClip[]
+  /** 整个实例一共几条（**不限**，只有同一根 K 线才限 9 条） */
+  total: number
+  /** 同一根 K 线的上限（9） */
+  max: number
 }
 
 /** 一条完整的录像：起始盘面 + 每一步的事件 + 录音。 */
@@ -635,10 +679,33 @@ export interface RecordingStoppedPayload {
 export interface RecordingAudioPayload {
   audio: AudioClip
   state: RecordingState
+  /** 盘面上同一份语音的新状态（老别名 record_audio 和新入口共用） */
+  voice: VoiceState
+  voiceAll: AudioClip[]
 }
 
 /** 「清空当前这一步的录音」的广播：removed 是刚被删掉的那几条。 */
 export interface RecordingAudioClearedPayload {
   removed: AudioClip[]
   state: RecordingState
+  voice: VoiceState
+  voiceAll: AudioClip[]
+}
+
+/** 「盘面上多了一段语音」的广播：清单与计数都是服务端算好的。 */
+export interface VoiceAddedPayload {
+  audio: AudioClip
+  voice: VoiceState
+  /** 整个实例的清单（「其他 K 线还有 N 条」要用） */
+  voiceAll: AudioClip[]
+  /** 当前录制状态（没在录就是缺省）。录制中录的那条会同时占录像的一步 */
+  recording?: RecordingState | null
+}
+
+/** 「这根 K 线上的语音全被清掉」的广播。 */
+export interface VoiceClearedPayload {
+  removed: AudioClip[]
+  voice: VoiceState
+  voiceAll: AudioClip[]
+  recording?: RecordingState | null
 }

@@ -7,6 +7,8 @@ import InstancesMenu from '@/components/InstancesMenu.vue'
 import RecordHud from '@/components/RecordHud.vue'
 import TradeDock from '@/components/TradeDock.vue'
 import TradeFloat from '@/components/TradeFloat.vue'
+import VoiceFloat from '@/components/VoiceFloat.vue'
+import VoiceTape from '@/components/VoiceTape.vue'
 import { usePlaybackStore } from '@/stores/playback'
 import { useReplayStore } from '@/stores/replay'
 
@@ -169,8 +171,15 @@ onBeforeUnmount(() => {
         <!--
           录制浮窗是 `fixed` 的：位置自己拖、自己折叠（和下单浮窗同一套），
           挂在这里只是因为它属于这一页，不参与上面的布局。
+          它只显示录制状态 —— 麦克风在语音浮窗里（v0.16.0 起语音是一级功能）。
         -->
         <RecordHud />
+
+        <!--
+          语音讲解浮窗：工具条上点【🎙 录音】才会出现（`store.voiceOpen`），
+          **不需要在录制中**。录制中录的那条会同时记进录像（后端负责）。
+        -->
+        <VoiceFloat />
 
         <!-- 回放进度：画布顶部居中一条窄条，纯显示、不接指针，不抢画布的手势 -->
         <div
@@ -185,6 +194,13 @@ onBeforeUnmount(() => {
           <span class="ml-2 text-faint">{{ pb.playing ? `${pb.speed}x 播放中` : '已暂停' }}</span>
         </div>
       </div>
+
+      <!--
+        语音录音条：贴在**时间横轴正下方**，和 K 线严格对齐（同一个 chartViewport）。
+        它属于这一页的布局：占 40px 的固定高度，始终在（回放时也在，否则进出回放
+        画布会突然长高 40px）。
+      -->
+      <VoiceTape />
 
       <!--
         提示走「轻提示」而不是错误框：录像保存成功、录音挂载成功都不是错误，

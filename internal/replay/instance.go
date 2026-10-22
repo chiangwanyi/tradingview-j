@@ -83,6 +83,11 @@ type Instance struct {
 	// rec 是「正在录制的那一份」（v0.11.0）。nil = 没在录。
 	// 它挂在实例上而不是 Hub 上：录制属于「这一个盘面」，换实例就该换一段录像。
 	rec *recorder
+
+	// voice 是这个实例的语音讲解（v0.16.0）。**永远不该是 nil**（创建/恢复时挂上），
+	// 取用时走 voiceNotes() 兜底 —— 它和 rec 是两件事：语音不录制也在，
+	// 录制只是把录制期间录的那几条额外抄一份进录像。
+	voice *voiceStore
 }
 
 // currentBar 是游标所在的那根。
@@ -922,6 +927,8 @@ func (inst *Instance) snapshot(members []Member) InstanceDTO {
 		CreatedBy:     inst.CreatedBy,
 		CreatedAt:     inst.CreatedAt,
 		Recording:     inst.recordingState(),
+		Voice:         inst.voiceState(),
+		VoiceAll:      inst.voiceNotes().all(),
 	}
 }
 

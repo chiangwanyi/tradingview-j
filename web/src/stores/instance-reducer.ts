@@ -43,6 +43,9 @@ export function applyInstanceEvent(inst: InstanceDetail, action: string, payload
       inst.position = p.position
       inst.realizedPnl = p.realizedPnl
       inst.unrealizedPnl = p.unrealizedPnl
+      // 换了一根 K 线：语音的「本根 x/9」和清单整体换成新那根的。
+      // 这一条**和有没有在录制无关**（v0.16.0），所以不走录制状态那条线。
+      if (p.voice) inst.voice = p.voice
       break
     }
     case ACTION.annotationAdded: {

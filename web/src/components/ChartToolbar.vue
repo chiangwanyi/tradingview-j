@@ -20,6 +20,10 @@ import { TOOL_LABEL, isDrawTool, useReplayStore, type DrawTool } from '@/stores/
  * 因为「水平线 + 价位」是复盘里最常用的一笔，两次单击纯属多余动作。
  * 其余四种是两次单击。绘图工具选中后，右边会跟出一排模板 ——
  * 那是这个工具自己的样式预设（各工具互不相干）。
+ *
+ * v0.16.0 起这一行多了【🎙 录音】：语音讲解从录制的子功能提升为**一级功能**，
+ * 和五种绘图工具平起平坐 —— 拿笔是「在这根 K 线上画点什么」，拿麦克风是
+ * 「在这根 K 线上讲两句」，两件事都发生在当前这根 K 线上，都**不需要先开录像**。
  */
 
 const store = useReplayStore()
@@ -47,6 +51,21 @@ const canRecord = computed(() => {
   return store.isRecording || inst.bars.length > 0
 })
 const operator = computed(() => store.operatorLabel)
+
+/**
+ * 【🎙 录音】能不能点。
+ *
+ * 和绘图按钮不一样：它**不看操作权** —— 打开浮窗的观众只是想听听别人讲了什么。
+ * 真正要不要操作权由浮窗里的录制按钮和服务端决定（见 store.canVoice）。
+ * 回放时灰掉：那段历史是只读的，往上面挂语音没有意义。
+ */
+const canVoicePanel = computed(() => !!store.instance && !store.playbackActive)
+const voiceHint = computed(() => {
+  if (store.playbackActive) return '回放是只读的：退出回放后才能录音'
+  if (!store.instance) return '先进入一个实例，才能在某根 K 线上录语音'
+  if (!store.canOperate) return '语音讲解：每根 K 线最多 9 条（现在是观看状态，可以听、不能录）'
+  return '语音讲解：空格开始/结束录音，挂在这根 K 线上（每根最多 9 条；不录制也能录）'
+})
 /** 当前是不是绘图工具 —— 模板条只在绘图工具下出现（v-if 用得到，也顺手做类型收窄） */
 const drawKind = computed<DrawTool | null>(() => (isDrawTool(store.tool) ? store.tool : null))
 
@@ -104,6 +123,23 @@ function onDojiSize(e: Event): void {
 
     <!-- 模板条：每个工具各有自己的一组（后端持久化，换实例也不会丢） -->
     <AnnotationTemplates v-if="drawKind" :kind="drawKind" />
+
+    <!--
+      语音讲解（v0.16.0）：**和上面的绘图工具同级**，不再是录制的子功能。
+      点一下拿起麦克风（浮窗打开、空格开始录），再点一下放下。
+      入口对所有人开放 —— 观众也要能听讲解；能不能**录**由浮窗里和服务端一起判
+      （要操作权、不能在回放里），所以这里只按「有没有盘面」灰掉。
+    -->
+    <button
+      type="button"
+      :class="[btn, store.voiceOpen ? btnActive : btnIdle]"
+      :disabled="!canVoicePanel"
+      :title="voiceHint"
+      @click="store.toggleVoicePanel()"
+    >
+      🎙 录音
+      <span class="tnum ml-1 text-[10px]">{{ store.voiceClips.length }}/{{ store.voiceMax }}</span>
+    </button>
 
     <div class="h-4 w-px bg-line" />
 

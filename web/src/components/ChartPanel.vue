@@ -15,6 +15,7 @@ import {
 } from '@/components/chart/scale'
 import { nearestOHLC, snapAtCursor, OHLC_LABEL } from '@/components/chart/snap'
 import { type ClosedTrade } from '@/components/chart/trades'
+import { chartNav, chartViewport } from '@/components/chart/viewport'
 import TradeTipCard from '@/components/TradeTipCard.vue'
 import { TOOL_LABEL, isDrawTool, useReplayStore, type DrawTool } from '@/stores/replay'
 import type { Order, OrderKind, Point, Side } from '@/types/protocol'
@@ -180,8 +181,28 @@ const isLineTool = computed(
 let rafId = 0
 let observer: ResizeObserver | null = null
 
+/**
+ * 把当前的视口几何同步给 `chartViewport`（横轴对齐的界面靠它）。
+ *
+ * 只写四个数：缩放在哪（barWidth）、平移了多少（scroll）、行情区左右边界。
+ * 横轴下方的录音条拿它们和 `xOf` 算出**同一个** x —— 语音标记因此永远在
+ * 它所挂的那根 K 线正下方，缩放、平移、换实例都不用单独通知它。
+ *
+ * 放在 `requestDraw` 里（而不是重绘之后）：请求重绘时视图已经改完了，
+ * 此时推出去的值就是这一帧要画的值，界面不会晚一帧。
+ */
+function publishViewport(): void {
+  const { plot } = scale.layout
+  chartViewport.width = scale.width
+  chartViewport.left = plot.left
+  chartViewport.right = plot.right
+  chartViewport.barWidth = scale.barWidth
+  chartViewport.scroll = scale.scroll
+}
+
 function requestDraw(): void {
   viewTick.value += 1
+  publishViewport()
   if (rafId) return
   rafId = requestAnimationFrame(() => {
     rafId = 0
@@ -205,6 +226,8 @@ function draw(): void {
     scale.setSize(w, h)
     scale.clampScroll()
     scale.fitPrice(true)
+    // 尺寸变了 left/right 也变（右下角的价格轴宽度是固定的），再同步一次
+    publishViewport()
   }
   const ctx = el.getContext('2d')
   if (!ctx) return
@@ -251,6 +274,20 @@ onMounted(() => {
   scale.resetView()
   requestDraw()
 
+  /**
+   * 让横轴下方的录音条能把某一根 K 线「拉回视野中间」。
+   *
+   * 只动横向（scroll），不动缩放、不动光标、不动价格轴的手动状态 ——
+   * 它是个「找位置」的辅助动作，不是一次视图重置。价格轴走 fitPrice()，
+   * 和 panBy 一样：自动贴合时跟着重新贴合，用户手动缩放过就不碰。
+   */
+  chartNav.centerOn = (index: number) => {
+    scale.scroll = index - scale.visibleBarSpan / 2
+    scale.clampScroll()
+    scale.fitPrice()
+    requestDraw()
+  }
+
   observer = new ResizeObserver(() => {
     scale.setSize(host.value?.clientWidth ?? 0, host.value?.clientHeight ?? 0)
     if (scale.autoPrice) scale.fitPrice(true)
@@ -263,6 +300,8 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   observer?.disconnect()
+  // 画布没了，录音条再点「移到那根」也没有意义；留着会闭包住一个已经卸掉的 scale
+  chartNav.centerOn = () => {}
   window.removeEventListener('keydown', onKeyDown)
   window.removeEventListener('keyup', onKeyUp)
   window.removeEventListener('pointermove', onWindowPointerMove)

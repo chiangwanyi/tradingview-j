@@ -48,11 +48,20 @@ const (
 	// 录制与回放（v0.11.0 起）
 	ReqRecordStart       = "record_start"        // 开始录制：把当前盘面记为第 1 步
 	ReqRecordStop        = "record_stop"         // 结束录制并落盘
-	ReqRecordAudio       = "record_audio"        // 一条录音，挂在当前那根 K 线上
-	ReqRecordAudioDelete = "record_audio_delete" // 清空**当前这一步**的录音
+	ReqRecordAudio       = "record_audio"        // 【兼容别名】录制中录一段音（v0.16.0 起前端改走 voice_add）
+	ReqRecordAudioDelete = "record_audio_delete" // 【兼容别名】清空当前这根 K 线上的录音（同 voice_clear）
 	ReqListRecordings    = "list_recordings"     // 录像列表
 	ReqGetRecording      = "get_recording"       // 取一条录像的全部内容（回放用）
 	ReqDeleteRecording   = "delete_recording"
+
+	// 语音讲解（v0.16.0）：从录制里解耦的一级功能，**不必在录制中**。
+	//
+	// 为什么不是继续用 record_audio：那个名字和字段（record_*）把「录音」钉在了
+	// 「录制」这件事上 —— 名字一改，前端、协议、测试三处才能各说各的。旧的
+	// record_audio / record_audio_delete 留着当兼容别名（老脚本、老前端照样能用），
+	// 但它们**要求的仍然是在录制中**，语义没有变。
+	ReqVoiceAdd   = "voice_add"   // 一段语音讲解，挂在当前那根 K 线上（限制仍然是每根 9 条）
+	ReqVoiceClear = "voice_clear" // 清空当前这根 K 线上的全部语音
 )
 
 // Request 是一条上行消息。每种类型只读自己那几个字段。
@@ -158,6 +167,12 @@ const (
 	ActRecordingStopped      = "recording_stopped"
 	ActRecordingAudio        = "recording_audio"
 	ActRecordingAudioCleared = "recording_audio_cleared"
+
+	// 语音讲解（v0.16.0）。和上面四个分开：它们描述「录制这件事」，而这两个描述
+	// **盘面上多了一段/少了一段语音** —— 不录制的时候也会发生，所以不进录像的
+	// recordableAction（录制中由 recorder.addAudio 自己开一步，见 recording.go）。
+	ActVoiceAdded   = "voice_added"
+	ActVoiceCleared = "voice_cleared"
 )
 
 // StepBase 是第 1 步的类型：开始录制那一刻的盘面（没有事件，就是 Base 本身）。
@@ -419,6 +434,18 @@ type InstanceDTO struct {
 	// 只有操作者能开始录制，但**所有人都能看到这个标记** —— 演示时观众要知道
 	// 屏幕上正在被录，否则「刚才那段怎么没录进去」根本无从判断。
 	Recording *RecordingState `json:"recording,omitempty"`
+	// Voice 是当前这根 K 线上的语音讲解（v0.16.0）。
+	//
+	// **永远是对象，不是 null**：语音和绘图一样是盘面的一部分，没录过就是空清单。
+	// 它不依赖 Recording —— 这正是解耦的意义（见 voice.go 的文件头）。
+	Voice VoiceState `json:"voice"`
+	// VoiceAll 是整个实例的语音清单（按 K 线时间排序）。
+	//
+	// 为什么清单要单独发一份：VoiceState 只装**当前这根**（否则每根 K 线都背着
+	// 一份越来越长的数组），但复盘只能往前走、不能倒回 —— 离开一根之后就再也
+	// 回不去了。没有这份全量清单，早先几根上讲的语音会变成「听得见总数、点不到」。
+	// 它只在快照和 voice_added / voice_cleared 时下发，bar_advanced 不带。
+	VoiceAll []AudioClip `json:"voiceAll"`
 }
 
 // You 告诉这条连接「你是谁」，前端据此决定按钮能不能点。
@@ -534,6 +561,9 @@ type BarAdvancedPayload struct {
 	RealizedPnl   float64     `json:"realizedPnl"`
 	UnrealizedPnl float64     `json:"unrealizedPnl"`
 	Fills         []Trade     `json:"fills"` // 这一根 K 线触发成交的单（可能为空）
+	// Voice 是换根之后的语音状态（v0.16.0）：清单一换，界面上的「本根 x/9」立刻跟着走。
+	// 和 Recording 不同 —— 它和有没在录制无关，所以放在这条「每根都发」的广播里。
+	Voice VoiceState `json:"voice"`
 }
 
 type AnnotationPayload struct {
@@ -784,6 +814,9 @@ type AudioClip struct {
 	File       string `json:"file"`
 	Size       int64  `json:"size"`
 	CreatedAt  int64  `json:"createdAt"`
+	// By 是「谁录的」（human / bot / system）。v0.16.0 起录音成了共享盘面的一部分，
+	// 多人时列表里要能看出这条是谁讲的；旧录像里没有这个字段，是空串。
+	By string `json:"by,omitempty"`
 }
 
 // RecordingStoppedPayload 是「录制结束」的广播负载。
@@ -800,14 +833,50 @@ type RecordingStoppedPayload struct {
 type RecordingAudioPayload struct {
 	Audio AudioClip      `json:"audio"`
 	State RecordingState `json:"state"`
+	// Voice 是盘面上这根 K 线 **同一份** 语音的新状态（v0.16.0）。
+	//
+	// 走旧别名 record_audio 时，盘面和录像会同时多一条：payload 里把两边都带上，
+	// 前端就不用因为「用的哪条路」而分成两套更新逻辑。
+	Voice    VoiceState  `json:"voice"`
+	VoiceAll []AudioClip `json:"voiceAll"`
 }
 
 // RecordingAudioClearedPayload 是「清空当前这一步的录音」的广播。
 //
 // Removed 里是刚被删掉的几条（文件名要一起带，前端可能正在播其中一条，得停下）。
 type RecordingAudioClearedPayload struct {
-	Removed []AudioClip    `json:"removed"`
-	State   RecordingState `json:"state"`
+	Removed  []AudioClip    `json:"removed"`
+	State    RecordingState `json:"state"`
+	Voice    VoiceState     `json:"voice"`    // 盘面那一份被清空之后的状态（见 RecordingAudioPayload）
+	VoiceAll []AudioClip    `json:"voiceAll"` // 整个实例的清单（「其他 K 线」也要跟着变）
+}
+
+// ---------------- 语音讲解（v0.16.0） ----------------
+
+// VoiceAddedPayload 是「盘面上多了一段语音」的广播。
+//
+// 不带 RecordingState 的完整快照，只带**当前的**录制状态（没在录就是 nil）：
+// 录制中录的那条语音会同时占录像的一步，HUD 的「第 N 步」得当场跟上，
+// 否则用户会看到「录音挂上了，步数没动」。
+type VoiceAddedPayload struct {
+	Audio AudioClip `json:"audio"`
+	// Voice 是这根 K 线**加完之后**的清单与计数（前端照它显示，不自己 +1）。
+	Voice VoiceState `json:"voice"`
+	// VoiceAll 是整个实例的清单（见 InstanceDTO.VoiceAll）：多一根 K 线上的语音，
+	// 界面上那个「其他 N 条」也得跟着变。
+	VoiceAll  []AudioClip     `json:"voiceAll"`
+	Recording *RecordingState `json:"recording,omitempty"`
+}
+
+// VoiceClearedPayload 是「这根 K 线上的语音全被清掉」的广播。
+//
+// Removed 带着被删掉的那几条（文件名要一起带，前端可能正在播其中一条，得停下）。
+// 录制中清空会连录像里那几步一起摘掉，步号重排后的状态也在 Recording 里。
+type VoiceClearedPayload struct {
+	Removed   []AudioClip     `json:"removed"`
+	Voice     VoiceState      `json:"voice"`
+	VoiceAll  []AudioClip     `json:"voiceAll"`
+	Recording *RecordingState `json:"recording,omitempty"`
 }
 
 // RecordingsMsg 是录像列表。

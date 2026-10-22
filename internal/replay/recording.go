@@ -25,6 +25,11 @@ package replay
 //     不塞进 JSON。录音那一步不改盘面（Events 为空），回放到它画面不动、语音响 ——
 //     这正是真实发生的事。
 //
+// v0.16.0 的一条补充：**录音不再是录制的子功能**（见 voice.go）。语音讲解挂在实例上，
+// 随时能录；录制期间录的那些会在这里**额外抄一份**进录像（连同它的那一步）。
+// 所以本文件仍然拥有「录音步」的全部规则，但它不再拥有「录音」这件事本身：
+// 额度（每根 9 条）、清单、清空范围都以 voice.go 为准，这里只是沿用同一个数。
+//
 // 落盘结构：
 //
 //	<recordingsDir>/recordings.json                索引（列表用，省得每次读全部录像）
@@ -64,7 +69,11 @@ const (
 	// v0.15.0 之前这里叫 maxAudiosPerStep 并且是按「步」数的 —— 那时一步恰好等于
 	// 一根 K 线，两个口径相同；一操作一步之后就**必须**按 K 线时间数，否则「画了
 	// 三个图形再录音」会因为步数变了而莫名其妙地少几条额度。
-	maxAudiosPerBar = 9
+	//
+	// v0.16.0 起这个额度**不是录制的事了**：语音讲解是盘面数据，额度归 voice.go
+	// （maxClipsPerBar）管，录制器只是沿用同一个数。这里留个别名，是因为录制器
+	// 自己也要挡一道（它可能被别处直接调用），而且历史注释和测试都按这个名字读。
+	maxAudiosPerBar = maxClipsPerBar
 
 	// maxAudioBytes 是单段录音的上限。16kHz / 16bit / 单声道 = 32KB/s，
 	// 2MB 大约 64 秒 —— 一根 K 线上的一句讲解足够了。
@@ -203,6 +212,10 @@ func newRecorder(inst *Instance, by, id, dir string, logf func(format string, ar
 //
 // 录音（recording_audio）**不在这里**：它会占一步，但那一步是由 addAudio 自己开的
 // （见那里的注释），不走这条「一条广播 → 一步」的路。
+//
+// 语音讲解（voice_added，v0.16.0）也不在这里，理由更简单：它在**不录制**的时候
+// 也会发生。录制期间的那一条由 addVoiceLocked 顺手交给 recorder.addAudio，
+// 于是录像里得到的仍然是一个正常的 recording_audio 步 —— 旧录像、旧播放器全都不受影响。
 func recordableAction(action string) bool {
 	switch action {
 	case ActBarAdvanced,
@@ -359,6 +372,7 @@ func (r *recorder) addAudio(data []byte, durationMs int, by string) (AudioClip, 
 		File:       fmt.Sprintf("audio-%d.wav", r.audioSeq),
 		Size:       int64(len(data)),
 		CreatedAt:  time.Now().Unix(),
+		By:         by,
 	}
 	// 立刻写盘：HUD 的预览播放要走 HTTP，而 HTTP 只认磁盘。写失败不打断录制 ——
 	// 内存里那份还在，停止时 Save 会再补一次。
@@ -997,8 +1011,15 @@ func (h *Hub) handleRecordStop(c *Client, req Request) {
 
 // handleRecordAudio 接收一段录音，挂到**当前这一步**的 K 线上。
 //
-// 走 WS 而不是 HTTP 上传：录音只有几十到几百 KB，和别的动作走同一条有序消息流，
-// 「第几步录的」天然准确 —— 换成 HTTP，并发上传和步进的先后就没法保证了。
+// v0.16.0 起这条消息是**兼容别名**：语音讲解有了自己的入口（voice_add，见 voice.go），
+// 它不必在录制中；而这里保留的语义仍然是「必须在录制中」，供老前端 / 老脚本继续用。
+//
+// 实现上不再单独维护一条录音路径，而是走和 voice_add 完全相同的 addVoiceLocked：
+// **盘面那一份和录像那一份同时落下**。广播仍用旧动作名 recording_audio、仍带完整的
+// RecordingState，所以老界面的「第 N 步 / 本根 x/9」一个数都不变。
+//
+// 走 WS 而不是 HTTP 上传的理由没变：录音只有几十到几百 KB，和别的动作走同一条有序
+// 消息流，「第几步录的」天然准确 —— 换成 HTTP，并发上传和步进的先后就没法保证了。
 func (h *Hub) handleRecordAudio(c *Client, req Request) {
 	inst, ok := h.instanceLocked(c, req)
 	if !ok {
@@ -1008,7 +1029,7 @@ func (h *Hub) handleRecordAudio(c *Client, req Request) {
 		return
 	}
 	if inst.rec == nil {
-		h.fail(c, req, "现在没有在录制")
+		h.fail(c, req, "现在没有在录制（只是想在盘面上讲两句的话用 voice_add）")
 		return
 	}
 	if len(req.AudioData) > maxAudioBase64 {
@@ -1020,23 +1041,34 @@ func (h *Hub) handleRecordAudio(c *Client, req Request) {
 		h.fail(c, req, "录音数据不是合法的 base64")
 		return
 	}
-	clip, err := inst.rec.addAudio(data, req.DurationMs, c.Name)
+	clip, recorded, err := h.addVoiceLocked(inst, data, req.DurationMs, c.Name)
 	if err != nil {
 		h.fail(c, req, err.Error())
 		return
 	}
-	// 这一步是 addAudio 自己开的（录音本身就是一次操作），广播带着**已经包含它**
-	// 的 state 出去，前端 HUD 不用猜。
+	// 这一步是 recorder.addAudio 自己开的（录音本身就是一次操作），广播带着**已经
+	// 包含它**的 state 出去，前端 HUD 不用猜。
+	audio := clip
+	if recorded != nil {
+		audio = *recorded
+	} else {
+		// 理论上到不了这里（两边的校验完全一样，只有录像写盘失败才可能）：
+		// 盘面上那条已经挂好了，别把它一起丢掉，说一句就行。
+		h.log("[replay] 语音 %s 挂上了盘面，但录像里没开出这一步", clip.ID)
+	}
 	h.broadcastInstanceLocked(inst, ActRecordingAudio, RecordingAudioPayload{
-		Audio: clip,
-		State: inst.rec.state(),
+		Audio:    audio,
+		State:    inst.rec.state(),
+		Voice:    inst.voiceState(),
+		VoiceAll: inst.voiceNotes().all(),
 	}, c.Name)
 }
 
 // handleRecordAudioDelete 清空**当前这根 K 线**上已经录下的全部录音。
 //
-// 需求是「一键清除当前 K 线的音频」：录坏了、说错了，重来一遍不用把整条录像作废。
-// 只清这一根 —— 别的 K 线上录的东西跟它没关系，不该被顺手删掉。
+// 同样是兼容别名（新入口是 voice_clear）。需求是「一键清除当前 K 线的音频」：
+// 录坏了、说错了，重来一遍不用把整条录像作废，也不用把盘面上的语音留在那儿。
+// 只清这一根 —— 别的 K 线上录的东西跟它没关系。
 //
 // 每段录音都占一步，所以这里会连那几步一起摘掉并重排步号（见 clearAudioOfBar）；
 // 新的 state 随广播下发，前端按它刷新「第几步 / 共几步」。
@@ -1049,20 +1081,27 @@ func (h *Hub) handleRecordAudioDelete(c *Client, req Request) {
 		return
 	}
 	if inst.rec == nil {
-		h.fail(c, req, "现在没有在录制")
+		h.fail(c, req, "现在没有在录制（不在录制时请用 voice_clear）")
 		return
 	}
 	barTime := inst.stepContext().Time
-	removed := inst.rec.clearAudioOfBar(barTime)
-	if len(removed) == 0 {
+	removed, recRemoved := h.clearVoiceOfBarLocked(inst, barTime)
+	if len(removed) == 0 && len(recRemoved) == 0 {
 		h.fail(c, req, "这根 K 线上还没有录音")
 		return
 	}
+	// 老语义里 Removed 是「录像目录里那几个 audio-N.wav」（老界面拿文件名停预览）。
+	// 录像里没有、只有盘面上有的那种（录制之前录的），就用盘面清单顶上。
+	if len(recRemoved) > 0 {
+		removed = recRemoved
+	}
 	h.broadcastInstanceLocked(inst, ActRecordingAudioCleared, RecordingAudioClearedPayload{
-		Removed: removed,
-		State:   inst.rec.state(),
+		Removed:  removed,
+		State:    inst.rec.state(),
+		Voice:    inst.voiceState(),
+		VoiceAll: inst.voiceNotes().all(),
 	}, c.Name)
-	h.log("[replay] %s 上的 %d 条录音已清除", barTime, len(removed))
+	h.log("[replay] %s 上的录音已清除（盘面与录像里各一份）", barTime)
 }
 
 func (h *Hub) handleListRecordings(c *Client) {

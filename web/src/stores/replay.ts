@@ -8,6 +8,7 @@ import { ACTION } from '@/types/protocol'
 import type {
   AnnotationKind,
   AnnotationDeletedPayload,
+  AudioClip,
   AnnotationStyle,
   BarAdvancedPayload,
   ClientMessage,
@@ -30,6 +31,9 @@ import type {
   StrategyInfo,
   SymbolInfo,
   Template,
+  VoiceAddedPayload,
+  VoiceClearedPayload,
+  VoiceState,
   You,
 } from '@/types/protocol'
 
@@ -220,6 +224,33 @@ export const useReplayStore = defineStore('replay', () => {
   /** 当前实例的录制状态（没在录是 null） */
   const recording = computed<RecordingState | null>(() => instance.value?.recording ?? null)
   const isRecording = computed(() => recording.value?.active === true)
+  /**
+   * 语音讲解（v0.16.0）。**和录制无关**：没在录也有一份，空的时候就是空清单。
+   *
+   * 为什么不从 recording 里取：那是 v0.15 及以前的口径，只有录制中才存在。
+   * 现在语音是盘面数据，事实来源是 instance.voice（快照 + bar_advanced +
+   * voice_added / voice_cleared 三路一起更新）。
+   */
+  const EMPTY_VOICE: VoiceState = { barTime: '', clips: [], total: 0, max: 9 }
+  const voice = computed<VoiceState>(() => instance.value?.voice ?? EMPTY_VOICE)
+  const voiceClips = computed(() => voice.value.clips ?? [])
+  /** 整个实例的语音清单（别的 K 线上还有几条，见 InstanceDetail.voiceAll） */
+  const voiceAll = computed<AudioClip[]>(() => instance.value?.voiceAll ?? [])
+  /** 不在当前这根上的语音（按时间排好）：复盘不能倒回，这些也得能点开听 */
+  const voiceElsewhere = computed(() =>
+    voiceAll.value.filter((c) => c.time !== voice.value.barTime).sort((a, b) => (a.time < b.time ? -1 : 1)),
+  )
+  const voiceMax = computed(() => voice.value.max || 9)
+  const voiceFull = computed(() => voiceClips.value.length >= voiceMax.value)
+  /**
+   * 能不能录。和绘图同一条口径：**要操作权、不能在回放里**。
+   *
+   * 入口（打开浮窗）对所有人开放 —— 观众也得能听讲解；只有「往上加一段」这个
+   * 动作需要操作权（服务端也会再挡一次）。
+   */
+  const canVoice = computed(() => !playbackActive.value && canOperate.value && bars.value.length > 0)
+  /** 语音浮窗开着没有。关掉 = 放下麦克风，空格回到普通含义。 */
+  const voiceOpen = ref(false)
   const botRunning = computed(() => instance.value?.bot === true)
   /**
    * 机器人正在跑的策略叫什么名字。
@@ -360,9 +391,20 @@ export const useReplayStore = defineStore('replay', () => {
     // 换了一块盘面（新建 / 进入另一个实例）：上一条错误属于上一条实例，跟着它作废。
     // 不这么做的话，删掉旧实例时留下的那句话会一直贴在右下角、还会被录制浮层
     // 抄进「提示」里 —— 新建的实例明明好好的，界面却在喊它已经被删了。
-    if (instance.value?.id !== inst.id) clearError()
+    if (instance.value?.id !== inst.id) {
+      clearError()
+      // 换了盘面：语音浮窗收起（麦克风是「对着这块盘面讲」的，不该跟到下一块上）
+      voiceOpen.value = false
+    }
     // 快照里的 bars 只含已揭示的部分（后端根本不会发未来的 K 线）
-    instance.value = { ...inst, bars: inst.bars ?? [], recording: inst.recording ?? null }
+    instance.value = {
+      ...inst,
+      bars: inst.bars ?? [],
+      recording: inst.recording ?? null,
+      // 语音永远是一个对象（后端保证不为 null；这里再兜一层，界面就不用到处判空）
+      voice: inst.voice ?? EMPTY_VOICE,
+      voiceAll: inst.voiceAll ?? [],
+    }
     you.value = msg.you
     log.value = [...(inst.events ?? [])].slice(-MAX_LOG)
     // 快照 = 换了一块盘面：上一条实例的选中在这条里没有对应图形，必须一起丢掉
@@ -390,6 +432,13 @@ export const useReplayStore = defineStore('replay', () => {
       msg.action === ACTION.recordingAudioCleared
     ) {
       applyRecordingEvent(inst, msg)
+      return
+    }
+
+    // 语音讲解（v0.16.0）：盘面数据，但**不进录像**（录制中那一条已经由后端记成
+    // 录像里的一个录音步），所以也不交给 reducer —— 回放时不该凭空多出语音。
+    if (msg.action === ACTION.voiceAdded || msg.action === ACTION.voiceCleared) {
+      applyVoiceEvent(inst, msg)
       return
     }
 
@@ -446,6 +495,10 @@ export const useReplayStore = defineStore('replay', () => {
       case ACTION.recordingAudio: {
         const p = msg.payload as RecordingAudioPayload
         inst.recording = p.state
+        // 老别名 record_audio 也会在盘面上留一条（v0.16.0）：两边的状态一起更新，
+        // 免得「录像里有了、语音浮窗里没有」这种只会在兼容路径上出现的怪现象。
+        if (p.voice) inst.voice = p.voice
+        if (p.voiceAll) inst.voiceAll = p.voiceAll
         noteNotice(
           `录音 ${p.state.audios} 条已挂到 ${p.audio.time}（第 ${p.audio.step} 步 · ${(p.audio.durationMs / 1000).toFixed(1)} 秒）`,
         )
@@ -454,6 +507,8 @@ export const useReplayStore = defineStore('replay', () => {
       case ACTION.recordingAudioCleared: {
         const p = msg.payload as RecordingAudioClearedPayload
         inst.recording = p.state
+        if (p.voice) inst.voice = p.voice
+        if (p.voiceAll) inst.voiceAll = p.voiceAll
         noteNotice(`已清除这根 K 线上的 ${p.removed.length} 条录音`)
         break
       }
@@ -472,6 +527,33 @@ export const useReplayStore = defineStore('replay', () => {
         break
       }
     }
+  }
+
+  /**
+   * 语音讲解的两条广播（v0.16.0）。
+   *
+   * 录制状态也一起更新：录制中录的那条会同时占录像的一步，HUD 的「第 N 步」
+   * 必须当场跟上，否则用户会看到「语音挂上了、步数没动」。
+   * 没在录时 payload.recording 缺省，什么都不用做。
+   */
+  function applyVoiceEvent(inst: InstanceDetail, msg: ServerEvent): void {
+    if (msg.action === ACTION.voiceAdded) {
+      const p = msg.payload as VoiceAddedPayload
+      inst.voice = p.voice
+      inst.voiceAll = p.voiceAll ?? inst.voiceAll
+      if (p.recording !== undefined) inst.recording = p.recording ?? null
+      noteNotice(
+        `语音已挂到 ${p.audio.time}（本根 ${p.voice.clips.length}/${p.voice.max} · ${(
+          p.audio.durationMs / 1000
+        ).toFixed(1)} 秒）`,
+      )
+      return
+    }
+    const p = msg.payload as VoiceClearedPayload
+    inst.voice = p.voice
+    inst.voiceAll = p.voiceAll ?? inst.voiceAll
+    if (p.recording !== undefined) inst.recording = p.recording ?? null
+    noteNotice(`已清除这根 K 线上的 ${p.removed.length} 条语音`)
   }
 
   /** 断线重连后重新对齐：实例和列表都可能已经变了。 */
@@ -707,22 +789,30 @@ export const useReplayStore = defineStore('replay', () => {
   }
 
   /**
-   * 送一段录音上去（WAV 的 base64）。挂载点是**服务端当前那根 K 线**，
-   * 前端不传时间 —— 传了就有两种"当前"，一旦不一致录音会挂错柱子。
+   * 送一段语音讲解上去（WAV 的 base64）。挂载点是**服务端当前那根 K 线**，
+   * 前端不传时间 —— 传了就有两种"当前"，一旦不一致语音会挂错柱子。
+   *
+   * v0.16.0：不再要求 isRecording —— 这正是解耦的意义。录制中调用会由服务端
+   * 额外抄一份进录像（回放到那一步语音响），不录制时只挂在盘面上。
    */
-  function sendRecordingAudio(audioData: string, durationMs: number): boolean {
-    if (!instance.value || !isRecording.value) return false
-    return send({ type: 'record_audio', instanceId: instance.value.id, audioData, durationMs })
+  function sendVoiceAudio(audioData: string, durationMs: number): boolean {
+    if (!instance.value || !canVoice.value) return false
+    return send({ type: 'voice_add', instanceId: instance.value.id, audioData, durationMs })
+  }
+
+  /** 清空**当前这根 K 线**上的语音（录坏了重来，不用把整条录像作废）。 */
+  function clearVoiceBar(): boolean {
+    if (!instance.value || !canVoice.value) return false
+    return send({ type: 'voice_clear', instanceId: instance.value.id })
+  }
+
+  /** 打开 / 收起语音浮窗。收起 = 放下麦克风（空格回到普通含义）。 */
+  function toggleVoicePanel(): void {
+    voiceOpen.value = !voiceOpen.value
   }
 
   function listRecordings(): void {
     send({ type: 'list_recordings' })
-  }
-
-  /** 清空**当前这一步**的录音（录坏了重来，不用把整条录像作废）。 */
-  function deleteStepAudio(): boolean {
-    if (!instance.value || !isRecording.value) return false
-    return send({ type: 'record_audio_delete', instanceId: instance.value.id })
   }
 
   /** 请求一条录像的完整内容；回来之后由回放面板打开播放器。 */
@@ -787,6 +877,15 @@ export const useReplayStore = defineStore('replay', () => {
     loadedSeq,
     recording,
     isRecording,
+    voice,
+    voiceClips,
+    voiceAll,
+    voiceElsewhere,
+    voiceMax,
+    voiceFull,
+    canVoice,
+    voiceOpen,
+    toggleVoicePanel,
     symbols,
     instances,
     instance,
@@ -854,8 +953,8 @@ export const useReplayStore = defineStore('replay', () => {
     startRecording,
     stopRecording,
     toggleRecording,
-    sendRecordingAudio,
-    deleteStepAudio,
+    sendVoiceAudio,
+    clearVoiceBar,
     listRecordings,
     requestRecording,
     deleteRecording,
