@@ -13,6 +13,9 @@
 //     逐行改又要先扫全文件定位。既然一天只有 288 行（5 分钟级别），
 //     直接按「时间戳 -> 最后一版」聚合后整体覆盖，重复问题从结构上就不存在了。
 //     这也是需求里说的「写入直接覆盖，不考虑是否已存在相同时间的数据」。
+//     但「重写」不等于「一定要落到磁盘」：编码结果和磁盘上的字节一致时直接跳过，
+//     否则历史回填会把一批内容没变的旧文件全部刷新 mtime 和行尾，
+//     git status 里就会出现一堆点开却看不到差异的 modified。
 package store
 
 import (
@@ -252,12 +255,9 @@ func (s *Store) saveIndexLocked() error {
 	if err != nil {
 		return err
 	}
-	path := s.indexPath()
-	tmp := path + ".tmp"
-	if err := os.WriteFile(tmp, append(buf, '\n'), 0o644); err != nil {
-		return err
-	}
-	if err := os.Rename(tmp, path); err != nil {
+	// 走同一个「内容没变就不写」的落盘函数：索引里只有标的->文件夹的映射，
+	// 一次抓取根本不会改它，没必要每次 Flush 都刷新它的 mtime。
+	if err := writeFileAtomic(s.indexPath(), append(buf, '\n')); err != nil {
 		return err
 	}
 	s.idxDirty = false
@@ -418,6 +418,8 @@ func parseTimeRow(rec []string, loc *time.Location) (TimeBar, bool) {
 
 // Flush 把所有脏的日文件重写一遍。
 // 序列化在锁内做（拿到一致快照），写盘在锁外做（不阻塞收帧）。
+// 「脏」表示内存里这一天被碰过，不代表文件一定变：writeFileAtomic 会再比一次
+// 字节，一样就跳过。历史回填碰到的旧日文件因此不会白白刷新 mtime。
 func (s *Store) Flush() error {
 	type pending struct {
 		path string
@@ -503,6 +505,15 @@ func (s *Store) encodeDayLocked(d *day) ([]byte, error) {
 func num(f float64) string { return strconv.FormatFloat(f, 'f', -1, 64) }
 
 func writeFileAtomic(path string, data []byte) error {
+	// 内容没变就完全不碰磁盘。历史 K 线回填会把每个旧日文件重新合并一遍，
+	// 合并结果往往和磁盘上的一模一样（同一批时间戳、同一批价格）。
+	// 这时仍然重写，内容虽不变，但 mtime/ctime 变了、行尾被统一成 LF
+	// （git 在 Windows 上 checkout 出来的是 CRLF），于是 git status 里一堆
+	// modified，点进去 git diff 却是空的 —— 用户看到的「文件被改了、内容却没变」
+	// 就是这么来的。写之前先比一下，能省的就是这一整类假改动。
+	if sameContent(path, data) {
+		return nil
+	}
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return err
 	}
@@ -513,6 +524,39 @@ func writeFileAtomic(path string, data []byte) error {
 	// Windows 上 os.Rename 会覆盖已存在的目标文件；若目标被 Excel 打开则会失败，
 	// 这时保持「脏」状态，下个周期重试。
 	return os.Rename(tmp, path)
+}
+
+// sameContent 判断磁盘上已有的文件和 data 是不是同一份数据。
+//
+// 行尾不算内容差异：磁盘上可能是 CRLF（git checkout 的产物），而 data 恒为 LF。
+// 只差 \r 时返回 true —— 不写盘，文件字节形态就此稳定，git 也不会再报 modified。
+// 注意「只差 \r」是严格意义上的差异：除了 CR 之外任何一处不同（价格、行数、
+// 排序、表头）都会返回 false，照常重写，不存在「该写的没写」。
+func sameContent(path string, data []byte) bool {
+	cur, err := os.ReadFile(path)
+	if err != nil {
+		return false // 读不到（不存在/没权限）就当不同，走正常写盘
+	}
+	if bytes.Equal(cur, data) {
+		return true
+	}
+	return bytes.Equal(dropCR(cur), data)
+}
+
+// dropCR 把 CRLF 折成 LF。只有 data 自身是纯 LF 时这个比较才有意义，
+// 而 store 写出来的永远是 LF（encodeDayLocked 里 UseCRLF=false）。
+func dropCR(b []byte) []byte {
+	if !bytes.ContainsRune(b, '\r') {
+		return b
+	}
+	out := make([]byte, 0, len(b))
+	for i := 0; i < len(b); i++ {
+		if b[i] == '\r' && i+1 < len(b) && b[i+1] == '\n' {
+			continue
+		}
+		out = append(out, b[i])
+	}
+	return out
 }
 
 // ---------------- 统计 ----------------

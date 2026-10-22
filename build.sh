@@ -8,6 +8,10 @@
 # nowhere else, it is injected with -X main.version, and the artifact is named
 # tv-capture-v<version> and lands in THIS folder.
 #
+# Like build.cmd it is one entry, two builds: the replay page (npm run build
+# inside web/) first, then the binary. Either stage failing stops the run with a
+# non-zero exit, so a half-built product is never reported as a success.
+#
 # What differs from build.cmd:
 #   - no resource step: go-winres and rsrc_*.syso are Windows only, so there
 #     is no exe "Details" tab to fill in here
@@ -36,7 +40,12 @@ Usage: ./build.sh [options]
                 arm64      Apple Silicon
                 universal  one file carrying both slices, for handing it
                            to someone whose Mac is not known
+  --no-web      skip the frontend stage and build the binary only (the replay
+                page then keeps whatever was built last time)
   -h, --help    this text
+
+Both stages run by default: npm run build inside web/ first (menu 3 serves that
+output at runtime), then the Go build. A failure in either one exits non-zero.
 
 The version comes from ./VERSION. The artifact (tv-capture-v<version>) lands
 in this folder, next to config.json, so it keeps reading data/ and raw/ from
@@ -51,6 +60,7 @@ die() {
 }
 
 ARCH="native"
+SKIP_WEB=0
 while [ $# -gt 0 ]; do
 	case "$1" in
 	--arch)
@@ -60,6 +70,10 @@ while [ $# -gt 0 ]; do
 		;;
 	--arch=*)
 		ARCH="${1#--arch=}"
+		shift
+		;;
+	--no-web)
+		SKIP_WEB=1
 		shift
 		;;
 	-h | --help)
@@ -98,7 +112,7 @@ echo
 echo "=== Building tv-capture-v$VER ($ARCH) ==="
 echo
 
-# ==== 0/4 toolchain sanity =================================================
+# ==== 0/5 toolchain sanity =================================================
 if ! command -v go >/dev/null 2>&1; then
 	die "'go' was not found. Install Go and make sure it is on PATH."
 fi
@@ -134,24 +148,49 @@ if [ "$ARCH" = "universal" ] && ! command -v lipo >/dev/null 2>&1; then
 Install them once with: xcode-select --install"
 fi
 
-# ==== 1/4 frontend check (not a build step, on purpose) ====================
+# ==== 1/5 frontend: the page menu 3 serves at runtime ======================
 # web/dist is NOT embedded: Go cannot //go:embed across directories, so menu 3
-# serves that folder at runtime. build.cmd does not build it either; this only
-# reports whether the replay page will show up.
+# serves that folder from disk when it starts -- which means a stale one
+# silently shows yesterday's page. That is why it is a real stage here and not
+# advice in the report. --no-web skips it and leaves the last build in place.
+if [ "$SKIP_WEB" = "1" ]; then
+	echo "frontend: skipped (--no-web), menu 3 replays whatever was built last time"
+	echo
+else
+	[ -f web/package.json ] ||
+		die "web/package.json is missing - the frontend sources are not here. Restore them, or run with --no-web."
+	command -v npm >/dev/null 2>&1 ||
+		die "'npm' was not found - the replay page is built with it. Install Node.js and put it on PATH, or run with --no-web."
+	if [ ! -d web/node_modules ]; then
+		echo "frontend: web/node_modules is missing, running npm install once ..."
+		if ! (cd web && npm install); then
+			echo
+			echo "Frontend setup failed: npm install returned an error (see above)."
+			echo "The binary was not built."
+			exit 1
+		fi
+	fi
+	echo "frontend: npm run build ..."
+	if ! (cd web && npm run build); then
+		echo
+		echo "Frontend build failed - a type error in web/src fails here too,"
+		echo "before vite ever runs."
+		echo "The binary was NOT built, so no half-new product was left behind."
+		exit 1
+	fi
+	echo "frontend OK"
+	echo
+fi
+
+# Whether menu 3 will actually find a page. Read after the stage above, so that
+# --no-web still reports the truth about what is on disk.
 if [ -d web/dist ] && [ -n "$(ls -A web/dist 2>/dev/null)" ]; then
 	WEB_OK=yes
 else
 	WEB_OK=no
 fi
-if [ "$WEB_OK" = "no" ]; then
-	echo "note: web/dist is missing or empty - menu 3 (replay) serves it at"
-	echo "      runtime, so build the frontend once:"
-	echo "        (cd web && npm install && npm run build)"
-	echo "      The Go binary builds fine without it."
-	echo
-fi
 
-# ==== 2/4 build ============================================================
+# ==== 2/5 build ============================================================
 # CGO off is what makes one binary portable: no Homebrew dylib, no SDK needed
 # on the target machine, and amd64/arm64 are built from the same host. Nothing
 # in this program imports "C" (only internal/logx branches on windows), so
@@ -191,7 +230,7 @@ else
 fi
 chmod +x "$OUT"
 
-# ==== 3/4 check the artifact really is what was asked for ==================
+# ==== 3/5 check the artifact really is what was asked for ==================
 # lipo -archs is one short line for both cases; file(1) wraps a universal file
 # over several lines, which reads badly in a report.
 GOT=""
@@ -214,7 +253,7 @@ if [ -n "$GOT" ]; then
 	fi
 fi
 
-# ==== 4/4 ad-hoc signature =================================================
+# ==== 4/5 ad-hoc signature =================================================
 # arm64 refuses to exec an unsigned Mach-O. Go signs its own output on
 # darwin/arm64, but lipo rewrites the file and throws that signature away, so
 # every build gets an explicit ad-hoc signature. This is not a Developer ID:
@@ -266,9 +305,15 @@ fi
 echo "  - built in place: it reads config.json from this folder and keeps using"
 echo "    the data/ and raw/ folders here"
 if [ "$WEB_OK" = "yes" ]; then
-	echo "  - web/dist is present, so menu 3 (replay) has its frontend"
+	if [ "$SKIP_WEB" = "1" ]; then
+		echo "  - web/dist is present but untouched (--no-web): menu 3 replays the"
+		echo "    page from an earlier build"
+	else
+		echo "  - web/dist was rebuilt in this same run, so menu 3 (replay) serves"
+		echo "    the current page"
+	fi
 else
-	echo "  - web/dist is still missing: menu 3 will say the page is not built yet"
+	echo "  - web/dist is missing: menu 3 will say the page is not built yet"
 fi
 echo
 echo "Run it: ./$OUT"

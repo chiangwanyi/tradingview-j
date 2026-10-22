@@ -254,3 +254,106 @@ func TestLeftoverTempFileIsNotTreatedAsData(t *testing.T) {
 		t.Fatal("临时文件没有 rename 掉")
 	}
 }
+
+// 历史回填的典型形态：同一批 K 线再写一遍，合并结果和磁盘上一模一样。
+// 这时绝不能碰文件 —— 一碰就是 mtime 变、行尾被统一成 LF，
+// git 那边表现为「modified 但 diff 是空的」。
+func TestIdenticalContentIsNotRewritten(t *testing.T) {
+	root := t.TempDir()
+	s := newStore(t, root, true)
+	b := Bar{T: 1792114800, O: 7744.25, H: 7745.75, L: 7740.75, C: 7742.25, V: 300, HasVolume: true}
+	b2 := Bar{T: 1792115100, O: 7742.25, H: 7743.75, L: 7739.5, C: 7740, V: 542, HasVolume: true}
+
+	s.Add("X", b)
+	s.Add("X", b2)
+	if err := s.Flush(); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(root, "X", "2026-10-16.csv")
+	before := readCSV(t, path)
+
+	// 把 mtime 推到过去，这样「有没有被重写」能直接看出来
+	old := time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC)
+	if err := os.Chtimes(path, old, old); err != nil {
+		t.Fatal(err)
+	}
+
+	s.Add("X", b)
+	s.Add("X", b2)
+	if err := s.Flush(); err != nil {
+		t.Fatal(err)
+	}
+
+	if got := readCSV(t, path); got != before {
+		t.Fatalf("内容被改了:\n%q\n%q", before, got)
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !info.ModTime().Equal(old) {
+		t.Fatalf("数据没变却重写了文件，mtime = %v", info.ModTime())
+	}
+}
+
+// git 在 Windows 上 checkout 出来的是 CRLF，程序写的是 LF。
+// 只差行尾时必须当成「同一份数据」而不是「要覆盖的新数据」：
+// 覆盖一次就把整份文件的行尾翻掉，git 立刻报 modified。
+func TestCRLFOnDiskIsTreatedAsSameContent(t *testing.T) {
+	root := t.TempDir()
+	s := newStore(t, root, true)
+	b := Bar{T: 1792114800, O: 1, H: 2, L: 0.5, C: 1.5, V: 7, HasVolume: true}
+	s.Add("X", b)
+	if err := s.Flush(); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(root, "X", "2026-10-16.csv")
+
+	// 手工造一份 CRLF 副本，模拟 git checkout 的结果
+	lf := readCSV(t, path)
+	crlf := strings.ReplaceAll(lf, "\n", "\r\n")
+	if err := os.WriteFile(path, []byte(crlf), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	old := time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC)
+	if err := os.Chtimes(path, old, old); err != nil {
+		t.Fatal(err)
+	}
+
+	// 同一根 K 线再来一次：数据一样，只是盘上是 CRLF
+	s.Add("X", b)
+	if err := s.Flush(); err != nil {
+		t.Fatal(err)
+	}
+
+	if got := readCSV(t, path); got != crlf {
+		t.Fatalf("行尾被改写了，git 又要报 modified:\n%q", got)
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !info.ModTime().Equal(old) {
+		t.Fatalf("只差行尾却重写了文件，mtime = %v", info.ModTime())
+	}
+}
+
+// 反过来的底线：内容真变了就必须落盘，别为了「不写」把数据丢了。
+func TestChangedContentIsStillWritten(t *testing.T) {
+	root := t.TempDir()
+	s := newStore(t, root, true)
+	s.Add("X", Bar{T: 1792114800, O: 1, H: 2, L: 0.5, C: 1.5, V: 7, HasVolume: true})
+	if err := s.Flush(); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(root, "X", "2026-10-16.csv")
+
+	// 同一时间戳的收盘价被修正（最后一根 K 线在走的时候很常见）
+	s.Add("X", Bar{T: 1792114800, O: 1, H: 2, L: 0.5, C: 1.75, V: 9, HasVolume: true})
+	if err := s.Flush(); err != nil {
+		t.Fatal(err)
+	}
+	if got := readCSV(t, path); !strings.Contains(got, "1.75") || !strings.Contains(got, ",9\n") {
+		t.Fatalf("修正后的数据没写进去: %q", got)
+	}
+}

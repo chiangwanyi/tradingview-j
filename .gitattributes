@@ -10,5 +10,19 @@
 # 版本号文件由 build.cmd 用 set /p 读，保持 Windows 行尾
 VERSION text eol=crlf
 
+# 落盘的 CSV 是「一天一个文件、程序全量重写」的数据文件，行尾规范是 LF。
+# 程序写出来就是 LF（store 里 UseCRLF=false）；如果 checkout 按 autocrlf 把 blob
+# 铺成 CRLF，那么下一次抓取重写（以前是无条件重写）就会把整份文件的行尾翻回去：
+# 字节变了、内容没变 —— git status 一片 modified，git diff 却是空的。
+# 固定 eol=lf 之后 checkout 也产出 LF，不会再因为行尾抖动。
+#
+# 索引和磁盘是两件事，别混：
+#   * 索引侧：git add --renormalize data 只做归一。blob 本来就是 LF，所以除了
+#     真实数据改动之外不会产生任何差异（实测 3232 个 CRLF 文件全部无变化）。
+#   * 磁盘侧：存量 CRLF 副本不会因为 renormalize 而改写，也不需要改 ——
+#     归一行尾后它们和 blob 一致，status 是干净的。想连磁盘也统一成 LF，
+#     先提交，再 git checkout-index -f -a（它会覆盖未提交的工作区改动）。
+data/**/*.csv text eol=lf
+
 # 二进制产物不要做行尾转换
 *.exe binary

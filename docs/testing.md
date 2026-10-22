@@ -219,7 +219,7 @@ B 比 A 多两件事：真实 `web/dist`（顺带验了静态托管）、真实�
 | `VERSION` 只有一行有效内容，且是三段数字 | `build.cmd` 用 `set /p` 读，**只读第一行** —— 往里加注释行会被静默忽略，表现成「改了版本却没生效」 |
 | `main.go` 的 `version` 与 `VERSION` 一致 | 兜底值漂了，IDE 里直接跑出来的横幅就和产物名不一致 |
 | `build.cmd` 含 `<VERSION`、`-X main.version=`、`-o "tv-capture-v%VER%.exe"`、`--file-version`、`--product-version` | 有人「顺手简化」掉其中一步，版本号机制就只剩一半 |
-| `build.cmd` 里**没有** `dist`、也没有 `copy` / `mkdir`（`TestBuildCmdKeepsExeInRootDir`） | 产物被挪进子目录：`outDir` 相对 **exe 所在目录**展开，搬个目录就等于换一份数据（见 [design.md](design.md) 里被回退的那个方案） |
+| `build.cmd` 里**没有** `dist`、也没有 `copy` / `mkdir`（`TestBuildCmdKeepsExeInRootDir`） | 产物被挪进子目录：`outDir` 相对 **exe 所在目录**展开，搬个目录就等于换一份数据（见 [design.md](design.md) 里被回退的那个方案）。注意这条对**会被执行的行**生效（`rem` 不算）：`build.cmd` 现在还会跑一次前端构建，所以它的命令行里也不能出现那两个字 —— 想解释「`web\dist` 是运行期托管的」请写在 `rem` 里 |
 | `build.cmd` 里**没有非 ASCII 字节**、也**没有裸 LF**（`TestBuildCmdIsAsciiAndCRLF`） | 两种「编不出来」的错：中文让 cmd 把行尾当命令执行；裸 LF 让每行行首被吃掉。理由与实测见「改代码时的注意」第一条 |
 | `winres\winres.json` 里不出现 `file_version` / `FileVersion` 这类键 | 出现第二个来源：那个值会被命令行覆盖，于是文件里留着一个**永远不生效、看起来又像真值**的数字 |
 

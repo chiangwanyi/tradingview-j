@@ -107,12 +107,22 @@ Vue + TypeScript 工程，**需要先 `npm run build`**，产物由本地服务�
 ## 快速开始
 
 ```bat
-build.cmd                        :: 双击它，或者在命令行里跑
+build.cmd                        :: 双击它，或者在命令行里跑：前端 + exe 一次做完
+build.cmd --no-web               :: 只编 exe，跳过前端（前端沿用上次的产物）
 tv-capture-v0.14.0.exe           :: 产物就落在根目录（版本号来自 VERSION）
 ```
 
-构建只做三件事，都在 `build.cmd` 里：读根目录的 `VERSION` → 生成 exe 属性要用的资源对象
-→ `go build`。产物**就地**落在根目录，文件名带版本号。详细约定见下面「构建与版本号」。
+一次触发跑三个阶段，顺序固定，**任一阶段失败就地中断并返回非 0**，所以不会留下
+「前端是新的、exe 还是旧的」这种半成品：
+
+| 阶段 | 跑什么 | 产物 |
+|---|---|---|
+| 1 前端 | `cd web && npm run build`（`web\node_modules` 不存在时先补一次 `npm install`） | `web\dist\`，菜单 3 在运行期托管它 |
+| 2 资源 | `go-winres make --file-version=<v> --product-version=<v>` | `rsrc_windows_amd64.syso`，exe 属性页要用的 |
+| 3 Go | `go build -ldflags "-X main.version=<v>" -o tv-capture-v<v>.exe .` | 根目录的 exe，**就地**生成 |
+
+详细约定见下面「构建与版本号」。macOS 上对应的是 `./build.sh`，同样是先前端后二进制，
+失败时 `set -e` 让脚本当场退出（`./build.sh --no-web` 可只编二进制）。
 
 启动后是一个四选一的菜单：
 
@@ -136,7 +146,8 @@ tv-capture-v0.14.0.exe           :: 产物就落在根目录（版本号来自 V
 ## 构建与版本号
 
 版本号**只有一个来源**：仓库根目录的 `VERSION` 文件（一行，例如 `0.1.0`）。
-`build.cmd` 按顺序做三件事，全程不需要你手写第二个版本号：
+`build.cmd` 里与版本号有关的只有三步（它们前面还有一步前端构建，见「快速开始」），
+全程不需要你手写第二个版本号：
 
 | 步骤 | 做什么 | 版本号用在哪儿 |
 |---|---|---|
@@ -154,7 +165,8 @@ tv-capture-v0.14.0.exe           :: 产物就落在根目录（版本号来自 V
 [docs/design.md](docs/design.md) 的「版本号为什么只有一个来源」。
 
 产物**就在根目录**，跟 `config.json`、`data\`、`raw\` 并排，所以双击它读写的还是你原来那份数据
-—— 没有 `dist\`，构建也不搬运任何文件。注意 `outDir` / `rawDir` 是**相对 exe 所在目录**展开的：
+—— exe 不会被塞进 `dist\`，构建也不搬运任何文件（`web\dist\` 是前端产物，跟 exe 放在哪儿无关）。
+注意 `outDir` / `rawDir` 是**相对 exe 所在目录**展开的：
 换个目录放 exe（或者把它拷给别人）就等于换一份数据目录，那边会新建自己的
 `config.json` 和 `data\`。想长期用就让它留在根目录。
 
@@ -412,7 +424,7 @@ time,open,high,low,close,volume
 
 ```
 VERSION               唯一的版本号来源（一行，例如 0.1.0）
-build.cmd             构建脚本：读 VERSION → 生成资源对象 → 就地编译出 tv-capture-v<版本>.exe
+build.cmd             构建脚本：前端 npm run build → 读 VERSION → 生成资源对象 → 就地编译出 exe
 winres/winres.json    Windows 资源模板（exe 属性里的产品名与描述；不含版本号）
 main.go               入口：只有 main() 与 version（-ldflags 的注入点）
 
