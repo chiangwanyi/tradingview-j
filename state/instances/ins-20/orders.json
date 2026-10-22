@@ -1,0 +1,28 @@
+[
+  {
+    "id": "o1",
+    "side": "buy",
+    "kind": "market",
+    "price": 6233.5,
+    "quantity": 1,
+    "status": "filled",
+    "placedAt": "2024-11-04 09:45",
+    "placedIndex": 645,
+    "filledAt": "2024-11-04 09:45",
+    "filledIndex": 645,
+    "fillPrice": 6233.5
+  },
+  {
+    "id": "o2",
+    "side": "sell",
+    "kind": "market",
+    "price": 6236,
+    "quantity": 1,
+    "status": "filled",
+    "placedAt": "2024-11-04 10:00",
+    "placedIndex": 648,
+    "filledAt": "2024-11-04 10:00",
+    "filledIndex": 648,
+    "fillPrice": 6236
+  }
+]

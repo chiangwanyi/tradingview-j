@@ -1,0 +1,416 @@
+[
+  {
+    "seq": 1,
+    "at": 1792680817,
+    "by": "human",
+    "action": "recording_started",
+    "payload": {
+      "active": true,
+      "id": "rec-20261022-225337",
+      "by": "human",
+      "startedAt": 1792680817,
+      "step": 1,
+      "total": 1,
+      "barNo": 1,
+      "kind": "base",
+      "startTime": "2024-11-04 09:45",
+      "current": "2024-11-04 09:45",
+      "audios": 0,
+      "barAudios": 0,
+      "maxBarAudios": 9,
+      "clips": []
+    }
+  },
+  {
+    "seq": 2,
+    "at": 1792680820,
+    "by": "human",
+    "action": "order_filled",
+    "payload": {
+      "order": {
+        "id": "o1",
+        "side": "buy",
+        "kind": "market",
+        "price": 6233.5,
+        "quantity": 1,
+        "status": "filled",
+        "placedAt": "2024-11-04 09:45",
+        "placedIndex": 645,
+        "filledAt": "2024-11-04 09:45",
+        "filledIndex": 645,
+        "fillPrice": 6233.5
+      },
+      "trade": {
+        "id": "t1",
+        "orderId": "o1",
+        "time": "2024-11-04 09:45",
+        "side": "buy",
+        "kind": "market",
+        "price": 6233.5,
+        "quantity": 1,
+        "realizedPnl": 0
+      },
+      "orders": [
+        {
+          "id": "o1",
+          "side": "buy",
+          "kind": "market",
+          "price": 6233.5,
+          "quantity": 1,
+          "status": "filled",
+          "placedAt": "2024-11-04 09:45",
+          "placedIndex": 645,
+          "filledAt": "2024-11-04 09:45",
+          "filledIndex": 645,
+          "fillPrice": 6233.5
+        }
+      ],
+      "trades": [
+        {
+          "id": "t1",
+          "orderId": "o1",
+          "time": "2024-11-04 09:45",
+          "side": "buy",
+          "kind": "market",
+          "price": 6233.5,
+          "quantity": 1,
+          "realizedPnl": 0
+        }
+      ],
+      "closedLots": null,
+      "position": {
+        "quantity": 1,
+        "side": "long",
+        "averagePrice": 6233.5
+      },
+      "realizedPnl": 0,
+      "unrealizedPnl": 0
+    }
+  },
+  {
+    "seq": 3,
+    "at": 1792680821,
+    "by": "human",
+    "action": "bar_advanced",
+    "payload": {
+      "bar": {
+        "time": "2024-11-04 09:50",
+        "open": 6233.5,
+        "high": 6234,
+        "low": 6232.75,
+        "close": 6233,
+        "volume": 510,
+        "ema20": 6228.318958878679
+      },
+      "cursor": 646,
+      "hiddenBars": 1345,
+      "hasMore": true,
+      "orders": [
+        {
+          "id": "o1",
+          "side": "buy",
+          "kind": "market",
+          "price": 6233.5,
+          "quantity": 1,
+          "status": "filled",
+          "placedAt": "2024-11-04 09:45",
+          "placedIndex": 645,
+          "filledAt": "2024-11-04 09:45",
+          "filledIndex": 645,
+          "fillPrice": 6233.5
+        }
+      ],
+      "trades": [
+        {
+          "id": "t1",
+          "orderId": "o1",
+          "time": "2024-11-04 09:45",
+          "side": "buy",
+          "kind": "market",
+          "price": 6233.5,
+          "quantity": 1,
+          "realizedPnl": 0
+        }
+      ],
+      "closedLots": null,
+      "position": {
+        "quantity": 1,
+        "side": "long",
+        "averagePrice": 6233.5
+      },
+      "realizedPnl": 0,
+      "unrealizedPnl": -2.5,
+      "fills": [],
+      "voice": {
+        "barTime": "2024-11-04 09:50",
+        "clips": [],
+        "total": 0,
+        "max": 9
+      }
+    }
+  },
+  {
+    "seq": 4,
+    "at": 1792680822,
+    "by": "human",
+    "action": "bar_advanced",
+    "payload": {
+      "bar": {
+        "time": "2024-11-04 09:55",
+        "open": 6233.25,
+        "high": 6236.5,
+        "low": 6232.5,
+        "close": 6234.5,
+        "volume": 1341,
+        "ema20": 6228.907629461662
+      },
+      "cursor": 647,
+      "hiddenBars": 1344,
+      "hasMore": true,
+      "orders": [
+        {
+          "id": "o1",
+          "side": "buy",
+          "kind": "market",
+          "price": 6233.5,
+          "quantity": 1,
+          "status": "filled",
+          "placedAt": "2024-11-04 09:45",
+          "placedIndex": 645,
+          "filledAt": "2024-11-04 09:45",
+          "filledIndex": 645,
+          "fillPrice": 6233.5
+        }
+      ],
+      "trades": [
+        {
+          "id": "t1",
+          "orderId": "o1",
+          "time": "2024-11-04 09:45",
+          "side": "buy",
+          "kind": "market",
+          "price": 6233.5,
+          "quantity": 1,
+          "realizedPnl": 0
+        }
+      ],
+      "closedLots": null,
+      "position": {
+        "quantity": 1,
+        "side": "long",
+        "averagePrice": 6233.5
+      },
+      "realizedPnl": 0,
+      "unrealizedPnl": 5,
+      "fills": [],
+      "voice": {
+        "barTime": "2024-11-04 09:55",
+        "clips": [],
+        "total": 0,
+        "max": 9
+      }
+    }
+  },
+  {
+    "seq": 5,
+    "at": 1792680823,
+    "by": "human",
+    "action": "bar_advanced",
+    "payload": {
+      "bar": {
+        "time": "2024-11-04 10:00",
+        "open": 6234.75,
+        "high": 6236.25,
+        "low": 6234.75,
+        "close": 6236,
+        "volume": 687,
+        "ema20": 6229.583093322455
+      },
+      "cursor": 648,
+      "hiddenBars": 1343,
+      "hasMore": true,
+      "orders": [
+        {
+          "id": "o1",
+          "side": "buy",
+          "kind": "market",
+          "price": 6233.5,
+          "quantity": 1,
+          "status": "filled",
+          "placedAt": "2024-11-04 09:45",
+          "placedIndex": 645,
+          "filledAt": "2024-11-04 09:45",
+          "filledIndex": 645,
+          "fillPrice": 6233.5
+        }
+      ],
+      "trades": [
+        {
+          "id": "t1",
+          "orderId": "o1",
+          "time": "2024-11-04 09:45",
+          "side": "buy",
+          "kind": "market",
+          "price": 6233.5,
+          "quantity": 1,
+          "realizedPnl": 0
+        }
+      ],
+      "closedLots": null,
+      "position": {
+        "quantity": 1,
+        "side": "long",
+        "averagePrice": 6233.5
+      },
+      "realizedPnl": 0,
+      "unrealizedPnl": 12.5,
+      "fills": [],
+      "voice": {
+        "barTime": "2024-11-04 10:00",
+        "clips": [],
+        "total": 0,
+        "max": 9
+      }
+    }
+  },
+  {
+    "seq": 6,
+    "at": 1792680825,
+    "by": "human",
+    "action": "order_filled",
+    "payload": {
+      "order": {
+        "id": "o2",
+        "side": "sell",
+        "kind": "market",
+        "price": 6236,
+        "quantity": 1,
+        "status": "filled",
+        "placedAt": "2024-11-04 10:00",
+        "placedIndex": 648,
+        "filledAt": "2024-11-04 10:00",
+        "filledIndex": 648,
+        "fillPrice": 6236
+      },
+      "trade": {
+        "id": "t2",
+        "orderId": "o2",
+        "time": "2024-11-04 10:00",
+        "side": "sell",
+        "kind": "market",
+        "price": 6236,
+        "quantity": 1,
+        "realizedPnl": 12.5
+      },
+      "orders": [
+        {
+          "id": "o1",
+          "side": "buy",
+          "kind": "market",
+          "price": 6233.5,
+          "quantity": 1,
+          "status": "filled",
+          "placedAt": "2024-11-04 09:45",
+          "placedIndex": 645,
+          "filledAt": "2024-11-04 09:45",
+          "filledIndex": 645,
+          "fillPrice": 6233.5
+        },
+        {
+          "id": "o2",
+          "side": "sell",
+          "kind": "market",
+          "price": 6236,
+          "quantity": 1,
+          "status": "filled",
+          "placedAt": "2024-11-04 10:00",
+          "placedIndex": 648,
+          "filledAt": "2024-11-04 10:00",
+          "filledIndex": 648,
+          "fillPrice": 6236
+        }
+      ],
+      "trades": [
+        {
+          "id": "t1",
+          "orderId": "o1",
+          "time": "2024-11-04 09:45",
+          "side": "buy",
+          "kind": "market",
+          "price": 6233.5,
+          "quantity": 1,
+          "realizedPnl": 0
+        },
+        {
+          "id": "t2",
+          "orderId": "o2",
+          "time": "2024-11-04 10:00",
+          "side": "sell",
+          "kind": "market",
+          "price": 6236,
+          "quantity": 1,
+          "realizedPnl": 12.5
+        }
+      ],
+      "closedLots": [
+        {
+          "openTime": "2024-11-04 09:45",
+          "openPrice": 6233.5,
+          "closeTime": "2024-11-04 10:00",
+          "closePrice": 6236,
+          "side": "long",
+          "quantity": 1,
+          "realizedPnl": 12.5
+        }
+      ],
+      "position": {
+        "quantity": 0,
+        "side": "flat",
+        "averagePrice": 0
+      },
+      "realizedPnl": 12.5,
+      "unrealizedPnl": 0
+    }
+  },
+  {
+    "seq": 7,
+    "at": 1792680826,
+    "by": "human",
+    "action": "recording_stopped",
+    "payload": {
+      "recording": {
+        "id": "rec-20261022-225337",
+        "name": "CME_MINI:MES1! · 2024-11-04 09:45 → 2024-11-04 10:00 · 6 步",
+        "symbol": "CME_MINI:MES1!",
+        "folder": "CME_MINI_MES1!",
+        "anchor": "2024-11-04 09:45",
+        "endTime": "2024-11-04 10:00",
+        "stepCount": 6,
+        "audioCount": 0,
+        "eventCount": 5,
+        "bars": 4,
+        "size": 0,
+        "createdBy": "human",
+        "createdAt": 1792680817,
+        "endedAt": 1792680826
+      },
+      "dir": "D:\\Workspaces\\tradingview-j\\recordings"
+    }
+  },
+  {
+    "seq": 8,
+    "at": 1792680844,
+    "by": "system",
+    "action": "members_changed",
+    "payload": {
+      "members": [
+        {
+          "clientId": "c1",
+          "name": "human",
+          "operator": true,
+          "connected": true
+        }
+      ]
+    }
+  }
+]
