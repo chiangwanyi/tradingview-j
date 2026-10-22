@@ -7,7 +7,7 @@ import AudioWave from '@/components/AudioWave.vue'
 import type { AudioClip } from '@/types/protocol'
 
 /**
- * 录制浮窗：步数、本步录音、麦克风选择、实时波形，以及录音本身。
+ * 录制浮窗：步数、本根 K 线的录音、麦克风选择、实时波形，以及录音本身。
  *
  * 位置自己拖、可以折叠成一枚 44px 的小图标 —— **和下单浮窗（TradeFloat）同一套交互**：
  * 标题栏是把手（`pointerdown` 里 `preventDefault`，不然一按就框选文字、下拉框还抢焦点）、
@@ -23,7 +23,11 @@ import type { AudioClip } from '@/types/protocol'
  * v0.12.0 起**抬起空格之后才开麦**（再等 `START_DELAY_MS`），见 `onKeyUp` 的注释。
  *
  * 录音上限是**每根 K 线 9 条**（不是每条录像 9 条）：换到下一步，额度重新开始。
- * 所以这里显示的是 `本步 x/9`，另外用一个小字提示整条录像一共几条。
+ * 所以这里显示的是 `本根 x/9`，另外用一个小字提示整条录像一共几条。
+ *
+ * 注意「步」和「根」的区别（v0.15.0）：**一步 = 一次操作**，一根 K 线上可以有
+ * 十几步（点下一根、画图、挂单、录音各算一步）。录音额度是按**根**算的，
+ * 所以 HUD 里的 9 条是「这根 K 线还剩几条」，不是「这一步」。
  */
 
 const store = useReplayStore()
@@ -66,7 +70,7 @@ const micError = ref('')
 const hint = ref('')
 /** 正在预览播放的那条（文件名）；空 = 没在放 */
 const playingFile = ref('')
-/** 「清空本步」的两段式确认 */
+/** 「清空本根」的两段式确认 */
 const armedClear = ref(false)
 
 /**
@@ -95,10 +99,10 @@ let audio: HTMLAudioElement | null = null
 const state = computed(() => store.recording)
 const step = computed(() => state.value?.step ?? 0)
 const clips = computed<AudioClip[]>(() => state.value?.clips ?? [])
-const stepAudios = computed(() => state.value?.stepAudios ?? clips.value.length)
-const maxAudios = computed(() => state.value?.maxAudios ?? 9)
+const barAudios = computed(() => state.value?.barAudios ?? clips.value.length)
+const maxAudios = computed(() => state.value?.maxBarAudios ?? 9)
 const totalAudios = computed(() => state.value?.audios ?? 0)
-const full = computed(() => stepAudios.value >= maxAudios.value)
+const full = computed(() => barAudios.value >= maxAudios.value)
 
 const canvas = ref<HTMLCanvasElement | null>(null)
 /** 实时波形的历史电平（每帧一个峰值），画成一条从右往左滚的包络 */
@@ -333,7 +337,7 @@ function drawWave(): void {
   }
 }
 
-// ---------------- 本步录音：预览 / 清空 ----------------
+// ---------------- 本根录音：预览 / 清空 ----------------
 
 function audioUrl(clip: AudioClip): string {
   const rec = state.value
@@ -386,7 +390,7 @@ function stopPreview(): void {
   }
 }
 
-/** 清空**本步**的录音：两段式（第一下变红，第二下才真删）。 */
+/** 清空**本根 K 线**上的录音：两段式（第一下变红，第二下才真删）。 */
 function clearStep(): void {
   if (!armedClear.value) {
     armedClear.value = true
@@ -612,7 +616,7 @@ watch(
           class="tnum text-[10px]"
           :class="full ? 'text-amber-600 dark:text-amber-400' : 'text-faint'"
         >
-          本步 {{ stepAudios }}/{{ maxAudios }}
+          本根 {{ barAudios }}/{{ maxAudios }}
         </span>
         <span class="ml-auto tnum text-ink">第 {{ step }} 步</span>
         <button
@@ -629,7 +633,7 @@ watch(
       <div class="px-2.5 py-1.5">
         <div class="flex items-baseline gap-2">
           <span class="tnum" :class="full ? 'text-amber-600 dark:text-amber-400' : ''">
-            本步录音 <b class="text-ink">{{ stepAudios }}</b
+            本根录音 <b class="text-ink">{{ barAudios }}</b
             >/{{ maxAudios }}
           </span>
           <span class="tnum text-[10px] text-faint">共 {{ totalAudios }} 条</span>
@@ -678,10 +682,10 @@ watch(
           <div v-if="micError" class="mt-0.5 text-red-600 dark:text-red-400">{{ micError }}</div>
         </div>
 
-        <!-- 本步已录的几条：波形 + 时长 + 试听 -->
+        <!-- 本根已录的几条：波形 + 时长 + 试听 -->
         <div v-if="clips.length" class="mt-1.5">
           <div class="flex items-center gap-1">
-            <span class="text-[10px] text-faint">本步的 {{ clips.length }} 条</span>
+            <span class="text-[10px] text-faint">本根的 {{ clips.length }} 条</span>
             <button
               type="button"
               class="ml-auto rounded px-1 text-[10px]"
@@ -690,10 +694,10 @@ watch(
                   ? 'bg-red-600 text-white'
                   : 'text-faint hover:text-red-600 dark:hover:text-red-400'
               "
-              :title="armedClear ? '再点一下确认清空（只清这一步，不可撤销）' : '清空这一步的全部录音'"
+              :title="armedClear ? '再点一下确认清空（只清这根 K 线，不可撤销）' : '清空这根 K 线上的全部录音'"
               @click="clearStep"
             >
-              {{ armedClear ? '确认清空' : '清空本步' }}
+              {{ armedClear ? '确认清空' : '清空本根' }}
             </button>
           </div>
           <div

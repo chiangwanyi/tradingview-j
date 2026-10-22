@@ -274,6 +274,13 @@ export interface ServerEvent {
   by: string
   action: string
   payload?: unknown
+  /**
+   * 这条广播被录成了第几步（0 / 缺省 = 没在录或这一步不记录）。
+   *
+   * v0.15.0 之前前端在收到 `bar_advanced` 时自己把步数 +1；改成一操作一步之后
+   * 那样必然算错（画图、录音也各占一步），所以步号由服务端下发，界面只显示。
+   */
+  recStep?: number
 }
 
 export interface LeftMessage {
@@ -472,6 +479,9 @@ export const ANNOTATION_COLORS = [
  *
  * 步数与录音数**都是服务端数的**：界面只是显示，不自己累加 ——
  * 否则「界面写第 12 步、文件里只有 11 段」这种问题永远查不清。
+ *
+ * 术语（v0.15.0）：**一步 = 一次操作**。点【下一根】、画一个图形、挂一张单、
+ * 录一段音各占一步；一根 K 线上可以有很多步，所以还有 `barNo`。
  */
 export interface RecordingState {
   active: boolean
@@ -480,17 +490,23 @@ export interface RecordingState {
   startedAt?: number
   /** 当前第几步（1 = 点录制时那一屏） */
   step: number
+  /** 一共几步（含起点） */
+  total: number
+  /** 当前是第几根 K 线（1 起，第 1 根 = 起点那根） */
+  barNo: number
+  /** 当前这一步是什么操作（base / bar_advanced / annotation_added / recording_audio …） */
+  kind?: string
   /** 第 1 步对应的 K 线时间 */
   startTime?: string
   /** 当前这一步对应的 K 线时间 */
   current?: string
   /** 整条录像已录几条（**不限**） */
   audios: number
-  /** 当前这一步已录几条（HUD 显示的就是这个） */
-  stepAudios: number
-  /** 单步上限（9） */
-  maxAudios: number
-  /** 当前这一步的录音清单（HUD 里列出来、预览、清空） */
+  /** 当前**这根 K 线**上已录几条（HUD 显示的就是这个） */
+  barAudios: number
+  /** 同一根 K 线的上限（9） */
+  maxBarAudios: number
+  /** 当前这根 K 线上的录音清单（HUD 里列出来、预览、清空） */
   clips: AudioClip[]
 }
 
@@ -502,7 +518,12 @@ export interface RecordingSummary {
   folder: string
   anchor: string
   endTime: string
-  /** 摘要里的计数（带 Count 是为了不和 Recording.steps 那个数组撞名） */
+  /**
+   * 摘要里的计数（带 Count 是为了不和 Recording.steps 那个数组撞名）。
+   *
+   * `stepCount` 是**操作步数**（v0.15.0 起一步一个操作，所以比以前大得多），
+   * 想知道录了多长看 `bars`（推进了几根 K 线）。
+   */
   stepCount: number
   audioCount: number
   eventCount: number
@@ -541,10 +562,29 @@ export interface RecordingEvent {
   payload?: unknown
 }
 
-/** 录像里的一步：第 1 步没有事件（它就是 base），第 2 步起第一条一定是 bar_advanced。 */
+/**
+ * 录像里的一步 —— **一步 = 一次真实操作**（v0.15.0）。
+ *
+ * 第 1 步是起点（`kind: 'base'`，没有事件）；之后每一条放行的广播开一步：
+ * 点一次【下一根】、画一个图形、拖一次挂单价、录一段音，各占一步。
+ *
+ * 录音步（`kind: 'recording_audio'`）特殊：`events` 为空（不改盘面），
+ * 那段音频在 `audio` 里。回放到它画面不动，但语音该响。
+ */
 export interface RecordingStep {
   step: number
+  /** 这一步的真实发生时刻（Unix 毫秒） */
+  at: number
+  /** 'base' / 动作名 / 'recording_audio' */
+  kind: string
+  /** human / bot / system */
+  by?: string
+  /** 这一步发生时当前那根 K 线的时间 */
   time: string
+  /** 这一步发生后的游标（跳步时自检用） */
+  cursor: number
+  /** 仅录音步：挂在这一步上的那一段 */
+  audio?: AudioClip
   events: RecordingEvent[]
 }
 
@@ -562,6 +602,12 @@ export interface AudioClip {
 
 /** 一条完整的录像：起始盘面 + 每一步的事件 + 录音。 */
 export interface Recording extends RecordingSummary {
+  /**
+   * 录像格式：2 = 一步一个操作（v0.15.0 起），1 = 旧的一步一根 K 线。
+   * 服务端只下发 2（旧格式在 scan / Load 处就被挡掉了），这个字段留着是为了
+   * 排查时能一眼看出手里这份文件是哪一代。
+   */
+  format: number
   tick: number
   tickValue: number
   base: RecordingBase

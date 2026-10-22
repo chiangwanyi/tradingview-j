@@ -935,6 +935,18 @@ func (inst *Instance) recordingState() *RecordingState {
 	return &st
 }
 
+// stepContext 是「这一步发生在盘面的哪个位置」：当前那根 K 线的时间 + 游标。
+//
+// 录制器不持有实例（见 recorder 的注释），所以每次广播时由这里取一份快照给它。
+// 还没加载任何 K 线时 Time 是空串 —— 那种实例本来也不允许开始录制。
+func (inst *Instance) stepContext() StepContext {
+	ctx := StepContext{Cursor: inst.Cursor}
+	if inst.Cursor >= 0 && inst.Cursor < len(inst.Bars) {
+		ctx.Time = inst.Bars[inst.Cursor].Time
+	}
+	return ctx
+}
+
 func (inst *Instance) summary(members int) InstanceSummary {
 	return InstanceSummary{
 		ID:          inst.ID,

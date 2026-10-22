@@ -150,11 +150,20 @@ const (
 
 	// 录制（v0.11.0）。这四个动作**不会被录进录像本身** —— 否则回放时会
 	// 出现「第 3 步里还有一条开始录制」，那是元信息，不是盘面操作。
+	//
+	// 例外是 recording_audio（v0.15.0 起）：录音本身**要占一步**，因为「录了一段讲解」
+	// 是真实发生过的操作，回放时那一步画面上什么都不变、但语音该响。它由
+	// recorder.addAudio 直接开段（见 recording.go），不走 observe 的分支。
 	ActRecordingStarted      = "recording_started"
 	ActRecordingStopped      = "recording_stopped"
 	ActRecordingAudio        = "recording_audio"
 	ActRecordingAudioCleared = "recording_audio_cleared"
 )
+
+// StepBase 是第 1 步的类型：开始录制那一刻的盘面（没有事件，就是 Base 本身）。
+// 其余步的 Kind 直接用动作名（bar_advanced / annotation_added / …），
+// 录音步用 recording_audio —— 这样前端拿 Kind 就能判断类型，不必再拆 events。
+const StepBase = "base"
 
 // Point 是标注的一个端点：横坐标是「一根已揭示 K 线的时间 + 向右延伸的根数」，纵坐标是价格。
 //
@@ -459,6 +468,13 @@ type EventMsg struct {
 	By         string `json:"by"`
 	Action     string `json:"action"`
 	Payload    any    `json:"payload,omitempty"`
+	// RecStep 是这条广播被录成了**第几步**（0 = 正在录但这一步不记录 / 没在录）。
+	//
+	// 为什么要下发：录制中的 HUD 得显示「第 N 步」，而增量事件流里没有全量快照。
+	// v0.15.0 之前前端是在收到 bar_advanced 时自己 `step + 1` —— 那在「一步一根
+	// K 线」的口径下成立，改成一操作一步之后必然算错（画图、录音也各加一步），
+	// 所以改成服务端说了算，前端只显示。
+	RecStep int `json:"recStep,omitempty"`
 }
 
 type LeftMsg struct {
@@ -624,25 +640,36 @@ type StrategiesMsg struct {
 // recording_audio / recording_audio_cleared 四条广播更新。**步数是服务端数的**，
 // 前端只负责显示 —— 前端数的步数和「录像文件里到底有几段」必须永远是同一个数。
 //
+// 术语（v0.15.0 起，一步 = 一次操作，不再是「一根 K 线」）：
+//
+//	Step/Total   当前第几步 / 一共几步。一次点击【下一根】、画一个图形、挂一张单、
+//	             录一段音，**各算一步**（第 1 步是开始录制时那一屏）
+//	BarNo        当前是第几根 K 线（第 1 根 = 起点那根）。一根 K 线上可以有十几步
+//	Kind         当前这一步是什么操作（StepKind*），前端据此上色 / 写中文名
+//
 // 录音的计数分两层，别混：
 //
-//	StepAudios/MaxAudios  当前这一步（这根 K 线）几条、上限几条 —— HUD 显示的就是这个
-//	Audios                整条录像一共几条 —— **不限**，只有单步才限 9 条
+//	BarAudios/MaxBarAudios  当前**这根 K 线**上几条、上限几条 —— HUD 显示的就是这个
+//	Audios                  整条录像一共几条 —— **不限**，只有同一根 K 线才限 9 条
 //
-// Clips 是**当前这一步**的录音清单：HUD 要列出来给用户预览、逐条删。
-// 带在 state 里而不是让前端自己攒，是因为「切步」时前端不该自己去猜哪几条属于新的一步。
+// Clips 是**当前这根 K 线上**的录音清单（含更早几步里录的）：HUD 要列出来给用户
+// 预览、逐条删。带在 state 里而不是让前端自己攒，是因为「换根 K 线」时前端不该
+// 自己去猜哪几条属于新的那一根。
 type RecordingState struct {
-	Active     bool        `json:"active"`
-	ID         string      `json:"id,omitempty"`
-	By         string      `json:"by,omitempty"`        // 谁在录
-	StartedAt  int64       `json:"startedAt,omitempty"` // 开始录制的时间（Unix 秒）
-	Step       int         `json:"step"`                // 当前第几步（1 = 点录制时那一屏）
-	StartTime  string      `json:"startTime,omitempty"` // 第 1 步对应的 K 线时间
-	Current    string      `json:"current,omitempty"`   // 当前这一步对应的 K 线时间
-	Audios     int         `json:"audios"`              // 整条录像已录几条（不限）
-	StepAudios int         `json:"stepAudios"`          // 当前这一步已录几条
-	MaxAudios  int         `json:"maxAudios"`           // 单步上限（9）
-	Clips      []AudioClip `json:"clips"`               // 当前这一步的录音
+	Active       bool        `json:"active"`
+	ID           string      `json:"id,omitempty"`
+	By           string      `json:"by,omitempty"`        // 谁在录
+	StartedAt    int64       `json:"startedAt,omitempty"` // 开始录制的时间（Unix 秒）
+	Step         int         `json:"step"`                // 当前第几步（1 = 点录制时那一屏）
+	Total        int         `json:"total"`               // 一共几步（= 已录的操作数 + 1）
+	BarNo        int         `json:"barNo"`               // 当前第几根 K 线（1 起）
+	Kind         string      `json:"kind,omitempty"`      // 当前这一步的操作类型
+	StartTime    string      `json:"startTime,omitempty"` // 第 1 步对应的 K 线时间
+	Current      string      `json:"current,omitempty"`   // 当前这一步对应的 K 线时间
+	Audios       int         `json:"audios"`              // 整条录像已录几条（不限）
+	BarAudios    int         `json:"barAudios"`           // 当前这根 K 线已录几条
+	MaxBarAudios int         `json:"maxBarAudios"`        // 同一根 K 线的上限（9）
+	Clips        []AudioClip `json:"clips"`               // 当前这根 K 线上的录音
 }
 
 // RecordingSummary 是录像列表里的一行。
@@ -653,13 +680,16 @@ type RecordingSummary struct {
 	Folder  string `json:"folder"`
 	Anchor  string `json:"anchor"`  // 第 1 步那根 K 线的时间
 	EndTime string `json:"endTime"` // 最后一步那根 K 线的时间
-	// StepCount / AudioCount / EventCount 是**摘要里的计数**，名字带 Count 是为了
+	// StepCount / AudioCount / EventCount / Bars 是**摘要里的计数**，名字带 Count 是为了
 	// 不和 Recording 里的 Steps（每一步的事件数组）撞 JSON 名 —— 一旦撞了，
 	// Go 的内嵌字段会被外层同名字段盖掉，列表里的「12 步」会变成一段 JSON 数组。
-	StepCount  int    `json:"stepCount"`  // 共几步（含第 1 步）
+	//
+	// v0.15.0 起口径变了（一步 = 一次操作），所以 StepCount 会比以前大很多：
+	// 一根 K 线上画 3 个图形 = 3 步。想让用户看出「这是多少根 K 线」，看 Bars。
+	StepCount  int    `json:"stepCount"`  // 共几步（含第 1 步；录音步也算）
 	AudioCount int    `json:"audioCount"` // 共几条录音
-	EventCount int    `json:"eventCount"` // 共多少个操作（绘图/下单/步进都算）
-	Bars       int    `json:"bars"`       // 录像里一共有多少根 K 线
+	EventCount int    `json:"eventCount"` // 共多少个改盘面的操作（不含录音步）
+	Bars       int    `json:"bars"`       // 录像里一共推进了几根 K 线（含起点那根）
 	Size       int64  `json:"size"`       // 录像目录占用（JSON + 音频）
 	CreatedBy  string `json:"createdBy"`
 	CreatedAt  int64  `json:"createdAt"`
@@ -671,13 +701,17 @@ type RecordingSummary struct {
 // 它**不是视频**，而是「起始盘面 + 之后每一个操作的原始广播」：
 //
 //	Base   第 1 步那一刻的完整画布（已揭示的 K 线、标注、挂单、成交、持仓）
-//	Steps  第 2 步起，每次【下一根】开一段，段内按顺序排列那一步发生的操作
+//	Steps  第 2 步起**每个操作一段**（v0.15.0 起按操作分步，不再按 K 线分段）
 //
 // 回放就是把 Base 深拷贝一份，然后按顺序把事件重新「演」一遍 —— 和实时界面
 // 用的是同一套状态更新逻辑（前端 stores/instance-reducer.ts），所以
 // **回放看到的画面和当时看到的必然一模一样**，包括机器人做的操作。
 type Recording struct {
 	RecordingSummary
+	// Format 是录像格式版本：2 = 一步一个操作（v0.15.0 起），1 = 旧的一步一根 K 线。
+	// 两种格式的 Steps 语义不同，所以**不迁移、不混读**：scan 跳过 1，Load 明确报错。
+	Format int `json:"format"`
+
 	Tick      float64 `json:"tick"`
 	TickValue float64 `json:"tickValue"`
 
@@ -699,13 +733,27 @@ type RecordingBase struct {
 	UnrealizedPnl float64      `json:"unrealizedPnl"`
 }
 
-// RecordingStep 是录像里的一步。
+// RecordingStep 是录像里的一步 —— **一步 = 一次真实操作**（v0.15.0 起）。
 //
-// 第 1 步没有事件（它就是 Base 本身，而且不从 bar_advanced 开始）；
-// 第 2 步起，Events[0] 一定是那条 bar_advanced —— 正是它把这一步开出来的。
+// 第 1 步是起点：Kind = StepBase，Events 为空（它就是 Base 本身）。
+// 之后每一条放行的广播开一步，所以「第 N 步」和「用户第 N 次动手」永远对得上：
+// 点一次【下一根】、画一个图形、拖一次挂单价、录一段音，各占一步。
+//
+// 录音步（Kind = recording_audio）特殊：Events 为空（它不改盘面），
+// clip 放在 Audio 里。回放到这一步画面不动，但语音该响。
 type RecordingStep struct {
-	Step   int              `json:"step"`
-	Time   string           `json:"time"` // 这一步对应的 K 线时间
+	Step int `json:"step"`
+	// At 是这一步的真实发生时刻（Unix 毫秒）。秒不够用：同一秒里连着画两个图形很常见，
+	// 而复盘时「这一步和上一步隔了 3 秒还是 30 秒」恰恰是判断操作节奏的线索。
+	At     int64      `json:"at"`
+	Kind   string     `json:"kind"`            // StepBase / 动作名 / recording_audio
+	By     string     `json:"by,omitempty"`    // 谁动的（human / bot / system）
+	Time   string     `json:"time"`            // 这一步发生时**当前那根 K 线**的时间
+	Cursor int        `json:"cursor"`          // 这一步发生后的游标（跳步时自检用）
+	Audio  *AudioClip `json:"audio,omitempty"` // 仅录音步：挂在这一步上的那一段
+	// Events 通常只有 1 条（一条放行的广播 = 一步）。留着数组是因为协议层不该
+	// 假设「一步永远只有一条」—— 将来真要把「同时发生的两条」并成一步，结构不用动。
+	// 录音步为空数组（不是 null，见 recording.go 里的注释）。
 	Events []RecordingEvent `json:"events"`
 }
 
@@ -724,7 +772,8 @@ type RecordingEvent struct {
 // AudioClip 是一段挂在某根 K 线上的录音。
 //
 // 存储键是 **K 线时间**（Time），不是下标、不是时间戳：回放时按时间找挂载点，
-// 录像内数据被重排也不会错位。Step 是冗余的一份（列表里显示「第几步」用）。
+// 录像内数据被重排也不会错位。Step 是冗余的一份，指的是**录音那一步**的步号
+// （v0.15.0 起录音自己占一步），列表里显示「第几步」用。
 //
 // File 是录像目录里的文件名（相对路径），音频本身不进 JSON。
 type AudioClip struct {

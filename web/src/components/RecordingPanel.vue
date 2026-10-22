@@ -4,6 +4,7 @@ import { computed, onMounted, ref, watch } from 'vue'
 import AudioWave from '@/components/AudioWave.vue'
 import { usePlaybackStore } from '@/stores/playback'
 import { useReplayStore } from '@/stores/replay'
+import { stepKindClass, stepKindLabel } from '@/stores/step-kinds'
 import type { RecordingSummary } from '@/types/protocol'
 
 /**
@@ -15,6 +16,10 @@ import type { RecordingSummary } from '@/types/protocol'
  *
  * 播放控制刻意做成一行按钮 + 一条步进条：复盘看录像时最常做的是「跳到某一步」，
  * 拖进度条比按十几次单步快得多。
+ *
+ * v0.15.0：一步 = 一次操作，所以步进条上一条录像可能几百格。为此做了两件事：
+ * **按类型上色**（下一根 / 画图 / 下单 / 录音）和**按 K 线分块**（换根时留一道间隙），
+ * 否则一片同样的小方块根本看不出结构。
  */
 
 const pb = usePlaybackStore()
@@ -138,7 +143,7 @@ const btn =
           <button type="button" class="min-w-0 flex-1 text-left" @click="pick(r)">
             <div class="flex items-center gap-2">
               <span class="truncate font-medium text-ink">{{ r.name }}</span>
-              <span class="shrink-0 rounded bg-panel px-1 text-[10px] text-dim">{{ r.stepCount }} 步</span>
+              <span class="shrink-0 rounded bg-panel px-1 text-[10px] text-dim">{{ r.stepCount }} 步 / {{ r.bars }} 根</span>
               <span v-if="r.audioCount > 0" class="shrink-0 rounded bg-panel px-1 text-[10px] text-amber-600 dark:text-amber-400">
                 {{ r.audioCount }} 录音
               </span>
@@ -174,7 +179,10 @@ const btn =
         </button>
         <span class="min-w-0 truncate font-medium text-ink">{{ pb.recording?.name }}</span>
         <span class="tnum shrink-0 text-dim">第 {{ current }}/{{ total }} 步</span>
-        <span class="tnum hidden shrink-0 text-faint sm:inline">{{ pb.currentStep?.time }}</span>
+        <span class="shrink-0 rounded bg-panel px-1 text-[10px] text-dim">
+          {{ pb.currentKindLabel }}
+        </span>
+        <span class="tnum hidden shrink-0 text-faint sm:inline">第 {{ pb.barNo }}/{{ pb.recording?.bars }} 根 · {{ pb.currentStep?.time }}</span>
         <span
           v-if="stepAudio > 0"
           class="shrink-0 rounded bg-amber-500/15 px-1 text-[10px] text-amber-600 dark:text-amber-400"
@@ -258,7 +266,7 @@ const btn =
         </button>
       </div>
 
-      <!-- 步进条：一步一格，有语音的格子下面带个点；点格子直接跳过去 -->
+      <!-- 步进条：一步一格（一步 = 一次操作），按类型上色、按 K 线分块；点一格直接跳过去 -->
       <div class="min-h-0 flex-1 overflow-x-auto px-2 pb-1">
         <div class="flex items-end gap-[3px] pt-1">
           <button
@@ -266,14 +274,15 @@ const btn =
             :key="s.step"
             type="button"
             class="group relative h-8 w-[10px] shrink-0 rounded-sm border transition"
-            :class="
+            :class="[
               s.step === current
                 ? 'border-red-500 bg-red-500/70'
                 : s.step < current
-                  ? 'border-line bg-elev'
-                  : 'border-line bg-panel opacity-50 hover:opacity-100'
-            "
-            :title="`第 ${s.step} 步 · ${s.time} · ${s.events?.length ?? 0} 个操作${
+                  ? stepKindClass(s.kind)
+                  : [stepKindClass(s.kind), 'opacity-40 hover:opacity-100'],
+              pb.barStarts.has(s.step) ? 'ml-[5px]' : '',
+            ]"
+            :title="`第 ${s.step} 步 · ${s.time} · ${stepKindLabel(s.kind)}${s.by ? ' · ' + s.by : ''}${
               pb.audioSteps.has(s.step) ? ' · 有录音' : ''
             }`"
             @click="seek(s.step)"
@@ -283,6 +292,14 @@ const btn =
               class="absolute bottom-0.5 left-1/2 h-1 w-1 -translate-x-1/2 rounded-full bg-amber-500"
             />
           </button>
+        </div>
+        <div class="mt-1 flex items-center gap-2 text-[10px] text-faint">
+          <span class="flex items-center gap-1"><i class="h-2 w-2 rounded-sm border border-sky-500/80 bg-sky-500/40" />下一根</span>
+          <span class="flex items-center gap-1"><i class="h-2 w-2 rounded-sm border border-emerald-500/80 bg-emerald-500/35" />画图</span>
+          <span class="flex items-center gap-1"><i class="h-2 w-2 rounded-sm border border-violet-500/80 bg-violet-500/35" />下单/成交</span>
+          <span class="flex items-center gap-1"><i class="h-2 w-2 rounded-sm border border-amber-500 bg-amber-500/50" />录音</span>
+          <span class="flex items-center gap-1"><i class="h-2 w-2 rounded-sm border border-slate-400/70 bg-slate-400/20" />起点</span>
+          <span class="ml-auto">一格 = 一次操作，换 K 线处留空</span>
         </div>
       </div>
     </template>

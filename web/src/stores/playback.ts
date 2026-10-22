@@ -3,12 +3,14 @@ import { computed, ref } from 'vue'
 
 import { useReplayStore } from '@/stores/replay'
 import { applyInstanceEvent } from '@/stores/instance-reducer'
+import { STEP_BASE, stepKindLabel } from '@/stores/step-kinds'
+import { ACTION } from '@/types/protocol'
 import type { AudioClip, InstanceDetail, Recording, RecordingStep } from '@/types/protocol'
 
 /**
  * 回放：把一条录像「演」到画布上。
  *
- * 三个刻意的决定：
+ * 四个刻意的决定：
  *
  *  1. **不另起一套画布**。回放时把 `replay.instance` 换成「录像演出来的那一份」，
  *     画布、指标、挂单线、成交三角全都照常画 —— 因为它们本来就只认 InstanceDetail。
@@ -16,14 +18,37 @@ import type { AudioClip, InstanceDetail, Recording, RecordingStep } from '@/type
  *  2. **和实时共用 reducer**（stores/instance-reducer.ts）。录像里存的是当时的原始广播，
  *     按顺序重新应用一遍即可；机器人当时做的操作和人做的走的是同一段代码，所以
  *     回放里看到的「机器人动作」和演示时一模一样。
- *  3. **语音是挂在步上的**。每步的录音按 K 线时间归属，播放到那一步自动顺序播；
- *     空格键则是在当前这一步里一条条放 —— 逐条听、逐条核对，比自动播更好用。
+ *  3. **一步 = 一次操作**（v0.15.0）。所以「单步」就是「回到用户的下一次动手」：
+ *     点【下一根】、画一个图形、挂一张单、录一段音，各是一步。界面上的步进条
+ *     按类型上色，一根 K 线的边界有分隔 —— 一根 K 线上十几步也不会看糊。
+ *  4. **语音是挂在步上的**。录音自己占一步，播到那一步就放那一段；走到别的步
+ *     不会重复放同一根 K 线上一段已经听过的语音。
  *
  * 每次改步都是「从 Base 重算一遍」而不是增量回退：一条录像最多几百步、几百个事件，
  * 重算的代价可以忽略，但换来的是「任意跳步都不会错位」。
  */
 
 const BASE_STEP_MS = 900
+
+/**
+ * 各类操作在连续播放里停留多久（1x）。
+ *
+ * 为什么不是一个统一值：一步一根 K 线的时候，每步的信息量差不多；现在一步一个操作，
+ * 「换了一根 K 线」要看清新 K 线的形状，「画了个图形」只要看清那条线出现 ——
+ * 两者用同一个时长，要么 K 线还没看清就跳了，要么画图慢得让人以为卡住。
+ */
+const STEP_MS: Record<string, number> = {
+  [STEP_BASE]: 1200,
+  [ACTION.barAdvanced]: BASE_STEP_MS,
+  [ACTION.annotationAdded]: 550,
+  [ACTION.annotationMoved]: 450,
+  [ACTION.annotationDeleted]: 400,
+  [ACTION.annotationCleared]: 600,
+  [ACTION.orderPlaced]: 650,
+  [ACTION.orderFilled]: 750,
+  [ACTION.orderMoved]: 450,
+  [ACTION.orderCancelled]: 450,
+}
 
 export type PlaybackSpeed = 1 | 2 | 4
 
@@ -35,7 +60,7 @@ export const usePlaybackStore = defineStore('playback', () => {
   const step = ref(1)
   const playing = ref(false)
   const speed = ref<PlaybackSpeed>(1)
-  /** 走到有语音的步骤时，是否自动顺序播放 */
+  /** 走到录音步时，是否自动播放 */
   const autoAudio = ref(true)
   const audioPlaying = ref(false)
   const audioLabel = ref('')
@@ -56,22 +81,48 @@ export const usePlaybackStore = defineStore('playback', () => {
   const currentStep = computed<RecordingStep | null>(() => steps.value[step.value - 1] ?? null)
   const atEnd = computed(() => step.value >= total.value)
 
-  /** 这一步挂的录音（按录制顺序） */
+  /** 当前这一步的中文名（顶栏显示「第 7/N 步 · 录音」用） */
+  const currentKindLabel = computed(() => {
+    const cur = currentStep.value
+    return cur ? stepKindLabel(cur.kind) : ''
+  })
+
+  /** 当前是第几根 K 线（1 起）：数到当前步为止出现过几次 bar_advanced */
+  const barNo = computed(() => {
+    let n = 1
+    for (let i = 0; i < step.value && i < steps.value.length; i++) {
+      if (steps.value[i].kind === ACTION.barAdvanced) n++
+    }
+    return n
+  })
+
+  /**
+   * 这一步挂的录音 —— **按步号**匹配，不按 K 线时间。
+   *
+   * 这一条是从「一步一根 K 线」改过来时最容易错的地方：以前按 `a.time === cur.time`
+   * 过滤，那时一根 K 线只有一步，所以看着没问题；现在一根 K 线上可能是「画图 →
+   * 录音 → 画图」三步，按时间过滤会让**三步同时列出同一段语音**，回放时一句讲解
+   * 被重复放三遍。存储键仍然是时间（跨文件稳定），但回放要按步对齐。
+   */
   const clips = computed<AudioClip[]>(() => {
     const rec = recording.value
     const cur = currentStep.value
     if (!rec || !cur) return []
-    return (rec.audios ?? []).filter((a) => a.time === cur.time || a.step === cur.step)
+    return (rec.audios ?? []).filter((a) => a.step === cur.step)
   })
 
-  /** 整条录像有语音的步号集合（界面上给那几步加个小喇叭） */
+  /** 整条录像里「有语音的步号」集合（界面上给那几步加个小喇叭） */
   const audioSteps = computed<Set<number>>(() => {
     const set = new Set<number>()
-    for (const a of recording.value?.audios ?? []) {
-      set.add(a.step)
-      // 时间才是真正的存储键：步号只是冗余，两边都对一下更稳
-      const idx = steps.value.findIndex((s) => s.time === a.time)
-      if (idx >= 0) set.add(idx + 1)
+    for (const a of recording.value?.audios ?? []) set.add(a.step)
+    return set
+  })
+
+  /** 每根 K 线的起点步号（步进条上的分隔线用） */
+  const barStarts = computed<Set<number>>(() => {
+    const set = new Set<number>()
+    for (const s of steps.value) {
+      if (s.kind === ACTION.barAdvanced) set.add(s.step)
     }
     return set
   })
@@ -245,7 +296,13 @@ export const usePlaybackStore = defineStore('playback', () => {
   function schedule(): void {
     stopTimer()
     if (!playing.value) return
-    timer = window.setTimeout(tick, BASE_STEP_MS / speed.value)
+    timer = window.setTimeout(tick, stepDelay(currentStep.value) / speed.value)
+  }
+
+  /** 当前这一步该停多久（1x）。录音步不按这个走 —— 它由音频长度决定。 */
+  function stepDelay(st: RecordingStep | null): number {
+    if (!st) return BASE_STEP_MS
+    return STEP_MS[st.kind] ?? 500
   }
 
   function tick(): void {
@@ -390,9 +447,12 @@ export const usePlaybackStore = defineStore('playback', () => {
     steps,
     total,
     currentStep,
+    currentKindLabel,
+    barNo,
     atEnd,
     clips,
     audioSteps,
+    barStarts,
     audioUrl,
     open,
     close,

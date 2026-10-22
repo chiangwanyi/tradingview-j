@@ -396,20 +396,26 @@ export const useReplayStore = defineStore('replay', () => {
     // 盘面变化：和回放共用同一份更新逻辑（stores/instance-reducer.ts）
     applyInstanceEvent(inst, msg.action, msg.payload)
 
-    // 录制中的「第 N 步」只能在这里往上加：服务端只在 instance_state 全量快照里带
-    // 录制状态，而步进走的是 bar_advanced 这条事件流，不会重发快照。
-    // 不加这一句，HUD 会一直停在「第 1 步」，而录像其实已经录了十几步（实测过）。
-    // 只在**实时**里加：回放的 reducer 是同一份，但那时 recording 是 null（见 playback.ts）。
-    if (inst.recording?.active && msg.action === ACTION.barAdvanced) {
-      const p = msg.payload as BarAdvancedPayload
+    // 录制中的「第几步」由**服务端下发**（msg.recStep，v0.15.0）。
+    //
+    // 以前这里是「收到 bar_advanced 就把步数 +1」，因为那时一步 = 一根 K 线，
+    // 步进是唯一会加步的动作。改成一操作一步之后那样必然算错：画一个图形、
+    // 挂一张单、录一段音也各加一步，而它们的广播不会带 bar_advanced。
+    // 现在服务端在每条广播里带上「这条被录成了第几步」，界面只显示，不自己数。
+    if (inst.recording?.active && msg.recStep && msg.recStep > 0) {
+      const adv = msg.action === ACTION.barAdvanced
+      const cur = adv ? (msg.payload as BarAdvancedPayload) : null
       inst.recording = {
         ...inst.recording,
-        step: inst.recording.step + 1,
-        current: p.bar?.time ?? inst.recording.current,
-        // 新的一步还没有录音：服务端的 stepAudios 要等下一次快照才刷新，
-        // 这里跟着清掉，否则 HUD 会拿上一步的清单当这一步的。
-        stepAudios: 0,
-        clips: [],
+        step: msg.recStep,
+        total: Math.max(inst.recording.total ?? 0, msg.recStep),
+        kind: msg.action,
+        barNo: adv ? (inst.recording.barNo ?? 1) + 1 : inst.recording.barNo,
+        current: cur?.bar?.time ?? inst.recording.current,
+        // 换了一根 K 线：录音额度与「本根已录几条」都要归零。服务端的 state
+        // 只在下一次快照/录音广播时才来，这里不跟着清，HUD 会拿上一根的清单
+        // 当这一根的（明明还没录，却显示「本根 3/9」）。
+        ...(adv ? { barAudios: 0, clips: [] } : {}),
       }
     }
 
@@ -434,21 +440,21 @@ export const useReplayStore = defineStore('replay', () => {
     switch (msg.action) {
       case ACTION.recordingStarted: {
         inst.recording = msg.payload as RecordingState
-        noteNotice('开始录制：当前盘面记为第 1 步，之后每次【下一根】加一步')
+        noteNotice('开始录制：当前盘面记为第 1 步，之后每个操作各占一步')
         break
       }
       case ACTION.recordingAudio: {
         const p = msg.payload as RecordingAudioPayload
         inst.recording = p.state
         noteNotice(
-          `录音 ${p.state.audios}/${p.state.maxAudios} 已挂到 ${p.audio.time}（第 ${p.audio.step} 步 · ${(p.audio.durationMs / 1000).toFixed(1)} 秒）`,
+          `录音 ${p.state.audios} 条已挂到 ${p.audio.time}（第 ${p.audio.step} 步 · ${(p.audio.durationMs / 1000).toFixed(1)} 秒）`,
         )
         break
       }
       case ACTION.recordingAudioCleared: {
         const p = msg.payload as RecordingAudioClearedPayload
         inst.recording = p.state
-        noteNotice(`已清除这一步的 ${p.removed.length} 条录音`)
+        noteNotice(`已清除这根 K 线上的 ${p.removed.length} 条录音`)
         break
       }
       case ACTION.recordingStopped: {

@@ -825,8 +825,12 @@ func (h *Hub) broadcastInstanceLocked(inst *Instance, action string, payload any
 	// 录制挂在这里，而不是散在每个 do* 方法里：这条路径是所有状态变化的唯一出口
 	// （真人、机器人、多人广播都走它），所以「机器人操作也能被录」不是另写一套，
 	// 而是**挂对位置**的自然结果 —— 录下来的和操作记录 Tab 里看到的是同一批事件。
+	//
+	// 一条放行的广播 = 录像里的一步（v0.15.0），返回的步号随消息一起下发，
+	// 前端 HUD 直接显示，不再自己数。
+	recStep := 0
 	if inst.rec != nil {
-		inst.rec.observe(action, by, payload, ev.Seq)
+		recStep = inst.rec.observe(action, by, payload, ev.Seq, inst.stepContext())
 	}
 	// 广播 = 这个实例的状态变了（步进、标注、下单、操作权、成员）。落盘就打在这里，
 	// 免得每个 do* 方法各记一次、漏一个就静默丢数据。
@@ -839,6 +843,7 @@ func (h *Hub) broadcastInstanceLocked(inst *Instance, action string, payload any
 		By:         by,
 		Action:     action,
 		Payload:    payload,
+		RecStep:    recStep,
 	})
 	if err != nil {
 		h.log("[replay] 序列化广播失败：%v", err)
