@@ -5,18 +5,18 @@
   "tick": 0.25,
   "tickValue": 1.25,
   "anchor": "2026-07-22 01:15",
-  "cursor": 507,
+  "cursor": 559,
   "position": {
     "quantity": 0,
-    "side": "",
+    "side": "flat",
     "averagePrice": 0
   },
   "realizedPnl": 0,
   "createdBy": "human",
   "createdAt": 1792594502,
-  "seq": 2,
+  "seq": 59,
   "notes": [],
-  "seqAnnotation": 2,
+  "seqAnnotation": 3,
   "seqOrder": 0,
   "seqTrade": 0
 }

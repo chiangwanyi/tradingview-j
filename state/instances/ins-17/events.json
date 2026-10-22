@@ -56,5 +56,1687 @@
         "createdAt": 1792594528
       }
     }
+  },
+  {
+    "seq": 3,
+    "at": 1792595114,
+    "by": "human",
+    "action": "annotation_added",
+    "payload": {
+      "annotation": {
+        "id": "a3",
+        "kind": "arrow",
+        "start": {
+          "time": "2026-07-22 00:00",
+          "price": 7606.5
+        },
+        "end": {
+          "time": "2026-07-22 01:15",
+          "price": 7613.84
+        },
+        "style": {
+          "color": "#ec4899",
+          "width": 1.8,
+          "dash": "solid"
+        },
+        "snapped": false,
+        "createdBy": "human",
+        "createdAt": 1792595114
+      }
+    }
+  },
+  {
+    "seq": 4,
+    "at": 1792595203,
+    "by": "human",
+    "action": "control_changed",
+    "payload": {
+      "operator": "bot"
+    }
+  },
+  {
+    "seq": 5,
+    "at": 1792595203,
+    "by": "human",
+    "action": "bot_started",
+    "payload": {
+      "intervalMs": 300,
+      "strategy": "caveman",
+      "name": "Caveman（野人）",
+      "quantity": 1
+    }
+  },
+  {
+    "seq": 6,
+    "at": 1792595203,
+    "by": "bot",
+    "action": "bar_advanced",
+    "payload": {
+      "bar": {
+        "time": "2026-07-22 01:20",
+        "open": 7614.5,
+        "high": 7616.25,
+        "low": 7613.75,
+        "close": 7615.75,
+        "volume": 4797,
+        "ema20": 7614.467583024819
+      },
+      "cursor": 508,
+      "hiddenBars": 1363,
+      "hasMore": true,
+      "orders": [],
+      "trades": [],
+      "closedLots": null,
+      "position": {
+        "quantity": 0,
+        "side": "flat",
+        "averagePrice": 0
+      },
+      "realizedPnl": 0,
+      "unrealizedPnl": 0,
+      "fills": []
+    }
+  },
+  {
+    "seq": 7,
+    "at": 1792595203,
+    "by": "bot",
+    "action": "bar_advanced",
+    "payload": {
+      "bar": {
+        "time": "2026-07-22 01:25",
+        "open": 7615.5,
+        "high": 7616.5,
+        "low": 7613.75,
+        "close": 7615,
+        "volume": 3381,
+        "ema20": 7614.518289403408
+      },
+      "cursor": 509,
+      "hiddenBars": 1362,
+      "hasMore": true,
+      "orders": [],
+      "trades": [],
+      "closedLots": null,
+      "position": {
+        "quantity": 0,
+        "side": "flat",
+        "averagePrice": 0
+      },
+      "realizedPnl": 0,
+      "unrealizedPnl": 0,
+      "fills": []
+    }
+  },
+  {
+    "seq": 8,
+    "at": 1792595204,
+    "by": "bot",
+    "action": "bar_advanced",
+    "payload": {
+      "bar": {
+        "time": "2026-07-22 01:30",
+        "open": 7615.25,
+        "high": 7617.25,
+        "low": 7613.5,
+        "close": 7615,
+        "volume": 5181,
+        "ema20": 7614.564166603083
+      },
+      "cursor": 510,
+      "hiddenBars": 1361,
+      "hasMore": true,
+      "orders": [],
+      "trades": [],
+      "closedLots": null,
+      "position": {
+        "quantity": 0,
+        "side": "flat",
+        "averagePrice": 0
+      },
+      "realizedPnl": 0,
+      "unrealizedPnl": 0,
+      "fills": []
+    }
+  },
+  {
+    "seq": 9,
+    "at": 1792595204,
+    "by": "bot",
+    "action": "bar_advanced",
+    "payload": {
+      "bar": {
+        "time": "2026-07-22 01:35",
+        "open": 7615,
+        "high": 7618.75,
+        "low": 7614.75,
+        "close": 7618.5,
+        "volume": 4978,
+        "ema20": 7614.93900787898
+      },
+      "cursor": 511,
+      "hiddenBars": 1360,
+      "hasMore": true,
+      "orders": [],
+      "trades": [],
+      "closedLots": null,
+      "position": {
+        "quantity": 0,
+        "side": "flat",
+        "averagePrice": 0
+      },
+      "realizedPnl": 0,
+      "unrealizedPnl": 0,
+      "fills": []
+    }
+  },
+  {
+    "seq": 10,
+    "at": 1792595204,
+    "by": "bot",
+    "action": "bar_advanced",
+    "payload": {
+      "bar": {
+        "time": "2026-07-22 01:40",
+        "open": 7618.5,
+        "high": 7618.75,
+        "low": 7616.25,
+        "close": 7618.25,
+        "volume": 3261,
+        "ema20": 7615.254340461935
+      },
+      "cursor": 512,
+      "hiddenBars": 1359,
+      "hasMore": true,
+      "orders": [],
+      "trades": [],
+      "closedLots": null,
+      "position": {
+        "quantity": 0,
+        "side": "flat",
+        "averagePrice": 0
+      },
+      "realizedPnl": 0,
+      "unrealizedPnl": 0,
+      "fills": []
+    }
+  },
+  {
+    "seq": 11,
+    "at": 1792595204,
+    "by": "bot",
+    "action": "bar_advanced",
+    "payload": {
+      "bar": {
+        "time": "2026-07-22 01:45",
+        "open": 7618,
+        "high": 7620.25,
+        "low": 7616.75,
+        "close": 7619.75,
+        "volume": 3191,
+        "ema20": 7615.682498513179
+      },
+      "cursor": 513,
+      "hiddenBars": 1358,
+      "hasMore": true,
+      "orders": [],
+      "trades": [],
+      "closedLots": null,
+      "position": {
+        "quantity": 0,
+        "side": "flat",
+        "averagePrice": 0
+      },
+      "realizedPnl": 0,
+      "unrealizedPnl": 0,
+      "fills": []
+    }
+  },
+  {
+    "seq": 12,
+    "at": 1792595205,
+    "by": "bot",
+    "action": "bar_advanced",
+    "payload": {
+      "bar": {
+        "time": "2026-07-22 01:50",
+        "open": 7619.75,
+        "high": 7620.75,
+        "low": 7617.75,
+        "close": 7618,
+        "volume": 4453,
+        "ema20": 7615.903212940495
+      },
+      "cursor": 514,
+      "hiddenBars": 1357,
+      "hasMore": true,
+      "orders": [],
+      "trades": [],
+      "closedLots": null,
+      "position": {
+        "quantity": 0,
+        "side": "flat",
+        "averagePrice": 0
+      },
+      "realizedPnl": 0,
+      "unrealizedPnl": 0,
+      "fills": []
+    }
+  },
+  {
+    "seq": 13,
+    "at": 1792595205,
+    "by": "bot",
+    "action": "bar_advanced",
+    "payload": {
+      "bar": {
+        "time": "2026-07-22 01:55",
+        "open": 7618.25,
+        "high": 7618.5,
+        "low": 7616.25,
+        "close": 7617.25,
+        "volume": 3718,
+        "ema20": 7616.0314783747335
+      },
+      "cursor": 515,
+      "hiddenBars": 1356,
+      "hasMore": true,
+      "orders": [],
+      "trades": [],
+      "closedLots": null,
+      "position": {
+        "quantity": 0,
+        "side": "flat",
+        "averagePrice": 0
+      },
+      "realizedPnl": 0,
+      "unrealizedPnl": 0,
+      "fills": []
+    }
+  },
+  {
+    "seq": 14,
+    "at": 1792595205,
+    "by": "bot",
+    "action": "bar_advanced",
+    "payload": {
+      "bar": {
+        "time": "2026-07-22 02:00",
+        "open": 7617.5,
+        "high": 7619,
+        "low": 7613.75,
+        "close": 7614.25,
+        "volume": 8667,
+        "ema20": 7615.861813767617
+      },
+      "cursor": 516,
+      "hiddenBars": 1355,
+      "hasMore": true,
+      "orders": [],
+      "trades": [],
+      "closedLots": null,
+      "position": {
+        "quantity": 0,
+        "side": "flat",
+        "averagePrice": 0
+      },
+      "realizedPnl": 0,
+      "unrealizedPnl": 0,
+      "fills": []
+    }
+  },
+  {
+    "seq": 15,
+    "at": 1792595206,
+    "by": "bot",
+    "action": "bar_advanced",
+    "payload": {
+      "bar": {
+        "time": "2026-07-22 02:05",
+        "open": 7614.25,
+        "high": 7617,
+        "low": 7614,
+        "close": 7615.75,
+        "volume": 4718,
+        "ema20": 7615.851164837368
+      },
+      "cursor": 517,
+      "hiddenBars": 1354,
+      "hasMore": true,
+      "orders": [],
+      "trades": [],
+      "closedLots": null,
+      "position": {
+        "quantity": 0,
+        "side": "flat",
+        "averagePrice": 0
+      },
+      "realizedPnl": 0,
+      "unrealizedPnl": 0,
+      "fills": []
+    }
+  },
+  {
+    "seq": 16,
+    "at": 1792595206,
+    "by": "bot",
+    "action": "bar_advanced",
+    "payload": {
+      "bar": {
+        "time": "2026-07-22 02:10",
+        "open": 7615.75,
+        "high": 7616.75,
+        "low": 7612.75,
+        "close": 7613,
+        "volume": 5252,
+        "ema20": 7615.579625329047
+      },
+      "cursor": 518,
+      "hiddenBars": 1353,
+      "hasMore": true,
+      "orders": [],
+      "trades": [],
+      "closedLots": null,
+      "position": {
+        "quantity": 0,
+        "side": "flat",
+        "averagePrice": 0
+      },
+      "realizedPnl": 0,
+      "unrealizedPnl": 0,
+      "fills": []
+    }
+  },
+  {
+    "seq": 17,
+    "at": 1792595206,
+    "by": "bot",
+    "action": "bar_advanced",
+    "payload": {
+      "bar": {
+        "time": "2026-07-22 02:15",
+        "open": 7613,
+        "high": 7614.25,
+        "low": 7612,
+        "close": 7613.25,
+        "volume": 4827,
+        "ema20": 7615.3577562500905
+      },
+      "cursor": 519,
+      "hiddenBars": 1352,
+      "hasMore": true,
+      "orders": [],
+      "trades": [],
+      "closedLots": null,
+      "position": {
+        "quantity": 0,
+        "side": "flat",
+        "averagePrice": 0
+      },
+      "realizedPnl": 0,
+      "unrealizedPnl": 0,
+      "fills": []
+    }
+  },
+  {
+    "seq": 18,
+    "at": 1792595207,
+    "by": "bot",
+    "action": "bar_advanced",
+    "payload": {
+      "bar": {
+        "time": "2026-07-22 02:20",
+        "open": 7613.5,
+        "high": 7615.25,
+        "low": 7612.25,
+        "close": 7614.25,
+        "volume": 3924,
+        "ema20": 7615.252255654844
+      },
+      "cursor": 520,
+      "hiddenBars": 1351,
+      "hasMore": true,
+      "orders": [],
+      "trades": [],
+      "closedLots": null,
+      "position": {
+        "quantity": 0,
+        "side": "flat",
+        "averagePrice": 0
+      },
+      "realizedPnl": 0,
+      "unrealizedPnl": 0,
+      "fills": []
+    }
+  },
+  {
+    "seq": 19,
+    "at": 1792595207,
+    "by": "bot",
+    "action": "bar_advanced",
+    "payload": {
+      "bar": {
+        "time": "2026-07-22 02:25",
+        "open": 7614,
+        "high": 7614.5,
+        "low": 7611.75,
+        "close": 7613.25,
+        "volume": 3214,
+        "ema20": 7615.061564640097
+      },
+      "cursor": 521,
+      "hiddenBars": 1350,
+      "hasMore": true,
+      "orders": [],
+      "trades": [],
+      "closedLots": null,
+      "position": {
+        "quantity": 0,
+        "side": "flat",
+        "averagePrice": 0
+      },
+      "realizedPnl": 0,
+      "unrealizedPnl": 0,
+      "fills": []
+    }
+  },
+  {
+    "seq": 20,
+    "at": 1792595207,
+    "by": "bot",
+    "action": "bar_advanced",
+    "payload": {
+      "bar": {
+        "time": "2026-07-22 02:30",
+        "open": 7613.5,
+        "high": 7614,
+        "low": 7610.5,
+        "close": 7611,
+        "volume": 4953,
+        "ema20": 7614.6747489600875
+      },
+      "cursor": 522,
+      "hiddenBars": 1349,
+      "hasMore": true,
+      "orders": [],
+      "trades": [],
+      "closedLots": null,
+      "position": {
+        "quantity": 0,
+        "side": "flat",
+        "averagePrice": 0
+      },
+      "realizedPnl": 0,
+      "unrealizedPnl": 0,
+      "fills": []
+    }
+  },
+  {
+    "seq": 21,
+    "at": 1792595207,
+    "by": "bot",
+    "action": "bar_advanced",
+    "payload": {
+      "bar": {
+        "time": "2026-07-22 02:35",
+        "open": 7610.75,
+        "high": 7614,
+        "low": 7610.75,
+        "close": 7612.75,
+        "volume": 3372,
+        "ema20": 7614.491439535317
+      },
+      "cursor": 523,
+      "hiddenBars": 1348,
+      "hasMore": true,
+      "orders": [],
+      "trades": [],
+      "closedLots": null,
+      "position": {
+        "quantity": 0,
+        "side": "flat",
+        "averagePrice": 0
+      },
+      "realizedPnl": 0,
+      "unrealizedPnl": 0,
+      "fills": []
+    }
+  },
+  {
+    "seq": 22,
+    "at": 1792595208,
+    "by": "bot",
+    "action": "bar_advanced",
+    "payload": {
+      "bar": {
+        "time": "2026-07-22 02:40",
+        "open": 7612.75,
+        "high": 7617.25,
+        "low": 7611.5,
+        "close": 7616.75,
+        "volume": 6513,
+        "ema20": 7614.706540531954
+      },
+      "cursor": 524,
+      "hiddenBars": 1347,
+      "hasMore": true,
+      "orders": [],
+      "trades": [],
+      "closedLots": null,
+      "position": {
+        "quantity": 0,
+        "side": "flat",
+        "averagePrice": 0
+      },
+      "realizedPnl": 0,
+      "unrealizedPnl": 0,
+      "fills": []
+    }
+  },
+  {
+    "seq": 23,
+    "at": 1792595208,
+    "by": "bot",
+    "action": "bar_advanced",
+    "payload": {
+      "bar": {
+        "time": "2026-07-22 02:45",
+        "open": 7616.75,
+        "high": 7617.75,
+        "low": 7615,
+        "close": 7616,
+        "volume": 3992,
+        "ema20": 7614.829727147958
+      },
+      "cursor": 525,
+      "hiddenBars": 1346,
+      "hasMore": true,
+      "orders": [],
+      "trades": [],
+      "closedLots": null,
+      "position": {
+        "quantity": 0,
+        "side": "flat",
+        "averagePrice": 0
+      },
+      "realizedPnl": 0,
+      "unrealizedPnl": 0,
+      "fills": []
+    }
+  },
+  {
+    "seq": 24,
+    "at": 1792595208,
+    "by": "bot",
+    "action": "bar_advanced",
+    "payload": {
+      "bar": {
+        "time": "2026-07-22 02:50",
+        "open": 7616,
+        "high": 7616.25,
+        "low": 7613.5,
+        "close": 7613.75,
+        "volume": 3140,
+        "ema20": 7614.72689599101
+      },
+      "cursor": 526,
+      "hiddenBars": 1345,
+      "hasMore": true,
+      "orders": [],
+      "trades": [],
+      "closedLots": null,
+      "position": {
+        "quantity": 0,
+        "side": "flat",
+        "averagePrice": 0
+      },
+      "realizedPnl": 0,
+      "unrealizedPnl": 0,
+      "fills": []
+    }
+  },
+  {
+    "seq": 25,
+    "at": 1792595209,
+    "by": "bot",
+    "action": "bar_advanced",
+    "payload": {
+      "bar": {
+        "time": "2026-07-22 02:55",
+        "open": 7613.75,
+        "high": 7616,
+        "low": 7613.5,
+        "close": 7615.25,
+        "volume": 3657,
+        "ema20": 7614.7767154204375
+      },
+      "cursor": 527,
+      "hiddenBars": 1344,
+      "hasMore": true,
+      "orders": [],
+      "trades": [],
+      "closedLots": null,
+      "position": {
+        "quantity": 0,
+        "side": "flat",
+        "averagePrice": 0
+      },
+      "realizedPnl": 0,
+      "unrealizedPnl": 0,
+      "fills": []
+    }
+  },
+  {
+    "seq": 26,
+    "at": 1792595209,
+    "by": "bot",
+    "action": "bar_advanced",
+    "payload": {
+      "bar": {
+        "time": "2026-07-22 03:00",
+        "open": 7615.25,
+        "high": 7616,
+        "low": 7613,
+        "close": 7614,
+        "volume": 4388,
+        "ema20": 7614.702742523253
+      },
+      "cursor": 528,
+      "hiddenBars": 1343,
+      "hasMore": true,
+      "orders": [],
+      "trades": [],
+      "closedLots": null,
+      "position": {
+        "quantity": 0,
+        "side": "flat",
+        "averagePrice": 0
+      },
+      "realizedPnl": 0,
+      "unrealizedPnl": 0,
+      "fills": []
+    }
+  },
+  {
+    "seq": 27,
+    "at": 1792595209,
+    "by": "bot",
+    "action": "bar_advanced",
+    "payload": {
+      "bar": {
+        "time": "2026-07-22 03:05",
+        "open": 7614,
+        "high": 7615.75,
+        "low": 7612.75,
+        "close": 7612.75,
+        "volume": 3411,
+        "ema20": 7614.516767044847
+      },
+      "cursor": 529,
+      "hiddenBars": 1342,
+      "hasMore": true,
+      "orders": [],
+      "trades": [],
+      "closedLots": null,
+      "position": {
+        "quantity": 0,
+        "side": "flat",
+        "averagePrice": 0
+      },
+      "realizedPnl": 0,
+      "unrealizedPnl": 0,
+      "fills": []
+    }
+  },
+  {
+    "seq": 28,
+    "at": 1792595210,
+    "by": "bot",
+    "action": "bar_advanced",
+    "payload": {
+      "bar": {
+        "time": "2026-07-22 03:10",
+        "open": 7612.75,
+        "high": 7615.25,
+        "low": 7612.5,
+        "close": 7614.25,
+        "volume": 3616,
+        "ema20": 7614.491360659624
+      },
+      "cursor": 530,
+      "hiddenBars": 1341,
+      "hasMore": true,
+      "orders": [],
+      "trades": [],
+      "closedLots": null,
+      "position": {
+        "quantity": 0,
+        "side": "flat",
+        "averagePrice": 0
+      },
+      "realizedPnl": 0,
+      "unrealizedPnl": 0,
+      "fills": []
+    }
+  },
+  {
+    "seq": 29,
+    "at": 1792595210,
+    "by": "bot",
+    "action": "bar_advanced",
+    "payload": {
+      "bar": {
+        "time": "2026-07-22 03:15",
+        "open": 7614.25,
+        "high": 7616.25,
+        "low": 7613.5,
+        "close": 7614.75,
+        "volume": 3801,
+        "ema20": 7614.515992977755
+      },
+      "cursor": 531,
+      "hiddenBars": 1340,
+      "hasMore": true,
+      "orders": [],
+      "trades": [],
+      "closedLots": null,
+      "position": {
+        "quantity": 0,
+        "side": "flat",
+        "averagePrice": 0
+      },
+      "realizedPnl": 0,
+      "unrealizedPnl": 0,
+      "fills": []
+    }
+  },
+  {
+    "seq": 30,
+    "at": 1792595210,
+    "by": "bot",
+    "action": "bar_advanced",
+    "payload": {
+      "bar": {
+        "time": "2026-07-22 03:20",
+        "open": 7614.75,
+        "high": 7615.75,
+        "low": 7613.25,
+        "close": 7614.5,
+        "volume": 2398,
+        "ema20": 7614.514469837016
+      },
+      "cursor": 532,
+      "hiddenBars": 1339,
+      "hasMore": true,
+      "orders": [],
+      "trades": [],
+      "closedLots": null,
+      "position": {
+        "quantity": 0,
+        "side": "flat",
+        "averagePrice": 0
+      },
+      "realizedPnl": 0,
+      "unrealizedPnl": 0,
+      "fills": []
+    }
+  },
+  {
+    "seq": 31,
+    "at": 1792595210,
+    "by": "bot",
+    "action": "bar_advanced",
+    "payload": {
+      "bar": {
+        "time": "2026-07-22 03:25",
+        "open": 7614.25,
+        "high": 7616,
+        "low": 7613.25,
+        "close": 7613.75,
+        "volume": 2732,
+        "ema20": 7614.441663185871
+      },
+      "cursor": 533,
+      "hiddenBars": 1338,
+      "hasMore": true,
+      "orders": [],
+      "trades": [],
+      "closedLots": null,
+      "position": {
+        "quantity": 0,
+        "side": "flat",
+        "averagePrice": 0
+      },
+      "realizedPnl": 0,
+      "unrealizedPnl": 0,
+      "fills": []
+    }
+  },
+  {
+    "seq": 32,
+    "at": 1792595211,
+    "by": "bot",
+    "action": "bar_advanced",
+    "payload": {
+      "bar": {
+        "time": "2026-07-22 03:30",
+        "open": 7613.75,
+        "high": 7615.5,
+        "low": 7612.75,
+        "close": 7612.75,
+        "volume": 3858,
+        "ema20": 7614.280552406264
+      },
+      "cursor": 534,
+      "hiddenBars": 1337,
+      "hasMore": true,
+      "orders": [],
+      "trades": [],
+      "closedLots": null,
+      "position": {
+        "quantity": 0,
+        "side": "flat",
+        "averagePrice": 0
+      },
+      "realizedPnl": 0,
+      "unrealizedPnl": 0,
+      "fills": []
+    }
+  },
+  {
+    "seq": 33,
+    "at": 1792595211,
+    "by": "bot",
+    "action": "bar_advanced",
+    "payload": {
+      "bar": {
+        "time": "2026-07-22 03:35",
+        "open": 7613,
+        "high": 7617,
+        "low": 7612.25,
+        "close": 7615.25,
+        "volume": 5263,
+        "ema20": 7614.372880748525
+      },
+      "cursor": 535,
+      "hiddenBars": 1336,
+      "hasMore": true,
+      "orders": [],
+      "trades": [],
+      "closedLots": null,
+      "position": {
+        "quantity": 0,
+        "side": "flat",
+        "averagePrice": 0
+      },
+      "realizedPnl": 0,
+      "unrealizedPnl": 0,
+      "fills": []
+    }
+  },
+  {
+    "seq": 34,
+    "at": 1792595211,
+    "by": "bot",
+    "action": "bar_advanced",
+    "payload": {
+      "bar": {
+        "time": "2026-07-22 03:40",
+        "open": 7615.25,
+        "high": 7617,
+        "low": 7613.5,
+        "close": 7616.25,
+        "volume": 5441,
+        "ema20": 7614.551654010571
+      },
+      "cursor": 536,
+      "hiddenBars": 1335,
+      "hasMore": true,
+      "orders": [],
+      "trades": [],
+      "closedLots": null,
+      "position": {
+        "quantity": 0,
+        "side": "flat",
+        "averagePrice": 0
+      },
+      "realizedPnl": 0,
+      "unrealizedPnl": 0,
+      "fills": []
+    }
+  },
+  {
+    "seq": 35,
+    "at": 1792595212,
+    "by": "bot",
+    "action": "bar_advanced",
+    "payload": {
+      "bar": {
+        "time": "2026-07-22 03:45",
+        "open": 7616.25,
+        "high": 7617.25,
+        "low": 7613,
+        "close": 7617,
+        "volume": 6277,
+        "ema20": 7614.784829819088
+      },
+      "cursor": 537,
+      "hiddenBars": 1334,
+      "hasMore": true,
+      "orders": [],
+      "trades": [],
+      "closedLots": null,
+      "position": {
+        "quantity": 0,
+        "side": "flat",
+        "averagePrice": 0
+      },
+      "realizedPnl": 0,
+      "unrealizedPnl": 0,
+      "fills": []
+    }
+  },
+  {
+    "seq": 36,
+    "at": 1792595212,
+    "by": "bot",
+    "action": "bar_advanced",
+    "payload": {
+      "bar": {
+        "time": "2026-07-22 03:50",
+        "open": 7616.75,
+        "high": 7617.75,
+        "low": 7613.75,
+        "close": 7614.75,
+        "volume": 12003,
+        "ema20": 7614.78151269346
+      },
+      "cursor": 538,
+      "hiddenBars": 1333,
+      "hasMore": true,
+      "orders": [],
+      "trades": [],
+      "closedLots": null,
+      "position": {
+        "quantity": 0,
+        "side": "flat",
+        "averagePrice": 0
+      },
+      "realizedPnl": 0,
+      "unrealizedPnl": 0,
+      "fills": []
+    }
+  },
+  {
+    "seq": 37,
+    "at": 1792595212,
+    "by": "bot",
+    "action": "bar_advanced",
+    "payload": {
+      "bar": {
+        "time": "2026-07-22 03:55",
+        "open": 7614.5,
+        "high": 7617,
+        "low": 7611.75,
+        "close": 7614,
+        "volume": 16308,
+        "ema20": 7614.707082913131
+      },
+      "cursor": 539,
+      "hiddenBars": 1332,
+      "hasMore": true,
+      "orders": [],
+      "trades": [],
+      "closedLots": null,
+      "position": {
+        "quantity": 0,
+        "side": "flat",
+        "averagePrice": 0
+      },
+      "realizedPnl": 0,
+      "unrealizedPnl": 0,
+      "fills": []
+    }
+  },
+  {
+    "seq": 38,
+    "at": 1792595213,
+    "by": "bot",
+    "action": "bar_advanced",
+    "payload": {
+      "bar": {
+        "time": "2026-07-22 04:00",
+        "open": 7614,
+        "high": 7615.25,
+        "low": 7609.5,
+        "close": 7610,
+        "volume": 7785,
+        "ema20": 7614.2587893023565
+      },
+      "cursor": 540,
+      "hiddenBars": 1331,
+      "hasMore": true,
+      "orders": [],
+      "trades": [],
+      "closedLots": null,
+      "position": {
+        "quantity": 0,
+        "side": "flat",
+        "averagePrice": 0
+      },
+      "realizedPnl": 0,
+      "unrealizedPnl": 0,
+      "fills": []
+    }
+  },
+  {
+    "seq": 39,
+    "at": 1792595213,
+    "by": "bot",
+    "action": "bar_advanced",
+    "payload": {
+      "bar": {
+        "time": "2026-07-22 04:05",
+        "open": 7610,
+        "high": 7612.75,
+        "low": 7609.5,
+        "close": 7612,
+        "volume": 2548,
+        "ema20": 7614.043666511656
+      },
+      "cursor": 541,
+      "hiddenBars": 1330,
+      "hasMore": true,
+      "orders": [],
+      "trades": [],
+      "closedLots": null,
+      "position": {
+        "quantity": 0,
+        "side": "flat",
+        "averagePrice": 0
+      },
+      "realizedPnl": 0,
+      "unrealizedPnl": 0,
+      "fills": []
+    }
+  },
+  {
+    "seq": 40,
+    "at": 1792595213,
+    "by": "bot",
+    "action": "bar_advanced",
+    "payload": {
+      "bar": {
+        "time": "2026-07-22 04:10",
+        "open": 7612.25,
+        "high": 7613,
+        "low": 7610.5,
+        "close": 7612.5,
+        "volume": 1501,
+        "ema20": 7613.8966506534025
+      },
+      "cursor": 542,
+      "hiddenBars": 1329,
+      "hasMore": true,
+      "orders": [],
+      "trades": [],
+      "closedLots": null,
+      "position": {
+        "quantity": 0,
+        "side": "flat",
+        "averagePrice": 0
+      },
+      "realizedPnl": 0,
+      "unrealizedPnl": 0,
+      "fills": []
+    }
+  },
+  {
+    "seq": 41,
+    "at": 1792595213,
+    "by": "bot",
+    "action": "bar_advanced",
+    "payload": {
+      "bar": {
+        "time": "2026-07-22 04:15",
+        "open": 7612.5,
+        "high": 7612.5,
+        "low": 7609.5,
+        "close": 7609.5,
+        "volume": 1189,
+        "ema20": 7613.477922019745
+      },
+      "cursor": 543,
+      "hiddenBars": 1328,
+      "hasMore": true,
+      "orders": [],
+      "trades": [],
+      "closedLots": null,
+      "position": {
+        "quantity": 0,
+        "side": "flat",
+        "averagePrice": 0
+      },
+      "realizedPnl": 0,
+      "unrealizedPnl": 0,
+      "fills": []
+    }
+  },
+  {
+    "seq": 42,
+    "at": 1792595214,
+    "by": "bot",
+    "action": "bar_advanced",
+    "payload": {
+      "bar": {
+        "time": "2026-07-22 04:20",
+        "open": 7609.75,
+        "high": 7610.5,
+        "low": 7609,
+        "close": 7610.25,
+        "volume": 1104,
+        "ema20": 7613.170500875007
+      },
+      "cursor": 544,
+      "hiddenBars": 1327,
+      "hasMore": true,
+      "orders": [],
+      "trades": [],
+      "closedLots": null,
+      "position": {
+        "quantity": 0,
+        "side": "flat",
+        "averagePrice": 0
+      },
+      "realizedPnl": 0,
+      "unrealizedPnl": 0,
+      "fills": []
+    }
+  },
+  {
+    "seq": 43,
+    "at": 1792595214,
+    "by": "bot",
+    "action": "bar_advanced",
+    "payload": {
+      "bar": {
+        "time": "2026-07-22 04:25",
+        "open": 7610.25,
+        "high": 7610.75,
+        "low": 7609.25,
+        "close": 7609.75,
+        "volume": 671,
+        "ema20": 7612.844738886911
+      },
+      "cursor": 545,
+      "hiddenBars": 1326,
+      "hasMore": true,
+      "orders": [],
+      "trades": [],
+      "closedLots": null,
+      "position": {
+        "quantity": 0,
+        "side": "flat",
+        "averagePrice": 0
+      },
+      "realizedPnl": 0,
+      "unrealizedPnl": 0,
+      "fills": []
+    }
+  },
+  {
+    "seq": 44,
+    "at": 1792595214,
+    "by": "bot",
+    "action": "bar_advanced",
+    "payload": {
+      "bar": {
+        "time": "2026-07-22 04:30",
+        "open": 7609.5,
+        "high": 7611.25,
+        "low": 7609.5,
+        "close": 7611,
+        "volume": 820,
+        "ema20": 7612.66904946911
+      },
+      "cursor": 546,
+      "hiddenBars": 1325,
+      "hasMore": true,
+      "orders": [],
+      "trades": [],
+      "closedLots": null,
+      "position": {
+        "quantity": 0,
+        "side": "flat",
+        "averagePrice": 0
+      },
+      "realizedPnl": 0,
+      "unrealizedPnl": 0,
+      "fills": []
+    }
+  },
+  {
+    "seq": 45,
+    "at": 1792595215,
+    "by": "bot",
+    "action": "bar_advanced",
+    "payload": {
+      "bar": {
+        "time": "2026-07-22 04:35",
+        "open": 7610.75,
+        "high": 7612,
+        "low": 7610.25,
+        "close": 7611.25,
+        "volume": 732,
+        "ema20": 7612.533901900623
+      },
+      "cursor": 547,
+      "hiddenBars": 1324,
+      "hasMore": true,
+      "orders": [],
+      "trades": [],
+      "closedLots": null,
+      "position": {
+        "quantity": 0,
+        "side": "flat",
+        "averagePrice": 0
+      },
+      "realizedPnl": 0,
+      "unrealizedPnl": 0,
+      "fills": []
+    }
+  },
+  {
+    "seq": 46,
+    "at": 1792595215,
+    "by": "bot",
+    "action": "bar_advanced",
+    "payload": {
+      "bar": {
+        "time": "2026-07-22 04:40",
+        "open": 7611,
+        "high": 7611.5,
+        "low": 7610.25,
+        "close": 7610.75,
+        "volume": 626,
+        "ema20": 7612.364006481516
+      },
+      "cursor": 548,
+      "hiddenBars": 1323,
+      "hasMore": true,
+      "orders": [],
+      "trades": [],
+      "closedLots": null,
+      "position": {
+        "quantity": 0,
+        "side": "flat",
+        "averagePrice": 0
+      },
+      "realizedPnl": 0,
+      "unrealizedPnl": 0,
+      "fills": []
+    }
+  },
+  {
+    "seq": 47,
+    "at": 1792595215,
+    "by": "bot",
+    "action": "bar_advanced",
+    "payload": {
+      "bar": {
+        "time": "2026-07-22 04:45",
+        "open": 7610.5,
+        "high": 7611,
+        "low": 7609.5,
+        "close": 7609.5,
+        "volume": 1123,
+        "ema20": 7612.091243959467
+      },
+      "cursor": 549,
+      "hiddenBars": 1322,
+      "hasMore": true,
+      "orders": [],
+      "trades": [],
+      "closedLots": null,
+      "position": {
+        "quantity": 0,
+        "side": "flat",
+        "averagePrice": 0
+      },
+      "realizedPnl": 0,
+      "unrealizedPnl": 0,
+      "fills": []
+    }
+  },
+  {
+    "seq": 48,
+    "at": 1792595216,
+    "by": "bot",
+    "action": "bar_advanced",
+    "payload": {
+      "bar": {
+        "time": "2026-07-22 04:50",
+        "open": 7609.75,
+        "high": 7610.5,
+        "low": 7609.25,
+        "close": 7609.5,
+        "volume": 1015,
+        "ema20": 7611.844458820469
+      },
+      "cursor": 550,
+      "hiddenBars": 1321,
+      "hasMore": true,
+      "orders": [],
+      "trades": [],
+      "closedLots": null,
+      "position": {
+        "quantity": 0,
+        "side": "flat",
+        "averagePrice": 0
+      },
+      "realizedPnl": 0,
+      "unrealizedPnl": 0,
+      "fills": []
+    }
+  },
+  {
+    "seq": 49,
+    "at": 1792595216,
+    "by": "bot",
+    "action": "bar_advanced",
+    "payload": {
+      "bar": {
+        "time": "2026-07-22 04:55",
+        "open": 7609.25,
+        "high": 7611.5,
+        "low": 7609,
+        "close": 7611,
+        "volume": 1109,
+        "ema20": 7611.764034170901
+      },
+      "cursor": 551,
+      "hiddenBars": 1320,
+      "hasMore": true,
+      "orders": [],
+      "trades": [],
+      "closedLots": null,
+      "position": {
+        "quantity": 0,
+        "side": "flat",
+        "averagePrice": 0
+      },
+      "realizedPnl": 0,
+      "unrealizedPnl": 0,
+      "fills": []
+    }
+  },
+  {
+    "seq": 50,
+    "at": 1792595216,
+    "by": "bot",
+    "action": "bar_advanced",
+    "payload": {
+      "bar": {
+        "time": "2026-07-22 06:00",
+        "open": 7613.25,
+        "high": 7613.5,
+        "low": 7610,
+        "close": 7611,
+        "volume": 1474,
+        "ema20": 7611.691269011768
+      },
+      "cursor": 552,
+      "hiddenBars": 1319,
+      "hasMore": true,
+      "orders": [],
+      "trades": [],
+      "closedLots": null,
+      "position": {
+        "quantity": 0,
+        "side": "flat",
+        "averagePrice": 0
+      },
+      "realizedPnl": 0,
+      "unrealizedPnl": 0,
+      "fills": []
+    }
+  },
+  {
+    "seq": 51,
+    "at": 1792595216,
+    "by": "bot",
+    "action": "bar_advanced",
+    "payload": {
+      "bar": {
+        "time": "2026-07-22 06:05",
+        "open": 7611.25,
+        "high": 7612.25,
+        "low": 7609.25,
+        "close": 7611.25,
+        "volume": 866,
+        "ema20": 7611.649243391599
+      },
+      "cursor": 553,
+      "hiddenBars": 1318,
+      "hasMore": true,
+      "orders": [],
+      "trades": [],
+      "closedLots": null,
+      "position": {
+        "quantity": 0,
+        "side": "flat",
+        "averagePrice": 0
+      },
+      "realizedPnl": 0,
+      "unrealizedPnl": 0,
+      "fills": []
+    }
+  },
+  {
+    "seq": 52,
+    "at": 1792595217,
+    "by": "bot",
+    "action": "bar_advanced",
+    "payload": {
+      "bar": {
+        "time": "2026-07-22 06:10",
+        "open": 7611,
+        "high": 7612.75,
+        "low": 7610.5,
+        "close": 7612.75,
+        "volume": 622,
+        "ema20": 7611.754077354303
+      },
+      "cursor": 554,
+      "hiddenBars": 1317,
+      "hasMore": true,
+      "orders": [],
+      "trades": [],
+      "closedLots": null,
+      "position": {
+        "quantity": 0,
+        "side": "flat",
+        "averagePrice": 0
+      },
+      "realizedPnl": 0,
+      "unrealizedPnl": 0,
+      "fills": []
+    }
+  },
+  {
+    "seq": 53,
+    "at": 1792595217,
+    "by": "bot",
+    "action": "bar_advanced",
+    "payload": {
+      "bar": {
+        "time": "2026-07-22 06:15",
+        "open": 7612.75,
+        "high": 7613.5,
+        "low": 7612.25,
+        "close": 7613.25,
+        "volume": 579,
+        "ema20": 7611.8965461777025
+      },
+      "cursor": 555,
+      "hiddenBars": 1316,
+      "hasMore": true,
+      "orders": [],
+      "trades": [],
+      "closedLots": null,
+      "position": {
+        "quantity": 0,
+        "side": "flat",
+        "averagePrice": 0
+      },
+      "realizedPnl": 0,
+      "unrealizedPnl": 0,
+      "fills": []
+    }
+  },
+  {
+    "seq": 54,
+    "at": 1792595217,
+    "by": "bot",
+    "action": "bar_advanced",
+    "payload": {
+      "bar": {
+        "time": "2026-07-22 06:20",
+        "open": 7613.25,
+        "high": 7613.75,
+        "low": 7609.25,
+        "close": 7609.25,
+        "volume": 746,
+        "ema20": 7611.644494160779
+      },
+      "cursor": 556,
+      "hiddenBars": 1315,
+      "hasMore": true,
+      "orders": [],
+      "trades": [],
+      "closedLots": null,
+      "position": {
+        "quantity": 0,
+        "side": "flat",
+        "averagePrice": 0
+      },
+      "realizedPnl": 0,
+      "unrealizedPnl": 0,
+      "fills": []
+    }
+  },
+  {
+    "seq": 55,
+    "at": 1792595218,
+    "by": "bot",
+    "action": "bar_advanced",
+    "payload": {
+      "bar": {
+        "time": "2026-07-22 06:25",
+        "open": 7609.5,
+        "high": 7611,
+        "low": 7609,
+        "close": 7609.75,
+        "volume": 1024,
+        "ema20": 7611.464066145467
+      },
+      "cursor": 557,
+      "hiddenBars": 1314,
+      "hasMore": true,
+      "orders": [],
+      "trades": [],
+      "closedLots": null,
+      "position": {
+        "quantity": 0,
+        "side": "flat",
+        "averagePrice": 0
+      },
+      "realizedPnl": 0,
+      "unrealizedPnl": 0,
+      "fills": []
+    }
+  },
+  {
+    "seq": 56,
+    "at": 1792595218,
+    "by": "bot",
+    "action": "bar_advanced",
+    "payload": {
+      "bar": {
+        "time": "2026-07-22 06:30",
+        "open": 7609.75,
+        "high": 7610.5,
+        "low": 7608.25,
+        "close": 7610.25,
+        "volume": 659,
+        "ema20": 7611.34844079828
+      },
+      "cursor": 558,
+      "hiddenBars": 1313,
+      "hasMore": true,
+      "orders": [],
+      "trades": [],
+      "closedLots": null,
+      "position": {
+        "quantity": 0,
+        "side": "flat",
+        "averagePrice": 0
+      },
+      "realizedPnl": 0,
+      "unrealizedPnl": 0,
+      "fills": []
+    }
+  },
+  {
+    "seq": 57,
+    "at": 1792595218,
+    "by": "bot",
+    "action": "bar_advanced",
+    "payload": {
+      "bar": {
+        "time": "2026-07-22 06:35",
+        "open": 7610.25,
+        "high": 7611,
+        "low": 7609.25,
+        "close": 7610,
+        "volume": 403,
+        "ema20": 7611.22001786511
+      },
+      "cursor": 559,
+      "hiddenBars": 1312,
+      "hasMore": true,
+      "orders": [],
+      "trades": [],
+      "closedLots": null,
+      "position": {
+        "quantity": 0,
+        "side": "flat",
+        "averagePrice": 0
+      },
+      "realizedPnl": 0,
+      "unrealizedPnl": 0,
+      "fills": []
+    }
+  },
+  {
+    "seq": 58,
+    "at": 1792595218,
+    "by": "bot",
+    "action": "bot_stopped",
+    "payload": {
+      "intervalMs": 300,
+      "strategy": "caveman",
+      "name": "Caveman（野人）",
+      "quantity": 1
+    }
+  },
+  {
+    "seq": 59,
+    "at": 1792595218,
+    "by": "bot",
+    "action": "control_changed",
+    "payload": {
+      "operator": "human"
+    }
   }
 ]

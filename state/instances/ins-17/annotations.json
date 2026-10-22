@@ -40,5 +40,25 @@
     "snapped": true,
     "createdBy": "human",
     "createdAt": 1792594528
+  },
+  {
+    "id": "a3",
+    "kind": "arrow",
+    "start": {
+      "time": "2026-07-22 00:00",
+      "price": 7606.5
+    },
+    "end": {
+      "time": "2026-07-22 01:15",
+      "price": 7613.84
+    },
+    "style": {
+      "color": "#ec4899",
+      "width": 1.8,
+      "dash": "solid"
+    },
+    "snapped": false,
+    "createdBy": "human",
+    "createdAt": 1792595114
   }
 ]
