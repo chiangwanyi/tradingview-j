@@ -57,6 +57,11 @@ type Config struct {
 	// 一条录像一个文件夹：recording.json（起始盘面 + 每一步的操作）+ audio-N.wav。
 	// 和实例存档分开是刻意的 —— 录像是一次性的成品，删起来不该动到实例。
 	ReplayRecordingDir string `json:"replayRecordingDir"`
+	// ReplayPresetDir 是「全局样式模板」目录（v0.18.0），放 replay-templates.json。
+	// 以前它跟在实例存档目录里，现在单独一层，因为两者寿命完全不同：实例存档可能
+	// 整批删掉、也可能换目录并存好几套练习；模板是长期习惯，不该被一次大扫除带走。
+	// 也不该和「本机偏好」（前端存视口/Tab 的 localStorage）混淆 —— 这些是跨浏览器、跨机器的。
+	ReplayPresetDir string `json:"replayPresetDir"`
 
 	// ---- 节奏（秒）----
 	FlushSeconds      float64 `json:"flushSeconds"`      // CSV 落盘间隔
@@ -91,6 +96,7 @@ func Defaults() Config {
 		ReplayDistDir:      "web/dist",
 		ReplayStateDir:     "state",
 		ReplayRecordingDir: "recordings",
+		ReplayPresetDir:    "presets",
 		FlushSeconds:       1,
 		AttachPollSeconds:  3,
 		RetrySeconds:       5,
@@ -123,11 +129,12 @@ func duration(sec, def float64) time.Duration {
 }
 
 // OutPath / RawPath 把相对目录按基准目录展开
-func (c Config) OutPath() string         { return resolve(c.BaseDir, c.OutDir) }
-func (c Config) RawPath() string         { return resolve(c.BaseDir, c.RawDir) }
-func (c Config) ReplayDistPath() string  { return resolve(c.BaseDir, c.ReplayDistDir) }
-func (c Config) ReplayStatePath() string { return resolve(c.BaseDir, c.ReplayStateDir) }
-func (c Config) RecordingPath() string   { return resolve(c.BaseDir, c.ReplayRecordingDir) }
+func (c Config) OutPath() string          { return resolve(c.BaseDir, c.OutDir) }
+func (c Config) RawPath() string          { return resolve(c.BaseDir, c.RawDir) }
+func (c Config) ReplayDistPath() string   { return resolve(c.BaseDir, c.ReplayDistDir) }
+func (c Config) ReplayStatePath() string  { return resolve(c.BaseDir, c.ReplayStateDir) }
+func (c Config) RecordingPath() string    { return resolve(c.BaseDir, c.ReplayRecordingDir) }
+func (c Config) ReplayPresetPath() string { return resolve(c.BaseDir, c.ReplayPresetDir) }
 
 func resolve(base, dir string) string {
 	if dir == "" {
@@ -235,6 +242,9 @@ func (c *Config) normalize() []string {
 	}
 	if c.ReplayRecordingDir == "" {
 		c.ReplayRecordingDir = d.ReplayRecordingDir
+	}
+	if c.ReplayPresetDir == "" {
+		c.ReplayPresetDir = d.ReplayPresetDir
 	}
 	return notes
 }

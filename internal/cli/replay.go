@@ -21,12 +21,14 @@ func (a *App) runReplay() int {
 	dist := cfg.ReplayDistPath()
 	state := cfg.ReplayStatePath()
 	recs := cfg.RecordingPath()
+	presets := cfg.ReplayPresetPath()
 
 	a.Log.Rule(72)
 	a.Log.Plain("  复盘 · 数据目录 %s", root)
 	a.Log.Plain("  前端产物 %s", dist)
 	a.Log.Plain("  实例存档 %s", state)
 	a.Log.Plain("  录像目录 %s（一条录像一个文件夹：recording.json + audio-N.wav）", recs)
+	a.Log.Plain("  样式预设 %s（标注模板；全局的，不跟实例走）", presets)
 	a.Log.Plain("  一根 K 线 %d 秒 · 时区 %s（和 CSV 里的时间列一致）", cfg.IntervalSeconds, time.Local)
 	a.Log.Plain("  只读数据目录：标注、挂单、成交只存在服务端（外加一份实例存档），不写回 CSV")
 	a.Log.Plain("  多人连接时只有一人能操作，其余人观看；操作可随时交还或接管")
@@ -45,6 +47,7 @@ func (a *App) runReplay() int {
 		DistDir:      dist,
 		StateDir:     state,
 		RecordingDir: recs,
+		PresetDir:    presets,
 		Version:      a.Version,
 		Location:     time.Local,
 		Log:          func(format string, args ...any) { a.Log.Info(format, args...) },
@@ -73,6 +76,7 @@ func (a *App) runReplay() int {
 	}
 	a.Log.Plain("  复盘服务已停止。实例、标注、挂单、成交都写进了 %s", state)
 	a.Log.Plain("  录像（含录音）在 %s", recs)
+	a.Log.Plain("  标注模板（全局预设）在 %s", presets)
 	a.Log.Plain("  下次选 3 进来还在列表里（操作者不保存，谁进来谁重新拿操作权）")
 	return 0
 }

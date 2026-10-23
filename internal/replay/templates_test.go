@@ -6,6 +6,7 @@ package replay
 // 顺便钉住「模板消息不需要操作权」这件事。
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
@@ -208,8 +209,9 @@ func TestTemplateLimitPerKind(t *testing.T) {
 func TestTemplatesSurviveRestart(t *testing.T) {
 	root := writeTestData(t, 5)
 	stateDir := t.TempDir()
+	presetDir := t.TempDir()
 
-	hub := newPersistentHub(t, root, stateDir)
+	hub := newPersistentHubWith(t, root, stateDir, presetDir)
 	a := newFakeClient(t, hub)
 	a.waitFor(MsgWelcome)
 	a.send(hub, map[string]any{
@@ -221,13 +223,17 @@ func TestTemplatesSurviveRestart(t *testing.T) {
 		},
 	})
 	saved := a.waitFor(MsgTemplates)["lastSavedId"].(string)
-	if _, err := os.Stat(filepath.Join(stateDir, templatesFileName)); err != nil {
-		t.Fatalf("模板文件没有写出来：%v", err)
+	if _, err := os.Stat(filepath.Join(presetDir, templatesFileName)); err != nil {
+		t.Fatalf("模板文件没有写进偏好目录：%v", err)
+	}
+	// 反过来钉住「分开存放」：实例存档目录里不该再有模板文件
+	if _, err := os.Stat(filepath.Join(stateDir, templatesFileName)); err == nil {
+		t.Fatalf("模板文件不该落在实例存档目录 %s 里", stateDir)
 	}
 	hub.Close()
 
 	// 换一个 Hub 指向同一个目录：出厂模板 + 存下来的那条，顺序上出厂在前
-	hub2 := newPersistentHub(t, root, stateDir)
+	hub2 := newPersistentHubWith(t, root, stateDir, presetDir)
 	b := newFakeClient(t, hub2)
 	b.waitFor(MsgWelcome)
 	list := templatesOf(t, b, hub2)
@@ -254,5 +260,53 @@ func TestTemplatesSurviveRestart(t *testing.T) {
 	}
 	if levels, _ := style["levels"].([]any); len(levels) != 4 {
 		t.Fatalf("斐波那契模板的四个水平没存下来：%v", style)
+	}
+}
+
+// TestLegacyTemplatesMigrateOutOfStateDir 钉住升级路径。
+//
+// v0.18.0 之前模板跟着实例存档挤在 <stateDir> 里。老用户升级后第一次启动，
+// 模板要自动搬到偏好目录，**老文件要删掉** —— 留着两份，下次启动就会变成
+// 「两个位置各有一个版本」，用户改哪个都可能不生效。
+func TestLegacyTemplatesMigrateOutOfStateDir(t *testing.T) {
+	root := writeTestData(t, 5)
+	stateDir := t.TempDir()
+	presetDir := t.TempDir()
+
+	legacy := map[string]any{
+		"version": 1,
+		"nextId":  11,
+		"templates": []map[string]any{
+			{"id": "tpl-11", "kind": AnnTrend, "name": "升级前画的"},
+		},
+	}
+	buf, err := json.Marshal(legacy)
+	if err != nil {
+		t.Fatal(err)
+	}
+	legacyPath := filepath.Join(stateDir, templatesFileName)
+	if err := os.WriteFile(legacyPath, buf, 0o644); err != nil {
+		t.Fatalf("铺老文件失败：%v", err)
+	}
+
+	hub := newPersistentHubWith(t, root, stateDir, presetDir)
+	b := newFakeClient(t, hub)
+	b.waitFor(MsgWelcome)
+
+	found := false
+	for _, item := range templatesOf(t, b, hub) {
+		if item.(map[string]any)["name"] == "升级前画的" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("老位置的模板没有搬过来（升级不该把用户的自定义模板弄丢）")
+	}
+	if _, err := os.Stat(filepath.Join(presetDir, templatesFileName)); err != nil {
+		t.Fatalf("模板没有落到偏好目录：%v", err)
+	}
+	hub.Close()
+	if _, err := os.Stat(legacyPath); !os.IsNotExist(err) {
+		t.Fatalf("老位置的模板文件应当搬完就删掉，实际还在（err=%v）", err)
 	}
 }

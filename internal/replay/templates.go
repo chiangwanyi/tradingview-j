@@ -1,23 +1,27 @@
 package replay
 
 // 标注模板：每个绘图工具（趋势线/射线/矩形/箭头线/斐波那契）下面挂一组样式预设，
-// 存在 <stateDir>/replay-templates.json。
+// 存在 <presetDir>/replay-templates.json。
 //
-// 四个刻意的决定：
+// 五个刻意的决定：
 //
 //  1. **模板是全局的，不属于某个实例**。模板描述的是「我习惯用什么颜色的线」，
 //     跟画在哪个标的、哪个时间点无关；跟着实例走的话，开个新实例就得重建一遍。
-//  2. **不跟实例存档放同一个文件**。实例存档每两秒可能重写一次（步进、下单、标注），
+//  2. **不和实例存档放在同一个目录**（v0.18.0 起）。实例存档是「一份练习的进度」，
+//     可能整批删掉、也可能换 stateDir 并存好几套；模板是长期习惯，两者寿命不同。
+//     早先它和实例存档同目录，删实例目录时容易连模板一起清掉。
+//  3. **不跟实例存档同一个写盘节奏**。实例存档每两秒可能重写一次（步进、下单、标注），
 //     模板一个月也改不了一次 —— 混在一起等于每次步进都在重写模板（见 persist.go）。
-//  3. **一改就全量广播**。模板总共几十条，全量发送让前端不用维护增量合并；
+//  4. **一改就全量广播**。模板总共几十条，全量发送让前端不用维护增量合并；
 //     这和挂单/成交全量发送是同一个理由。
-//  4. **谁能改都行，不校验操作权**。这是台机器上的单机工具，模板是「本机偏好」，
+//  5. **谁能改都行，不校验操作权**。这是台机器上的单机工具，模板是「本机偏好」，
 //     不属于某个实例的操作 —— 操作权管的是「别两个人同时改同一张盘」。
 
 import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -85,6 +89,67 @@ func defaultTemplates() []Template {
 }
 
 // ---------------- 存储 ----------------
+
+// EnablePresets 指定「全局样式模板」目录并读入标注模板。
+//
+// 和 EnablePersistence 分开调用，是因为两者管的是不同的东西：
+// 实例存档 = 一份练习的进度（可能被整批删掉，也可能指到别处并存好几套），
+// 模板 = 长期习惯（换了标的、删了实例都还该在）。
+// dir 为空 = 只留内存里的出厂模板，改了也不落盘（单元测试走这条路）。
+//
+// 必须在 EnablePersistence 之后调用：老位置的模板要从 statePath 推出来搬一次。
+func (h *Hub) EnablePresets(dir string) error {
+	dir = strings.TrimSpace(dir)
+
+	h.mu.Lock()
+	defer h.mu.Unlock()
+
+	if dir == "" {
+		// tplPath 留空 → writeTemplatesLocked 直接返回，改动只在本次进程有效
+		h.tplPath = ""
+		return nil
+	}
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		h.tplPath = ""
+		return fmt.Errorf("创建模板目录 %s 失败：%w", dir, err)
+	}
+	path := filepath.Join(dir, templatesFileName)
+	h.migrateLegacyTemplatesLocked(path)
+	h.loadTemplatesLocked(path)
+	return nil
+}
+
+// migrateLegacyTemplatesLocked 把老位置（<stateDir>/replay-templates.json）的模板搬到新的模板目录。
+//
+// v0.18.0 之前模板和实例存档挤在同一个目录里。升级后第一件事不该是「模板全没了」，
+// 所以这里静默搬一次；搬不动也只留一句日志，绝不因为模板影响服务起来。
+// 调用方持有 h.mu。
+func (h *Hub) migrateLegacyTemplatesLocked(newPath string) {
+	if h.statePath == "" {
+		return // 没启用实例存档，也就没有老位置可言
+	}
+	legacy := filepath.Join(filepath.Dir(h.statePath), templatesFileName)
+	if legacy == newPath {
+		return
+	}
+	if _, err := os.Stat(newPath); err == nil {
+		// 新位置已经有文件了：**绝不覆盖** —— 那可能是用户在新目录里改过的。
+		return
+	}
+	raw, err := os.ReadFile(legacy)
+	if err != nil {
+		return // 没有老文件是最常见的情况（新装）
+	}
+	// 用「写新 + 删旧」而不是 rename：模板目录可能被配到另一个盘上。
+	if err := os.WriteFile(newPath, raw, 0o644); err != nil {
+		h.log("[replay] 老模板文件 %s 搬不到 %s（%v），本次先用出厂模板，原文件保留不动", legacy, newPath, err)
+		return
+	}
+	h.log("[replay] 模板已从 %s 搬到 %s（实例存档和模板现在分开存放）", legacy, newPath)
+	if err := os.Remove(legacy); err != nil {
+		h.log("[replay] 老模板文件 %s 删不掉（%v），留着不影响使用", legacy, err)
+	}
+}
 
 // loadTemplatesLocked 读模板文件。调用方持有 h.mu。
 //

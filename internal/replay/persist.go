@@ -274,10 +274,8 @@ func (h *Hub) EnablePersistence(dir string) error {
 	h.instanceDir = filepath.Join(dir, instanceDirName)
 	path := h.statePath
 	err := h.loadStateLocked(path)
-	// 模板和实例存档同目录（另一个文件）：模板跟实例无关，读不到也不影响服务起来。
-	// 放在 statePath 之后是因为它要靠这个目录；放在 err 判断之前是因为存档读坏了
-	// 也不该把模板一起丢掉。
-	h.loadTemplatesLocked(filepath.Join(dir, templatesFileName))
+	// 标注模板不在这里读：它是「本机偏好」而不是实例数据，走 EnablePresets
+	// （v0.18.0 起和实例存档分目录存放，见 templates.go）。
 	// 读到 v1 单文件（或者补过缺口）时已经标了脏：趁服务还没开始广播，立刻落一次，
 	// 把「一个文件」换成「一个文件夹」。失败也只是下次改动时再试，不影响本次运行。
 	needsFlush := h.dirtyIndex || len(h.dirtyInst) > 0
@@ -580,7 +578,7 @@ func (h *Hub) loadIndexLocked(raw []byte) error {
 //
 // 旧文件在落新格式之前先原样备份一份（replay-instances.json.v1.bak）：
 // 迁移一旦有 bug，用户至少还能把这份拷回去用旧版本打开。
-// 真正的新格式落盘由 EnablePersistence 在读完模板后立刻触发。
+// 真正的新格式落盘由 EnablePersistence 在迁移完旧文件后立刻触发。
 func (h *Hub) loadLegacyLocked(path string, raw []byte) error {
 	var sf legacyStateFile
 	if err := json.Unmarshal(raw, &sf); err != nil {

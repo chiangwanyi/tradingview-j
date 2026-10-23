@@ -4,7 +4,7 @@
 > 解出 **5 分钟 K 线**，按「一个标的一个文件夹、一天一个 CSV」落盘。
 
 纯 Go 实现，**零第三方依赖**（WebSocket 客户端也是自写的），产物是**根目录下**的单个 exe：
-`tv-capture-v<版本>.exe`（当前 `0.17.0`）—— 版本号既在文件名里，也写进了 exe 的文件属性。
+`tv-capture-v<版本>.exe`（当前 `0.18.0`）—— 版本号既在文件名里，也写进了 exe 的文件属性。
 
 程序只**被动**监听浏览器已经收到的数据：不往页面里注入脚本、不需要浏览器扩展、
 不主动操作图表、也没有自动回拉 —— **抓取链路上没有一行 JavaScript**。
@@ -127,7 +127,7 @@ Vue + TypeScript 工程，**需要先 `npm run build`**，产物由本地服务�
 ```bat
 build.cmd                        :: 双击它，或者在命令行里跑：前端 + exe 一次做完
 build.cmd --no-web               :: 只编 exe，跳过前端（前端沿用上次的产物）
-tv-capture-v0.17.0.exe           :: 产物就落在根目录（版本号来自 VERSION）
+tv-capture-v0.18.0.exe           :: 产物就落在根目录（版本号来自 VERSION）
 ```
 
 一次触发跑三个阶段，顺序固定，**任一阶段失败就地中断并返回非 0**，所以不会留下
@@ -269,6 +269,7 @@ tv-capture-v0.17.0.exe           :: 产物就落在根目录（版本号来自 V
   前端产物 E:\Data\projects\tradingview-j\web\dist
   实例存档 E:\Data\projects\tradingview-j\state
   录像目录 E:\Data\projects\tradingview-j\recordings（一条录像一个文件夹：recording.json + audio-N.wav）
+  样式预设 E:\Data\projects\tradingview-j\presets（标注模板；全局的，不跟实例走）
   一根 K 线 300 秒 · 时区 Local（和 CSV 里的时间列一致）
   只读数据目录：标注、挂单、成交只存在服务端（外加一份实例存档），不写回 CSV
   多人连接时只有一人能操作，其余人观看；操作可随时交还或接管
@@ -376,6 +377,7 @@ tv-capture-v0.17.0.exe           :: 产物就落在根目录（版本号来自 V
 | `replayDistDir` | `"web/dist"` | 菜单 3 托管的前端构建产物，相对 **exe 所在目录** |
 | `replayStateDir` | `"state"` | 菜单 3 的实例存档目录（索引 + 每个实例一个文件夹），相对 **exe 所在目录** |
 | `replayRecordingDir` | `"recordings"` | 菜单 3 的**录像目录**（索引 + 每条录像一个文件夹），相对 **exe 所在目录** |
+| `replayPresetDir` | `"presets"` | 菜单 3 的**样式模板目录**（标注模板 `replay-templates.json`），相对 **exe 所在目录** |
 | `flushSeconds` | `1` | CSV 落盘间隔。内存里攒着，按这个间隔整体重写 |
 | `attachPollSeconds` | `3` | 多久检查一次新出现的图表页 |
 | `retrySeconds` | `5` | 接入失败后的重试间隔 |
@@ -384,8 +386,8 @@ tv-capture-v0.17.0.exe           :: 产物就落在根目录（版本号来自 V
 | `maxFrameMB` | `16` | 单帧上限，超了断开重连（防止畸形长度头把内存吃光） |
 | `pauseOnExit` | `true` | 出错退出时是否等回车（双击运行时能看清报错） |
 
-相对路径（`outDir` / `rawDir` / `replayDistDir` / `replayStateDir` / `replayRecordingDir`）
-都相对 **exe 所在目录**展开，而不是当前工作目录 —— 双击运行时工作目录不可靠。
+相对路径（`outDir` / `rawDir` / `replayDistDir` / `replayStateDir` / `replayRecordingDir` /
+`replayPresetDir`）都相对 **exe 所在目录**展开，而不是当前工作目录 —— 双击运行时工作目录不可靠。
 
 ## 数据输出
 
@@ -397,7 +399,7 @@ data/                                ← outDir
     2026-10-16.csv
   BINANCE_BTCUSDT/
     2026-10-16.csv
-state/                               ← replayStateDir（菜单 3 的实例存档 + 标注模板）
+state/                               ← replayStateDir（菜单 3 的实例存档）
   replay-instances.json              索引：版本、下一个实例编号、实例 id 清单
   instances/
     ins-1/                           一个实例一个文件夹
@@ -409,6 +411,7 @@ state/                               ← replayStateDir（菜单 3 的实例存�
       events.json                    操作记录
       voice.json                     语音讲解的元数据（0.16.0：不录制也能录，属于实例）
       voice/voice-N.wav              语音音频（16kHz / 16bit / 单声道 PCM）
+presets/                             ← replayPresetDir（菜单 3 的全局样式模板，跟实例无关）
   replay-templates.json              五种绘图工具的样式模板（全局，不跟实例）
 recordings/                          ← replayRecordingDir（菜单 3 的录像与录音）
   recordings.json                    索引：版本、保存时间、录像摘要清单
@@ -493,6 +496,7 @@ internal/wstest/      测试专用的手写 WebSocket 服务端（不进最终�
 testdata/             真实抓包裁剪出的回归样本（tvproto / ingest / capture 共用）
 data/                 抓到的 K 线 CSV（一个标的一个文件夹，一天一个文件）
 state/                菜单 3 的实例存档（不入库）
+presets/              菜单 3 的样式模板（全局，跟实例无关；不入库）
 recordings/           菜单 3 的录像与录音（不入库）
 raw/                  原始帧留档的默认目录（不入库）
 ```
@@ -532,6 +536,7 @@ raw/                  原始帧留档的默认目录（不入库）
 | 复盘里点按钮提示「现在由 xxx 操作」 | 你是观众。等对方「交还操作权」，或在他退出后点「接管」 |
 | 复盘会不会改动我的 CSV | 不会。标注、挂单、成交写在 `state/`（索引 + 每个实例一个文件夹）里，`data/` 全程只读 |
 | 复盘关掉再进来，实例还在吗 | 在（v1.1 起）。存档在 `state/`，Ctrl+C 回菜单时会同步刷一次盘 |
+| 我把 `state/` 整个删了，画的模板还在吗 | 在。模板存在 `presets/replay-templates.json`，**和实例存档分开放**（0.18.0 起）——实例可以整批删、换目录并存几套，模板是长期习惯，不该跟着没。老版本升级时那份 `state/replay-templates.json` 会在第一次启动时自动搬过去 |
 | 价格轴上写着 `tick 0.01`，但这是 0.25 一跳的品种 | 该标的在 `data/_symbols.json` 里没有 `tick`。加上 `"tick": 0.25` 就行，抓取重写索引时会保留这个字段 |
 | 盈亏看起来只有点数的十分之一 / 十倍 | 该标的那条记录缺 `tickValue`（一跳值多少美元）。补上 `"tickValue": 1.25` 之类即可；没配置时按「每点 1 美元」兜底 |
 | 切到浅色后 K 线还是黑的 | 只有页面换了、画布没重画。Canvas 配色不跟 CSS 变量走，靠 `ChartPanel.vue` 里的 `watch(store.theme)` 触发重绘 |

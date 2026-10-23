@@ -12,6 +12,8 @@
   "replayPort": 8790,
   "replayDistDir": "web/dist",
   "replayStateDir": "state",
+  "replayRecordingDir": "recordings",
+  "replayPresetDir": "presets",
   "flushSeconds": 1,
   "attachPollSeconds": 3,
   "retrySeconds": 5,

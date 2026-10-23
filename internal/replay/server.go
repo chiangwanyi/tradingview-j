@@ -27,6 +27,7 @@ type Options struct {
 	DistDir      string         // config.ReplayDistPath()，通常是 <exe>/web/dist
 	StateDir     string         // config.ReplayStatePath()，实例存档目录；空 = 不持久化
 	RecordingDir string         // config.RecordingPath()，录像目录；空 = 录制不落盘
+	PresetDir    string         // config.ReplayPresetPath()，全局样式模板目录；空 = 不落盘
 	Version      string         // 显示在 welcome 里
 	Location     *time.Location // 空则本机时区
 	Log          func(format string, args ...any)
@@ -241,6 +242,11 @@ func Start(opts Options, port int) (*Server, error) {
 	// 录像目录：读不到/建不了也只是「录了不落盘」，不该拦住整个复盘服务。
 	if err := hub.EnableRecordings(opts.RecordingDir); err != nil {
 		hub.Logf("[replay] 录像目录没启用：%v", err)
+	}
+	// 全局样式模板（标注模板）单独一个目录：它跟实例无关，也不该跟实例一起被清掉。
+	// 必须在 EnablePersistence 之后 —— 老位置的模板要靠实例存档目录推出来搬走。
+	if err := hub.EnablePresets(opts.PresetDir); err != nil {
+		hub.Logf("[replay] 模板目录没启用：%v", err)
 	}
 
 	ln, moved, err := listen(port)

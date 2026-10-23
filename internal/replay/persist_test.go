@@ -16,12 +16,22 @@ import (
 	"time"
 )
 
-// newPersistentHub 起一个带临时的数据目录 + 状态目录的 Hub。
+// newPersistentHub 起一个带临时的数据目录 + 状态目录 + 偏好目录的 Hub。
 func newPersistentHub(t *testing.T, root, stateDir string) *Hub {
+	t.Helper()
+	return newPersistentHubWith(t, root, stateDir, t.TempDir())
+}
+
+// newPersistentHubWith 和上面一样，但偏好目录由调用方指定 ——
+// 需要「换一个 Hub 读回同一份模板」的用例传两次同一个目录。
+func newPersistentHubWith(t *testing.T, root, stateDir, presetDir string) *Hub {
 	t.Helper()
 	hub := NewHub(NewDataSource(root, time.Local), "test", t.Logf)
 	if err := hub.EnablePersistence(stateDir); err != nil {
 		t.Fatalf("启用持久化失败：%v", err)
+	}
+	if err := hub.EnablePresets(presetDir); err != nil {
+		t.Fatalf("启用偏好目录失败：%v", err)
 	}
 	return hub
 }
