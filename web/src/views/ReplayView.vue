@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted } from 'vue'
+import { computed, onBeforeUnmount, onMounted, watch } from 'vue'
+import { RouterLink } from 'vue-router'
 
 import ChartPanel from '@/components/ChartPanel.vue'
 import ChartToolbar from '@/components/ChartToolbar.vue'
@@ -23,8 +24,8 @@ import { useReplayStore } from '@/stores/replay'
  * v0.18.0：交易记录改成**自动**的（开仓开始、平仓结束），所以原来贴在画布左上角的
  * 录制浮窗整个删掉了 —— 界面上不再有「正在录制」这个概念；回放仍然在这个画布上演。
  *
- * 整个应用只有这一页。实例是服务端概念，这里只负责「进入/退出/观看」，
- * 关掉标签页不会删除实例（下次连上还在列表里）。
+ * 整个应用只有两条路由（`/` 与 `/records`）。实例是服务端概念，这里只负责
+ * 「进入/退出/观看」，关掉标签页不会删除实例（下次连上还在列表里）。
  */
 
 const store = useReplayStore()
@@ -92,6 +93,28 @@ onMounted(() => {
 onBeforeUnmount(() => {
   window.removeEventListener('keydown', onSpace, true)
 })
+
+/**
+ * 交易记录页点【回放】→ 这里接住（v0.19.0）。
+ *
+ * 两个时机都要管：跳过来**之前**内容就到了（记录页先收到 recording 消息），
+ * 和跳过来**之后**才到（还在路上，或断线重连后补发）。所以 watch 带 immediate，
+ * 而且不看新旧值，直接问「现在有没有待放的记录」—— 判断依据只有一个。
+ *
+ * `takePendingPlayback()` 必须在这里清掉：留着的话每次断线重连都会把同一笔再演一遍。
+ * 打开失败（比如记录里没有内容）时 pb.open 自己会提示，这里不用兜。
+ */
+watch(
+  () => store.loadedSeq,
+  () => {
+    const rec = store.loadedRecording
+    if (!rec) return
+    store.clearLoadedRecording()
+    store.takePendingPlayback()
+    pb.open(rec)
+  },
+  { immediate: true },
+)
 </script>
 
 <template>
@@ -131,6 +154,16 @@ onBeforeUnmount(() => {
       <div v-else class="text-[12px] text-faint">没有进入实例</div>
 
       <div class="ml-auto flex items-center gap-2">
+        <RouterLink
+          :to="{ name: 'records' }"
+          class="flex items-center gap-1.5 rounded border border-line px-2 py-1 text-[12px] text-dim transition hover:border-accent hover:text-accent"
+          title="交易记录：统计图表 + 全部明细（回放也从那里挑）"
+        >
+          交易记录
+          <span class="tnum rounded bg-elev px-1 text-[10px] text-faint">
+            {{ store.recordings.length }}
+          </span>
+        </RouterLink>
         <button
           type="button"
           class="rounded border border-line px-2 py-1 text-[12px] text-dim hover:border-accent hover:text-accent"

@@ -26,7 +26,7 @@ import { TOOL_LABEL, isDrawTool, useReplayStore, type DrawTool } from '@/stores/
  * 「在这根 K 线上讲两句」，两件事都发生在当前这根 K 线上，都**不需要先开录像**。
  *
  * v0.18.0 删掉了【● 录制】：交易记录改成开仓自动开始、平仓自动结束，
- * 用户不需要（也不应该）记得按一个开关 —— 见 components/RecordingPanel.vue。
+ * 用户不需要（也不应该）记得按一个开关 —— 见 views/RecordsView.vue。
  */
 
 const store = useReplayStore()

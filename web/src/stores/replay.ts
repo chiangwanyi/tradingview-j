@@ -184,6 +184,13 @@ export const useReplayStore = defineStore('replay', () => {
   const loadedRecording = ref<Recording | null>(null)
   /** 每取回一条就加一：组件用它判断"这是一条新的"，避免同一条被重复打开 */
   const loadedSeq = ref(0)
+  /**
+   * 交易记录页点【回放】预约的那一条（v0.19.0）。
+   *
+   * 记录页没有画布，回放只能发生在 `/` 上：它把 id 放这儿再跳回去，
+   * 复盘页取走之后立即清空 —— 留着它会在每次断线重连时把同一笔重复播一遍。
+   */
+  const pendingPlaybackId = ref('')
   const theme = ref<ThemeMode>(readTheme())
   applyTheme(theme.value)
   /** 是否显示 EMA20（纯显示开关，跟后端无关） */
@@ -490,6 +497,10 @@ export const useReplayStore = defineStore('replay', () => {
     send({ type: 'list_instances' })
     send({ type: 'list_templates' })
     send({ type: 'list_recordings' })
+    // 挂着一条「等下要回放」的记录：断线期间那次 get_recording 已经丢了，这里补一次
+    if (pendingPlaybackId.value) {
+      send({ type: 'get_recording', recordingId: pendingPlaybackId.value })
+    }
     // 回放时 instance 是「演出来的那一份」，id 是 rec:xxx，后端根本没有这个实例：
     // 重连后去 join 它只会收到一条错误，还会把回放画面清空。等退出回放再重新 join。
     const id = instance.value?.id
@@ -728,7 +739,31 @@ export const useReplayStore = defineStore('replay', () => {
     send({ type: 'get_recording', recordingId: id })
   }
 
+  /**
+   * 「在画布上放这一条」—— 交易记录页专用的入口（v0.19.0）。
+   *
+   * 回放离不开 K 线画布，而记录页没有画布，所以点【回放】只是**预约**：
+   * 记下 id、立刻请一次内容，然后由页面跳回 `/`。真正打开播放器的是复盘页
+   * （它 watch `loadedSeq`），那边才知道画布准备好了没有。
+   *
+   * 为什么要留 pending：跳回去的那一刻 WebSocket 可能正在重连，这条
+   * `get_recording` 会直接丢掉（没连上时 send 返回 false）。pending 记着这件事，
+   * `resync()` 在连上之后补发一次，用户看到的就是「等一下自己就放起来了」。
+   */
+  function openRecordingAt(id: string): void {
+    pendingPlaybackId.value = id
+    requestRecording(id)
+  }
+
+  /** 取走并清空待回放的 id：复盘页接住之后不该再补发第二次。 */
+  function takePendingPlayback(): string {
+    const id = pendingPlaybackId.value
+    pendingPlaybackId.value = ''
+    return id
+  }
+
   function deleteRecording(id: string): void {
+    if (pendingPlaybackId.value === id) pendingPlaybackId.value = ''
     send({ type: 'delete_recording', recordingId: id })
   }
 
@@ -860,6 +895,8 @@ export const useReplayStore = defineStore('replay', () => {
     clearVoiceBar,
     listRecordings,
     requestRecording,
+    openRecordingAt,
+    takePendingPlayback,
     deleteRecording,
     clearLoadedRecording,
   }
