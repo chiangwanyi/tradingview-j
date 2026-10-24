@@ -80,7 +80,7 @@ function onDocClick(e: MouseEvent): void {
 onMounted(() => document.addEventListener('click', onDocClick))
 onBeforeUnmount(() => document.removeEventListener('click', onDocClick))
 
-const btn = 'rounded border px-2 py-1 text-[12px] transition disabled:cursor-not-allowed disabled:opacity-40'
+const btn = 'rounded border px-2 py-1 text-[13px] transition disabled:cursor-not-allowed disabled:opacity-40'
 </script>
 
 <template>
@@ -99,7 +99,7 @@ const btn = 'rounded border px-2 py-1 text-[12px] transition disabled:cursor-not
     <button
       v-else
       type="button"
-      class="rounded bg-sky-600 px-2 py-1 text-[12px] text-white hover:bg-sky-500"
+      class="rounded bg-sky-600 px-2 py-1 text-[13px] text-white hover:bg-sky-500"
       :title="`正在跑：${store.botStrategyLabel || '随机演示'}。停止后持仓保留、保护单撤掉，操作权交回给你`"
       @click="store.stopBot()"
     >
@@ -110,7 +110,7 @@ const btn = 'rounded border px-2 py-1 text-[12px] transition disabled:cursor-not
       v-if="open"
       class="absolute right-0 top-full z-40 mt-1 max-h-[70vh] w-[23rem] overflow-y-auto rounded-md border border-line bg-panel p-3 shadow-xl"
     >
-      <div class="mb-2 text-[11px] font-medium text-dim">选择策略</div>
+      <div class="mb-2 text-[12px] font-medium text-dim">选择策略</div>
 
       <button
         v-for="opt in options"
@@ -127,8 +127,8 @@ const btn = 'rounded border px-2 py-1 text-[12px] transition disabled:cursor-not
           :class="picked === opt.id ? 'border-accent bg-accent' : 'border-faint'"
         />
         <span class="min-w-0">
-          <span class="block text-[12px] text-ink">{{ opt.name }}</span>
-          <span class="block text-[11px] leading-snug text-dim">{{ opt.summary }}</span>
+          <span class="block text-[13px] text-ink">{{ opt.name }}</span>
+          <span class="block text-[12px] leading-snug text-dim">{{ opt.summary }}</span>
         </span>
       </button>
 
@@ -138,7 +138,7 @@ const btn = 'rounded border px-2 py-1 text-[12px] transition disabled:cursor-not
         不知道自己填的数到底被改成了多少。
       -->
       <div v-if="pickedStrategy" class="mt-2 rounded border border-line bg-elev px-2 py-1.5">
-        <div class="mb-1 text-[11px] text-faint">运行参数（只影响这一次启动）</div>
+        <div class="mb-1 text-[12px] text-faint">运行参数（只影响这一次启动）</div>
         <div class="space-y-1">
           <label
             v-for="p in pickedStrategy.params"
@@ -146,7 +146,7 @@ const btn = 'rounded border px-2 py-1 text-[12px] transition disabled:cursor-not
             class="flex items-center justify-between gap-2"
             :title="p.help"
           >
-            <span class="text-[11px] text-dim">{{ p.label }}</span>
+            <span class="text-[12px] text-dim">{{ p.label }}</span>
             <!--
               开关型参数不用 v-model：checkbox 的 v-model 收的是 boolean，
               而参数在协议里是数字（1/0）。两种绑定同时挂在同一个值上，
@@ -167,26 +167,26 @@ const btn = 'rounded border px-2 py-1 text-[12px] transition disabled:cursor-not
               :min="p.min"
               :max="p.max"
               :step="p.step"
-              class="w-16 rounded border border-line bg-surface px-1 py-0.5 text-right text-[11px] text-ink"
+              class="w-16 rounded border border-line bg-surface px-1 py-0.5 text-right text-[12px] text-ink"
             />
           </label>
         </div>
       </div>
 
       <div class="mt-2 flex items-center justify-between gap-2 border-t border-line pt-2">
-        <label class="flex items-center gap-1.5 text-[11px] text-dim">
+        <label class="flex items-center gap-1.5 text-[12px] text-dim">
           每笔手数
           <input
             v-model.number="store.orderQuantity"
             type="number"
             min="1"
             step="1"
-            class="w-14 rounded border border-line bg-surface px-1 py-0.5 text-right text-[11px] text-ink"
+            class="w-14 rounded border border-line bg-surface px-1 py-0.5 text-right text-[12px] text-ink"
           />
         </label>
         <button
           type="button"
-          class="rounded bg-sky-600 px-3 py-1 text-[12px] font-medium text-white hover:bg-sky-500 disabled:cursor-not-allowed disabled:opacity-40"
+          class="rounded bg-sky-600 px-3 py-1 text-[13px] font-medium text-white hover:bg-sky-500 disabled:cursor-not-allowed disabled:opacity-40"
           :disabled="!canStart"
           @click="start"
         >
@@ -194,7 +194,7 @@ const btn = 'rounded border px-2 py-1 text-[12px] transition disabled:cursor-not
         </button>
       </div>
 
-      <p class="mt-2 text-[10px] leading-snug text-faint">
+      <p class="mt-2 text-[11px] leading-snug text-faint">
         撮合是零滑点、零手续费的：市价单按当根收盘价成交，跳空时按开盘价。
         这里跑出来的盈亏是「最有利假设」，不是实盘能拿到的结果。
       </p>

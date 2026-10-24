@@ -66,9 +66,9 @@ function toneClass(n: number): string {
 
 const card = 'min-w-0 rounded-lg border border-line bg-panel p-3'
 const head = 'flex items-baseline gap-2'
-const title = 'text-[12px] font-medium text-ink'
+const title = 'text-[14px] font-medium text-ink'
 /** 每张图右上角都带一句「这张图在回答什么」，省得用户去猜 */
-const hint = 'ml-auto shrink-0 text-[10px] text-faint'
+const hint = 'ml-auto shrink-0 text-[12px] text-faint'
 </script>
 
 <template>
@@ -126,7 +126,7 @@ const hint = 'ml-auto shrink-0 text-[10px] text-faint'
         笔数 / 胜率放在文字里而不是柱顶：柱顶标签在「全负」的数据上会贴着 0 线，
         正好压在右上角的图例上。这张卡要读的是「两个方向差多少」，四行字比四个标签清楚。
       -->
-      <dl class="mt-1 space-y-0.5 text-[10px]">
+      <dl class="mt-1 space-y-1 text-[12px]">
         <div v-for="s in sides" :key="s.name" class="flex items-baseline justify-between gap-2">
           <dt class="flex shrink-0 items-baseline gap-1.5">
             <span :class="toneClass(s.pnl)">{{ s.name }}</span>

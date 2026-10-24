@@ -24,7 +24,7 @@ const store = useReplayStore()
 </script>
 
 <template>
-  <div class="rounded border border-line bg-panel text-[12px] text-ink shadow-xl">
+  <div class="rounded border border-line bg-panel text-[13px] text-ink shadow-xl">
     <div class="flex items-center gap-1.5 border-b border-line px-2.5 py-1">
       <span class="h-1.5 w-1.5 shrink-0 rounded-full" :class="trade.side === 'long' ? 'bg-emerald-500' : 'bg-red-500'" />
       <span
@@ -33,11 +33,11 @@ const store = useReplayStore()
       >
         {{ trade.side === 'long' ? '多' : '空' }} {{ trade.quantity }} 手
       </span>
-      <span class="text-[11px] text-faint">平仓</span>
+      <span class="text-[12px] text-faint">平仓</span>
       <button
         v-if="pinned"
         type="button"
-        class="-mr-1 ml-auto flex h-4 w-4 items-center justify-center rounded text-[13px] leading-none text-faint hover:bg-elev hover:text-ink"
+        class="-mr-1 ml-auto flex h-4 w-4 items-center justify-center rounded text-[14px] leading-none text-faint hover:bg-elev hover:text-ink"
         title="关闭"
         @pointerdown.stop
         @click.stop="$emit('close')"
@@ -68,7 +68,7 @@ const store = useReplayStore()
       </dd>
     </dl>
 
-    <div v-if="!pinned" class="border-t border-line px-2.5 py-0.5 text-[10px] text-faint">
+    <div v-if="!pinned" class="border-t border-line px-2.5 py-0.5 text-[11px] text-faint">
       停 3 秒不动可固定到画布
     </div>
   </div>

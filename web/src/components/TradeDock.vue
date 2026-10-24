@@ -9,31 +9,44 @@ import { usePlaybackStore } from '@/stores/playback'
 import { useReplayStore } from '@/stores/replay'
 
 /**
- * 底部停靠区：模拟交易 / 操作记录 / 回放 三个 Tab（需求要求「以 Tab 切换显示」）。
+ * 底部停靠区：模拟交易 / 操作记录 两个 Tab + 回放中的播放器。
  *
  * 两个面板都用 v-show 而不是 v-if —— 切 Tab 时不该丢掉滚动位置，
  * 操作记录也要能继续自动滚到最新一条。
  *
- * 可以整体收起（只留 Tab 条），这样想全力看盘时画布能再高 180px。
+ * 可以整体收起（只留 Tab 条），这样想全力看盘时画布能再高 200px。
  *
  * v0.18.0：第三个 Tab 从【回放】改名【交易记录】—— 它本来就不是「录像」。
- * v0.19.0：又把**记录列表**搬走了，这个 Tab 回到只做【回放】这件事：
- * 列表、统计、图表都在 `/records`（见 views/RecordsView.vue）。底部这 180px
- * 放不下「看清一段时间的战绩」，却刚好够放「把这一笔演一遍」。
+ * v0.19.0：又把**记录列表**搬走了，那个 Tab 回到只做【回放】这件事。
+ * v0.20.0：**干脆不要这个 Tab 了**。平时它只是一行「现在没有在回放」的空文案，
+ * 占着 Tab 条却没有任何能点的事；真正要用它的时候（从交易记录页点【回放】），
+ * 播放器本来就应该自己顶上来。所以现在：
+ *   · 没在回放 → Tab 条上只有【模拟交易】【操作记录】；
+ *   · 正在回放 → Tab 条上多出一个红色的【回放中 x/y】，面板自动切到播放器，
+ *     中途切去看持仓/流水，点这一枚红色的就回到播放器。
  */
 
 const store = useReplayStore()
 const pb = usePlaybackStore()
-type DockTab = 'trade' | 'log' | 'rec'
+type DockTab = 'trade' | 'log' | 'player'
 const tab = ref<DockTab>('trade')
 const collapsed = ref(false)
 
 const tabClass = (key: DockTab) =>
   [
-    'rounded-t px-3 py-1 text-[12px] transition',
+    'whitespace-nowrap rounded-t px-3 py-1 text-[13px] transition',
     tab.value === key && !collapsed.value
       ? 'bg-elev text-ink shadow-[inset_0_1px_0_var(--c-line)]'
       : 'text-dim hover:text-ink',
+  ].join(' ')
+
+/** 回放中的那一枚：红色，和「实时」区分开；选中时同样抬成底色。 */
+const playerTabClass = () =>
+  [
+    'whitespace-nowrap rounded-t px-3 py-1 text-[13px] transition',
+    tab.value === 'player' && !collapsed.value
+      ? 'bg-elev text-red-600 shadow-[inset_0_1px_0_var(--c-line)] dark:text-red-400'
+      : 'text-red-600/70 hover:text-red-600 dark:text-red-400/70 dark:hover:text-red-400',
   ].join(' ')
 
 const summary = computed(() => {
@@ -45,18 +58,20 @@ const summary = computed(() => {
   return `${pos} · 挂单 ${store.openOrders.length} · 成交 ${inst.trades.length}`
 })
 
-/** 回放一开始就自动切到这个 Tab：用户点的是「回放」，不该还要自己找播放键。 */
+/** 回放一开始就把播放器顶到当前面板：用户点的是「回放」，不该还要自己找播放键。 */
 function enterPlayback(): void {
-  tab.value = 'rec'
+  tab.value = 'player'
   collapsed.value = false
 }
 
-// 从交易记录页点【回放】跳回来时，Tab 条可能停在其他地方 —— 播放器已经在跑了，
-// 面板却还藏着，用户会以为「点了没反应」。所以由「开始回放」这个事实来切 Tab。
+// 两个时机都要管：从交易记录页跳回来时播放器已经在跑了，面板却还藏着，
+// 用户会以为「点了没反应」；回放结束了（退出回放 / 播完）则把面板还给模拟交易，
+// 否则会停在一个已经不存在的 Tab 上。
 watch(
   () => pb.active,
   (on) => {
     if (on) enterPlayback()
+    else if (tab.value === 'player') tab.value = 'trade'
   },
   { immediate: true },
 )
@@ -64,7 +79,7 @@ watch(
 
 <template>
   <section class="shrink-0 border-t border-line bg-panel">
-    <div class="flex h-8 items-center gap-1 px-2">
+    <div class="flex h-9 items-center gap-1 overflow-x-auto px-2">
       <button
         type="button"
         :class="tabClass('trade')"
@@ -77,16 +92,17 @@ watch(
         <span class="text-faint">({{ store.log.length }})</span>
       </button>
       <button
+        v-if="pb.active"
         type="button"
-        :class="tabClass('rec')"
-        :title="pb.active ? '当前正在回放的那一条' : '回放一条交易记录（重新演在画布上）'"
+        :class="playerTabClass()"
+        title="回到回放播放器（点【退出回放】结束这一条）"
         @click="enterPlayback"
       >
-        回放
-        <span v-if="pb.active" class="text-faint">({{ pb.step }}/{{ pb.total }})</span>
+        回放中
+        <span class="text-faint">({{ pb.step }}/{{ pb.total }})</span>
       </button>
 
-      <span class="ml-auto truncate text-[11px] text-faint">{{ summary }}</span>
+      <span class="ml-auto hidden truncate text-[12px] text-faint sm:inline">{{ summary }}</span>
 
       <!--
         交易记录的正门：底部这一条放不下统计和图表，只留一个跳转。
@@ -94,11 +110,11 @@ watch(
       -->
       <RouterLink
         :to="{ name: 'records' }"
-        class="ml-2 flex shrink-0 items-center gap-1 rounded border border-line px-1.5 py-0.5 text-[11px] text-dim transition hover:border-accent hover:text-accent"
+        class="ml-2 flex shrink-0 items-center gap-1 rounded border border-line px-2 py-0.5 text-[12px] text-dim transition hover:border-accent hover:text-accent"
         title="打开交易记录页：统计图表 + 全部明细（回放也从那里挑）"
       >
         交易记录 · 统计
-        <span class="tnum rounded bg-elev px-1 text-[10px] text-faint">{{
+        <span class="tnum rounded bg-elev px-1 text-[11px] text-faint">{{
           store.recordings.length
         }}</span>
         ↗
@@ -106,17 +122,17 @@ watch(
 
       <button
         type="button"
-        class="ml-2 rounded border border-line px-1.5 py-0.5 text-[11px] text-dim hover:border-accent hover:text-accent"
+        class="ml-2 rounded border border-line px-2 py-0.5 text-[12px] text-dim hover:border-accent hover:text-accent"
         @click="collapsed = !collapsed"
       >
         {{ collapsed ? '展开面板 ▲' : '收起面板 ▼' }}
       </button>
     </div>
 
-    <div v-show="!collapsed" class="h-[12.75rem] border-t border-line">
+    <div v-show="!collapsed" class="h-[14.5rem] border-t border-line">
       <OrderPanel v-show="tab === 'trade'" />
       <EventLog v-show="tab === 'log'" />
-      <PlaybackPanel v-show="tab === 'rec'" />
+      <PlaybackPanel v-if="pb.active" v-show="tab === 'player'" />
     </div>
   </section>
 </template>

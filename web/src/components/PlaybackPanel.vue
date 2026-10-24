@@ -7,14 +7,15 @@ import { usePlaybackStore } from '@/stores/playback'
 import { stepKindClass, stepKindLabel } from '@/stores/step-kinds'
 
 /**
- * 底部【回放】Tab 的内容：**只放播放器**。
+ * 底部停靠区里的播放器 —— **正在回放时才出现**（v0.20.0 起底部不再有【回放】Tab，
+ * 见 TradeDock.vue 的头注释）。
  *
  * v0.19.0 之前这里同时是「交易记录列表」：左边列记录、点一条就地回放。
  * 列表搬去 `/records` 之后，这个面板就只剩播放控制 —— 因为回放必须发生在画布上，
  * 而列表要的是占满一屏的统计和图表，两件事本来就该待在不同页面。
  *
- * 没在回放时它不是空白：给一个明确的出口（去记录页挑一条），
- * 否则用户会以为「回放坏了」。
+ * 底下的空状态（「现在没有在回放」）留作兜底：它能出现的唯一情况是「刚退出回放、
+ * 面板还没来得及收起来」，这时给的是一个明确的出口，而不是一片空白。
  *
  * 播放器本身没变：一步 = 一次操作，步进条按类型上色、按 K 线分块；
  * 空格 = 在当步里逐条放语音（见 views/ReplayView.vue 的 onSpace）。
@@ -45,24 +46,24 @@ function seek(n: number): void {
 }
 
 const btn =
-  'rounded border border-line px-2 py-0.5 text-[12px] transition disabled:cursor-not-allowed disabled:opacity-40'
+  'rounded border border-line px-2 py-0.5 text-[13px] transition disabled:cursor-not-allowed disabled:opacity-40'
 </script>
 
 <template>
-  <div class="flex h-full flex-col text-[12px]">
+  <div class="flex h-full flex-col text-[13px]">
     <!-- ---------------- 没有在回放 ---------------- -->
     <div
       v-if="!pb.active"
       class="flex h-full flex-col items-center justify-center gap-2 text-center"
     >
       <p class="text-dim">现在没有在回放。</p>
-      <p class="text-[11px] text-faint">
+      <p class="text-[12px] text-faint">
         回放的内容是<b class="text-dim">已经记下来的交易记录</b>
         —— 一笔从开仓到平仓的全部操作，一格一格演在画布上。
       </p>
       <RouterLink
         :to="{ name: 'records' }"
-        class="rounded border border-line px-3 py-1 text-[12px] text-accent transition hover:border-accent hover:bg-accent-soft"
+        class="rounded border border-line px-3 py-1 text-[13px] text-accent transition hover:border-accent hover:bg-accent-soft"
       >
         去交易记录页挑一条 →
       </RouterLink>
@@ -81,7 +82,7 @@ const btn =
         </button>
         <span class="min-w-0 truncate font-medium text-ink">{{ pb.recording?.name }}</span>
         <span class="tnum shrink-0 text-dim">第 {{ current }}/{{ total }} 步</span>
-        <span class="shrink-0 rounded bg-panel px-1 text-[10px] text-dim">
+        <span class="shrink-0 rounded bg-panel px-1 text-[11px] text-dim">
           {{ pb.currentKindLabel }}
         </span>
         <span class="tnum hidden shrink-0 text-faint sm:inline">
@@ -89,11 +90,11 @@ const btn =
         </span>
         <span
           v-if="stepAudio > 0"
-          class="shrink-0 rounded bg-amber-500/15 px-1 text-[10px] text-amber-600 dark:text-amber-400"
+          class="shrink-0 rounded bg-amber-500/15 px-1 text-[11px] text-amber-600 dark:text-amber-400"
         >
           本步 {{ stepAudio }} 条语音
         </span>
-        <span class="ml-auto flex shrink-0 items-center gap-2 text-[10px]">
+        <span class="ml-auto flex shrink-0 items-center gap-2 text-[11px]">
           <RouterLink :to="{ name: 'records' }" class="text-faint hover:text-accent">
             全部记录与统计 →
           </RouterLink>
@@ -123,7 +124,7 @@ const btn =
         </button>
         <button
           type="button"
-          class="rounded bg-emerald-600 px-3 py-0.5 text-[12px] font-medium text-white hover:bg-emerald-500"
+          class="rounded bg-emerald-600 px-3 py-0.5 text-[13px] font-medium text-white hover:bg-emerald-500"
           :title="pb.playing ? '暂停' : '连续播放'"
           @click="pb.toggle()"
         >
@@ -153,7 +154,7 @@ const btn =
 
         <span class="mx-1 h-3 w-px bg-line" />
         <label
-          class="flex cursor-pointer items-center gap-1 text-[11px] text-dim"
+          class="flex cursor-pointer items-center gap-1 text-[12px] text-dim"
           title="走到含语音的步骤时自动顺序播放语音"
         >
           <input v-model="pb.autoAudio" type="checkbox" class="accent-sky-600" />
@@ -176,12 +177,12 @@ const btn =
         v-if="clipsNow.length"
         class="flex items-center gap-1 overflow-x-auto border-t border-line px-2 py-1"
       >
-        <span class="shrink-0 text-[10px] text-faint">本步语音</span>
+        <span class="shrink-0 text-[11px] text-faint">本步语音</span>
         <button
           v-for="(c, i) in clipsNow"
           :key="c.file"
           type="button"
-          class="flex shrink-0 items-center gap-1 rounded border px-1 py-0.5 text-[10px] transition"
+          class="flex shrink-0 items-center gap-1 rounded border px-1 py-0.5 text-[11px] transition"
           :class="
             pb.currentClip?.file === c.file
               ? 'border-amber-500 bg-amber-500/10 text-amber-600 dark:text-amber-400'
@@ -226,7 +227,7 @@ const btn =
             />
           </button>
         </div>
-        <div class="mt-1 flex items-center gap-2 text-[10px] text-faint">
+        <div class="mt-1 flex items-center gap-2 text-[11px] text-faint">
           <span class="flex items-center gap-1"
             ><i class="h-2 w-2 rounded-sm border border-sky-500/80 bg-sky-500/40" />下一根</span
           >

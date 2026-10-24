@@ -227,7 +227,7 @@ onBeforeUnmount(() => voiceStop())
 <template>
   <div
     v-if="store.instance"
-    class="relative h-10 shrink-0 select-none border-t border-line bg-panel text-[10px] text-dim"
+    class="relative h-10 shrink-0 select-none border-t border-line bg-panel text-[11px] text-dim"
     data-testid="voice-tape"
   >
     <!--

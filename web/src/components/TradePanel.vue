@@ -25,38 +25,38 @@ function pnlClass(v: number): string {
 <template>
   <div class="flex h-full min-h-0 flex-col">
     <!-- 累计已实现盈亏放在左边「持仓」那一列（同一个数字只在一处显示） -->
-    <div class="flex items-center justify-between px-2 py-1 text-[11px] text-faint">
+    <div class="flex items-center justify-between px-2.5 py-1.5 text-[13px] text-faint">
       <span>成交记录 {{ trades.length }} 笔</span>
       <span>盈亏 = 平掉那部分实现的</span>
     </div>
 
-    <div v-if="trades.length === 0" class="px-2 text-[11px] text-faint">
+    <div v-if="trades.length === 0" class="px-2.5 py-1 text-[13px] text-faint">
       还没有成交。挂一张单，然后点「下一根」让它有机会被触发。
     </div>
 
     <div v-else class="min-h-0 flex-1 overflow-auto">
-      <table class="w-full text-[11px]">
+      <table class="w-full text-[13px]">
         <thead class="sticky top-0 bg-elev text-faint">
           <tr class="text-left">
-            <th class="px-2 py-1 font-normal">时间</th>
-            <th class="px-2 py-1 font-normal">方向</th>
-            <th class="px-2 py-1 text-right font-normal">价格</th>
-            <th class="px-2 py-1 text-right font-normal">数量</th>
-            <th class="px-2 py-1 text-right font-normal">盈亏</th>
+            <th class="px-2.5 py-1.5 font-normal">时间</th>
+            <th class="px-2.5 py-1.5 font-normal">方向</th>
+            <th class="px-2.5 py-1.5 text-right font-normal">价格</th>
+            <th class="px-2.5 py-1.5 text-right font-normal">数量</th>
+            <th class="px-2.5 py-1.5 text-right font-normal">盈亏</th>
           </tr>
         </thead>
         <tbody>
           <tr v-for="t in trades" :key="t.id" class="border-b border-line/60">
-            <td class="tnum px-2 py-1 text-dim">{{ t.time.slice(5) }}</td>
+            <td class="tnum px-2.5 py-1 text-dim">{{ t.time.slice(5) }}</td>
             <td
-              class="px-2 py-1"
+              class="px-2.5 py-1"
               :class="t.side === 'buy' ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'"
             >
               {{ t.side === 'buy' ? '买' : '卖' }}
             </td>
-            <td class="tnum px-2 py-1 text-right">{{ t.price.toFixed(store.priceDecimals) }}</td>
-            <td class="tnum px-2 py-1 text-right text-dim">{{ t.quantity }}</td>
-            <td class="tnum px-2 py-1 text-right" :class="pnlClass(t.realizedPnl)">
+            <td class="tnum px-2.5 py-1 text-right">{{ t.price.toFixed(store.priceDecimals) }}</td>
+            <td class="tnum px-2.5 py-1 text-right text-dim">{{ t.quantity }}</td>
+            <td class="tnum px-2.5 py-1 text-right" :class="pnlClass(t.realizedPnl)">
               {{ t.realizedPnl === 0 ? '—' : formatSigned(t.realizedPnl) }}
             </td>
           </tr>

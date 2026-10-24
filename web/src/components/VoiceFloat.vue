@@ -517,7 +517,7 @@ watch(voiceError, (msg) => {
   <div
     v-if="store.voiceOpen && store.instance && !store.playbackActive"
     ref="root"
-    class="fixed z-[60] text-[11px] text-dim"
+    class="fixed z-[60] text-[12px] text-dim"
     :style="{
       left: `${pos.x}px`,
       top: `${pos.y}px`,
@@ -532,24 +532,24 @@ watch(voiceError, (msg) => {
         title="按住这里把语音浮窗拖到顺手的位置"
         @pointerdown="beginDrag"
       >
-        <span class="text-[12px]">🎙</span>
+        <span class="text-[13px]">🎙</span>
         <span class="font-medium text-ink">语音讲解</span>
         <span
-          class="tnum text-[10px]"
+          class="tnum text-[11px]"
           :class="full ? 'text-amber-600 dark:text-amber-400' : 'text-faint'"
         >
           本根 {{ barAudios }}/{{ maxAudios }}
         </span>
         <span
           v-if="store.voice.total > 0"
-          class="ml-auto tnum text-[10px] text-faint"
+          class="ml-auto tnum text-[11px] text-faint"
           title="这段盘面上一共讲了几条（每根 K 线最多 9 条）"
         >
           共 {{ totalAudios }} 条
         </span>
         <button
           type="button"
-          class="flex h-4 w-4 items-center justify-center rounded text-[13px] leading-none text-faint hover:bg-surface hover:text-ink"
+          class="flex h-4 w-4 items-center justify-center rounded text-[14px] leading-none text-faint hover:bg-surface hover:text-ink"
           :class="store.voice.total > 0 ? '' : 'ml-auto'"
           title="折叠成小图标（仍可拖动）"
           @pointerdown.stop
@@ -565,13 +565,13 @@ watch(voiceError, (msg) => {
             本根 <b class="text-ink">{{ barAudios }}</b
             >/{{ maxAudios }}
           </span>
-          <span class="tnum text-[10px] text-faint">共 {{ totalAudios }} 条</span>
-          <span v-if="barTime" class="tnum ml-auto text-[10px] text-faint">{{ barTime }}</span>
+          <span class="tnum text-[11px] text-faint">共 {{ totalAudios }} 条</span>
+          <span v-if="barTime" class="tnum ml-auto text-[11px] text-faint">{{ barTime }}</span>
         </div>
 
         <div class="mt-1.5 flex items-center gap-1">
           <select
-            class="min-w-0 flex-1 rounded border border-line bg-elev px-1 py-0.5 text-[11px] text-ink"
+            class="min-w-0 flex-1 rounded border border-line bg-elev px-1 py-0.5 text-[12px] text-ink"
             :value="deviceId"
             title="选择录音用的麦克风（只列当前系统里能用的输入设备）"
             @change="chooseMic"
@@ -581,7 +581,7 @@ watch(voiceError, (msg) => {
           </select>
           <button
             type="button"
-            class="shrink-0 rounded border border-line px-1 py-0.5 text-[11px] hover:border-accent hover:text-accent"
+            class="shrink-0 rounded border border-line px-1 py-0.5 text-[12px] hover:border-accent hover:text-accent"
             title="重新读一遍可用麦克风（插拔设备后点这里）"
             @click="refreshMics(true)"
           >
@@ -617,11 +617,11 @@ watch(voiceError, (msg) => {
 
         <div v-if="clips.length" class="mt-1.5">
           <div class="flex items-center gap-1">
-            <span class="text-[10px] text-faint">本根的 {{ clips.length }} 条</span>
+            <span class="text-[11px] text-faint">本根的 {{ clips.length }} 条</span>
             <button
               v-if="store.canVoice"
               type="button"
-              class="ml-auto rounded px-1 text-[10px]"
+              class="ml-auto rounded px-1 text-[11px]"
               :class="
                 armedClear
                   ? 'bg-red-600 text-white'
@@ -665,7 +665,7 @@ watch(voiceError, (msg) => {
         <div v-if="store.voiceElsewhere.length" class="mt-1.5 border-t border-line pt-1">
           <button
             type="button"
-            class="w-full text-left text-[10px] text-faint hover:text-accent"
+            class="w-full text-left text-[11px] text-faint hover:text-accent"
             @click="showOthers = !showOthers"
           >
             {{ showOthers ? '▾' : '▸' }} 其他 K 线还有 {{ store.voiceElsewhere.length }} 条（点开听）
@@ -693,7 +693,7 @@ watch(voiceError, (msg) => {
           </div>
         </div>
 
-        <div class="mt-1 text-[10px] text-faint">
+        <div class="mt-1 text-[11px] text-faint">
           语音挂在 K 线上，不录制也在；每根最多 {{ maxAudios }} 条
         </div>
       </div>
@@ -708,7 +708,7 @@ watch(voiceError, (msg) => {
       :title="`语音讲解 · 本根 ${barAudios}/${maxAudios} · 单击展开，按住可拖到别处`"
       @pointerdown="beginDrag"
     >
-      <span class="text-[13px] leading-none">🎙</span>
+      <span class="text-[14px] leading-none">🎙</span>
       <span class="tnum mt-1 text-[9px] leading-none text-dim">{{ barAudios }}/{{ maxAudios }}</span>
     </button>
   </div>

@@ -85,12 +85,12 @@ function statusOf(inst: { operator: string; bot: boolean; botStrategy?: string }
   <div class="relative">
     <button
       type="button"
-      class="flex items-center gap-2 rounded border border-line bg-panel px-2 py-1 text-[12px] text-ink hover:border-accent"
+      class="flex items-center gap-2 rounded border border-line bg-panel px-2 py-1 text-[13px] text-ink hover:border-accent"
       :class="open ? 'border-accent' : ''"
       @click="open = !open"
     >
       <span>标的与实例</span>
-      <span class="rounded bg-accent-soft px-1 text-[11px] text-accent">{{ store.instances.length }}</span>
+      <span class="rounded bg-accent-soft px-1 text-[12px] text-accent">{{ store.instances.length }}</span>
       <span v-if="store.instance" class="max-w-[9rem] truncate text-dim">{{ store.instance.symbol }}</span>
       <span class="text-faint">{{ open ? '▲' : '▼' }}</span>
     </button>
@@ -103,35 +103,35 @@ function statusOf(inst: { operator: string; bot: boolean; botStrategy?: string }
       class="absolute right-0 z-40 mt-1 w-[24rem] rounded border border-line bg-panel p-3 text-ink shadow-2xl"
     >
       <div class="space-y-2">
-        <label class="block text-[12px] text-dim">标的（来自 data/ 目录）</label>
+        <label class="block text-[13px] text-dim">标的（来自 data/ 目录）</label>
         <select
           v-model="symbol"
-          class="w-full rounded border border-line bg-surface px-2 py-1 text-[13px] text-ink"
+          class="w-full rounded border border-line bg-surface px-2 py-1 text-[14px] text-ink"
         >
           <option v-if="store.symbols.length === 0" value="">（数据目录里还没有标的）</option>
           <option v-for="s in store.symbols" :key="s.symbol" :value="s.symbol">
             {{ s.symbol }} · {{ s.days }} 天
           </option>
         </select>
-        <div v-if="symbolInfo" class="text-[11px] text-faint">
+        <div v-if="symbolInfo" class="text-[12px] text-faint">
           {{ symbolInfo.firstDate }} ~ {{ symbolInfo.lastDate }} · 跳动
           {{ symbolInfo.tick }} · 目录 {{ symbolInfo.folder }}
         </div>
 
-        <label class="block text-[12px] text-dim">时间点（留空 = 随机）</label>
+        <label class="block text-[13px] text-dim">时间点（留空 = 随机）</label>
         <input
           v-model="timeText"
           type="text"
           placeholder="2026-10-16 12:00"
-          class="w-full rounded border border-line bg-surface px-2 py-1 text-[13px] text-ink tnum placeholder:text-faint"
+          class="w-full rounded border border-line bg-surface px-2 py-1 text-[14px] text-ink tnum placeholder:text-faint"
         />
-        <div class="text-[11px] text-faint">
+        <div class="text-[12px] text-faint">
           加载这个时间点及之前的 400 根 K 线，之后的行情逐根揭示。
         </div>
 
         <button
           type="button"
-          class="w-full rounded bg-accent px-2 py-1.5 text-[13px] font-medium text-white hover:opacity-90 disabled:opacity-50"
+          class="w-full rounded bg-accent px-2 py-1.5 text-[14px] font-medium text-white hover:opacity-90 disabled:opacity-50"
           :disabled="busy || store.symbols.length === 0 || store.status !== 'open'"
           @click="create"
         >
@@ -141,21 +141,21 @@ function statusOf(inst: { operator: string; bot: boolean; botStrategy?: string }
 
       <div
         v-if="pb.active"
-        class="mt-2 rounded border border-amber-400 bg-amber-500/10 px-2 py-1 text-[11px] text-amber-700 dark:text-amber-300"
+        class="mt-2 rounded border border-amber-400 bg-amber-500/10 px-2 py-1 text-[12px] text-amber-700 dark:text-amber-300"
       >
         正在回放录像（只读）。新建或进入实例会先退出回放。
       </div>
 
       <div class="mt-3 flex items-center justify-between border-t border-line pt-2">
-        <span class="text-[12px] text-dim">实例 {{ store.instances.length }} 个</span>
+        <span class="text-[13px] text-dim">实例 {{ store.instances.length }} 个</span>
         <div class="flex items-center gap-2">
-          <button type="button" class="text-[12px] text-accent hover:underline" @click="store.refresh()">
+          <button type="button" class="text-[13px] text-accent hover:underline" @click="store.refresh()">
             刷新
           </button>
           <button
             v-if="store.instance"
             type="button"
-            class="text-[12px] text-dim hover:text-ink"
+            class="text-[13px] text-dim hover:text-ink"
             @click="store.leaveInstance()"
           >
             离开当前
@@ -164,20 +164,20 @@ function statusOf(inst: { operator: string; bot: boolean; botStrategy?: string }
       </div>
 
       <div class="mt-1 max-h-[46vh] overflow-auto">
-        <div v-if="store.instances.length === 0" class="py-2 text-[12px] text-faint">
+        <div v-if="store.instances.length === 0" class="py-2 text-[13px] text-faint">
           还没有实例。选个标的、点「新建实例」开始复盘。
         </div>
         <div
           v-for="inst in store.instances"
           :key="inst.id"
-          class="border-t border-line/70 py-1.5 text-[12px] first:border-t-0"
+          class="border-t border-line/70 py-1.5 text-[13px] first:border-t-0"
         >
           <div class="flex items-center gap-2">
             <span class="truncate font-medium">{{ inst.symbol }}</span>
-            <span class="ml-auto shrink-0 text-[11px] text-faint">{{ inst.id }}</span>
+            <span class="ml-auto shrink-0 text-[12px] text-faint">{{ inst.id }}</span>
           </div>
-          <div class="tnum mt-0.5 text-[11px] text-dim">{{ inst.anchor }}</div>
-          <div class="mt-0.5 flex flex-wrap items-center gap-x-2 text-[11px] text-faint">
+          <div class="tnum mt-0.5 text-[12px] text-dim">{{ inst.anchor }}</div>
+          <div class="mt-0.5 flex flex-wrap items-center gap-x-2 text-[12px] text-faint">
             <span>第 {{ inst.cursor + 1 }} 根</span>
             <span>· {{ inst.members }} 人</span>
             <span>· {{ statusOf(inst) }}</span>
@@ -193,15 +193,15 @@ function statusOf(inst: { operator: string; bot: boolean; botStrategy?: string }
             <button
               v-if="store.instance?.id !== inst.id"
               type="button"
-              class="text-[11px] text-accent hover:underline"
+              class="text-[12px] text-accent hover:underline"
               @click="enter(inst.id)"
             >
               进入
             </button>
-            <span v-else class="text-[11px] text-emerald-600 dark:text-emerald-400">当前</span>
+            <span v-else class="text-[12px] text-emerald-600 dark:text-emerald-400">当前</span>
             <button
               type="button"
-              class="ml-auto text-[11px] text-faint hover:text-red-500"
+              class="ml-auto text-[12px] text-faint hover:text-red-500"
               title="只有创建者或当前操作者能删"
               @click="remove(inst.id)"
             >

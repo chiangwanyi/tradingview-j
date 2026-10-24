@@ -155,32 +155,32 @@ onMounted(() => {
 })
 
 const btn =
-  'rounded border border-line px-2 py-1 text-[12px] text-dim transition hover:border-accent hover:text-accent'
+  'rounded border border-line px-2 py-1 text-[13px] text-dim transition hover:border-accent hover:text-accent'
 const field =
-  'rounded border border-line bg-elev px-1.5 py-1 text-[12px] text-ink outline-none focus:border-accent'
-const th = 'whitespace-nowrap px-2 py-1.5 text-left font-medium text-faint'
-const td = 'whitespace-nowrap px-2 py-1.5'
+  'rounded border border-line bg-elev px-1.5 py-1 text-[13px] text-ink outline-none focus:border-accent'
+const th = 'whitespace-nowrap px-2.5 py-2 text-left font-medium text-faint'
+const td = 'whitespace-nowrap px-2.5 py-2'
 </script>
 
 <template>
   <div class="min-h-screen bg-surface text-ink">
     <!-- ---------------- 顶栏 ---------------- -->
     <header
-      class="sticky top-0 z-20 flex h-12 items-center gap-3 border-b border-line bg-panel px-4"
+      class="sticky top-0 z-20 flex min-h-12 items-center gap-3 border-b border-line bg-panel px-4 py-1.5"
     >
       <RouterLink :to="{ name: 'replay' }" :class="[btn, 'shrink-0']" title="回到复盘画布">
         ← 复盘
       </RouterLink>
-      <h1 class="text-[15px] font-semibold tracking-wide">交易记录</h1>
-      <span class="text-[11px] text-faint">v{{ store.me?.version ?? '' }}</span>
-      <span class="flex items-center gap-1.5 text-[12px] text-dim">
+      <h1 class="whitespace-nowrap text-[15px] font-semibold tracking-wide">交易记录</h1>
+      <span class="text-[12px] text-faint">v{{ store.me?.version ?? '' }}</span>
+      <span class="flex whitespace-nowrap items-center gap-1.5 text-[13px] text-dim">
         <span class="h-1.5 w-1.5 rounded-full" :class="statusColor" />
         {{ statusText }}
       </span>
 
-      <div class="ml-auto flex min-w-0 items-center gap-2">
+      <div class="ml-auto flex min-w-0 shrink-0 items-center gap-2">
         <span
-          class="hidden max-w-[22rem] truncate text-[11px] text-faint lg:inline"
+          class="hidden max-w-[22rem] truncate text-[12px] text-faint lg:inline"
           :title="store.recordingDir"
         >
           记录目录 {{ store.recordingDir || '（未配置）' }}
@@ -204,7 +204,7 @@ const td = 'whitespace-nowrap px-2 py-1.5'
       <section
         class="flex flex-wrap items-center gap-2 rounded-lg border border-line bg-panel px-3 py-2"
       >
-        <span class="text-[11px] text-faint">筛选</span>
+        <span class="text-[12px] text-faint">筛选</span>
         <select v-model="filter.symbol" :class="field" title="按标的筛选">
           <option value="">全部标的</option>
           <option v-for="s in symbols" :key="s.symbol" :value="s.symbol">
@@ -221,11 +221,11 @@ const td = 'whitespace-nowrap px-2 py-1.5'
           <option value="closed">已平仓</option>
           <option value="open">持仓中</option>
         </select>
-        <label class="flex items-center gap-1 text-[11px] text-dim">
+        <label class="flex items-center gap-1 text-[12px] text-dim">
           从
           <input v-model="filter.from" type="date" :class="field" title="按交易时间（入场）筛选" />
         </label>
-        <label class="flex items-center gap-1 text-[11px] text-dim">
+        <label class="flex items-center gap-1 text-[12px] text-dim">
           到
           <input v-model="filter.to" type="date" :class="field" title="按交易时间（入场）筛选" />
         </label>
@@ -238,12 +238,12 @@ const td = 'whitespace-nowrap px-2 py-1.5'
         <button
           v-if="hasFilter"
           type="button"
-          class="text-[11px] text-accent hover:underline"
+          class="text-[12px] text-accent hover:underline"
           @click="resetFilter"
         >
           清除筛选
         </button>
-        <span class="ml-auto tnum text-[11px] text-faint">
+        <span class="ml-auto tnum text-[12px] text-faint">
           {{ filtered.length }} / {{ all.length }} 笔 · {{ sizeText(totalSize) }}
         </span>
       </section>
@@ -251,7 +251,7 @@ const td = 'whitespace-nowrap px-2 py-1.5'
       <!-- ---------------- 一笔记录都没有：讲清楚这些记录是怎么来的 ---------------- -->
       <section
         v-if="all.length === 0"
-        class="rounded-lg border border-line bg-panel px-5 py-8 text-[13px] leading-7 text-dim"
+        class="rounded-lg border border-line bg-panel px-5 py-8 text-[14px] leading-7 text-dim"
       >
         <h2 class="mb-1 text-[15px] font-semibold text-ink">还没有交易记录</h2>
         <p>
@@ -259,13 +259,13 @@ const td = 'whitespace-nowrap px-2 py-1.5'
           —— 不需要点任何开关，也不会有「正在录制」的提示。记下的是这一笔从进场到出场的
           全部操作（【下一根】、画图、挂单、语音），回放时一格一格演给你看。
         </p>
-        <p class="mt-2 text-[12px] text-faint">
+        <p class="mt-2 text-[13px] text-faint">
           记录落在 <span class="tnum">{{ store.recordingDir || '（未配置记录目录）' }}</span
           >； 做几笔模拟交易再回来，这一页会自动出现统计与图表。
         </p>
         <RouterLink
           :to="{ name: 'replay' }"
-          class="mt-4 inline-block text-[13px] text-accent hover:underline"
+          class="mt-4 inline-block text-[14px] text-accent hover:underline"
         >
           ← 去复盘做一笔
         </RouterLink>
@@ -275,65 +275,65 @@ const td = 'whitespace-nowrap px-2 py-1.5'
         <!-- ---------------- KPI ---------------- -->
         <section class="grid grid-cols-2 gap-2 md:grid-cols-4">
           <div class="rounded-lg border border-line bg-panel px-3 py-2">
-            <div class="text-[11px] text-faint">交易笔数</div>
+            <div class="text-[12px] text-faint">交易笔数</div>
             <div class="tnum mt-0.5 text-[20px] leading-6 font-semibold text-ink">
               {{ agg.count }}
             </div>
-            <div class="text-[10px] text-faint">
+            <div class="text-[11px] text-faint">
               {{ agg.closed }} 已平仓 · {{ agg.open }} 持仓中
             </div>
           </div>
           <div class="rounded-lg border border-line bg-panel px-3 py-2">
-            <div class="text-[11px] text-faint">累计盈亏</div>
+            <div class="text-[12px] text-faint">累计盈亏</div>
             <div
               class="tnum mt-0.5 text-[20px] leading-6 font-semibold"
               :class="tone(agg.totalPnl)"
             >
               {{ moneyText(agg.totalPnl) }}
             </div>
-            <div class="tnum text-[10px] text-faint">期望 {{ pnlText(agg.avgPnl) }} / 笔</div>
+            <div class="tnum text-[11px] text-faint">期望 {{ pnlText(agg.avgPnl) }} / 笔</div>
           </div>
           <div class="rounded-lg border border-line bg-panel px-3 py-2">
-            <div class="text-[11px] text-faint">胜率</div>
+            <div class="text-[12px] text-faint">胜率</div>
             <div class="tnum mt-0.5 text-[20px] leading-6 font-semibold text-ink">
               {{ agg.closed ? pctText(agg.winRate) : '—' }}
             </div>
-            <div class="tnum text-[10px] text-faint">
+            <div class="tnum text-[11px] text-faint">
               {{ agg.wins }} 胜 / {{ agg.losses }} 负 / {{ agg.flats }} 平
             </div>
           </div>
           <div class="rounded-lg border border-line bg-panel px-3 py-2">
-            <div class="text-[11px] text-faint">盈亏比</div>
+            <div class="text-[12px] text-faint">盈亏比</div>
             <div class="tnum mt-0.5 text-[20px] leading-6 font-semibold text-ink">
               {{ Number.isFinite(agg.profitFactor) ? agg.profitFactor.toFixed(2) : '∞' }}
             </div>
-            <div class="tnum text-[10px] text-faint">
+            <div class="tnum text-[11px] text-faint">
               {{ moneyText(agg.grossWin) }} / {{ moneyText(agg.grossLoss) }}
             </div>
           </div>
           <div class="rounded-lg border border-line bg-panel px-3 py-2">
-            <div class="text-[11px] text-faint">最大回撤</div>
+            <div class="text-[12px] text-faint">最大回撤</div>
             <div
               class="tnum mt-0.5 text-[20px] leading-6 font-semibold text-emerald-600 dark:text-emerald-400"
             >
               {{ moneyText(agg.maxDrawdown) }}
             </div>
-            <div class="tnum text-[10px] text-faint">
+            <div class="tnum text-[11px] text-faint">
               <template v-if="agg.ddFrom > 0">第 {{ agg.ddFrom }} → {{ agg.ddTo }} 笔</template>
               <template v-else>没有回撤</template>
             </div>
           </div>
           <div class="rounded-lg border border-line bg-panel px-3 py-2">
-            <div class="text-[11px] text-faint">平均持仓</div>
+            <div class="text-[12px] text-faint">平均持仓</div>
             <div class="tnum mt-0.5 text-[20px] leading-6 font-semibold text-ink">
-              {{ agg.avgBars }} <span class="text-[11px] font-normal text-faint">根</span>
+              {{ agg.avgBars }} <span class="text-[12px] font-normal text-faint">根</span>
             </div>
-            <div class="tnum text-[10px] text-faint">
+            <div class="tnum text-[11px] text-faint">
               共 {{ agg.totalBars }} 根 · {{ agg.totalFills }} 次成交
             </div>
           </div>
           <div class="rounded-lg border border-line bg-panel px-3 py-2">
-            <div class="text-[11px] text-faint">单笔最佳 / 最差</div>
+            <div class="text-[12px] text-faint">单笔最佳 / 最差</div>
             <div class="tnum mt-0.5 text-[16px] leading-6 font-semibold">
               <span :class="tone(agg.best?.rec.stats.realizedPnl ?? 0)">
                 {{ agg.best ? pnlText(agg.best.rec.stats.realizedPnl) : '—' }}
@@ -343,19 +343,19 @@ const td = 'whitespace-nowrap px-2 py-1.5'
                 {{ agg.worst ? pnlText(agg.worst.rec.stats.realizedPnl) : '—' }}
               </span>
             </div>
-            <div class="truncate text-[10px] text-faint">
+            <div class="truncate text-[11px] text-faint">
               {{ agg.best?.time ?? ''
               }}<template v-if="agg.worst"> · {{ agg.worst.time }}</template>
             </div>
           </div>
           <div class="rounded-lg border border-line bg-panel px-3 py-2">
-            <div class="text-[11px] text-faint">连胜 / 连亏</div>
+            <div class="text-[12px] text-faint">连胜 / 连亏</div>
             <div class="tnum mt-0.5 text-[20px] leading-6 font-semibold">
               <span class="text-red-600 dark:text-red-400">{{ agg.maxWinStreak }}</span>
               <span class="mx-1 text-faint">/</span>
               <span class="text-emerald-600 dark:text-emerald-400">{{ agg.maxLossStreak }}</span>
             </div>
-            <div class="text-[10px] text-faint">最长连续盈利 / 亏损笔数</div>
+            <div class="text-[11px] text-faint">最长连续盈利 / 亏损笔数</div>
           </div>
         </section>
 
@@ -365,7 +365,7 @@ const td = 'whitespace-nowrap px-2 py-1.5'
         <!-- 筛选之后一笔都不剩：不要把 KPI 的 0 当成「没有交易」 -->
         <section
           v-else
-          class="rounded-lg border border-line bg-panel px-4 py-10 text-center text-[13px] text-dim"
+          class="rounded-lg border border-line bg-panel px-4 py-10 text-center text-[14px] text-dim"
         >
           没有符合筛选条件的记录。
           <button type="button" class="text-accent hover:underline" @click="resetFilter">
@@ -376,13 +376,13 @@ const td = 'whitespace-nowrap px-2 py-1.5'
         <!-- ---------------- 明细 ---------------- -->
         <section class="rounded-lg border border-line bg-panel">
           <header class="flex items-center gap-2 border-b border-line px-3 py-2">
-            <h2 class="text-[12px] font-medium text-ink">交易明细</h2>
-            <span class="text-[10px] text-faint">
+            <h2 class="text-[13px] font-medium text-ink">交易明细</h2>
+            <span class="text-[11px] text-faint">
               共 {{ agg.totalSteps }} 步操作 · 点【回放】回到画布逐格看这一笔
             </span>
             <span
               v-if="agg.bySymbol.length > 1"
-              class="ml-auto flex items-center gap-2 text-[10px] text-faint"
+              class="ml-auto flex items-center gap-2 text-[11px] text-faint"
             >
               <span v-for="s in agg.bySymbol" :key="s.symbol" class="tnum">
                 {{ s.symbol }}
@@ -393,7 +393,7 @@ const td = 'whitespace-nowrap px-2 py-1.5'
           </header>
 
           <div class="overflow-x-auto">
-            <table class="w-full border-collapse text-[11px]">
+            <table class="w-full border-collapse text-[13px]">
               <thead class="bg-elev/60">
                 <tr class="border-b border-line">
                   <th :class="th">
@@ -429,7 +429,7 @@ const td = 'whitespace-nowrap px-2 py-1.5'
                 >
                   <td :class="[td, 'tnum']">
                     <div class="text-ink">{{ row.time }}</div>
-                    <div class="text-[10px] text-faint">
+                    <div class="text-[11px] text-faint">
                       → {{ exitText(row.rec) }} · 记于 {{ clock(row.rec.createdAt) }}
                     </div>
                   </td>
@@ -444,7 +444,7 @@ const td = 'whitespace-nowrap px-2 py-1.5'
                     >
                       {{ dirText(row.rec) }}
                     </span>
-                    <span class="tnum ml-1 text-[10px] text-faint"
+                    <span class="tnum ml-1 text-[11px] text-faint"
                       >峰值 {{ row.rec.stats.maxQuantity }}</span
                     >
                   </td>
@@ -464,19 +464,19 @@ const td = 'whitespace-nowrap px-2 py-1.5'
                   </td>
                   <td :class="[td, 'tnum text-right text-dim']">
                     {{ row.rec.stats.barsHeld }} 根
-                    <span class="text-[10px] text-faint">/ {{ row.rec.stepCount }} 步</span>
+                    <span class="text-[11px] text-faint">/ {{ row.rec.stepCount }} 步</span>
                   </td>
                   <td :class="[td, 'tnum text-right text-faint']">{{ row.rec.stats.fills }}</td>
                   <td :class="td">
                     <span
                       v-if="row.rec.stats.closed"
-                      class="rounded bg-elev px-1 text-[10px] text-dim"
+                      class="rounded bg-elev px-1 text-[11px] text-dim"
                     >
                       已平仓
                     </span>
                     <span
                       v-else
-                      class="rounded bg-sky-500/15 px-1 text-[10px] text-sky-600 dark:text-sky-300"
+                      class="rounded bg-sky-500/15 px-1 text-[11px] text-sky-600 dark:text-sky-300"
                       title="这一笔还没平仓：记录停在最后一次操作上（可能实例被删、程序退出，或还在持仓中）"
                     >
                       持仓中
@@ -486,7 +486,7 @@ const td = 'whitespace-nowrap px-2 py-1.5'
                     <div class="flex items-center justify-end gap-1">
                       <button
                         type="button"
-                        class="rounded border border-line px-1.5 py-0.5 text-[11px] text-dim hover:border-accent hover:text-accent"
+                        class="rounded border border-line px-1.5 py-0.5 text-[12px] text-dim hover:border-accent hover:text-accent"
                         title="回到复盘画布，逐格回放这一笔"
                         @click="replay(row.rec)"
                       >
@@ -494,7 +494,7 @@ const td = 'whitespace-nowrap px-2 py-1.5'
                       </button>
                       <button
                         type="button"
-                        class="rounded px-1.5 py-0.5 text-[11px]"
+                        class="rounded px-1.5 py-0.5 text-[12px]"
                         :class="
                           armed === row.rec.id
                             ? 'bg-red-600 text-white'
@@ -520,9 +520,9 @@ const td = 'whitespace-nowrap px-2 py-1.5'
           口径只该有一份解释 —— 后端算一笔（trade.go），这里只解释怎么汇总。
         -->
         <details
-          class="rounded-lg border border-line bg-panel px-3 py-2 text-[11px] leading-5 text-dim"
+          class="rounded-lg border border-line bg-panel px-3 py-2 text-[12px] leading-5 text-dim"
         >
-          <summary class="cursor-pointer select-none text-[12px] font-medium text-ink">
+          <summary class="cursor-pointer select-none text-[13px] font-medium text-ink">
             统计口径
           </summary>
           <ul class="mt-2 grid list-disc gap-x-6 gap-y-1 pl-4 md:grid-cols-2">

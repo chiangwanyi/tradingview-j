@@ -57,7 +57,7 @@ function pnlClass(v: number): string {
 <template>
   <div class="flex h-full min-h-0 divide-x divide-line">
     <!-- 持仓 + 挂单 -->
-    <div class="flex w-[17.5rem] shrink-0 flex-col gap-1 overflow-auto p-2 text-[12px]">
+    <div class="flex w-[19.5rem] shrink-0 flex-col gap-1.5 overflow-auto p-2.5 text-[13px]">
       <div class="flex justify-between">
         <span class="text-dim">持仓</span>
         <span class="tnum" :class="pnlClass(position.side === 'flat' ? 0 : position.side === 'long' ? 1 : -1)">
@@ -77,13 +77,13 @@ function pnlClass(v: number): string {
         </span>
       </div>
 
-      <div class="mt-1 flex items-center justify-between border-t border-line pt-1 text-[11px] text-faint">
+      <div class="mt-1 flex items-center justify-between border-t border-line pt-1 text-[12px] text-faint">
         <span>挂单中 {{ openOrders.length }}</span>
         <span>最近 {{ historyOrders.length }}</span>
       </div>
 
-      <div v-if="openOrders.length === 0" class="text-[11px] text-faint">没有挂单</div>
-      <div v-for="o in openOrders" :key="o.id" class="flex items-center gap-1.5 text-[11px]">
+      <div v-if="openOrders.length === 0" class="text-[12px] text-faint">没有挂单</div>
+      <div v-for="o in openOrders" :key="o.id" class="flex items-center gap-1.5 text-[12px]">
         <span :class="o.side === 'buy' ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'">
           {{ sideLabel(o.side) }}{{ orderLabel(o.kind) }}
         </span>
@@ -99,7 +99,7 @@ function pnlClass(v: number): string {
         </button>
       </div>
 
-      <div v-for="o in historyOrders" :key="o.id" class="flex items-center gap-1.5 text-[11px] text-faint">
+      <div v-for="o in historyOrders" :key="o.id" class="flex items-center gap-1.5 text-[12px] text-faint">
         <span>{{ sideLabel(o.side) }}{{ orderLabel(o.kind) }}</span>
         <span class="tnum">{{ o.price.toFixed(store.priceDecimals) }}</span>
         <span class="ml-auto">{{ o.status === 'filled' ? '已成交' : '已撤销' }}</span>

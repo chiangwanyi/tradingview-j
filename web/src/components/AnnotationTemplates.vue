@@ -111,23 +111,23 @@ const dashes: { key: DashStyle; label: string }[] = [
   { key: 'dashed', label: '虚线' },
 ]
 
-const btn = 'rounded border border-line px-2 py-1 text-[12px] transition disabled:cursor-not-allowed disabled:opacity-40'
+const btn = 'rounded border border-line px-2 py-1 text-[13px] transition disabled:cursor-not-allowed disabled:opacity-40'
 const btnIdle = 'bg-panel text-dim hover:border-accent hover:text-accent'
-const field = 'rounded border border-line bg-surface px-1.5 py-1 text-[12px] text-ink'
+const field = 'rounded border border-line bg-surface px-1.5 py-1 text-[13px] text-ink'
 
 const inputClass = `${field} w-full`
 </script>
 
 <template>
   <div class="flex flex-wrap items-center gap-1.5">
-    <span class="text-[11px] text-faint">模板</span>
+    <span class="text-[12px] text-faint">模板</span>
 
     <button
       v-for="t in list"
       :key="t.id"
       type="button"
       :title="describe(t)"
-      class="flex items-center gap-1.5 rounded border px-1.5 py-0.5 text-[11px] transition"
+      class="flex items-center gap-1.5 rounded border px-1.5 py-0.5 text-[12px] transition"
       :class="t.id === activeId ? 'border-accent bg-accent-soft text-accent' : 'border-line bg-panel text-dim hover:border-accent'"
       @click="store.selectTemplate(props.kind, t.id)"
     >
@@ -171,7 +171,7 @@ const inputClass = `${field} w-full`
       {{ t.name }}
     </button>
 
-    <span v-if="!list.length" class="text-[11px] text-faint">没有模板，用出厂样式</span>
+    <span v-if="!list.length" class="text-[12px] text-faint">没有模板，用出厂样式</span>
 
     <button type="button" :class="[btn, btnIdle, 'px-1.5']" title="按当前样式另建一条模板" @click="openNew">
       ＋
@@ -198,10 +198,10 @@ const inputClass = `${field} w-full`
       class="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
       @pointerdown.self="close"
     >
-      <div class="w-[380px] rounded border border-line bg-panel p-3 text-[12px] text-ink shadow-2xl">
+      <div class="w-[380px] rounded border border-line bg-panel p-3 text-[13px] text-ink shadow-2xl">
         <div class="mb-2 flex items-baseline justify-between">
-          <b class="text-[13px]">{{ editing.id ? '修改模板' : '新建模板' }}</b>
-          <span class="text-[11px] text-faint">{{ TOOL_LABEL[props.kind] }}</span>
+          <b class="text-[14px]">{{ editing.id ? '修改模板' : '新建模板' }}</b>
+          <span class="text-[12px] text-faint">{{ TOOL_LABEL[props.kind] }}</span>
         </div>
 
         <label class="mb-2 flex items-center gap-2">
@@ -218,7 +218,7 @@ const inputClass = `${field} w-full`
             :value="editing.style.color"
             @input="editing.style.color = ($event.target as HTMLInputElement).value"
           />
-          <span class="tnum text-[11px] text-faint">{{ editing.style.color }}</span>
+          <span class="tnum text-[12px] text-faint">{{ editing.style.color }}</span>
         </div>
 
         <div class="mb-2 flex items-center gap-2">
@@ -227,7 +227,7 @@ const inputClass = `${field} w-full`
             v-for="w in widths"
             :key="w"
             type="button"
-            class="rounded border px-1.5 py-0.5 text-[11px] tnum"
+            class="rounded border px-1.5 py-0.5 text-[12px] tnum"
             :class="editing.style.width === w ? 'border-accent text-accent' : 'border-line text-dim hover:border-accent'"
             @click="editing.style.width = w"
           >
@@ -241,7 +241,7 @@ const inputClass = `${field} w-full`
             v-for="d in dashes"
             :key="d.key"
             type="button"
-            class="rounded border px-2 py-0.5 text-[11px]"
+            class="rounded border px-2 py-0.5 text-[12px]"
             :class="editing.style.dash === d.key ? 'border-accent text-accent' : 'border-line text-dim hover:border-accent'"
             @click="editing.style.dash = d.key"
           >
@@ -259,7 +259,7 @@ const inputClass = `${field} w-full`
               :value="editing.style.fill"
               @input="editing.style.fill = ($event.target as HTMLInputElement).value"
             />
-            <span class="tnum text-[11px] text-faint">{{ editing.style.fill }}</span>
+            <span class="tnum text-[12px] text-faint">{{ editing.style.fill }}</span>
           </div>
           <label class="mb-2 flex items-center gap-2">
             <span class="w-12 shrink-0 text-dim">填充度</span>
@@ -271,7 +271,7 @@ const inputClass = `${field} w-full`
               step="0.02"
               class="flex-1"
             />
-            <span class="tnum w-8 text-right text-[11px] text-faint">
+            <span class="tnum w-8 text-right text-[12px] text-faint">
               {{ Math.round((editing.style.fillOpacity ?? 0.12) * 100) }}%
             </span>
           </label>
@@ -289,7 +289,7 @@ const inputClass = `${field} w-full`
               @input="setLevelColor(i, ($event.target as HTMLInputElement).value)"
             />
             <input
-              class="rounded border border-line bg-transparent px-1 py-0.5 font-mono text-[11px] text-ink"
+              class="rounded border border-line bg-transparent px-1 py-0.5 font-mono text-[12px] text-ink"
               :value="lv.color"
               maxlength="9"
               @input="setLevelColor(i, ($event.target as HTMLInputElement).value)"
@@ -316,7 +316,7 @@ const inputClass = `${field} w-full`
         <div class="flex items-center gap-2">
           <button
             type="button"
-            class="rounded bg-accent px-3 py-1 text-[12px] font-medium text-white hover:opacity-90"
+            class="rounded bg-accent px-3 py-1 text-[13px] font-medium text-white hover:opacity-90"
             @click="save(false)"
           >
             保存

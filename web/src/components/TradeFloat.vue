@@ -218,7 +218,7 @@ onBeforeUnmount(() => {
 })
 
 const inputClass =
-  'w-full rounded border border-line bg-surface px-1.5 py-1 text-[12px] text-ink tnum focus:border-accent focus:outline-none'
+  'w-full rounded border border-line bg-surface px-1.5 py-1 text-[13px] text-ink tnum focus:border-accent focus:outline-none'
 </script>
 
 <template>
@@ -239,11 +239,11 @@ const inputClass =
         title="按住这里拖动到顺手的位置"
         @pointerdown="beginDrag"
       >
-        <span class="text-[12px] font-semibold">下单</span>
-        <span class="tnum text-[11px] text-dim">现价 {{ priceText }}</span>
+        <span class="text-[13px] font-semibold">下单</span>
+        <span class="tnum text-[12px] text-dim">现价 {{ priceText }}</span>
         <button
           type="button"
-          class="ml-auto flex h-4 w-4 items-center justify-center rounded text-[13px] leading-none text-faint hover:bg-surface hover:text-ink"
+          class="ml-auto flex h-4 w-4 items-center justify-center rounded text-[14px] leading-none text-faint hover:bg-surface hover:text-ink"
           title="折叠成小图标（仍可拖动）"
           @pointerdown.stop
           @click.stop="setExpanded(false)"
@@ -266,7 +266,7 @@ const inputClass =
 
         <div class="grid grid-cols-2 gap-1.5">
           <label class="block">
-            <span class="text-[11px] text-faint">价格（跳动 {{ step }}）</span>
+            <span class="text-[12px] text-faint">价格（跳动 {{ step }}）</span>
             <input
               v-model.number="price"
               type="number"
@@ -276,7 +276,7 @@ const inputClass =
             />
           </label>
           <label class="block">
-            <span class="text-[11px] text-faint">数量（手）</span>
+            <span class="text-[12px] text-faint">数量（手）</span>
             <input
               v-model.number="store.orderQuantity"
               type="number"
@@ -291,14 +291,14 @@ const inputClass =
         <div class="flex items-center gap-2">
           <button
             type="button"
-            class="text-[11px] text-accent hover:underline"
+            class="text-[12px] text-accent hover:underline"
             @click="useCurrentPrice"
           >
             用现价
           </button>
           <button
             type="button"
-            class="ml-auto rounded bg-amber-600 px-3 py-1 text-[12px] font-medium text-white hover:bg-amber-500 disabled:cursor-not-allowed disabled:opacity-40"
+            class="ml-auto rounded bg-amber-600 px-3 py-1 text-[13px] font-medium text-white hover:bg-amber-500 disabled:cursor-not-allowed disabled:opacity-40"
             :disabled="!store.canOperate || !inst"
             @click="submit"
           >
@@ -314,7 +314,7 @@ const inputClass =
         <div class="grid grid-cols-2 gap-1.5">
           <button
             type="button"
-            class="rounded bg-emerald-600 px-2 py-1 text-[12px] font-medium whitespace-nowrap text-white transition hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-40"
+            class="rounded bg-emerald-600 px-2 py-1 text-[13px] font-medium whitespace-nowrap text-white transition hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-40"
             :disabled="!store.canOperate || !inst || !(currentPrice > 0)"
             :title="`市价买入 ${store.orderQuantity} 手：按现价 ${priceText} 立即成交，不使用上面填的价格`"
             @click="submitMarket('buy')"
@@ -323,7 +323,7 @@ const inputClass =
           </button>
           <button
             type="button"
-            class="rounded bg-red-600 px-2 py-1 text-[12px] font-medium whitespace-nowrap text-white transition hover:bg-red-500 disabled:cursor-not-allowed disabled:opacity-40"
+            class="rounded bg-red-600 px-2 py-1 text-[13px] font-medium whitespace-nowrap text-white transition hover:bg-red-500 disabled:cursor-not-allowed disabled:opacity-40"
             :disabled="!store.canOperate || !inst || !(currentPrice > 0)"
             :title="`市价卖出 ${store.orderQuantity} 手：按现价 ${priceText} 立即成交，不使用上面填的价格`"
             @click="submitMarket('sell')"
@@ -333,7 +333,7 @@ const inputClass =
         </div>
 
         <div
-          class="truncate text-[11px] leading-4 text-faint"
+          class="truncate text-[12px] leading-4 text-faint"
           title="限价买：最低价 ≤ 挂单价；限价卖：最高价 ≥ 挂单价；止损单相反。无资金/手续费/滑点。"
         >
           规则见 README「模拟交易：撮合规则与盈亏」· 不计手续费/滑点
@@ -349,7 +349,7 @@ const inputClass =
     <button
       v-else
       type="button"
-      class="flex cursor-move items-center justify-center rounded-full border border-line bg-panel text-[11px] font-semibold text-ink shadow-xl transition select-none hover:border-accent hover:text-accent"
+      class="flex cursor-move items-center justify-center rounded-full border border-line bg-panel text-[12px] font-semibold text-ink shadow-xl transition select-none hover:border-accent hover:text-accent"
       :style="{ width: `${ICON}px`, height: `${ICON}px` }"
       title="单击展开下单面板 · 按住可拖到别处"
       @pointerdown="beginDrag"

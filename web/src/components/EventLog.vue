@@ -155,19 +155,19 @@ function actionClass(action: string): string {
 
 <template>
   <div class="flex h-full flex-col">
-    <div class="flex items-center gap-2 px-2 py-1 text-[11px] text-faint">
+    <div class="flex items-center gap-2 px-2 py-1 text-[13px] text-faint">
       <span>服务端广播 · 共 {{ store.log.length }} 条</span>
       <span class="ml-auto">多用户按处理顺序广播</span>
     </div>
-    <div ref="box" class="min-h-0 flex-1 overflow-auto px-2 font-mono text-[11px] leading-5">
+    <div ref="box" class="min-h-0 flex-1 overflow-auto px-2 font-mono text-[13px] leading-6">
       <div v-if="rows.length === 0" class="text-faint">
         还没有操作。步进一根、画一个标注或挂一张单试试。
       </div>
       <div v-for="ev in rows" :key="ev.seq" class="flex gap-2">
-        <span class="w-7 shrink-0 text-right text-faint">{{ ev.seq }}</span>
-        <span class="w-14 shrink-0 text-faint">{{ clock(ev.at) }}</span>
-        <span class="w-16 shrink-0 truncate text-dim" :title="ev.by">{{ ev.by }}</span>
-        <span class="w-16 shrink-0" :class="actionClass(ev.action)">{{ actionLabel(ev.action) }}</span>
+        <span class="w-8 shrink-0 text-right text-faint">{{ ev.seq }}</span>
+        <span class="w-[4.5rem] shrink-0 text-faint">{{ clock(ev.at) }}</span>
+        <span class="w-20 shrink-0 truncate text-dim" :title="ev.by">{{ ev.by }}</span>
+        <span class="w-20 shrink-0" :class="actionClass(ev.action)">{{ actionLabel(ev.action) }}</span>
         <span class="min-w-0 flex-1 truncate text-dim" :title="detail(ev)">{{ detail(ev) }}</span>
       </div>
     </div>

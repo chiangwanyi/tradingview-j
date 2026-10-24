@@ -18,7 +18,7 @@ import type { EChartsCoreOption } from 'echarts/core'
  *     而不是让图表抛错。
  */
 
-const AXIS_FONT = 10
+const AXIS_FONT = 12
 
 /** 距形数值的紧凑写法：轴刻度上 12,345.67 会把整个图挤扁。 */
 function compact(n: number): string {
@@ -66,7 +66,7 @@ function tooltipBase(p: ChartPalette) {
     borderColor: p.line,
     borderWidth: 1,
     padding: [6, 9] as [number, number],
-    textStyle: { color: p.ink, fontSize: 11 },
+    textStyle: { color: p.ink, fontSize: 12 },
     extraCssText: 'box-shadow:0 6px 20px rgba(0,0,0,.18);border-radius:4px;',
   }
 }
@@ -100,7 +100,7 @@ export function equityOption(a: RecordAggregate, p: ChartPalette): EChartsCoreOp
   return {
     animationDuration: 420,
     grid: [
-      { left: 48, right: 16, top: 18, height: '52%' },
+      { left: 54, right: 16, top: 18, height: '52%' },
       { left: 48, right: 16, top: '70%', height: '18%' },
     ],
     tooltip: {
@@ -124,7 +124,7 @@ export function equityOption(a: RecordAggregate, p: ChartPalette): EChartsCoreOp
         data: x,
         gridIndex: 1,
         boundaryGap: false,
-        axisLabel: { color: p.faint, fontSize: 9, hideOverlap: true },
+        axisLabel: { color: p.faint, fontSize: 11, hideOverlap: true },
       }),
     ],
     yAxis: [
@@ -214,13 +214,13 @@ export function perTradeOption(a: RecordAggregate, p: ChartPalette): EChartsCore
 
   return {
     animationDuration: 420,
-    grid: { left: 48, right: 52, top: 26, bottom: 24 },
+    grid: { left: 54, right: 56, top: 28, bottom: 26 },
     legend: {
       top: 0,
       right: 0,
       itemWidth: 8,
       itemHeight: 8,
-      textStyle: { color: p.dim, fontSize: 10 },
+      textStyle: { color: p.dim, fontSize: 12 },
       data: ['每笔盈亏', '累计'],
     },
     tooltip: {
@@ -242,7 +242,7 @@ export function perTradeOption(a: RecordAggregate, p: ChartPalette): EChartsCore
     },
     xAxis: categoryAxis(p, {
       data: x,
-      axisLabel: { color: p.faint, fontSize: 9, hideOverlap: true },
+      axisLabel: { color: p.faint, fontSize: 11, hideOverlap: true },
     }),
     // 两根轴都不写轴名：图例已经说明哪根柱子、哪根线是什么了，轴名只会挤掉刻度
     yAxis: [valueAxis(p), valueAxis(p, { splitLine: { show: false } })],
@@ -266,7 +266,7 @@ export function perTradeOption(a: RecordAggregate, p: ChartPalette): EChartsCore
                 symbolSize: 5,
                 silent: true,
                 label: {
-                  fontSize: 9,
+                  fontSize: 11,
                   color: p.dim,
                   offset: [0, -9],
                   formatter: (v: { name?: string }) => v.name ?? '',
@@ -313,8 +313,8 @@ export function winRateOption(a: RecordAggregate, p: ChartPalette): EChartsCoreO
       subtext: a.count ? `${a.wins} 胜 / ${a.losses} 负 · 共 ${a.count} 笔` : '还没有记录',
       left: 'center',
       top: '38%',
-      textStyle: { color: signColor(p, a.totalPnl), fontSize: 22, fontWeight: 600 },
-      subtextStyle: { color: p.faint, fontSize: 10 },
+      textStyle: { color: signColor(p, a.totalPnl), fontSize: 24, fontWeight: 600 },
+      subtextStyle: { color: p.faint, fontSize: 11 },
     },
     tooltip: {
       ...tooltipBase(p),
@@ -326,7 +326,7 @@ export function winRateOption(a: RecordAggregate, p: ChartPalette): EChartsCoreO
       itemWidth: 8,
       itemHeight: 8,
       icon: 'circle',
-      textStyle: { color: p.dim, fontSize: 10 },
+      textStyle: { color: p.dim, fontSize: 12 },
     },
     series: [
       {
@@ -360,7 +360,7 @@ export function histogramOption(a: RecordAggregate, p: ChartPalette): EChartsCor
 
   return {
     animationDuration: 420,
-    grid: { left: 34, right: 12, top: 18, bottom: 40 },
+    grid: { left: 42, right: 12, top: 18, bottom: 44 },
     tooltip: {
       ...tooltipBase(p),
       formatter: (v: { dataIndex: number }) => {
@@ -376,8 +376,8 @@ export function histogramOption(a: RecordAggregate, p: ChartPalette): EChartsCor
       name: '盈亏区间',
       nameLocation: 'middle',
       nameGap: 24,
-      nameTextStyle: { color: p.faint, fontSize: 9 },
-      axisLabel: { color: p.faint, fontSize: 9, hideOverlap: true },
+      nameTextStyle: { color: p.faint, fontSize: 11 },
+      axisLabel: { color: p.faint, fontSize: 11, hideOverlap: true },
     }),
     yAxis: valueAxis(p, { minInterval: 1 }),
     series: [
@@ -386,7 +386,7 @@ export function histogramOption(a: RecordAggregate, p: ChartPalette): EChartsCor
         data,
         barMaxWidth: 26,
         barCategoryGap: '18%',
-        label: { show: true, position: 'top', color: p.dim, fontSize: 9 },
+        label: { show: true, position: 'top', color: p.dim, fontSize: 11 },
       },
     ],
   }
@@ -411,7 +411,7 @@ export function holdingOption(a: RecordAggregate, p: ChartPalette): EChartsCoreO
 
   return {
     animationDuration: 420,
-    grid: { left: 52, right: 18, top: 22, bottom: 34 },
+    grid: { left: 58, right: 18, top: 24, bottom: 38 },
     tooltip: {
       ...tooltipBase(p),
       formatter: (v: { data: { row: TradeRow } }) => {
@@ -429,11 +429,11 @@ export function holdingOption(a: RecordAggregate, p: ChartPalette): EChartsCoreO
       name: '持仓根数',
       nameLocation: 'middle',
       nameGap: 22,
-      nameTextStyle: { color: p.faint, fontSize: 9 },
+      nameTextStyle: { color: p.faint, fontSize: 11 },
       minInterval: 1,
       scale: true,
     }),
-    yAxis: valueAxis(p, { name: '盈亏', nameTextStyle: { color: p.faint, fontSize: 9 } }),
+    yAxis: valueAxis(p, { name: '盈亏', nameTextStyle: { color: p.faint, fontSize: 11 } }),
     series: [
       {
         type: 'scatter',
@@ -442,7 +442,7 @@ export function holdingOption(a: RecordAggregate, p: ChartPalette): EChartsCoreO
           symbol: 'none',
           silent: true,
           lineStyle: { color: p.line, type: 'dashed' },
-          label: { color: p.faint, fontSize: 9 },
+          label: { color: p.faint, fontSize: 11 },
           data: [
             { yAxis: 0, label: { show: false } },
             {
@@ -471,13 +471,13 @@ export function sideOption(a: RecordAggregate, p: ChartPalette): EChartsCoreOpti
   ]
   return {
     animationDuration: 420,
-    grid: { left: 48, right: 16, top: 26, bottom: 24 },
+    grid: { left: 54, right: 16, top: 28, bottom: 26 },
     legend: {
       top: 0,
       right: 0,
       itemWidth: 8,
       itemHeight: 8,
-      textStyle: { color: p.dim, fontSize: 10 },
+      textStyle: { color: p.dim, fontSize: 12 },
     },
     tooltip: {
       trigger: 'axis',
@@ -494,7 +494,7 @@ export function sideOption(a: RecordAggregate, p: ChartPalette): EChartsCoreOpti
     },
     xAxis: categoryAxis(p, {
       data: sides.map((x) => x.name),
-      axisLabel: { color: p.dim, fontSize: 11 },
+      axisLabel: { color: p.dim, fontSize: 13 },
     }),
     yAxis: valueAxis(p),
     series: [

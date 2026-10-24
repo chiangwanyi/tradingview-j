@@ -1778,7 +1778,7 @@ defineExpose({ requestDraw })
       v-for="o in axisOrders"
       :key="`cancel-${o.id}`"
       type="button"
-      class="absolute z-20 flex h-4 w-4 items-center justify-center rounded-[3px] text-[12px] leading-none ring-1 transition disabled:cursor-not-allowed disabled:opacity-30"
+      class="absolute z-20 flex h-4 w-4 items-center justify-center rounded-[3px] text-[13px] leading-none ring-1 transition disabled:cursor-not-allowed disabled:opacity-30"
       :class="
         o.side === 'buy'
           ? 'bg-panel text-emerald-700 ring-emerald-500/60 hover:bg-emerald-600 hover:text-white dark:text-emerald-300'
@@ -1818,7 +1818,7 @@ defineExpose({ requestDraw })
       以前贴在 bottom-1，正好压在时间标签上，一眼全是重影。
     -->
     <div
-      class="pointer-events-none absolute right-2 flex items-baseline gap-3 text-[12px] text-faint"
+      class="pointer-events-none absolute right-2 flex items-baseline gap-3 text-[13px] text-faint"
       :style="{ bottom: `${TIME_AXIS_HEIGHT + 4}px` }"
     >
       <span v-if="priceHint" class="tnum text-dim">{{ priceHint }}</span>
@@ -1826,7 +1826,7 @@ defineExpose({ requestDraw })
     </div>
     <div
       v-if="modifierLabel"
-      class="pointer-events-none absolute top-2 left-2 rounded bg-elev px-2 py-1 text-[12px] text-amber-600 ring-1 ring-line dark:text-amber-300"
+      class="pointer-events-none absolute top-2 left-2 rounded bg-elev px-2 py-1 text-[13px] text-amber-600 ring-1 ring-line dark:text-amber-300"
     >
       {{ modifierLabel }}
     </div>
@@ -1846,12 +1846,12 @@ defineExpose({ requestDraw })
     -->
     <div
       v-if="menu"
-      class="absolute z-40 overflow-hidden rounded border border-line bg-panel py-1 text-[12px] text-ink shadow-2xl"
+      class="absolute z-40 overflow-hidden rounded border border-line bg-panel py-1 text-[13px] text-ink shadow-2xl"
       :style="menuStyle"
       @pointerdown.stop
       @contextmenu.stop.prevent
     >
-      <div class="flex items-center justify-between gap-2 border-b border-line px-3 pb-1 text-[11px] text-faint">
+      <div class="flex items-center justify-between gap-2 border-b border-line px-3 pb-1 text-[12px] text-faint">
         <span>现价 <span class="tnum text-dim">{{ lastPriceText }}</span></span>
         <span>{{ menuSideText }}</span>
       </div>
@@ -1930,7 +1930,7 @@ defineExpose({ requestDraw })
 
     <div
       v-if="toast"
-      class="pointer-events-none absolute top-2 left-1/2 -translate-x-1/2 rounded bg-elev px-3 py-1 text-[12px] text-ink shadow-lg ring-1 ring-line"
+      class="pointer-events-none absolute top-2 left-1/2 -translate-x-1/2 rounded bg-elev px-3 py-1 text-[13px] text-ink shadow-lg ring-1 ring-line"
     >
       {{ toast }}
     </div>

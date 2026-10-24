@@ -68,12 +68,12 @@ const hasMoreHint = computed(() => {
   return `已加载 ${inst.bars.length + inst.hiddenBars} 根，数据目录里没有更晚的了`
 })
 
-const btn = 'rounded border border-line px-2 py-1 text-[12px] transition disabled:cursor-not-allowed disabled:opacity-40'
+const btn = 'rounded border border-line px-2 py-1 text-[13px] transition disabled:cursor-not-allowed disabled:opacity-40'
 const btnIdle = 'bg-panel text-dim hover:border-accent hover:text-accent'
 const btnActive = 'border-accent bg-accent-soft text-accent'
 
 /** 参数输入框：小一号、贴边，和按钮同一行不显胖 */
-const num = 'w-12 rounded border border-line bg-panel px-1 py-0.5 text-[11px] text-ink'
+const num = 'w-12 rounded border border-line bg-panel px-1 py-0.5 text-[12px] text-ink'
 
 /**
  * 指标参数用 `change` 而不是 `input`：输到一半的「0.」「1」不该立刻被夹成 0.01，
@@ -130,7 +130,7 @@ function onDojiSize(e: Event): void {
       @click="store.toggleVoicePanel()"
     >
       🎙 录音
-      <span class="tnum ml-1 text-[10px]">{{ store.voiceClips.length }}/{{ store.voiceMax }}</span>
+      <span class="tnum ml-1 text-[11px]">{{ store.voiceClips.length }}/{{ store.voiceMax }}</span>
     </button>
 
     <div class="h-4 w-px bg-line" />
@@ -161,7 +161,7 @@ function onDojiSize(e: Event): void {
         Doji X + ZigZag
       </button>
       <label
-        class="flex items-center gap-1 text-[11px] text-dim"
+        class="flex items-center gap-1 text-[12px] text-dim"
         title="Lag：EMA 周期，同时是高低点的回看窗口（Pine 的 lookback，2..50）"
       >
         Lag
@@ -176,7 +176,7 @@ function onDojiSize(e: Event): void {
         />
       </label>
       <label
-        class="flex items-center gap-1 text-[11px] text-dim"
+        class="flex items-center gap-1 text-[12px] text-dim"
         title="Doji Size：实体不超过振幅的这个比例就算十字星（Pine 的 dojiSize，0.01..1）"
       >
         Doji
@@ -196,7 +196,7 @@ function onDojiSize(e: Event): void {
 
     <button
       type="button"
-      class="rounded bg-emerald-600 px-3 py-1 text-[12px] font-medium text-white hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-40"
+      class="rounded bg-emerald-600 px-3 py-1 text-[13px] font-medium text-white hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-40"
       :disabled="!canEdit || !store.instance || (store.instance?.bars.length ?? 0) === 0"
       title="揭示下一根 K 线（会按这根的最高/最低价撮合挂单）"
       @click="store.step()"
@@ -225,7 +225,7 @@ function onDojiSize(e: Event): void {
     <!-- 机器人的启动入口单独一个组件：里面要选策略、调参数，塞进这一行太挤 -->
     <BotMenu />
 
-    <div class="ml-auto flex items-center gap-3 text-[11px] text-dim">
+    <div class="ml-auto flex items-center gap-3 text-[12px] text-dim">
       <span v-if="store.playbackActive" class="text-red-600 dark:text-red-400">回放模式（只读）</span>
       <span v-else-if="store.instance">
         操作权：<b :class="store.isOperator ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'">
