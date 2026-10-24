@@ -14,7 +14,7 @@ rem           'xxx' is not recognized as an internal or external command
 rem           Measured 2026-10-16: the old script had 237 non-ASCII bytes and
 rem           worked; the first rewrite had 1071 and broke halfway through.
 rem So: no Chinese in here, not even in comments. Only this script is English,
-rem the program itself still prints Chinese. See docs/testing.md.
+rem the program itself still prints Chinese. See README.md (Build section).
 rem
 rem Two promises version_test.go checks on the EXECUTED lines below (rem lines
 rem are ignored): the exe stays in this folder, and nothing is copied or moved.

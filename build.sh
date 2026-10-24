@@ -20,7 +20,7 @@
 #   - CGO is off: no dylib from Homebrew is needed at runtime, and either
 #     architecture can be cross-built from either machine (see --arch)
 #
-# English here for the same reason build.cmd is English (see docs/testing.md):
+# English here for the same reason build.cmd is English (see README.md, Build section):
 # build output must not depend on the terminal's locale. The program itself
 # still prints Chinese.
 # ---------------------------------------------------------------------------

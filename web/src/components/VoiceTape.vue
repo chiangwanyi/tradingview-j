@@ -52,7 +52,7 @@ import type { AudioClip } from '@/types/protocol'
 const store = useReplayStore()
 const pb = usePlaybackStore()
 
-/** 每条语音的地址：盘面那份和录像那份是两条不同的路由（不复用，见 docs 11.9）。 */
+/** 每条语音的地址：盘面那份和录像那份是两条不同的路由（不复用，见 README「语音讲解」）。 */
 function urlOf(clip: AudioClip): string {
   if (store.playbackActive) return pb.audioUrl(clip)
   const id = store.instance?.id

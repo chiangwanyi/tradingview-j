@@ -336,7 +336,7 @@ const inputClass =
           class="truncate text-[11px] leading-4 text-faint"
           title="限价买：最低价 ≤ 挂单价；限价卖：最高价 ≥ 挂单价；止损单相反。无资金/手续费/滑点。"
         >
-          规则见 docs/复盘设计.md · 不计手续费/滑点
+          规则见 README「模拟交易：撮合规则与盈亏」· 不计手续费/滑点
         </div>
       </div>
     </div>

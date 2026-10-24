@@ -11,7 +11,7 @@ import type { RecordingSummary, TradeStats } from '@/types/protocol'
  * 底部【交易记录】Tab（v0.18.0 之前叫【回放】）：左边列表，点一条就在画布上回放。
  *
  * **这些记录是自动产生的**：仓位从空仓变成有仓的那一刻开始记，回到空仓的那一刻收尾
- * （见 docs/复盘设计.md 与 internal/replay/trade.go）。用户不需要记得按任何开关，
+ * （见 README「交易记录：事件流，不是视频」与 internal/replay/trade.go）。用户不需要记得按任何开关，
  * 所以这个面板里也没有「开始/停止」这类按钮 —— 它只负责「看已经记下来的那些」。
  *
  * 列表和播放器放在同一个面板里，是因为它们共用一件事——「当前这一条记录」。

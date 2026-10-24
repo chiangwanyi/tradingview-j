@@ -15,7 +15,7 @@ import type { AudioClip } from '@/types/protocol'
  * 「这一根上 3 条」和「整块盘面 12 条」用同一条队列，只是传进来的数组长度不同。
  *
  * 音频地址由**调用方**拼：盘面上的语音走 `/api/instances/<id>/voice/<file>`，
- * 录像里的走 `/api/recordings/<id>/audio/<file>`，两者不复用（见 docs 11.9）。
+ * 录像里的走 `/api/recordings/<id>/audio/<file>`，两者不复用（见 README「语音讲解」）。
  * 播放器不认路由，只认「给我一个 url」。
  */
 
