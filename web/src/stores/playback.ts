@@ -169,9 +169,8 @@ export const usePlaybackStore = defineStore('playback', () => {
       notes: [`回放：${rec.name}`],
       createdBy: rec.createdBy,
       createdAt: rec.createdAt,
-      recording: null,
-      // 语音的空壳：回放里不放「盘面语音」（那是实时的东西），语音只从录像的
-      // recording_audio 步里来（见 pb.clips）。字段必须存在，界面才不用到处判空。
+      // 语音的空壳：回放里不放「盘面语音」（那是实时的东西），语音只从记录的
+      // 语音步里来（见 pb.clips）。字段必须存在，界面才不用到处判空。
       voice: { barTime: '', clips: [], total: 0, max: 9 },
       voiceAll: [],
     }

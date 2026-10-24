@@ -10,7 +10,6 @@ import type {
   AnnotationDeletedPayload,
   AudioClip,
   AnnotationStyle,
-  BarAdvancedPayload,
   ClientMessage,
   ControlChangedPayload,
   InstanceDetail,
@@ -19,10 +18,6 @@ import type {
   OrderKind,
   Point,
   Recording,
-  RecordingAudioClearedPayload,
-  RecordingAudioPayload,
-  RecordingState,
-  RecordingStoppedPayload,
   RecordingSummary,
   ReplayEvent,
   ServerEvent,
@@ -115,7 +110,7 @@ export const useReplayStore = defineStore('replay', () => {
 
   const status = ref<'connecting' | 'open' | 'closed'>('closed')
   /**
-   * 回放模式。开启时 `instance` 被换成「录像演出来的那一份」，
+   * 回放模式。开启时 `instance` 被换成「交易记录演出来的那一份」，
    * 所有会改状态的动作都必须停手 —— 这是**只读**地看历史，不能往后端发任何修改。
    */
   const playbackActive = ref(false)
@@ -127,7 +122,7 @@ export const useReplayStore = defineStore('replay', () => {
   const log = ref<ReplayEvent[]>([])
   const lastError = ref('')
   const errorKey = ref(0)
-  /** 一句会自己消失的轻提示（录像已保存 / 录音已挂载）。 */
+  /** 一句会自己消失的轻提示（交易记录已保存 / 语音已挂载）。 */
   const notice = ref('')
   const noticeKey = ref(0)
   let noticeTimer = 0
@@ -181,11 +176,11 @@ export const useReplayStore = defineStore('replay', () => {
    * 连上就取一次：策略是编译期注册的，运行期不会变，没必要轮询或者做失效。
    */
   const strategies = ref<StrategyInfo[]>([])
-  /** 已保存的录像列表（后端扫录像目录得到的，新→旧） */
+  /** 已保存的交易记录列表（后端扫记录目录得到的，新→旧） */
   const recordings = ref<RecordingSummary[]>([])
-  /** 录像目录的绝对路径，显示在回放 Tab 上，方便用户去文件夹里找 */
+  /** 记录目录的绝对路径，显示在交易记录 Tab 上，方便用户去文件夹里找 */
   const recordingDir = ref('')
-  /** 刚取回来、等着交给播放器的那一条录像 */
+  /** 刚取回来、等着交给播放器的那一条记录 */
   const loadedRecording = ref<Recording | null>(null)
   /** 每取回一条就加一：组件用它判断"这是一条新的"，避免同一条被重复打开 */
   const loadedSeq = ref(0)
@@ -221,15 +216,12 @@ export const useReplayStore = defineStore('replay', () => {
   const cursor = computed(() => instance.value?.cursor ?? 0)
   const currentBar = computed(() => bars.value[bars.value.length - 1] ?? null)
   const isOperator = computed(() => you.value?.operator === true)
-  /** 当前实例的录制状态（没在录是 null） */
-  const recording = computed<RecordingState | null>(() => instance.value?.recording ?? null)
-  const isRecording = computed(() => recording.value?.active === true)
   /**
-   * 语音讲解（v0.16.0）。**和录制无关**：没在录也有一份，空的时候就是空清单。
+   * 语音讲解（v0.16.0）。**和交易记录无关**：空仓也有一份，空的时候就是空清单。
    *
-   * 为什么不从 recording 里取：那是 v0.15 及以前的口径，只有录制中才存在。
-   * 现在语音是盘面数据，事实来源是 instance.voice（快照 + bar_advanced +
-   * voice_added / voice_cleared 三路一起更新）。
+   * 事实来源是 instance.voice（快照 + bar_advanced + voice_added / voice_cleared
+   * 三路一起更新）。v0.18.0 删掉了「录制状态」那一份 —— 交易记录是自动的，
+   * 界面上不该再有「正在录制」这个概念。
    */
   const EMPTY_VOICE: VoiceState = { barTime: '', clips: [], total: 0, max: 9 }
   const voice = computed<VoiceState>(() => instance.value?.voice ?? EMPTY_VOICE)
@@ -365,8 +357,26 @@ export const useReplayStore = defineStore('replay', () => {
         recordings.value = msg.recordings ?? []
         recordingDir.value = msg.dir ?? ''
         break
+      case 'trade_recorded': {
+        // 一笔交易刚刚平完、记录已落盘（v0.18.0）。它是一条**一次性**消息，
+        // 不是广播：不需要进操作记录，界面上也没有「正在记录」的状态要收尾。
+        const sum = msg.recording
+        listRecordings() // 列表里立刻能看见这一笔，不用用户手动刷新
+        if (msg.warning) {
+          noteError(`这笔交易记完了，但记录没落盘：${msg.warning}`)
+          break
+        }
+        const s = sum.stats
+        const money = `${s.realizedPnl >= 0 ? '+' : ''}${s.realizedPnl.toFixed(2)}`
+        noteNotice(
+          `交易记录已保存：${sum.name}（${sum.stepCount} 步 / ${sum.bars} 根 · ${money}${
+            s.closed ? '' : ' · 还没平仓'
+          }）`,
+        )
+        break
+      }
       case 'recording':
-        // 一条录像的完整内容到了：交给播放器（组件的 watch 会接住）
+        // 一条记录的完整内容到了：交给播放器（组件的 watch 会接住）
         loadedRecording.value = msg.recording ?? null
         loadedSeq.value += 1
         break
@@ -400,7 +410,6 @@ export const useReplayStore = defineStore('replay', () => {
     instance.value = {
       ...inst,
       bars: inst.bars ?? [],
-      recording: inst.recording ?? null,
       // 语音永远是一个对象（后端保证不为 null；这里再兜一层，界面就不用到处判空）
       voice: inst.voice ?? EMPTY_VOICE,
       voiceAll: inst.voiceAll ?? [],
@@ -424,19 +433,8 @@ export const useReplayStore = defineStore('replay', () => {
     })
     if (log.value.length > MAX_LOG) log.value = log.value.slice(-MAX_LOG)
 
-    // 录制相关的四条不是盘面变化，单独处理（放进 reducer 会让"回放"里也出现录制动作）
-    if (
-      msg.action === ACTION.recordingStarted ||
-      msg.action === ACTION.recordingStopped ||
-      msg.action === ACTION.recordingAudio ||
-      msg.action === ACTION.recordingAudioCleared
-    ) {
-      applyRecordingEvent(inst, msg)
-      return
-    }
-
-    // 语音讲解（v0.16.0）：盘面数据，但**不进录像**（录制中那一条已经由后端记成
-    // 录像里的一个录音步），所以也不交给 reducer —— 回放时不该凭空多出语音。
+    // 语音讲解（v0.16.0）：盘面数据，但**不进交易记录**（交易期间那一条已经由后端
+    // 记成记录里的一个语音步），所以也不交给 reducer —— 回放时不该凭空多出语音。
     if (msg.action === ACTION.voiceAdded || msg.action === ACTION.voiceCleared) {
       applyVoiceEvent(inst, msg)
       return
@@ -444,29 +442,6 @@ export const useReplayStore = defineStore('replay', () => {
 
     // 盘面变化：和回放共用同一份更新逻辑（stores/instance-reducer.ts）
     applyInstanceEvent(inst, msg.action, msg.payload)
-
-    // 录制中的「第几步」由**服务端下发**（msg.recStep，v0.15.0）。
-    //
-    // 以前这里是「收到 bar_advanced 就把步数 +1」，因为那时一步 = 一根 K 线，
-    // 步进是唯一会加步的动作。改成一操作一步之后那样必然算错：画一个图形、
-    // 挂一张单、录一段音也各加一步，而它们的广播不会带 bar_advanced。
-    // 现在服务端在每条广播里带上「这条被录成了第几步」，界面只显示，不自己数。
-    if (inst.recording?.active && msg.recStep && msg.recStep > 0) {
-      const adv = msg.action === ACTION.barAdvanced
-      const cur = adv ? (msg.payload as BarAdvancedPayload) : null
-      inst.recording = {
-        ...inst.recording,
-        step: msg.recStep,
-        total: Math.max(inst.recording.total ?? 0, msg.recStep),
-        kind: msg.action,
-        barNo: adv ? (inst.recording.barNo ?? 1) + 1 : inst.recording.barNo,
-        current: cur?.bar?.time ?? inst.recording.current,
-        // 换了一根 K 线：录音额度与「本根已录几条」都要归零。服务端的 state
-        // 只在下一次快照/录音广播时才来，这里不跟着清，HUD 会拿上一根的清单
-        // 当这一根的（明明还没录，却显示「本根 3/9」）。
-        ...(adv ? { barAudios: 0, clips: [] } : {}),
-      }
-    }
 
     // 下面是界面状态，不属于盘面
     if (msg.action === ACTION.annotationDeleted) {
@@ -484,64 +459,18 @@ export const useReplayStore = defineStore('replay', () => {
     }
   }
 
-  /** 录制状态的三条广播：更新实例上的录制标记 + 给一句提示。 */
-  function applyRecordingEvent(inst: InstanceDetail, msg: ServerEvent): void {
-    switch (msg.action) {
-      case ACTION.recordingStarted: {
-        inst.recording = msg.payload as RecordingState
-        noteNotice('开始录制：当前盘面记为第 1 步，之后每个操作各占一步')
-        break
-      }
-      case ACTION.recordingAudio: {
-        const p = msg.payload as RecordingAudioPayload
-        inst.recording = p.state
-        // 老别名 record_audio 也会在盘面上留一条（v0.16.0）：两边的状态一起更新，
-        // 免得「录像里有了、语音浮窗里没有」这种只会在兼容路径上出现的怪现象。
-        if (p.voice) inst.voice = p.voice
-        if (p.voiceAll) inst.voiceAll = p.voiceAll
-        noteNotice(
-          `录音 ${p.state.audios} 条已挂到 ${p.audio.time}（第 ${p.audio.step} 步 · ${(p.audio.durationMs / 1000).toFixed(1)} 秒）`,
-        )
-        break
-      }
-      case ACTION.recordingAudioCleared: {
-        const p = msg.payload as RecordingAudioClearedPayload
-        inst.recording = p.state
-        if (p.voice) inst.voice = p.voice
-        if (p.voiceAll) inst.voiceAll = p.voiceAll
-        noteNotice(`已清除这根 K 线上的 ${p.removed.length} 条录音`)
-        break
-      }
-      case ACTION.recordingStopped: {
-        const p = msg.payload as RecordingStoppedPayload
-        inst.recording = null
-        if (p.error) {
-          noteError(`录制已结束，但录像没有保存：${p.error}`)
-        } else {
-          noteNotice(
-            `录像已保存：${p.recording.name}（${p.recording.stepCount} 步 / ${p.recording.audioCount} 条录音）→ ${p.dir ?? ''}`,
-          )
-        }
-        // 录完就该在【回放】里看见它，不用用户手动刷新
-        listRecordings()
-        break
-      }
-    }
-  }
-
   /**
    * 语音讲解的两条广播（v0.16.0）。
    *
-   * 录制状态也一起更新：录制中录的那条会同时占录像的一步，HUD 的「第 N 步」
-   * 必须当场跟上，否则用户会看到「语音挂上了、步数没动」。
-   * 没在录时 payload.recording 缺省，什么都不用做。
+   * 只更新盘面那一份：语音是盘面数据，和有没有正在进行的一笔交易记录无关。
+   * 交易期间录的那条在记录里另占一步 —— 那是后端的事，前端不需要知道，
+   * 也不该因此多维护一个「录制状态」。
    */
   function applyVoiceEvent(inst: InstanceDetail, msg: ServerEvent): void {
     if (msg.action === ACTION.voiceAdded) {
       const p = msg.payload as VoiceAddedPayload
       inst.voice = p.voice
       inst.voiceAll = p.voiceAll ?? inst.voiceAll
-      if (p.recording !== undefined) inst.recording = p.recording ?? null
       noteNotice(
         `语音已挂到 ${p.audio.time}（本根 ${p.voice.clips.length}/${p.voice.max} · ${(
           p.audio.durationMs / 1000
@@ -552,7 +481,6 @@ export const useReplayStore = defineStore('replay', () => {
     const p = msg.payload as VoiceClearedPayload
     inst.voice = p.voice
     inst.voiceAll = p.voiceAll ?? inst.voiceAll
-    if (p.recording !== undefined) inst.recording = p.recording ?? null
     noteNotice(`已清除这根 K 线上的 ${p.removed.length} 条语音`)
   }
 
@@ -766,34 +694,14 @@ export const useReplayStore = defineStore('replay', () => {
     send({ type: 'order_modify', instanceId: instance.value.id, orderId, price })
   }
 
-  // ---------------- 录制与录像 ----------------
-
-  /**
-   * 开始录制。【第 1 步 = 点下去时的那一屏】是后端定的：
-   * 它把当时的 K 线、标注、挂单、成交整份存成 Base，不依赖前端算步数。
-   */
-  function startRecording(): void {
-    if (!instance.value || !canOperate.value) return
-    send({ type: 'record_start', instanceId: instance.value.id })
-  }
-
-  /** 结束录制。后端收尾、落盘、广播，前端只等消息。 */
-  function stopRecording(): void {
-    if (!instance.value) return
-    send({ type: 'record_stop', instanceId: instance.value.id })
-  }
-
-  function toggleRecording(): void {
-    if (isRecording.value) stopRecording()
-    else startRecording()
-  }
+  // ---------------- 交易记录 ----------------
 
   /**
    * 送一段语音讲解上去（WAV 的 base64）。挂载点是**服务端当前那根 K 线**，
    * 前端不传时间 —— 传了就有两种"当前"，一旦不一致语音会挂错柱子。
    *
-   * v0.16.0：不再要求 isRecording —— 这正是解耦的意义。录制中调用会由服务端
-   * 额外抄一份进录像（回放到那一步语音响），不录制时只挂在盘面上。
+   * v0.16.0 起语音就是盘面数据；v0.18.0 起交易记录自动开始，持仓期间录的那条
+   * 由服务端顺手在记录里占一步（回放到那一步语音响），空仓时录的只挂在盘面上。
    */
   function sendVoiceAudio(audioData: string, durationMs: number): boolean {
     if (!instance.value || !canVoice.value) return false
@@ -875,8 +783,6 @@ export const useReplayStore = defineStore('replay', () => {
     recordingDir,
     loadedRecording,
     loadedSeq,
-    recording,
-    isRecording,
     voice,
     voiceClips,
     voiceAll,
@@ -950,9 +856,6 @@ export const useReplayStore = defineStore('replay', () => {
     clearError,
     noteNotice,
     clearNotice,
-    startRecording,
-    stopRecording,
-    toggleRecording,
     sendVoiceAudio,
     clearVoiceBar,
     listRecordings,

@@ -62,18 +62,12 @@ type Hub struct {
 	tplSeq    int
 	tplPath   string
 
-	// 录制（recording.go）。records 永远非 nil：没配目录时它是一个「不落盘」的
-	// 空壳，录制照样能在内存里跑完（测试就是这么用的）。
+	// 交易记录（recording.go / trade.go）。records 永远非 nil：没配目录时它是一个
+	// 「不落盘」的空壳，记录照样能在内存里跑完（测试就是这么用的）。
 	records *RecordingStore
-	// pendingSaves 是「已经录完、等锁外落盘」的录像。写盘是 IO，
+	// pendingSaves 是「已经收尾、等锁外落盘」的交易记录。写盘是 IO，
 	// 不能拿着 h.mu 做 —— 那会把所有人的步进和广播一起卡住。
 	pendingSaves []pendingSave
-}
-
-// pendingSave 是一条等待写盘的录像（含音频字节）。
-type pendingSave struct {
-	rec    *Recording
-	audios []pendingAudio
 }
 
 func NewHub(ds *DataSource, version string, logf func(format string, args ...any)) *Hub {
@@ -139,12 +133,13 @@ func (h *Hub) Unregister(c *Client) {
 	}
 	h.mu.Lock()
 	defer func() {
-		// 断开时可能刚好收尾了一段录制（见 leaveLocked）：写盘同样放到锁外。
+		// 断开时可能刚好收尾了一段交易记录（见 leaveLocked / deleteLocked）：
+		// 写盘同样放到锁外。
 		saves := h.pendingSaves
 		h.pendingSaves = nil
 		h.mu.Unlock()
 		for _, s := range saves {
-			h.saveRecording(s)
+			h.saveTrade(s)
 		}
 	}()
 	if _, ok := h.clients[c.ID]; !ok {
@@ -170,7 +165,7 @@ func (h *Hub) Handle(c *Client, raw []byte) {
 		h.pendingSaves = nil
 		h.mu.Unlock()
 		for _, s := range saves {
-			h.saveRecording(s)
+			h.saveTrade(s)
 		}
 		for _, d := range garbage {
 			if d.close != nil {
@@ -552,9 +547,18 @@ func (h *Hub) handleOrderModify(c *Client, req Request) {
 
 // ---------------- 操作实现（真人 / 机器人共用） ----------------
 
+// doStepLocked 推进一根 K 线。
+//
+// 抓快照（captureTradeBaseLocked）必须在 advance **之前**：这一根可能撮合挂单、
+// 把空仓变成有仓，而交易记录的第 1 步要的是「开仓成交之前的那一屏」。
+// 只有真的挂着单才抓 —— 没有挂单就不可能有成交，省下一次几百根 K 线的拷贝。
 func (h *Hub) doStepLocked(inst *Instance, by string) error {
+	if openOrderCount(inst) > 0 {
+		h.captureTradeBaseLocked(inst)
+	}
 	bar, fills, err := inst.advance(h.ds)
 	if err != nil {
+		inst.pendingBase = nil
 		return err
 	}
 	if fills == nil {
@@ -634,9 +638,15 @@ func (h *Hub) doPlaceOrderGroupedLocked(inst *Instance, by, side, kind string, p
 	return o, nil
 }
 
+// doMarketOrderLocked 市价成交（下单即成交）。
+//
+// 快照在 order **之前**抓：市价单一定会成交，而这一笔很可能就是开仓 ——
+// 第 1 步要的是「还没进场的那一屏」。
 func (h *Hub) doMarketOrderLocked(inst *Instance, by, side string, qty float64) (Order, Trade, error) {
+	h.captureTradeBaseLocked(inst)
 	o, tr, err := inst.marketOrder(by, side, qty)
 	if err != nil {
+		inst.pendingBase = nil
 		return Order{}, Trade{}, err
 	}
 	h.broadcastInstanceLocked(inst, ActOrderFilled, OrderFilledPayload{
@@ -741,13 +751,8 @@ func (h *Hub) leaveLocked(c *Client, quiet bool) {
 		inst.Operator = ""
 		h.broadcastInstanceLocked(inst, ActControlChanged, ControlChangedPayload{}, c.Name)
 	}
-	// 录制属于「这个人这一段操作」：他走了就结束并保存。
-	// 不这么做的话，这个实例会永远停在「已经在录制了」，下一个人再也开不了新的录像。
-	if inst.rec != nil && inst.rec.rec.CreatedBy == c.Name {
-		if payload, ok := h.finishRecordingLocked(inst); ok {
-			h.broadcastInstanceLocked(inst, ActRecordingStopped, payload, "system")
-		}
-	}
+	// 交易记录**不跟着人走**：一笔交易是这块盘面上的仓位，记录什么时候收尾只看
+	// 仓位什么时候归零（v0.18.0 起录制是自动的）。人离开了，仓位还在，记录就继续。
 	h.broadcastMembersLocked(inst)
 	// 没人看了就把机器人停掉：否则它会一直替一个空实例改数据。
 	if len(h.membersLocked(inst)) == 0 && inst.botStop != nil {
@@ -760,12 +765,14 @@ func (h *Hub) deleteLocked(inst *Instance) {
 	if inst.botStop != nil {
 		h.stopBotLocked(inst, "")
 	}
-	// 删实例时正在录的那一段也要收尾：录制文件不属于实例存档，它是独立的一份录像，
-	// 留着比丢掉有用（用户删的是「这个盘面」，不是「刚录的那段」）。
-	if inst.rec != nil {
-		h.finishRecordingLocked(inst)
+	// 删实例时正在记的那一笔也要收尾：交易记录不属于实例存档，它是独立的一份数据，
+	// 留着比丢掉有用（用户删的是「这个盘面」，不是「刚刚那笔交易」）。
+	// 收尾之后 Stats.Closed 仍是 false —— 那笔仓位确实还没平，记录如实反映这一点。
+	if inst.trade != nil {
+		h.finishTradeLocked(inst, "system")
 	}
 	inst.deleted = true
+	inst.pendingBase = nil
 	delete(h.instances, inst.ID)
 	for i, id := range h.order {
 		if id == inst.ID {
@@ -800,9 +807,9 @@ func (h *Hub) Close() {
 		if inst.botStop != nil {
 			h.stopBotLocked(inst, "")
 		}
-		// 正在录的那一段要收尾并保存：Ctrl+C 不该把已经录完的十几步一起丢掉。
-		if inst.rec != nil {
-			h.finishRecordingLocked(inst)
+		// 正在记的那一笔要收尾并保存：Ctrl+C 不该把刚记下的十几步一起丢掉。
+		if inst.trade != nil {
+			h.finishTradeLocked(inst, "system")
 		}
 	}
 	for _, c := range h.clients {
@@ -821,7 +828,7 @@ func (h *Hub) Close() {
 		close(done)
 	}
 	for _, s := range saves {
-		h.saveRecording(s)
+		h.saveTrade(s)
 	}
 	h.flushState()
 }
@@ -830,16 +837,6 @@ func (h *Hub) Close() {
 
 func (h *Hub) broadcastInstanceLocked(inst *Instance, action string, payload any, by string) {
 	ev := inst.appendEvent(by, action, payload)
-	// 录制挂在这里，而不是散在每个 do* 方法里：这条路径是所有状态变化的唯一出口
-	// （真人、机器人、多人广播都走它），所以「机器人操作也能被录」不是另写一套，
-	// 而是**挂对位置**的自然结果 —— 录下来的和操作记录 Tab 里看到的是同一批事件。
-	//
-	// 一条放行的广播 = 录像里的一步（v0.15.0），返回的步号随消息一起下发，
-	// 前端 HUD 直接显示，不再自己数。
-	recStep := 0
-	if inst.rec != nil {
-		recStep = inst.rec.observe(action, by, payload, ev.Seq, inst.stepContext())
-	}
 	// 广播 = 这个实例的状态变了（步进、标注、下单、操作权、成员）。落盘就打在这里，
 	// 免得每个 do* 方法各记一次、漏一个就静默丢数据。
 	h.markDirtyLocked(inst.ID)
@@ -851,17 +848,23 @@ func (h *Hub) broadcastInstanceLocked(inst *Instance, action string, payload any
 		By:         by,
 		Action:     action,
 		Payload:    payload,
-		RecStep:    recStep,
 	})
 	if err != nil {
 		h.log("[replay] 序列化广播失败：%v", err)
-		return
-	}
-	for _, c := range h.clients {
-		if c.InstanceID == inst.ID {
-			h.writeLocked(c, data)
+	} else {
+		for _, c := range h.clients {
+			if c.InstanceID == inst.ID {
+				h.writeLocked(c, data)
+			}
 		}
 	}
+	// 交易记录挂在**广播之后**，而不是散在每个 do* 方法里：这条路径是所有状态变化的
+	// 唯一出口（真人、机器人、多人广播都走它），所以「机器人交易也会被记」不是另写
+	// 一套，而是**挂对位置**的自然结果 —— 记下来的和操作记录 Tab 里看到的是同一批事件。
+	//
+	// 放在广播之后是因为收尾判定要看「这一步做完之后」的仓位：平仓那一笔必须先记进
+	// 记录、再收尾（见 trade.go 的 trackTradeLocked）。
+	h.trackTradeLocked(inst, action, payload, by)
 }
 
 func (h *Hub) broadcastMembersLocked(inst *Instance) {

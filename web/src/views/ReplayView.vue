@@ -4,7 +4,6 @@ import { computed, onBeforeUnmount, onMounted } from 'vue'
 import ChartPanel from '@/components/ChartPanel.vue'
 import ChartToolbar from '@/components/ChartToolbar.vue'
 import InstancesMenu from '@/components/InstancesMenu.vue'
-import RecordHud from '@/components/RecordHud.vue'
 import TradeDock from '@/components/TradeDock.vue'
 import TradeFloat from '@/components/TradeFloat.vue'
 import VoiceFloat from '@/components/VoiceFloat.vue'
@@ -13,7 +12,7 @@ import { usePlaybackStore } from '@/stores/playback'
 import { useReplayStore } from '@/stores/replay'
 
 /**
- * 复盘主界面：一条顶栏 + 画布占满 + 底部 Tab（模拟交易 / 操作记录 / 回放）+ 浮在页面上的下单窗。
+ * 复盘主界面：一条顶栏 + 画布占满 + 底部 Tab（模拟交易 / 操作记录 / 交易记录）+ 浮在页面上的下单窗。
  *
  * 布局是 v1.1 调整过的：左侧那一栏「标的与实例」搬进了右上角的折叠面板，
  * 右侧的交易栏搬到了底部 Tab —— 两处都只为了同一个目标：**把空间让给画布**。
@@ -21,8 +20,8 @@ import { useReplayStore } from '@/stores/replay'
  * v0.8.0 又把「下单」这一列从底部面板里提出来，做成一枚可拖动、可折叠成小图标的浮窗：
  * 步进、看盘、挂单是交替进行的，下单框必须随手能点到，又不能再吃掉画布的高度。
  *
- * v0.11.0 增加录制与回放：录制中的步数/录音数 HUD 贴在画布左上角，
- * 回放时同一个画布直接演录像（只读），顶部给一条「回放中」的提示条。
+ * v0.18.0：交易记录改成**自动**的（开仓开始、平仓结束），所以原来贴在画布左上角的
+ * 录制浮窗整个删掉了 —— 界面上不再有「正在录制」这个概念；回放仍然在这个画布上演。
  *
  * 整个应用只有这一页。实例是服务端概念，这里只负责「进入/退出/观看」，
  * 关掉标签页不会删除实例（下次连上还在列表里）。
@@ -68,11 +67,11 @@ function typable(el: Element | null): boolean {
 }
 
 /**
- * 回放时的空格 = 「当前这一步的录音逐条播放」。
+ * 回放时的空格 = 「当前这一步的语音逐条播放」。
  *
- * 录制时的空格（按一下开始、再按一下停）在 RecordHud 里，两者互斥：回放是只读的，
- * 不可能同时在录。这里用捕获阶段 + preventDefault，免得空格顺手把
- * 焦点上的按钮再按一下、或者把页面滚一格。
+ * 这里的空格和语音浮窗里的空格（按一下开始录、再按一下停）不会打架：
+ * 回放是只读的，麦克风在回放时是灰的。这里用捕获阶段 + preventDefault，免得空格
+ * 顺手把焦点上的按钮再按一下、或者把页面滚一格。
  */
 function onSpace(ev: KeyboardEvent): void {
   if (ev.code !== 'Space' || ev.repeat) return
@@ -125,9 +124,6 @@ onBeforeUnmount(() => {
         <span class="tnum text-[11px] text-faint">{{ store.instance.anchor }}</span>
         <span class="text-[11px] text-faint">{{ cursorText }}</span>
         <span class="tnum text-[11px] text-faint">tick {{ store.tick }}</span>
-        <span v-if="store.isRecording" class="rounded bg-red-500/15 px-1.5 text-[11px] text-red-600 dark:text-red-400">
-          录制中 · 第 {{ store.recording?.step }} 步
-        </span>
         <span v-if="store.instance.bot" class="rounded bg-sky-600/20 px-1.5 text-[11px] text-sky-600 dark:text-sky-300">
           机器人演示中
         </span>
@@ -169,15 +165,9 @@ onBeforeUnmount(() => {
         <ChartPanel />
 
         <!--
-          录制浮窗是 `fixed` 的：位置自己拖、自己折叠（和下单浮窗同一套），
-          挂在这里只是因为它属于这一页，不参与上面的布局。
-          它只显示录制状态 —— 麦克风在语音浮窗里（v0.16.0 起语音是一级功能）。
-        -->
-        <RecordHud />
-
-        <!--
-          语音讲解浮窗：工具条上点【🎙 录音】才会出现（`store.voiceOpen`），
-          **不需要在录制中**。录制中录的那条会同时记进录像（后端负责）。
+          语音讲解浮窗：工具条上点【🎙 录音】才会出现（`store.voiceOpen`）。
+          它和交易记录完全无关 —— 空仓也能讲两句，持仓期间讲的会由后端顺手记进
+          那笔交易记录（这里不需要做任何事）。
         -->
         <VoiceFloat />
 
@@ -190,7 +180,7 @@ onBeforeUnmount(() => {
           <span class="tnum text-ink">第 {{ pb.step }}/{{ pb.total }} 步</span>
           <span class="tnum ml-2 text-faint">{{ pb.currentStep?.time }}</span>
           <span v-if="pb.audioPlaying" class="ml-2 text-amber-600 dark:text-amber-400">🔊 {{ pb.audioLabel }}</span>
-          <span v-else-if="pb.clips.length > 0" class="ml-2 text-faint">本步 {{ pb.clips.length }} 条录音 · 空格逐条</span>
+          <span v-else-if="pb.clips.length > 0" class="ml-2 text-faint">本步 {{ pb.clips.length }} 条语音 · 空格逐条</span>
           <span class="ml-2 text-faint">{{ pb.playing ? `${pb.speed}x 播放中` : '已暂停' }}</span>
         </div>
       </div>
@@ -203,7 +193,7 @@ onBeforeUnmount(() => {
       <VoiceTape />
 
       <!--
-        提示走「轻提示」而不是错误框：录像保存成功、录音挂载成功都不是错误，
+        提示走「轻提示」而不是错误框：交易记录保存成功、语音挂载成功都不是错误，
         不该要人点一下才能继续看盘。
       -->
       <div

@@ -24,6 +24,9 @@ import { TOOL_LABEL, isDrawTool, useReplayStore, type DrawTool } from '@/stores/
  * v0.16.0 起这一行多了【🎙 录音】：语音讲解从录制的子功能提升为**一级功能**，
  * 和五种绘图工具平起平坐 —— 拿笔是「在这根 K 线上画点什么」，拿麦克风是
  * 「在这根 K 线上讲两句」，两件事都发生在当前这根 K 线上，都**不需要先开录像**。
+ *
+ * v0.18.0 删掉了【● 录制】：交易记录改成开仓自动开始、平仓自动结束，
+ * 用户不需要（也不应该）记得按一个开关 —— 见 components/RecordingPanel.vue。
  */
 
 const store = useReplayStore()
@@ -39,24 +42,13 @@ const drawHint: Record<DrawTool, string> = {
 }
 
 const canEdit = computed(() => store.canOperate)
-/**
- * 【录制】能不能点。
- *
- * 两个分支不一样：开始录制要求「有操作权 + 有 K 线」；结束录制只看操作权 ——
- * 万一录到一半操作权被交还了，还留在录制状态里的人至少能把它停下来保存。
- */
-const canRecord = computed(() => {
-  const inst = store.instance
-  if (!inst || store.playbackActive || !store.canOperate) return false
-  return store.isRecording || inst.bars.length > 0
-})
 const operator = computed(() => store.operatorLabel)
 
 /**
  * 【🎙 录音】能不能点。
  *
  * 和绘图按钮不一样：它**不看操作权** —— 打开浮窗的观众只是想听听别人讲了什么。
- * 真正要不要操作权由浮窗里的录制按钮和服务端决定（见 store.canVoice）。
+ * 真正要不要操作权由浮窗里的录音键和服务端决定（见 store.canVoice）。
  * 回放时灰掉：那段历史是只读的，往上面挂语音没有意义。
  */
 const canVoicePanel = computed(() => !!store.instance && !store.playbackActive)
@@ -64,7 +56,7 @@ const voiceHint = computed(() => {
   if (store.playbackActive) return '回放是只读的：退出回放后才能录音'
   if (!store.instance) return '先进入一个实例，才能在某根 K 线上录语音'
   if (!store.canOperate) return '语音讲解：每根 K 线最多 9 条（现在是观看状态，可以听、不能录）'
-  return '语音讲解：空格开始/结束录音，挂在这根 K 线上（每根最多 9 条；不录制也能录）'
+  return '语音讲解：空格开始/结束录音，挂在这根 K 线上（每根最多 9 条；随时能录，不必等开仓）'
 })
 /** 当前是不是绘图工具 —— 模板条只在绘图工具下出现（v-if 用得到，也顺手做类型收窄） */
 const drawKind = computed<DrawTool | null>(() => (isDrawTool(store.tool) ? store.tool : null))
@@ -213,32 +205,10 @@ function onDojiSize(e: Event): void {
     </button>
 
     <!--
-      录制：点一下开始（当前盘面 = 第 1 步），再点一下结束并落盘。
-      按钮文案在录制中变成【录制中…】—— 这是用户确认「正在被录」的唯一显式信号，
-      所以不加图标式的开关，免得有人以为它是个切换显示。
+      这里**没有【录制】按钮**（v0.18.0 删掉了）：交易记录是自动的 ——
+      仓位从空仓变成有仓的那一刻开始记，回到空仓的那一刻收尾。
+      录制不再是用户要记得去做的一件事，自然也不该有一个要记得去按的开关。
     -->
-    <button
-      type="button"
-      :class="[
-        btn,
-        store.isRecording
-          ? 'border-red-500 bg-red-500/10 font-medium text-red-600 dark:text-red-400'
-          : 'border-red-400 text-red-600 hover:bg-red-500/10 dark:text-red-400',
-      ]"
-      :disabled="!canRecord"
-      :title="
-        store.isRecording
-          ? '结束录制并保存到录像目录（录像里是操作事件，不是视频）'
-          : '开始录制：当前盘面记为第 1 步，之后每次【下一根】加一步；画图、下单、机器人操作都会被记下'
-      "
-      @click="store.toggleRecording()"
-    >
-      <span
-        v-if="store.isRecording"
-        class="mr-1 inline-block h-2 w-2 animate-pulse rounded-full bg-red-500 align-middle"
-      />
-      {{ store.isRecording ? '录制中…' : '● 录制' }}
-    </button>
 
     <button type="button" :class="[btn, btnIdle]" :disabled="!store.isOperator" @click="store.releaseControl()">
       交还操作权
