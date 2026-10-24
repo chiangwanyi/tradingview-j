@@ -22,17 +22,20 @@ import {
  * 标注不在这里画 —— 标注是 SVG 图层（便于命中测试与拖动），见 ChartPanel.vue。
  * 两层的坐标换算都来自同一个 ChartScale，不会出现「图形和 K 线对不上」。
  *
- * **只有一套配色（浅色）**，而且和页面用同一套方向语义（美股习惯）：
+ * **只有一套配色（浅色）**，分两层：
  *
- *   涨 / 做多 / 盈利 / 胜  -> 绿（up）
- *   跌 / 做空 / 亏损 / 负  -> 红（down）
+ *   1. K 线保持**黑白**（TradingView 浅色的经典画法）：
+ *        阳线 —— 白填充 + 黑边框 / 黑影线（空心）
+ *        阴线 —— 全黑（实心）
+ *      空心 / 实心本身就是方向编码，不依赖颜色，打印出来、红绿色弱都分得清。
+ *   2. 其余「有方向含义」的元素用美股语义色（绿 = 涨 / 做多 / 盈利，红 = 跌 / 做空 / 亏损）：
+ *      挂单线、持仓成本线、成交三角、现价标签 —— 这些和 K 线叠在一起时，
+ *      黑白反而会糊成一片，用颜色才分得开。
  *
- * 阳线画成**绿边空心**、阴线画成**红实心**：颜色表达方向，空心/实心再给一层冗余编码，
- * 红绿色弱的人也能一眼分出涨跌（纯色块对他们是同一个灰）。
- * 页面那边的 `--c-up` / `--c-down` 是同一组数值，改颜色两处一起改。
+ * 页面那边的 `--c-up` / `--c-down` 和第 2 类里的绿红是同一组数值，改颜色两处一起改。
  */
 
-/** 一根 K 线的描边与填充分开给：浅色模式靠「空心/实心」区分涨跌。 */
+/** 一根 K 线的描边与填充分开给：靠「空心/实心」区分涨跌。 */
 export interface CandleColors {
   stroke: string
   fill: string
@@ -86,8 +89,8 @@ export interface ChartTheme {
 /**
  * 唯一的一套画布配色（浅色）。
  *
- * 方向语义和页面 CSS 变量 `--c-up` / `--c-down` 是同一组数值：
- * 绿 = 涨 / 做多 / 盈利，红 = 跌 / 做空 / 亏损。
+ * K 线是黑白的（阳线空心、阴线实心）；挂单 / 持仓 / 成交 / 现价标签用页面那套
+ * 方向语义色：绿 = 涨 / 做多 / 盈利，红 = 跌 / 做空 / 亏损。
  */
 export const CHART_THEME: ChartTheme = {
   bg: '#ffffff',
@@ -96,17 +99,17 @@ export const CHART_THEME: ChartTheme = {
   text: '#0f172a',
   textDim: '#475569',
   crosshair: '#64748b',
-  // 阳线：绿边 + 白填充（空心）；阴线：红边 + 红填充（实心）。
-  // 颜色之外再给一层「空心 / 实心」，红绿色弱的人也能分清。
-  up: { stroke: '#15803d', fill: '#ffffff' },
-  down: { stroke: '#b91c1c', fill: '#b91c1c' },
+  // K 线：黑白配色。阳线黑边 + 白填充（空心），阴线全黑（实心）；
+  // 十字星（flat）用中性灰，和「涨/跌」都不撞。
+  up: { stroke: '#111827', fill: '#ffffff' },
+  down: { stroke: '#111827', fill: '#111827' },
   flat: { stroke: '#6b7280', fill: '#ffffff' },
   ema: '#b45309',
   zigzag: '#1d4ed8',
   zigzagLine: 'rgba(29, 78, 216, 0.5)',
   doji: '#0f172a',
-  // 现价标签跟着最后一根的涨跌走（见 drawLastPrice），这里只是「取不到时」的兜底
-  lastBoxBg: '#15803d',
+  // 现价标签：黑底白字 —— 和 K 线同一套黑白，不跟涨跌染色（见 drawLastPrice）
+  lastBoxBg: '#111827',
   lastBoxText: '#ffffff',
   crossBoxBg: '#475569',
   crossBoxText: '#ffffff',
@@ -307,8 +310,8 @@ function drawCandles(
     ctx.lineTo(xCenter, yLow)
     ctx.stroke()
 
-    // 实体：先填后描边。阳线是「绿边 + 白填充」（空心），阴线是「红边 + 红填充」（实心）
-    // —— 这两步同时用得上，颜色和空心/实心一起编码方向。
+    // 实体：先填后描边。阳线「黑边 + 白填充」= 空心，阴线「黑边 + 黑填充」= 实心，
+    // 靠空心/实心而不是颜色来编码方向（K 线保持黑白配色）。
     const yOpen = scale.yOf(b.open)
     const yClose = scale.yOf(b.close)
     const top = Math.min(yOpen, yClose)
@@ -630,9 +633,9 @@ function drawLastPrice(
   const { plot } = scale.layout
   if (y < plot.top || y > plot.bottom) return
 
-  const up = last.close >= last.open
-  const color = up ? theme.up.stroke : theme.down.stroke
-  ctx.strokeStyle = color
+  // 现价虚线和右侧标签都走 K 线那套黑白：K 线本身不带涨跌色，
+  // 这里再染一层绿红只会让「现价线」比 K 线还抢眼。
+  ctx.strokeStyle = theme.up.stroke
   ctx.globalAlpha = 0.55
   ctx.setLineDash([3, 3])
   ctx.beginPath()
@@ -642,9 +645,7 @@ function drawLastPrice(
   ctx.setLineDash([])
   ctx.globalAlpha = 1
 
-  // 标签底色跟着涨跌色走，但文字色单独给：浅色模式是「黑底白字」，
-  // 底色跟着这根 K 线的涨跌走（绿涨红跌），文字固定白色，两种底色上都够对比度。
-  drawAxisBox(ctx, scale, formatPrice(last.close, decimals), y, up ? theme.lastBoxBg : color, theme.lastBoxText)
+  drawAxisBox(ctx, scale, formatPrice(last.close, decimals), y, theme.lastBoxBg, theme.lastBoxText)
 }
 
 function drawAxisBox(
@@ -797,8 +798,9 @@ function drawCrosshair(
   ctx.textBaseline = 'top'
   ctx.fillText(label, boxX + w / 2, timeAxis.top + 4)
 
-  // OHLC 图例（顶部一行）：吸住的那一项换成吸附色 —— 用户一眼看出吸到的是哪个价
-  const upColor = bar.close >= bar.open ? theme.up.stroke : theme.down.stroke
+  // OHLC 图例（顶部一行）：吸住的那一项换成吸附色 —— 用户一眼看出吸到的是哪个价。
+  // 四个价格同色：K 线是黑白的，图例再分涨跌色反而和画布对不上。
+  const upColor = theme.text
   const parts: Array<[string, string, string, OHLCItem]> = [
     ['开', formatPrice(bar.open, decimals), upColor, 'open'],
     ['高', formatPrice(bar.high, decimals), theme.text, 'high'],
