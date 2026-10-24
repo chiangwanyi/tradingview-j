@@ -256,6 +256,8 @@ func (h *Hub) Handle(c *Client, raw []byte) {
 		h.handleGetRecording(c, req)
 	case ReqDeleteRecording:
 		h.handleDeleteRecording(c, req)
+	case ReqSetRecordingTags:
+		h.handleSetRecordingTags(c, req)
 	case "":
 		h.fail(c, req, "消息缺少 type 字段")
 	default:

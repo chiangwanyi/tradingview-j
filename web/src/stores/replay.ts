@@ -17,6 +17,7 @@ import type {
   InstanceSummary,
   OrderKind,
   Point,
+  RecordTag,
   Recording,
   RecordingSummary,
   ReplayEvent,
@@ -772,6 +773,20 @@ export const useReplayStore = defineStore('replay', () => {
     send({ type: 'delete_recording', recordingId: id })
   }
 
+  /**
+   * 整份替换一笔交易的标签（v0.21.0）。
+   *
+   * 前端**不做乐观更新**：标签存在服务端的 tags.json 里，回来的那份 `recordings`
+   * 列表才是事实。这样「点一下、看起来加上了、其实没存住」不会发生 ——
+   * 而标签恰恰是那种「下次打开就没了」最让人恼火的东西。
+   *
+   * 发的是「这笔交易之后该有的那一组」而不是 add/remove 两条：服务端只有一条
+   * 写路径，两个标签页同时改也不会各留一半。
+   */
+  function setRecordingTags(id: string, tags: RecordTag[]): void {
+    send({ type: 'set_recording_tags', recordingId: id, tags })
+  }
+
   function clearLoadedRecording(): void {
     loadedRecording.value = null
   }
@@ -903,6 +918,7 @@ export const useReplayStore = defineStore('replay', () => {
     openRecordingAt,
     takePendingPlayback,
     deleteRecording,
+    setRecordingTags,
     clearLoadedRecording,
   }
 })

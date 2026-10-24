@@ -551,6 +551,26 @@ export interface TradeStats {
   closed: boolean
 }
 
+/**
+ * 用户给一笔交易打的**自定义标签**（v0.21.0）。
+ *
+ * 名字和颜色都跟着标签本身存（在记录目录的 tags.json 里），所以「下次打标签时
+ * 点一下同名标签」就还原成一模一样的样子 —— 颜色不是主题色查出来的。
+ */
+export interface RecordTag {
+  name: string
+  /** `#rrggbb`。后端会把写错的颜色落回中性灰，前端不重复校验。 */
+  color: string
+}
+
+/**
+ * 一笔交易的**操作来源**：human = 真人手动，bot = 机器人。
+ *
+ * 机器人再细分一层看 `sourceId`（`demo` = 随机演示，其余是策略 id）——
+ * 「哪个策略」属于筛选维度，「是不是机器人」属于记录的性质，两者分开存。
+ */
+export type RecordSource = 'human' | 'bot'
+
 /** 交易记录列表里的一行。 */
 export interface RecordingSummary {
   id: string
@@ -582,6 +602,17 @@ export interface RecordingSummary {
   /** 收尾时间；还在持仓中时等于最后一次写盘时间 */
   endedAt: number
   stats: TradeStats
+  /**
+   * 操作来源（v0.21.0）。旧记录由后端按 `createdBy` 反推后一起下发，
+   * 所以这里可以当作**一定存在**来读（读不到时前端还有一层兜底，见 lib/records.ts）。
+   */
+  source?: RecordSource
+  /** 机器人的策略 id（`demo` = 随机演示）；真人记录没有这个字段 */
+  sourceId?: string
+  /** 给人看的细分名：真人是操作者名字，机器人是策略名（随机演示 / Caveman（野人）） */
+  sourceName?: string
+  /** 用户打的自定义标签，顺序即打标签的顺序 */
+  tags?: RecordTag[]
 }
 
 /** 开仓**之前**那一刻的盘面。 */

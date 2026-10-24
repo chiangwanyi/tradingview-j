@@ -1,4 +1,4 @@
-import type { RecordingSummary } from '@/types/protocol'
+import type { RecordSource, RecordTag, RecordingSummary } from '@/types/protocol'
 
 /**
  * 交易记录的**统计口径**：把后端算好的每笔 stats 汇总成一张能看懂的报表。
@@ -121,10 +121,17 @@ export interface RecordsFilter {
   symbol: string
   side: 'all' | 'long' | 'short'
   status: 'all' | 'closed' | 'open'
+  /**
+   * 操作来源（v0.21.0）：'' = 全部，'human' = 真人，'bot' = 全部机器人，
+   * `bot:<策略 id>` = 某个策略（`bot:demo` 是随机演示）。
+   */
+  source: string
+  /** 标签名（小写）。**同时满足**才留下：多选是收窄，不是并集 */
+  tags: string[]
   /** 起止日期，`YYYY-MM-DD`；'' = 不限。两端都含（结束日按整天算） */
   from: string
   to: string
-  /** 关键字：匹配名称 / 标的 / 操作者 */
+  /** 关键字：匹配名称 / 标的 / 操作者 / 标签 */
   keyword: string
 }
 
@@ -132,9 +139,25 @@ export const EMPTY_FILTER: RecordsFilter = {
   symbol: '',
   side: 'all',
   status: 'all',
+  source: '',
+  tags: [],
   from: '',
   to: '',
   keyword: '',
+}
+
+/** 筛选条件是不是「什么都没限」。日历/统计页用它决定要不要显示「清除筛选」。 */
+export function filterIsEmpty(f: RecordsFilter): boolean {
+  return (
+    !f.symbol &&
+    f.side === 'all' &&
+    f.status === 'all' &&
+    !f.source &&
+    f.tags.length === 0 &&
+    !f.from &&
+    !f.to &&
+    !f.keyword.trim()
+  )
 }
 
 // ---------------- 小工具 ----------------
@@ -181,6 +204,24 @@ export function pctText(n: number, digits = 1): string {
   return `${(n * 100).toFixed(digits)}%`
 }
 
+/**
+ * 金额的**短写**（日历格子、KPI 角标用）。
+ *
+ * 为什么另写一个而不是复用 moneyText：日历一格只有一百多像素宽，
+ * `-2,000.00` 会挤成两行；而「今天亏了两千」不需要精确到分。所以：
+ * 上千的数取整 + 千分位，小钱保留两位（`-31.50`），正数带 `+` —— 符号本身是信息。
+ */
+export function moneyShort(n: number, signed = true): string {
+  const v = round2(n)
+  const abs = Math.abs(v)
+  const body =
+    abs >= 1000
+      ? String(Math.round(abs)).replace(/\B(?=(\d{3})+(?!\d))/g, ',')
+      : abs.toFixed(2)
+  const sign = v < 0 ? '-' : v > 0 && signed ? '+' : ''
+  return `${sign}${body}`
+}
+
 export function sizeText(n: number): string {
   if (n >= 1024 * 1024) return `${(n / 1024 / 1024).toFixed(1)} MB`
   if (n >= 1024) return `${Math.round(n / 1024)} KB`
@@ -202,6 +243,225 @@ export function pnlSign(n: number): -1 | 0 | 1 {
   return 0
 }
 
+// ---------------- 操作来源 ----------------
+
+/** 来源的三个字面量，和后端 protocol.go 里的常量一一对应。 */
+export const SOURCE_HUMAN = 'human'
+export const SOURCE_BOT = 'bot'
+/** 随机演示机器人不是一个注册策略，用这个固定 id 代表它 */
+export const SOURCE_DEMO = 'demo'
+export const SOURCE_DEMO_NAME = '随机演示'
+
+/**
+ * 这一笔是谁做的。
+ *
+ * 后端在开仓那一刻就写死了 source（v0.21.0 起），这里只是**兜底**：老记录、
+ * 或者将来某个把字段丢了的地方，一律按 createdBy 判断 —— 「记录上不显示来源」
+ * 比「显示错了来源」更糟，因为筛选会悄悄漏掉它。
+ */
+export function sourceOf(rec: RecordingSummary): RecordSource {
+  if (rec.source === SOURCE_BOT || rec.source === SOURCE_HUMAN) return rec.source
+  return rec.createdBy === SOURCE_BOT ? SOURCE_BOT : SOURCE_HUMAN
+}
+
+/** 机器人的策略 id（真人是空串，随机演示是 `demo`）。 */
+export function sourceIdOf(rec: RecordingSummary): string {
+  if (sourceOf(rec) !== SOURCE_BOT) return ''
+  return rec.sourceId || SOURCE_DEMO
+}
+
+/** 给人看的来源名：真人一律叫「手动」，机器人用策略名。 */
+export function sourceNameOf(rec: RecordingSummary): string {
+  if (sourceOf(rec) === SOURCE_HUMAN) return '手动'
+  const id = sourceIdOf(rec)
+  return rec.sourceName || (id === SOURCE_DEMO ? SOURCE_DEMO_NAME : id)
+}
+
+/** 筛选键：`human` / `bot`（机器人整体）/ `bot:<策略 id>`。 */
+export function sourceKeyOf(rec: RecordingSummary): string {
+  return sourceOf(rec) === SOURCE_BOT ? `${SOURCE_BOT}:${sourceIdOf(rec)}` : SOURCE_HUMAN
+}
+
+/** 一条记录是否命中来源筛选。`''` 表示不限。 */
+export function matchSource(rec: RecordingSummary, key: string): boolean {
+  if (!key) return true
+  const src = sourceOf(rec)
+  if (key === SOURCE_HUMAN) return src === SOURCE_HUMAN
+  if (key === SOURCE_BOT) return src === SOURCE_BOT
+  if (key.startsWith(`${SOURCE_BOT}:`)) {
+    return src === SOURCE_BOT && sourceIdOf(rec) === key.slice(SOURCE_BOT.length + 1)
+  }
+  return true
+}
+
+/** 来源切换控件的一个选项。 */
+export interface SourceOption {
+  key: string
+  label: string
+  count: number
+}
+
+/**
+ * 从记录里现算出「有哪些来源」——**不写死策略清单**。
+ *
+ * 策略是编译期注册的，将来加一个就自动出现在筛选里；反过来，某个策略一条记录
+ * 都没有时也不该占一个永远筛出空结果的按钮。所以选项 = 数据里出现过的来源。
+ */
+export function sourceOptions(list: RecordingSummary[]): { all: number; human: number; bots: SourceOption[]; bot: number } {
+  let human = 0
+  const bots = new Map<string, { label: string; count: number }>()
+  for (const r of list) {
+    if (sourceOf(r) === SOURCE_HUMAN) {
+      human++
+      continue
+    }
+    const id = sourceIdOf(r)
+    const cur = bots.get(id) ?? { label: sourceNameOf(r), count: 0 }
+    cur.count++
+    // 同一个 id 可能有新旧两种名字（策略改过名）：取更长的那个，信息更多
+    if (sourceNameOf(r).length > cur.label.length) cur.label = sourceNameOf(r)
+    bots.set(id, cur)
+  }
+  const list2 = [...bots.entries()]
+    .map(([id, v]) => ({ key: `${SOURCE_BOT}:${id}`, label: v.label, count: v.count }))
+    .sort((a, b) => b.count - a.count || a.label.localeCompare(b.label))
+  return {
+    all: list.length,
+    human,
+    bots: list2,
+    bot: list2.reduce((n, b) => n + b.count, 0),
+  }
+}
+
+// ---------------- 按天聚合（日历用） ----------------
+
+/** 一天的汇总：日历格子上写的就是这几个数。 */
+export interface DayStats {
+  /** `YYYY-MM-DD`（交易时间的那一天，不是记录生成的那一天） */
+  day: string
+  count: number
+  /** 其中正常平完的笔数 */
+  closed: number
+  /** 当天已实现盈亏合计 */
+  pnl: number
+  wins: number
+  losses: number
+  /** 当天的记录，按交易时间正序 —— 详情页照着这个顺序列 */
+  rows: RecordingSummary[]
+}
+
+/** 这一笔属于哪一天（`YYYY-MM-DD`）。用的是 tradeTime，和列表里的时间列同源。 */
+export function dayOf(rec: RecordingSummary): string {
+  return tradeTime(rec).slice(0, 10)
+}
+
+/**
+ * 把记录按「交易日」分组。
+ *
+ * 为什么是交易日而不是记录生成日：复盘时问的是「那天我怎么做的」，
+ * 而记录生成时间只是「我什么时候点开这一段」（同一天可能补做前几天的行情）。
+ * 两者混用会让日历上的格子对不上列表里的时间列 —— 那是最容易让人不信任的一张图。
+ */
+export function groupByDay(list: RecordingSummary[]): Map<string, DayStats> {
+  const out = new Map<string, DayStats>()
+  for (const rec of list) {
+    const day = dayOf(rec)
+    if (!day) continue
+    let d = out.get(day)
+    if (!d) {
+      d = { day, count: 0, closed: 0, pnl: 0, wins: 0, losses: 0, rows: [] }
+      out.set(day, d)
+    }
+    const s = rec.stats
+    d.count++
+    if (s.closed) d.closed++
+    d.pnl = round2(d.pnl + s.realizedPnl)
+    const sign = pnlSign(s.realizedPnl)
+    if (sign > 0) d.wins++
+    else if (sign < 0) d.losses++
+    d.rows.push(rec)
+  }
+  for (const d of out.values()) {
+    d.rows.sort((a, b) => tradeTime(a).localeCompare(tradeTime(b)))
+  }
+  return out
+}
+
+// ---------------- 标签 ----------------
+
+/** 一个标签被用过多少次（打标签面板里的「已有标签」就是它）。 */
+export interface TagUsage {
+  name: string
+  color: string
+  count: number
+}
+
+/**
+ * 统计标签用量。**同名不区分大小写**（和后端的去重口径一致）。
+ *
+ * 颜色取「最近一次用过的那个」：同一个人给「追单」先标黄、后来觉得该标红，
+ * 面板上应该显示红 —— 那才是他下次想点的那一个。所以这里按记录时间从新到旧扫。
+ */
+export function tagUsage(list: RecordingSummary[]): TagUsage[] {
+  const sorted = [...list].sort((a, b) => tradeTime(b).localeCompare(tradeTime(a)))
+  const m = new Map<string, TagUsage>()
+  for (const rec of sorted) {
+    for (const t of rec.tags ?? []) {
+      const key = t.name.trim().toLowerCase()
+      if (!key) continue
+      const cur = m.get(key)
+      if (cur) cur.count++
+      else m.set(key, { name: t.name.trim(), color: t.color, count: 1 })
+    }
+  }
+  return [...m.values()].sort((a, b) => b.count - a.count || a.name.localeCompare(b.name))
+}
+
+/** 这条记录有没有某个标签（按名字，不区分大小写）。 */
+export function hasTag(rec: RecordingSummary, name: string): boolean {
+  const key = name.trim().toLowerCase()
+  return (rec.tags ?? []).some((t) => t.name.trim().toLowerCase() === key)
+}
+
+/**
+ * 去掉一个标签，返回新的那一组。**不改原数组**：这份数组来自 store，
+ * 就地改会让「界面上已经变了、服务端还没回」的那一帧看起来像已经存好了。
+ */
+export function withoutTag(tags: RecordTag[] | undefined, name: string): RecordTag[] {
+  const key = name.trim().toLowerCase()
+  return (tags ?? []).filter((t) => t.name.trim().toLowerCase() !== key)
+}
+
+/** 加一个标签（同名则换成新的颜色），返回新的那一组。 */
+export function withTag(tags: RecordTag[] | undefined, tag: RecordTag): RecordTag[] {
+  const key = tag.name.trim().toLowerCase()
+  const rest = (tags ?? []).filter((t) => t.name.trim().toLowerCase() !== key)
+  return [...rest, { name: tag.name.trim(), color: tag.color }]
+}
+
+/**
+ * 让标签的颜色在白底上读得清。
+ *
+ * 用户可能挑一个很亮的黄（#facc15）：直接拿来当文字色，白底上几乎看不见。
+ * 这里按感知亮度把过亮的颜色压暗一档 —— 色相不变，深浅变了，用户还是认得出
+ * 「这是我自己选的那个黄」。
+ */
+export function tagTextColor(hex: string): string {
+  const m = /^#?([0-9a-f]{6})$/i.exec(hex.trim())
+  if (!m) return '#475569'
+  const n = parseInt(m[1], 16)
+  const r = (n >> 16) & 0xff
+  const g = (n >> 8) & 0xff
+  const b = n & 0xff
+  const lum = (0.299 * r + 0.587 * g + 0.114 * b) / 255
+  if (lum <= 0.62) return `#${m[1].toLowerCase()}`
+  const k = 0.55
+  const to2 = (v: number) => Math.round(v * k).toString(16).padStart(2, '0')
+  return `#${to2(r)}${to2(g)}${to2(b)}`
+}
+
+
+
 // ---------------- 筛选 ----------------
 
 export function filterRecords(list: RecordingSummary[], f: RecordsFilter): RecordingSummary[] {
@@ -211,13 +471,20 @@ export function filterRecords(list: RecordingSummary[], f: RecordsFilter): Recor
     if (f.side !== 'all' && r.stats.side !== f.side) return false
     if (f.status === 'closed' && !r.stats.closed) return false
     if (f.status === 'open' && r.stats.closed) return false
+    if (!matchSource(r, f.source)) return false
+    // 标签是**全部命中**才留下：多选一个标签是在收窄，不是并集 ——
+    // 复盘时想问的是「既追单又没设止损的那几笔」。
+    for (const name of f.tags) {
+      if (!hasTag(r, name)) return false
+    }
     if (f.from || f.to) {
       const day = tradeTime(r).slice(0, 10) // YYYY-MM-DD
       if (f.from && day < f.from) return false
       if (f.to && day > f.to) return false
     }
     if (kw) {
-      const hay = `${r.name} ${r.symbol} ${r.createdBy} ${r.stats.side}`.toLowerCase()
+      const tags = (r.tags ?? []).map((t) => t.name).join(' ')
+      const hay = `${r.name} ${r.symbol} ${r.createdBy} ${r.stats.side} ${sourceNameOf(r)} ${tags}`.toLowerCase()
       if (!hay.includes(kw)) return false
     }
     return true

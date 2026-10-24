@@ -57,6 +57,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"tradingview-j/internal/strategy"
 )
 
 const (
@@ -174,6 +176,7 @@ func newTradeRecorder(inst *Instance, base RecordingBase, by, id, dir string, lo
 		start = base.Bars[len(base.Bars)-1].Time
 	}
 	now := time.Now()
+	source, sourceID, sourceName := tradeSource(inst, by)
 	rec := &Recording{
 		RecordingSummary: RecordingSummary{
 			ID:         id,
@@ -183,6 +186,9 @@ func newTradeRecorder(inst *Instance, base RecordingBase, by, id, dir string, lo
 			InstanceID: inst.ID,
 			CreatedBy:  by,
 			CreatedAt:  now.Unix(),
+			Source:     source,
+			SourceID:   sourceID,
+			SourceName: sourceName,
 		},
 		Format:    RecordingFormat,
 		Tick:      inst.Tick,
@@ -213,6 +219,132 @@ func newTradeRecorder(inst *Instance, base RecordingBase, by, id, dir string, lo
 	r.dirty = true
 	return r
 }
+
+// tradeSource 决定这一笔的**操作来源**（v0.21.0），在开仓那一刻算一次。
+//
+// 判据是 `by`（广播里的操作者）：机器人动的每一步都写 "bot"（见 bot.go），
+// 真人写的是客户端名字。所以「开仓那一手是谁下的」就是这一笔的来源 ——
+// 机器人接管时下的单，回放里也全是机器人下的，两者本来就是同一件事。
+//
+// 机器人再往下细一层看 `inst.botStrategy`：空 = 随机演示机器人（stub.go 那条
+// 「只会乱点」的链路），非空 = 注册表里的策略。策略名从注册表现查，查不到就退回 id ——
+// 显示一个 id 也比显示空白强，至少能看出「跑的不是随机演示」。
+func tradeSource(inst *Instance, by string) (source, sourceID, sourceName string) {
+	if by != SourceBot {
+		return SourceHuman, "", strings.TrimSpace(by)
+	}
+	id := ""
+	if inst != nil {
+		id = strings.TrimSpace(inst.botStrategy)
+	}
+	if id == "" {
+		return SourceBot, SourceDemoBot, SourceDemoName
+	}
+	for _, info := range strategy.List() {
+		if info.ID == id {
+			return SourceBot, id, info.Name
+		}
+	}
+	return SourceBot, id, id
+}
+
+// normalizeSource 给**旧记录**补上操作来源（v0.20.0 及以前没有这三个字段）。
+//
+// 反推只能靠 CreatedBy：那一代机器人动的每一步都写 "bot"，真人写客户端名字，
+// 所以 CreatedBy == "bot" 就是机器人 —— 策略无从得知，按「随机演示」记。
+// 这一步刻意放在**读取**侧（scan / Load）而不是写入侧：已经在盘上的文件不该
+// 因为升级被改写一遍，而前端拿到的口径必须一致。
+func (sum *RecordingSummary) normalizeSource() {
+	if sum == nil {
+		return
+	}
+	if sum.Source == "" {
+		if strings.TrimSpace(sum.CreatedBy) == SourceBot {
+			sum.Source, sum.SourceID, sum.SourceName = SourceBot, SourceDemoBot, SourceDemoName
+		} else {
+			sum.Source, sum.SourceName = SourceHuman, strings.TrimSpace(sum.CreatedBy)
+		}
+	}
+	if sum.Source == SourceBot && sum.SourceName == "" {
+		sum.SourceName = SourceDemoName
+	}
+}
+
+// ---------------------------------------------------------------------------
+// 自定义标签（v0.21.0）
+// ---------------------------------------------------------------------------
+
+const (
+	// maxTagsPerRecord 是一笔交易最多几个标签。上限存在的意义和语音每根 9 条一样：
+	// 标签是**记号**，不是分类树。一个人给一笔交易打十几个标签时，它们已经不再
+	// 提供任何信息，只会让列表和日历挤成一团。
+	maxTagsPerRecord = 8
+	// maxTagNameRunes 按**字符**数算（不是字节）：中文标签四个字就该能表达清楚。
+	maxTagNameRunes = 12
+)
+
+// normalizeTags 清洗一组用户标签：去空白、去重（同名不区分大小写）、限长、
+// 颜色必须是 #rrggbb。**不排序** —— 用户打标签的顺序本身就是信息。
+//
+// 名字撞了时**后一个赢**：界面上的「点一下」是覆盖语义（同一个词换颜色），
+// 前端因此可以只发「新的一组」，不必先查旧的那组里有没有同名词。
+func normalizeTags(in []RecordTag) []RecordTag {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make([]RecordTag, 0, len(in))
+	seen := make(map[string]int, len(in))
+	for _, t := range in {
+		name := strings.TrimSpace(t.Name)
+		if name == "" {
+			continue
+		}
+		if n := []rune(name); len(n) > maxTagNameRunes {
+			name = string(n[:maxTagNameRunes])
+		}
+		color := normalizeTagColor(t.Color)
+		key := tagKey(name)
+		if i, ok := seen[key]; ok {
+			out[i] = RecordTag{Name: name, Color: color}
+			continue
+		}
+		if len(out) >= maxTagsPerRecord {
+			continue
+		}
+		seen[key] = len(out)
+		out = append(out, RecordTag{Name: name, Color: color})
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
+}
+
+// normalizeTagColor 只认 #rrggbb。写错了给一个中性灰，而不是拒掉整次操作 ——
+// 用户打标签是为了记事，不该因为颜色字符串少一位就把整件事拦住。
+func normalizeTagColor(c string) string {
+	c = strings.TrimSpace(c)
+	if len(c) == 7 && c[0] == '#' {
+		ok := true
+		for i := 1; i < 7; i++ {
+			b := c[i]
+			if !(b >= '0' && b <= '9' || b >= 'a' && b <= 'f' || b >= 'A' && b <= 'F') {
+				ok = false
+				break
+			}
+		}
+		if ok {
+			return strings.ToLower(c)
+		}
+	}
+	return defaultTagColor
+}
+
+// defaultTagColor 是「用户没挑颜色」时用的中性灰（写错颜色也落在这里）。
+const defaultTagColor = "#64748b"
+
+// tagKey 是标签的去重键（同名不区分大小写）。前端统计用量时按同一个口径数。
+func tagKey(name string) string { return strings.ToLower(strings.TrimSpace(name)) }
 
 // recordableAction 决定哪些广播会被记进交易记录。
 //
@@ -554,6 +686,26 @@ func tradeName(rec *Recording) string {
 // 记录目录
 // ---------------------------------------------------------------------------
 
+// recordingTagsName 是标签文件的名字：**和 recording.json 分开存**。
+//
+// 为什么不把 Tags 写进 recording.json（它也带这个字段）：那个文件里是几百根 K 线
+// 加每一步的事件，几百 KB 到几 MB。改一个标签就要重写一遍整条记录，既慢又多了
+// 一次「写大文件写到一半崩掉」的机会 —— 而标签是几百字节的东西。分开之后：
+//
+//	tags.json 是标签的唯一事实，改标签只重写它
+//	recording.json 里那份 Tags 只在 Save 时顺手带上（旧文件里没有也不影响）
+//	scan / Load 都以 tags.json 为准（见 scanLockedTags）
+//
+// 代价是一个记录目录里多一个小文件，换来的是「打标签永远碰不到记录本体」。
+const recordingTagsName = "tags.json"
+
+// recordingTagsFile 是 tags.json 的结构（带版本，方便以后扩字段）。
+type recordingTagsFile struct {
+	Version int         `json:"version"`
+	SavedAt int64       `json:"savedAt"`
+	Tags    []RecordTag `json:"tags"`
+}
+
 // RecordingStore 是交易记录目录的读写入口。
 //
 // 列表走内存索引（每次 start/stop/delete 更新），回放才去读整份文件 ——
@@ -719,6 +871,12 @@ func (s *RecordingStore) Save(rec *Recording, audios []pendingAudio) (RecordingS
 	if err := os.MkdirAll(folder, 0o755); err != nil {
 		return RecordingSummary{}, err
 	}
+	// 标签是事后打的，只存在 tags.json 里（见 recordingTagsName）：收尾时手里这份
+	// rec 是开仓那一刻建的，里面没有它们。不补这一步，每保存一次就把用户打过的标签
+	// 从列表上抹一次 —— 而且看起来像是「标签没存住」。
+	if len(rec.Tags) == 0 {
+		rec.Tags = s.tagsOf(rec.ID)
+	}
 	keep := map[string]bool{}
 	var size int64
 	for _, a := range audios {
@@ -757,6 +915,7 @@ func (s *RecordingStore) Save(rec *Recording, audios []pendingAudio) (RecordingS
 	}
 	sum := rec.RecordingSummary
 	sum.Size = size
+	sum.normalizeSource()
 
 	s.mu.Lock()
 	s.upsertLocked(sum)
@@ -790,6 +949,11 @@ func (s *RecordingStore) SaveDraft(sum RecordingSummary, data []byte) error {
 	if err := os.Rename(tmp, path); err != nil {
 		return err
 	}
+	// 草稿也一样：标签在 tags.json 里，草稿的摘要里没有（见 Save 的同段注释）
+	if len(sum.Tags) == 0 {
+		sum.Tags = s.tagsOf(sum.ID)
+	}
+	sum.normalizeSource()
 	sum.Size = folderSize(folder)
 	s.mu.Lock()
 	s.upsertLocked(sum)
@@ -802,6 +966,12 @@ func (s *RecordingStore) SaveDraft(sum RecordingSummary, data []byte) error {
 func (s *RecordingStore) upsertLocked(sum RecordingSummary) {
 	for i := range s.items {
 		if s.items[i].ID == sum.ID {
+			// 标签只存在 tags.json 里，收尾/草稿的摘要里一般没有它们 ——
+			// 重写这一行时不能把索引里已有的标签一起抹掉（否则每次保存都会闪一下
+			// 「标签没了」，直到下一次 SetTags 才回来）。
+			if len(sum.Tags) == 0 {
+				sum.Tags = s.items[i].Tags
+			}
 			s.items[i] = sum
 			sortSummaries(s.items)
 			return
@@ -847,6 +1017,11 @@ func (s *RecordingStore) Load(id string) (*Recording, error) {
 	if rec.Name == "" {
 		rec.Name = tradeName(&rec)
 	}
+	// 标签以 tags.json 为准；没有这个文件就用 recording.json 里那份（Save 时写进去的）
+	if tags, ok := readRecordingTags(filepath.Join(s.dir, recordingFolder(id))); ok {
+		rec.Tags = tags
+	}
+	rec.normalizeSource()
 	return &rec, nil
 }
 
@@ -875,6 +1050,83 @@ func (s *RecordingStore) Delete(id string) error {
 	}
 	return nil
 }
+
+// SetTags 把一笔交易的标签**整份替换**成 tags（空 = 清空），返回更新后的那一行摘要。
+//
+// 写的是 <dir>/<id>/tags.json，不碰 recording.json（见 recordingTagsName 的说明）。
+// 顺序是「先落盘、再改索引」：索引随时可以按目录重建，tags.json 才是标签的本体；
+// 反过来先改索引的话，写盘失败时列表上会出现一组重启后就没了的标签。
+func (s *RecordingStore) SetTags(id string, tags []RecordTag) (RecordingSummary, error) {
+	if s == nil || s.dir == "" {
+		return RecordingSummary{}, errors.New("没有配置交易记录目录（config.json 的 replayRecordingDir）")
+	}
+	id = strings.TrimSpace(id)
+	if id == "" {
+		return RecordingSummary{}, errors.New("没有指定是哪一条记录")
+	}
+	if !s.has(id) {
+		return RecordingSummary{}, fmt.Errorf("没有这条记录：%s", id)
+	}
+	clean := normalizeTags(tags)
+	folder := filepath.Join(s.dir, recordingFolder(id))
+	if err := os.MkdirAll(folder, 0o755); err != nil {
+		return RecordingSummary{}, fmt.Errorf("记录目录不可用：%w", err)
+	}
+	if err := writeJSONAtomic(filepath.Join(folder, recordingTagsName), recordingTagsFile{
+		Version: 1,
+		SavedAt: time.Now().Unix(),
+		Tags:    clean,
+	}); err != nil {
+		return RecordingSummary{}, fmt.Errorf("标签没存下来：%w", err)
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for i := range s.items {
+		if s.items[i].ID != id {
+			continue
+		}
+		s.items[i].Tags = clean
+		sum := s.items[i]
+		s.writeIndexLocked()
+		return sum, nil
+	}
+	// has() 之后到这里说明索引刚被并发改过（删除）：标签文件已经写了，但那条记录没了。
+	// 回一句错，让前端知道这次点击没有落到任何一条记录上。
+	return RecordingSummary{}, fmt.Errorf("没有这条记录：%s", id)
+}
+
+// tagsOf 取一条记录当前的标签（索引里有就用索引里的）。调用方不要再持锁。
+func (s *RecordingStore) tagsOf(id string) []RecordTag {
+	if s == nil {
+		return nil
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, it := range s.items {
+		if it.ID == id {
+			return it.Tags
+		}
+	}
+	return nil
+}
+
+// readRecordingTags 从记录目录里读标签。第二个返回值是「这个文件存在吗」：
+//
+//	(false) 没有 tags.json —— 老记录、从没打过标签；调用方该保留手里的那份
+//	(true)  有，但 Tags 可能是空的 —— 用户把标签全删了，这是一个**有效状态**
+//
+// 两种情况必须分得开，否则「清空标签」会在下一次扫描时被 recording.json 里那份
+// 旧的 Tags 又还原回来，看起来像删不掉。读失败按「没有文件」处理：标签是附加信息，
+// 一个坏掉的 tags.json 不该让这条记录从列表里消失。
+func readRecordingTags(folder string) ([]RecordTag, bool) {
+	var f recordingTagsFile
+	if err := readJSONFile(filepath.Join(folder, recordingTagsName), &f); err != nil {
+		return nil, false
+	}
+	return normalizeTags(f.Tags), true
+}
+
 
 // AudioFile 返回某条记录里一段语音的磁盘路径。
 //
@@ -967,6 +1219,11 @@ func (s *RecordingStore) scan() []RecordingSummary {
 		if sum.Name == "" {
 			sum.Name = tradeName(&rec)
 		}
+		// 标签以 tags.json 为准（recording.json 里那份可能是上一次 Save 时的快照）
+		if tags, ok := readRecordingTags(folder); ok {
+			sum.Tags = tags
+		}
+		sum.normalizeSource()
 		sum.Size = folderSize(folder)
 		out = append(out, sum)
 	}
@@ -1097,4 +1354,54 @@ func (h *Hub) handleDeleteRecording(c *Client, req Request) {
 	}
 	h.log("[replay] 交易记录 %s 已删除", req.RecordingID)
 	h.reply(c, RecordingsMsg{Type: MsgRecordings, Dir: h.records.Dir(), Recordings: h.records.List()})
+}
+
+// handleSetRecordingTags 整份替换一笔交易的标签（v0.21.0）。
+//
+// 广播而不是只回给发起的那个连接：同一个人可能开着两个标签页（复盘页 + 记录页），
+// 一边打了标签，另一边列表里的标签也得立刻跟着变。整份列表一起发最省事 ——
+// 它本来就不大（一行一个摘要），而且前端拿到的永远是一份自洽的快照。
+func (h *Hub) handleSetRecordingTags(c *Client, req Request) {
+	if h.records == nil || !h.records.Enabled() {
+		h.fail(c, req, "没有配置交易记录目录（config.json 的 replayRecordingDir），标签存不下来")
+		return
+	}
+	sum, err := h.records.SetTags(req.RecordingID, req.Tags)
+	if err != nil {
+		h.fail(c, req, err.Error())
+		return
+	}
+	if len(sum.Tags) == 0 {
+		h.log("[replay] 交易记录 %s 的标签已清空", sum.ID)
+	} else {
+		names := make([]string, len(sum.Tags))
+		for i, t := range sum.Tags {
+			names[i] = t.Name
+		}
+		h.log("[replay] 交易记录 %s 的标签：%s", sum.ID, strings.Join(names, "、"))
+	}
+	h.broadcastRecordingsLocked()
+}
+
+// broadcastRecordingsLocked 把整份记录列表推给所有连接（标签变化后用）。
+//
+// 调用方必须已经持有 h.mu（这个名字里的 Locked 就是这个意思，和
+// broadcastInstancesLocked 同一套约定）：Handle 的分发全程在锁内，
+// 这里再抢一次锁会当场死锁。
+func (h *Hub) broadcastRecordingsLocked() {
+	if h.records == nil {
+		return
+	}
+	data, err := json.Marshal(RecordingsMsg{
+		Type:       MsgRecordings,
+		Dir:        h.records.Dir(),
+		Recordings: h.records.List(),
+	})
+	if err != nil {
+		h.log("[replay] 交易记录列表序列化失败：%v", err)
+		return
+	}
+	for _, c := range h.clients {
+		h.writeLocked(c, data)
+	}
 }

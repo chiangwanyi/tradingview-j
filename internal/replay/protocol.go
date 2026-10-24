@@ -62,6 +62,13 @@ const (
 	ReqListRecordings  = "list_recordings"
 	ReqGetRecording    = "get_recording"
 	ReqDeleteRecording = "delete_recording"
+	// ReqSetRecordingTags 整份替换一笔交易的标签（v0.21.0）。
+	//
+	// 为什么是「整份替换」而不是 add_tag / remove_tag 两条：标签是**一组**，
+	// 界面上一次操作要么加上一个、要么去掉一个，但真正要落盘的永远是这个集合的
+	// 新样子。整份替换让服务端只有一条写路径，也就不存在「加和删并发之后
+	// 两边各留一半」的中间态。
+	ReqSetRecordingTags = "set_recording_tags"
 
 	// 语音讲解（v0.16.0）：从录制里解耦的一级功能，**不必在录制中**。
 	//
@@ -129,6 +136,10 @@ type Request struct {
 
 	// get_recording / delete_recording
 	RecordingID string `json:"recordingId"`
+
+	// set_recording_tags：这笔交易**之后**应该有的那一组标签（空数组 = 全部清掉）。
+	// 颜色和名字都由用户定，服务端只做清洗（去空白、去重、限长、颜色必须是 #rrggbb）。
+	Tags []RecordTag `json:"tags"`
 }
 
 // ---------------- 下行：后端 -> 前端 ----------------
@@ -718,6 +729,34 @@ type TradeStats struct {
 	Closed bool `json:"closed"`
 }
 
+// RecordTag 是用户给一笔交易打的**自定义标签**（v0.21.0）。
+//
+// 名字和颜色都由用户定，服务端不当老师：只要求名字非空、不超过 maxTagNameRunes，
+// 颜色是 #rrggbb。为什么颜色跟着标签走而不是「标签名 → 主题色」查表：
+// 同一个词在不同人眼里轻重不同（「追单」有人标红、有人标黄），颜色是用户自己的记号，
+// 存在标签上才能做到「打过的标签下次点一下就还原成一模一样的样子」。
+type RecordTag struct {
+	Name  string `json:"name"`
+	Color string `json:"color"` // #rrggbb
+}
+
+// 交易记录的**操作来源**（v0.21.0）。
+//
+// 为什么单独存而不是从 CreatedBy 猜：CreatedBy 是「谁开的这一笔」，而来源问的是
+// 「这些操作是谁做的」。机器人接管时 by 是 "bot"，可真人开的实例被机器人接管后
+// 开出来的那一笔也该算机器人 —— 所以来源在**开仓那一刻**就定下来存进记录，
+// 后面的筛选才可能和回放里看到的一致。
+const (
+	SourceHuman = "human" // 真人手动
+	SourceBot   = "bot"   // 机器人
+
+	// SourceDemoBot 是「随机演示机器人」的来源 id。它不是一个注册策略
+	// （见 bot.go：不填 strategy 就是那个只会乱点乱下单的演示机器人），
+	// 所以这里给它一个固定的 id，前端筛选按它分组。
+	SourceDemoBot  = "demo"
+	SourceDemoName = "随机演示"
+)
+
 // RecordingSummary 是交易记录列表里的一行。
 type RecordingSummary struct {
 	ID      string `json:"id"`
@@ -744,6 +783,21 @@ type RecordingSummary struct {
 	CreatedAt  int64      `json:"createdAt"`
 	EndedAt    int64      `json:"endedAt"` // 收尾时间；持仓中还开着时等于最后一次写盘时间
 	Stats      TradeStats `json:"stats"`
+
+	// Source / SourceID / SourceName 是**操作来源**（v0.21.0，见上面的常量）。
+	//
+	// SourceName 是给人看的细分：真人 = 操作者名字；机器人 = 策略名
+	// （「随机演示」/「Caveman（野人）」）。筛选按 Source + SourceID 分组，
+	// 名字只负责显示 —— 策略改名不该让历史记录的筛选分组跟着裂开。
+	//
+	// 旧记录（v0.20.0 及以前）没有这三个字段，读取时按 CreatedBy 反推
+	// （见 RecordingSummary.normalizeSource），所以前端永远拿得到口径一致的来源。
+	Source     string `json:"source,omitempty"`
+	SourceID   string `json:"sourceId,omitempty"`
+	SourceName string `json:"sourceName,omitempty"`
+
+	// Tags 是用户打的自定义标签（v0.21.0）。顺序即打标签的顺序，界面上按这个顺序排。
+	Tags []RecordTag `json:"tags,omitempty"`
 }
 
 // Recording 是一条交易记录的全部内容。
