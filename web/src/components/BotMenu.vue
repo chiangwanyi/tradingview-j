@@ -89,7 +89,7 @@ const btn = 'rounded border px-2 py-1 text-[13px] transition disabled:cursor-not
     <button
       v-if="!store.botRunning"
       type="button"
-      :class="[btn, 'border-sky-600 text-sky-600 hover:bg-sky-600/10 dark:text-sky-400']"
+      :class="[btn, 'border-sky-600 text-sky-600 hover:bg-sky-600/10']"
       :disabled="!canStart"
       title="选一个策略让机器人自己跑：自动步进、判断开仓、挂止损止盈、收盘前平仓"
       @click.stop="toggleOpen"

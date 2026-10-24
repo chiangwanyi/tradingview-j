@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 
+import AnnotationEditTemplates from '@/components/AnnotationEditTemplates.vue'
 import AnnotationTemplates from '@/components/AnnotationTemplates.vue'
 import BotMenu from '@/components/BotMenu.vue'
 import { TOOL_LABEL, isDrawTool, useReplayStore, type DrawTool } from '@/stores/replay'
@@ -13,22 +14,17 @@ import { TOOL_LABEL, isDrawTool, useReplayStore, type DrawTool } from '@/stores/
  *
  * 工具只剩一组：**五种绘图工具**。指针不再是按钮（它就是默认状态：画完自动交回、
  * Esc 收起画笔、点空白退出编辑），「修改」更不是按钮 —— 画布上点一下图形就进入编辑，
- * 点空白/点 K 线就退出。两个按钮删掉之后，工具栏上不会再有「当前在哪个模式」这种
- * 需要用户自己记、又容易和实际行为不一致的开关。
+ * 点空白/点 K 线就退出。
  *
- * 射线是唯一**单击即完成**的：点一下就是一条水平朝右的射线（预览跟着鼠标走），
- * 因为「水平线 + 价位」是复盘里最常用的一笔，两次单击纯属多余动作。
- * 其余四种是两次单击。绘图工具选中后，右边会跟出一排模板 ——
- * 那是这个工具自己的样式预设（各工具互不相干）。
+ * 射线是唯一**单击即完成**的：点一下就是一条水平朝右的射线（预览跟着鼠标走）。
  *
- * v0.16.0 起这一行多了【🎙 录音】：语音讲解从录制的子功能提升为**一级功能**，
- * 和五种绘图工具平起平坐 —— 拿笔是「在这根 K 线上画点什么」，拿麦克风是
- * 「在这根 K 线上讲两句」，两件事都发生在当前这根 K 线上，都**不需要先开录像**。
- *
- * v0.18.0 删掉了【● 录制】：交易记录改成开仓自动开始、平仓自动结束，
- * 用户不需要（也不应该）记得按一个开关 —— 见 views/RecordsView.vue。
+ * v0.20.0 的两处收纳：
+ *   - **指标收进下拉框**。EMA20 和 Doji X + ZigZag 原来平铺在工具条上，占掉近一半
+ *     宽度（还带两个数字输入框），而复盘时它们一整天都不会改一次。现在只有一个
+ *     【指标 ▾】，点开才是开关和参数。
+ *   - **编辑图形时多一条模板条**（AnnotationEditTemplates）：选中图形后直接列出
+ *     同类模板，点一下就换样式 —— 不用「先选模板再重画」。
  */
-
 const store = useReplayStore()
 
 const drawTools: DrawTool[] = ['trend', 'ray', 'rect', 'arrow', 'fib']
@@ -91,6 +87,41 @@ function onDojiSize(e: Event): void {
   store.setIndicator({ dojiSize: Number(el.value) })
   el.value = String(store.indicator.dojiSize)
 }
+
+// ---------------- 指标下拉框 ----------------
+
+const indicatorOpen = ref(false)
+const indicatorBox = ref<HTMLElement | null>(null)
+
+/**
+ * 当前有几个指标是开着的（写在下拉按钮上）。
+ *
+ * 为什么要这个角标：指标收进下拉框之后，工具条上不再能一眼看出「EMA 关掉了没有」。
+ * 一个数字就是最小的提示 —— 不用点开也知道现在图上有没有指标。
+ */
+const activeIndicators = computed(() => (store.showEma ? 1 : 0) + (store.indicator.show ? 1 : 0))
+
+/** 点下拉框外面就收起：面板是浮在画布上的，不收起会一直挡住 K 线 */
+function onDocPointerDown(ev: PointerEvent): void {
+  if (!indicatorOpen.value) return
+  const box = indicatorBox.value
+  if (box && !box.contains(ev.target as Node)) indicatorOpen.value = false
+}
+
+/** Esc 也收起（和画布上「Esc 退一层」的习惯一致；这里只退下拉框这一层） */
+function onDocKeyDown(ev: KeyboardEvent): void {
+  if (ev.key === 'Escape' && indicatorOpen.value) indicatorOpen.value = false
+}
+
+onMounted(() => {
+  window.addEventListener('pointerdown', onDocPointerDown)
+  window.addEventListener('keydown', onDocKeyDown)
+})
+
+onBeforeUnmount(() => {
+  window.removeEventListener('pointerdown', onDocPointerDown)
+  window.removeEventListener('keydown', onDocKeyDown)
+})
 </script>
 
 <template>
@@ -117,6 +148,15 @@ function onDojiSize(e: Event): void {
     <AnnotationTemplates v-if="drawKind" :kind="drawKind" />
 
     <!--
+      编辑态的模板条（v0.20.0）：选中一个图形之后出现，只列**同类**模板，
+      点一下就把样式套到那个图形上（不动位置）。
+    -->
+    <AnnotationEditTemplates
+      v-else-if="store.editingAnnotation"
+      :annotation="store.editingAnnotation"
+    />
+
+    <!--
       语音讲解（v0.16.0）：**和上面的绘图工具同级**，不再是录制的子功能。
       点一下拿起麦克风（浮窗打开、空格开始录），再点一下放下。
       入口对所有人开放 —— 观众也要能听讲解；能不能**录**由浮窗里和服务端一起判
@@ -135,61 +175,93 @@ function onDojiSize(e: Event): void {
 
     <div class="h-4 w-px bg-line" />
 
-    <button
-      type="button"
-      :class="[btn, store.showEma ? 'border-accent text-accent' : btnIdle]"
-      title="显示/隐藏 EMA20（指标值由后端算好，这里只是开关）"
-      @click="store.showEma = !store.showEma"
-    >
-      EMA20
-    </button>
-
-    <div class="h-4 w-px bg-line" />
-
     <!--
-      Doji X + Blue ZigZag：一键开关 + 两个参数。
-      参数名沿用 Pine 脚本里的 input 名（Lag / Doji Size），
-      这样对着原始脚本核数的时候不用再翻译一层。
+      【指标 ▾】（v0.20.0）：EMA20 与 Doji X + Blue ZigZag 的开关、参数全在里面。
+      按钮上的数字 = 现在开着几个指标，收起状态下也能看出「图上有指标」。
     -->
-    <div class="flex items-center gap-1">
+    <div ref="indicatorBox" class="relative">
       <button
         type="button"
-        :class="[btn, store.indicator.show ? btnActive : btnIdle]"
-        title="Doji X + Blue ZigZag：蓝点标出动量转折（上穿画最低点、下穿画最高点），✖ 标出十字星（阳线在上、阴线在下）"
-        @click="store.setIndicator({ show: !store.indicator.show })"
+        :class="[btn, indicatorOpen ? btnActive : btnIdle]"
+        title="指标：EMA20 / Doji X + Blue ZigZag（点开设置开关与参数）"
+        @click="indicatorOpen = !indicatorOpen"
       >
-        Doji X + ZigZag
+        指标
+        <span class="ml-0.5 text-[10px]">▾</span>
+        <span
+          v-if="activeIndicators"
+          class="tnum ml-1 rounded bg-accent-soft px-1 text-[11px] text-accent"
+          >{{ activeIndicators }}</span
+        >
       </button>
-      <label
-        class="flex items-center gap-1 text-[12px] text-dim"
-        title="Lag：EMA 周期，同时是高低点的回看窗口（Pine 的 lookback，2..50）"
+
+      <div
+        v-if="indicatorOpen"
+        class="absolute top-full left-0 z-40 mt-1 w-[17rem] rounded border border-line bg-panel p-2 text-[13px] shadow-xl"
       >
-        Lag
-        <input
-          type="number"
-          min="2"
-          max="50"
-          step="1"
-          :class="num"
-          :value="store.indicator.lookback"
-          @change="onLag"
-        />
-      </label>
-      <label
-        class="flex items-center gap-1 text-[12px] text-dim"
-        title="Doji Size：实体不超过振幅的这个比例就算十字星（Pine 的 dojiSize，0.01..1）"
-      >
-        Doji
-        <input
-          type="number"
-          min="0.01"
-          max="1"
-          step="0.01"
-          :class="num"
-          :value="store.indicator.dojiSize"
-          @change="onDojiSize"
-        />
-      </label>
+        <label class="flex items-center gap-2 py-1">
+          <input v-model="store.showEma" type="checkbox" class="h-3.5 w-3.5 accent-sky-600" />
+          <span class="text-ink">EMA20</span>
+          <span class="ml-auto text-[11px] text-faint">后端算好的均线</span>
+        </label>
+
+        <div class="my-1 h-px bg-line" />
+
+        <label class="flex items-center gap-2 py-1">
+          <input
+            type="checkbox"
+            class="h-3.5 w-3.5 accent-sky-600"
+            :checked="store.indicator.show"
+            @change="store.setIndicator({ show: ($event.target as HTMLInputElement).checked })"
+          />
+          <span class="text-ink">Doji X + ZigZag</span>
+        </label>
+        <div class="mb-1 pl-5 text-[11px] leading-4 text-faint">
+          蓝点标出动量转折（上穿画最低点、下穿画最高点），✖ 标出十字星
+        </div>
+
+        <!--
+          参数名沿用 Pine 脚本里的 input 名（Lag / Doji Size），
+          这样对着原始脚本核数的时候不用再翻译一层。指标关掉时参数照样能改 ——
+          「先把参数调好再打开」比「打开后才能改」少一次来回。
+        -->
+        <label
+          class="flex items-center gap-2 py-1"
+          title="Lag：EMA 周期，同时是高低点的回看窗口（Pine 的 lookback，2..50）"
+        >
+          <span class="w-14 shrink-0 text-dim">Lag</span>
+          <input
+            type="number"
+            min="2"
+            max="50"
+            step="1"
+            :class="num"
+            :value="store.indicator.lookback"
+            @change="onLag"
+          />
+          <span class="text-[11px] text-faint">2 – 50</span>
+        </label>
+        <label
+          class="flex items-center gap-2 py-1"
+          title="Doji Size：实体不超过振幅的这个比例就算十字星（Pine 的 dojiSize，0.01..1）"
+        >
+          <span class="w-14 shrink-0 text-dim">Doji</span>
+          <input
+            type="number"
+            min="0.01"
+            max="1"
+            step="0.01"
+            :class="num"
+            :value="store.indicator.dojiSize"
+            @change="onDojiSize"
+          />
+          <span class="text-[11px] text-faint">0.01 – 1</span>
+        </label>
+
+        <div class="mt-1 border-t border-line pt-1 text-[11px] text-faint">
+          指标只影响显示，不进存档，也不广播给别人
+        </div>
+      </div>
     </div>
 
     <div class="h-4 w-px bg-line" />
@@ -198,7 +270,7 @@ function onDojiSize(e: Event): void {
       type="button"
       class="rounded bg-emerald-600 px-3 py-1 text-[13px] font-medium text-white hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-40"
       :disabled="!canEdit || !store.instance || (store.instance?.bars.length ?? 0) === 0"
-      title="揭示下一根 K 线（会按这根的最高/最低价撮合挂单）"
+      title="揭示下一根 K 线（会按这根的最高/最低价撮合挂单）；键盘 → 也是这个动作"
       @click="store.step()"
     >
       下一根 →
@@ -207,7 +279,6 @@ function onDojiSize(e: Event): void {
     <!--
       这里**没有【录制】按钮**（v0.18.0 删掉了）：交易记录是自动的 ——
       仓位从空仓变成有仓的那一刻开始记，回到空仓的那一刻收尾。
-      录制不再是用户要记得去做的一件事，自然也不该有一个要记得去按的开关。
     -->
 
     <button type="button" :class="[btn, btnIdle]" :disabled="!store.isOperator" @click="store.releaseControl()">
@@ -215,7 +286,7 @@ function onDojiSize(e: Event): void {
     </button>
     <button
       type="button"
-      :class="[btn, 'border-amber-500 text-amber-600 hover:bg-amber-500/10 dark:text-amber-400']"
+      :class="[btn, 'border-amber-500 text-amber-600 hover:bg-amber-500/10']"
       :disabled="store.isOperator || !store.instance || (store.instance?.operator ?? '') !== '' || store.playbackActive"
       @click="store.takeControl()"
     >
@@ -226,9 +297,9 @@ function onDojiSize(e: Event): void {
     <BotMenu />
 
     <div class="ml-auto flex items-center gap-3 text-[12px] text-dim">
-      <span v-if="store.playbackActive" class="text-red-600 dark:text-red-400">回放模式（只读）</span>
+      <span v-if="store.playbackActive" class="text-down">回放模式（只读）</span>
       <span v-else-if="store.instance">
-        操作权：<b :class="store.isOperator ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'">
+        操作权：<b :class="store.isOperator ? 'text-up' : 'text-amber-600'">
           {{ operator || '无人' }}
         </b>
       </span>

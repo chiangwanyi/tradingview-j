@@ -24,6 +24,8 @@ export function stepKindLabel(kind: string): string {
       return '绘制图形'
     case ACTION.annotationMoved:
       return '移动图形'
+    case ACTION.annotationStyled:
+      return '换样式'
     case ACTION.annotationDeleted:
       return '删除图形'
     case ACTION.annotationCleared:
@@ -36,6 +38,8 @@ export function stepKindLabel(kind: string): string {
       return '改价'
     case ACTION.orderCancelled:
       return '撤单'
+    case ACTION.flatAll:
+      return '一键退仓'
     case STEP_AUDIO:
       return '语音'
     default:
@@ -52,6 +56,7 @@ export function stepKindClass(kind: string): string {
       return 'border-sky-500/80 bg-sky-500/40'
     case ACTION.annotationAdded:
     case ACTION.annotationMoved:
+    case ACTION.annotationStyled:
     case ACTION.annotationDeleted:
     case ACTION.annotationCleared:
       return 'border-emerald-500/80 bg-emerald-500/35'
@@ -59,6 +64,7 @@ export function stepKindClass(kind: string): string {
     case ACTION.orderFilled:
     case ACTION.orderMoved:
     case ACTION.orderCancelled:
+    case ACTION.flatAll:
       return 'border-violet-500/80 bg-violet-500/35'
     case STEP_AUDIO:
       return 'border-amber-500 bg-amber-500/50'

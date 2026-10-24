@@ -22,8 +22,10 @@ import type { OrderKind, Side } from '@/types/protocol'
  *  3. **永远留在视口里**：每次移动/展开/窗口缩放都夹一次位置。半截露在屏幕外的浮窗
  *     是找不回来的（尤其是缩到最小、只剩一个图标的时候）。
  *
- * 和底部面板的分工：这里只有「下单」（手填价格的限价/止损 + 两个市价按钮），
+ * 和底部面板的分工：这里只有「下单」（手填价格的限价/止损 + 两个市价按钮 + 一键退仓），
  * 持仓、挂单列表、成交流水还在底部 Tab 里 —— 那些是「看」的，不需要随时点。
+ * 一键退仓（v0.20.0）放在这里而不是底部的挂单列表里：它是「现在就收摊」的动作，
+ * 和下单是同一件事的两头，手边要够得着。
  *
  * 价格/方向/单型是**这个组件自己的状态**（和以前底部那一列一样）：换实例时回到现价，
  * 行情往前走而用户没手改过就跟着现价走。数量用 `store.orderQuantity`，因为它同时被
@@ -37,7 +39,7 @@ const PANEL_W = 276
 /** 折叠态图标边长 */
 const ICON = 44
 /** 量不到实际高度时的估算值（首帧还没渲染，`offsetHeight` 是 0） */
-const EST_H = 268
+const EST_H = 306
 const MARGIN = 8
 
 const POS_KEY = 'tv-trade-float-pos'
@@ -109,6 +111,50 @@ function submitMarket(dir: Side): void {
   if (!inst.value || !store.canOperate) return
   if (!(currentPrice.value > 0) || !(store.orderQuantity > 0)) return
   store.marketOrder(dir, store.orderQuantity)
+}
+
+// ---------------- 市价退仓并取消所有挂单（v0.20.0） ----------------
+
+/** 仓位手数（绝对值）：平仓手数由**仓位**决定，和上面那个「数量」输入框无关 */
+const positionQty = computed(() => Math.abs(inst.value?.position.quantity ?? 0))
+const flatSide = computed(() => (inst.value?.position.quantity ?? 0) < 0 ? '空' : '多')
+
+/**
+ * 按钮能不能点：有仓位或有挂单，二者之一就值得按。
+ *
+ * 空仓 + 零挂单时灰掉，理由写在 title 里 —— 让用户知道自己不是点坏了，
+ * 而不是点一下等后端回一句错误（那种「点了没反应」最费解）。
+ */
+const flatDisabled = computed(
+  () => !store.canOperate || !inst.value || (positionQty.value === 0 && store.openOrders.length === 0),
+)
+
+const flatTitle = computed(() => {
+  if (!inst.value) return '先进入一个实例'
+  if (!store.canOperate) return '现在只能看：先「接管」操作权再退仓'
+  if (positionQty.value === 0 && store.openOrders.length === 0) return '已经空仓、也没有挂单，没什么可退的'
+  const parts: string[] = []
+  if (positionQty.value > 0) parts.push(`按现价平掉 ${flatSide.value} 头 ${positionQty.value} 手`)
+  if (store.openOrders.length > 0) parts.push(`撤销全部 ${store.openOrders.length} 张挂单`)
+  return `${parts.join('，')}（一条消息发出去，别人看到的就是一次性完成）`
+})
+
+/**
+ * 一键退仓。
+ *
+ * 提示语在**发出去之前**按当前盘面拼好：这条动作会把仓位和挂单都清掉，
+ * 等广播回来之后再读 instance，已经数不出「平了几手、撤了几张」了。
+ * 真正的执行仍然在后端（见 internal/replay/instance.go 的 flatAll），这里不本地改状态。
+ */
+function flatAll(): void {
+  if (flatDisabled.value) return
+  const qty = positionQty.value
+  const n = store.openOrders.length
+  store.flatAll()
+  const parts: string[] = []
+  if (qty > 0) parts.push(`市价退仓 ${qty} 手`)
+  if (n > 0) parts.push(`撤销 ${n} 张挂单`)
+  store.noteNotice(`已发出：${parts.join('，')}`)
 }
 
 // ---------------- 位置：拖动、折叠、夹在视口里 ----------------
@@ -314,7 +360,7 @@ const inputClass =
         <div class="grid grid-cols-2 gap-1.5">
           <button
             type="button"
-            class="rounded bg-emerald-600 px-2 py-1 text-[13px] font-medium whitespace-nowrap text-white transition hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-40"
+            class="rounded bg-up px-2 py-1 text-[13px] font-medium whitespace-nowrap text-white transition hover:bg-up/90 disabled:cursor-not-allowed disabled:opacity-40"
             :disabled="!store.canOperate || !inst || !(currentPrice > 0)"
             :title="`市价买入 ${store.orderQuantity} 手：按现价 ${priceText} 立即成交，不使用上面填的价格`"
             @click="submitMarket('buy')"
@@ -323,7 +369,7 @@ const inputClass =
           </button>
           <button
             type="button"
-            class="rounded bg-red-600 px-2 py-1 text-[13px] font-medium whitespace-nowrap text-white transition hover:bg-red-500 disabled:cursor-not-allowed disabled:opacity-40"
+            class="rounded bg-down px-2 py-1 text-[13px] font-medium whitespace-nowrap text-white transition hover:bg-down/90 disabled:cursor-not-allowed disabled:opacity-40"
             :disabled="!store.canOperate || !inst || !(currentPrice > 0)"
             :title="`市价卖出 ${store.orderQuantity} 手：按现价 ${priceText} 立即成交，不使用上面填的价格`"
             @click="submitMarket('sell')"
@@ -331,6 +377,24 @@ const inputClass =
             市价卖出 {{ store.orderQuantity }} 手
           </button>
         </div>
+
+        <!--
+          【市价退仓并取消所有挂单】（v0.20.0）。
+          单独占一整行、描边而不是实心：它是「收摊」动作，不该和上面两个高频的
+          市价按钮长得一样。一条消息 = 服务端一次做完（先平仓、再撤单），
+          所以这里不需要「先点撤单、再点市价」那两步。
+          颜色用中性描边而不是红：红在这个程序里只表示「做空 / 亏损」，
+          退仓不是一个方向，别让它看起来像在叫你卖。
+        -->
+        <button
+          type="button"
+          class="rounded border border-line bg-elev px-2 py-1 text-[13px] font-medium whitespace-nowrap text-ink transition hover:border-accent hover:text-accent disabled:cursor-not-allowed disabled:opacity-40"
+          :disabled="flatDisabled"
+          :title="flatTitle"
+          @click="flatAll"
+        >
+          市价退仓并取消所有挂单
+        </button>
 
         <div
           class="truncate text-[12px] leading-4 text-faint"

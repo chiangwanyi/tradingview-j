@@ -208,6 +208,8 @@ func (h *Hub) Handle(c *Client, raw []byte) {
 		h.handleAnnotationAdd(c, req)
 	case ReqAnnMove:
 		h.handleAnnotationMove(c, req)
+	case ReqAnnStyle:
+		h.handleAnnotationStyle(c, req)
 	case ReqAnnDelete:
 		h.handleAnnotationDelete(c, req)
 	case ReqAnnClear:
@@ -226,6 +228,8 @@ func (h *Hub) Handle(c *Client, raw []byte) {
 		h.handleOrderCancel(c, req)
 	case ReqOrderModify:
 		h.handleOrderModify(c, req)
+	case ReqOrderFlatAll:
+		h.handleOrderFlatAll(c, req)
 	case ReqBotStart:
 		h.handleBotStart(c, req)
 	case ReqBotStop:
@@ -460,6 +464,27 @@ func (h *Hub) handleAnnotationMove(c *Client, req Request) {
 	}
 }
 
+// handleAnnotationStyle 处理「给已画好的图形换模板」（v0.20.0）。
+//
+// 和移动一样要操作权：换样式改的是**这个实例上所有人看到的那个图形**。
+// 只发样式、不发端点 —— 前端在编辑态的模板条上点一下，走的就是这条。
+func (h *Hub) handleAnnotationStyle(c *Client, req Request) {
+	inst, ok := h.instanceLocked(c, req)
+	if !ok {
+		return
+	}
+	if !h.requireOperatorLocked(c, req, inst) {
+		return
+	}
+	if req.Style == nil {
+		h.fail(c, req, "缺少 style（换样式必须带一份完整样式：颜色 / 线宽 / 线型…）")
+		return
+	}
+	if _, err := h.doRestyleAnnotationLocked(inst, c.Name, req.AnnotationID, *req.Style); err != nil {
+		h.fail(c, req, err.Error())
+	}
+}
+
 func (h *Hub) handleAnnotationDelete(c *Client, req Request) {
 	inst, ok := h.instanceLocked(c, req)
 	if !ok {
@@ -545,6 +570,24 @@ func (h *Hub) handleOrderModify(c *Client, req Request) {
 	}
 }
 
+// handleOrderFlatAll 处理【市价退仓并取消所有挂单】（v0.20.0）。
+//
+// 一条消息做两件事（撤全部挂单 + 市价平仓），因为它们在用户心里就是**一个动作**：
+// 「我现在要空仓、图上也不要留着单」。拆成两条的话，前端要发 N+1 条、别人的画布
+// 会看到挂单一张张消失的中间态，而且中途失败会留下「撤了一半」的盘面。
+func (h *Hub) handleOrderFlatAll(c *Client, req Request) {
+	inst, ok := h.instanceLocked(c, req)
+	if !ok {
+		return
+	}
+	if !h.requireOperatorLocked(c, req, inst) {
+		return
+	}
+	if _, err := h.doFlatAllLocked(inst, c.Name); err != nil {
+		h.fail(c, req, err.Error())
+	}
+}
+
 // ---------------- 操作实现（真人 / 机器人共用） ----------------
 
 // doStepLocked 推进一根 K 线。
@@ -597,6 +640,17 @@ func (h *Hub) doMoveAnnotationLocked(inst *Instance, by, id string, start, end P
 		return Annotation{}, err
 	}
 	h.broadcastInstanceLocked(inst, ActAnnotationMoved, AnnotationPayload{Annotation: a}, by)
+	return a, nil
+}
+
+// doRestyleAnnotationLocked 换样式并广播。广播里是**整个** annotation（不是补丁），
+// 所以前端 reducer 和「移动」共用同一段替换逻辑。
+func (h *Hub) doRestyleAnnotationLocked(inst *Instance, by, id string, style AnnotationStyle) (Annotation, error) {
+	a, err := inst.restyleAnnotation(id, style)
+	if err != nil {
+		return Annotation{}, err
+	}
+	h.broadcastInstanceLocked(inst, ActAnnotationStyled, AnnotationPayload{Annotation: a}, by)
 	return a, nil
 }
 
@@ -679,6 +733,31 @@ func (h *Hub) doCancelOrderLocked(inst *Instance, by, id string) error {
 	}
 	h.broadcastInstanceLocked(inst, ActOrderCancelled, OrdersPayload{Orders: copies(inst.Orders)}, by)
 	return nil
+}
+
+// doFlatAllLocked 市价退仓 + 撤销全部挂单，然后广播一条 flat_all。
+//
+// 不抓交易快照（captureTradeBaseLocked）：这个动作只会把仓位变成 0，不可能开新仓，
+// 所以它永远是「结束一笔」而不是「开始一笔」。正在记的那一笔由 trackTradeLocked
+// 照常收尾（ActFlatAll 在 recordableAction 里），平仓那一笔成交也照常进统计。
+func (h *Hub) doFlatAllLocked(inst *Instance, by string) (FlatAllPayload, error) {
+	o, tr, cancelled, err := inst.flatAll(by)
+	if err != nil {
+		return FlatAllPayload{}, err
+	}
+	p := FlatAllPayload{
+		Order:         o,
+		Trade:         tr,
+		Cancelled:     cancelled,
+		Orders:        copies(inst.Orders),
+		Trades:        copies(inst.Trades),
+		ClosedLots:    inst.closedLots(),
+		Position:      inst.position(),
+		RealizedPnl:   inst.RealizedPnl,
+		UnrealizedPnl: inst.unrealizedPnl(),
+	}
+	h.broadcastInstanceLocked(inst, ActFlatAll, p, by)
+	return p, nil
 }
 
 // ---------------- 操作权 ----------------

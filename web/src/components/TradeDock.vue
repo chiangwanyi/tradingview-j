@@ -45,8 +45,8 @@ const playerTabClass = () =>
   [
     'whitespace-nowrap rounded-t px-3 py-1 text-[13px] transition',
     tab.value === 'player' && !collapsed.value
-      ? 'bg-elev text-red-600 shadow-[inset_0_1px_0_var(--c-line)] dark:text-red-400'
-      : 'text-red-600/70 hover:text-red-600 dark:text-red-400/70 dark:hover:text-red-400',
+      ? 'bg-elev text-red-600 shadow-[inset_0_1px_0_var(--c-line)]'
+      : 'text-red-600/70 hover:text-red-600',
   ].join(' ')
 
 const summary = computed(() => {

@@ -317,6 +317,30 @@ func (inst *Instance) moveAnnotation(by, id string, start, end Point, snap bool)
 	return Annotation{}, fmt.Errorf("没有这个标注：%s（可能已被别人删掉）", id)
 }
 
+// restyleAnnotation 把已画好的图形换一套样式（v0.20.0：编辑图形时点模板条）。
+//
+// 和 moveAnnotation 分开是有意的：那条明确写着「样式不跟着移动变」，这一条只换样式、
+// 端点一个都不动。合成一条消息的话，拖动一次线也可能被当成「顺手改了样式」。
+//
+// **同类约束由图形自己的 kind 保证**：新样式一律按 `a.Kind` 过 sanitizeStyle，
+// 所以把「箭头线的模板」套到矩形上时，先被裁剪成矩形的合法样式（有填充、没有箭头），
+// 界面上也不会出现一个「长得不像矩形」的矩形。前端只列同类模板，这里是第二道闸。
+//
+// 编号、端点、吸附标记、创建人和创建时间全部保留 —— 换的只是外观。
+func (inst *Instance) restyleAnnotation(id string, style AnnotationStyle) (Annotation, error) {
+	for i := range inst.Annotations {
+		if inst.Annotations[i].ID != id {
+			continue
+		}
+		a := &inst.Annotations[i]
+		a.Style = sanitizeStyle(a.Kind, style)
+		// 旧存档可能只有 color 这个单字段，样式一旦被正式写入就不再需要它了
+		a.LegacyColor = ""
+		return *a, nil
+	}
+	return Annotation{}, fmt.Errorf("没有这个标注：%s（可能已被别人删掉）", id)
+}
+
 // deleteAnnotation 删掉一个标注。
 func (inst *Instance) deleteAnnotation(id string) error {
 	for i, a := range inst.Annotations {
@@ -439,6 +463,52 @@ func (inst *Instance) marketOrder(by, side string, qty float64) (Order, Trade, e
 	inst.RealizedPnl += tr.RealizedPnl
 	inst.Position = inst.position()
 	return o, tr, nil
+}
+
+// flatAll 一键回到空仓：按现价把整个仓位平掉，并撤掉**全部**挂着的单（v0.20.0）。
+//
+// 顺序是「先平仓、后撤单」，理由是**失败时不留半截状态**：平仓是唯一可能失败的一步
+// （当前 K 线没有可成交的收盘价），它失败时挂单还没动过，整个动作等于没发生，
+// 前端收到一句错误、盘面原样。反过来的顺序（先撤单再平仓）一旦平仓失败，
+// 挂单已经没了、仓还在 —— 而那恰恰是用户最不想要的状态。
+//
+// 「平仓成功、撤单之前」这段中间态不会被任何人看到：整个过程在同一把锁里，
+// 只广播一次。所以不用担心中间态「空仓还挂着保护单」漏给客户端。
+//
+// 平仓用 marketOrder（和「市价卖出」完全同一条路），所以盈亏、成交、FIFO 批次全都
+// 走同一套撮合口径 —— 不存在「一键退仓算出来的钱和手动平仓不一样」。
+//
+// 返回值里的 order / trade 只在实际有仓位时才有：空仓只撤单时是 nil。
+// 既没仓位也没挂单时返回错误：静默成功会让「按钮没反应」和「真的没事可做」分不清。
+func (inst *Instance) flatAll(by string) (*Order, *Trade, int, error) {
+	qty := inst.Position.Quantity
+	var outOrder *Order
+	var outTrade *Trade
+
+	if math.Abs(qty) >= 1e-9 {
+		// 平仓方向 = 持仓的反方向；手数取绝对值（空头 Quantity 是负数）
+		side := "sell"
+		if qty < 0 {
+			side = "buy"
+		}
+		o, tr, err := inst.marketOrder(by, side, math.Abs(qty))
+		if err != nil {
+			return nil, nil, 0, err
+		}
+		outOrder, outTrade = &o, &tr
+	}
+
+	cancelled := 0
+	for i := range inst.Orders {
+		if inst.Orders[i].Status == OrderOpen {
+			inst.Orders[i].Status = OrderCancelled
+			cancelled++
+		}
+	}
+	if outOrder == nil && cancelled == 0 {
+		return nil, nil, 0, errors.New("现在既没有仓位、也没有挂单，不用退仓")
+	}
+	return outOrder, outTrade, cancelled, nil
 }
 
 // validateSide 是 buy / sell 之外的任何值都不收。

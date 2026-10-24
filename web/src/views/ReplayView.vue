@@ -59,8 +59,6 @@ const cursorText = computed(() => {
   return `第 ${inst.cursor + 1} 根 / 已加载 ${inst.bars.length} 根`
 })
 
-const themeLabel = computed(() => (store.theme === 'dark' ? '浅色' : '深色'))
-
 function typable(el: Element | null): boolean {
   if (!el) return false
   const tag = el.tagName
@@ -132,7 +130,7 @@ watch(
 
       <span v-if="store.me" class="whitespace-nowrap rounded bg-elev px-1.5 py-0.5 text-[12px] text-dim">
         {{ store.me.name }}
-        <span v-if="store.isOperator" class="text-emerald-600 dark:text-emerald-400">（操作者）</span>
+        <span v-if="store.isOperator" class="text-emerald-600">（操作者）</span>
         <span v-else-if="store.instance && !store.playbackActive" class="text-faint">（观众）</span>
       </span>
 
@@ -140,7 +138,7 @@ watch(
       <div v-if="store.playbackActive" class="flex min-w-0 items-center gap-2 text-[13px]">
         <span class="h-4 w-px bg-line" />
         <span
-          class="whitespace-nowrap rounded bg-red-500/15 px-1.5 text-[12px] font-medium text-red-600 dark:text-red-400"
+          class="whitespace-nowrap rounded bg-red-500/15 px-1.5 text-[12px] font-medium text-red-600"
           >回放中</span
         >
         <span class="min-w-0 truncate font-medium text-ink">{{ pb.recording?.name }}</span>
@@ -152,7 +150,7 @@ watch(
         <span class="tnum whitespace-nowrap text-[12px] text-faint">{{ store.instance.anchor }}</span>
         <span class="whitespace-nowrap text-[12px] text-faint">{{ cursorText }}</span>
         <span class="tnum whitespace-nowrap text-[12px] text-faint">tick {{ store.tick }}</span>
-        <span v-if="store.instance.bot" class="rounded bg-sky-600/20 px-1.5 text-[12px] text-sky-600 dark:text-sky-300">
+        <span v-if="store.instance.bot" class="rounded bg-sky-600/20 px-1.5 text-[12px] text-sky-600">
           机器人演示中
         </span>
       </div>
@@ -169,19 +167,11 @@ watch(
             {{ store.recordings.length }}
           </span>
         </RouterLink>
-        <button
-          type="button"
-          class="rounded border border-line px-2 py-1 text-[13px] text-dim hover:border-accent hover:text-accent"
-          :title="`切换到${themeLabel}模式`"
-          @click="store.toggleTheme()"
-        >
-          {{ themeLabel }}
-        </button>
         <InstancesMenu />
         <button
           v-if="store.playbackActive"
           type="button"
-          class="whitespace-nowrap rounded border border-red-400 px-2 py-1 text-[13px] text-red-600 hover:bg-red-500/10 dark:text-red-400"
+          class="whitespace-nowrap rounded border border-red-400 px-2 py-1 text-[13px] text-red-600 hover:bg-red-500/10"
           @click="pb.close()"
         >
           退出回放
@@ -214,10 +204,10 @@ watch(
           v-if="store.playbackActive"
           class="pointer-events-none absolute top-2 left-1/2 z-30 -translate-x-1/2 rounded-full border border-line bg-panel px-3 py-1 text-[12px] text-dim shadow"
         >
-          <span class="mr-2 font-medium text-red-600 dark:text-red-400">回放</span>
+          <span class="mr-2 font-medium text-red-600">回放</span>
           <span class="tnum text-ink">第 {{ pb.step }}/{{ pb.total }} 步</span>
           <span class="tnum ml-2 text-faint">{{ pb.currentStep?.time }}</span>
-          <span v-if="pb.audioPlaying" class="ml-2 text-amber-600 dark:text-amber-400">🔊 {{ pb.audioLabel }}</span>
+          <span v-if="pb.audioPlaying" class="ml-2 text-amber-600">🔊 {{ pb.audioLabel }}</span>
           <span v-else-if="pb.clips.length > 0" class="ml-2 text-faint">本步 {{ pb.clips.length }} 条语音 · 空格逐条</span>
           <span class="ml-2 text-faint">{{ pb.playing ? `${pb.speed}x 播放中` : '已暂停' }}</span>
         </div>
@@ -237,7 +227,7 @@ watch(
       <div
         v-if="store.notice"
         :key="store.noticeKey"
-        class="absolute right-2 bottom-2 z-40 max-w-lg rounded border border-emerald-300 bg-emerald-50 px-3 py-2 text-[14px] text-emerald-800 shadow-lg dark:border-emerald-700 dark:bg-emerald-950 dark:text-emerald-100"
+        class="absolute right-2 bottom-2 z-40 max-w-lg rounded border border-emerald-300 bg-emerald-50 px-3 py-2 text-[14px] text-emerald-800 shadow-lg"
       >
         <div class="flex items-start gap-3">
           <span class="flex-1">{{ store.notice }}</span>
@@ -252,7 +242,7 @@ watch(
       <div
         v-if="store.lastError"
         :key="store.errorKey"
-        class="absolute right-2 bottom-2 z-50 max-w-md rounded border border-red-300 bg-red-50/95 px-3 py-2 text-[14px] text-red-800 shadow-lg dark:border-red-700 dark:bg-red-950/95 dark:text-red-100"
+        class="absolute right-2 bottom-2 z-50 max-w-md rounded border border-red-300 bg-red-50/95 px-3 py-2 text-[14px] text-red-800 shadow-lg"
       >
         <div class="flex items-start gap-3">
           <span class="flex-1">{{ store.lastError }}</span>

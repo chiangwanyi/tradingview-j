@@ -387,6 +387,30 @@ export interface OrderFilledPayload {
   unrealizedPnl: number
 }
 
+/**
+ * 【市价退仓并取消所有挂单】的广播（v0.20.0）。
+ *
+ * 一次动作可能同时做两件事（撤掉全部挂单 + 市价平掉整个仓位），所以它既不是
+ * OrdersPayload 也不是 OrderFilledPayload：`order` / `trade` 只在**真的有仓位**时才有，
+ * 空仓只撤单时两者都是 undefined。
+ *
+ * 盘面一次换完（挂单、成交、持仓、盈亏全给全），前端不需要再要快照。
+ */
+export interface FlatAllPayload {
+  /** 平掉仓位的那张市价单；本来空仓时为 undefined */
+  order?: Order
+  /** 对应的成交；本来空仓时为 undefined */
+  trade?: Trade
+  /** 撤销了几张挂单（操作记录里写清「顺手撤了几张」） */
+  cancelled: number
+  orders: Order[]
+  trades: Trade[]
+  closedLots: ClosedLot[]
+  position: Position
+  realizedPnl: number
+  unrealizedPnl: number
+}
+
 export interface ControlChangedPayload {
   operator: string
 }
@@ -450,12 +474,14 @@ export const ACTION = {
   barAdvanced: 'bar_advanced',
   annotationAdded: 'annotation_added',
   annotationMoved: 'annotation_moved',
+  annotationStyled: 'annotation_styled',
   annotationDeleted: 'annotation_deleted',
   annotationCleared: 'annotation_cleared',
   orderPlaced: 'order_placed',
   orderFilled: 'order_filled',
   orderMoved: 'order_moved',
   orderCancelled: 'order_cancelled',
+  flatAll: 'flat_all',
   controlChanged: 'control_changed',
   membersChanged: 'members_changed',
   botStarted: 'bot_started',
@@ -474,7 +500,7 @@ export const ACTION = {
 export const STEP_AUDIO = 'recording_audio'
 
 /**
- * 调色板：模板编辑器里的快捷色块。挑的都是「深浅两套配色下都看得清」的中间调 ——
+ * 调色板：模板编辑器里的快捷色块。挑的都是「白底上画得出、又不和涨跌红绿撞」的中间调 ——
  * 图形里存的是十六进制颜色，换主题时颜色不跟着变（它已经存到服务端了）。
  */
 export const ANNOTATION_COLORS = [

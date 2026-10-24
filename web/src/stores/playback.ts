@@ -42,12 +42,15 @@ const STEP_MS: Record<string, number> = {
   [ACTION.barAdvanced]: BASE_STEP_MS,
   [ACTION.annotationAdded]: 550,
   [ACTION.annotationMoved]: 450,
+  [ACTION.annotationStyled]: 450,
   [ACTION.annotationDeleted]: 400,
   [ACTION.annotationCleared]: 600,
   [ACTION.orderPlaced]: 650,
   [ACTION.orderFilled]: 750,
   [ACTION.orderMoved]: 450,
   [ACTION.orderCancelled]: 450,
+  // 一键退仓会同时动挂单和仓位，停久一点才看得清「全平了」
+  [ACTION.flatAll]: 800,
 }
 
 export type PlaybackSpeed = 1 | 2 | 4

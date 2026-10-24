@@ -536,7 +536,7 @@ watch(voiceError, (msg) => {
         <span class="font-medium text-ink">语音讲解</span>
         <span
           class="tnum text-[11px]"
-          :class="full ? 'text-amber-600 dark:text-amber-400' : 'text-faint'"
+          :class="full ? 'text-amber-600' : 'text-faint'"
         >
           本根 {{ barAudios }}/{{ maxAudios }}
         </span>
@@ -561,7 +561,7 @@ watch(voiceError, (msg) => {
 
       <div class="px-2.5 py-1.5">
         <div class="flex items-baseline gap-2">
-          <span class="tnum" :class="full ? 'text-amber-600 dark:text-amber-400' : ''">
+          <span class="tnum" :class="full ? 'text-amber-600' : ''">
             本根 <b class="text-ink">{{ barAudios }}</b
             >/{{ maxAudios }}
           </span>
@@ -595,12 +595,12 @@ watch(voiceError, (msg) => {
 
         <div class="mt-1.5 rounded bg-elev px-1.5 py-1 leading-4">
           <template v-if="!store.canVoice">
-            <span class="text-amber-600 dark:text-amber-400">
+            <span class="text-amber-600">
               现在是观看状态，只能听、不能录（拿到操作权后就能开口）
             </span>
           </template>
           <template v-else-if="capturing">
-            <span class="font-medium text-red-600 dark:text-red-400">● 正在录音…再按一次 空格 结束</span>
+            <span class="font-medium text-red-600">● 正在录音…再按一次 空格 结束</span>
           </template>
           <template v-else-if="busy">
             <span class="text-dim">正在编码录音…</span>
@@ -611,8 +611,8 @@ watch(voiceError, (msg) => {
           <template v-else>
             <span>按一下 <b class="text-ink">空格</b>：抬起后开始录音，再按一下就结束</span>
           </template>
-          <div v-if="hint" class="mt-0.5 text-amber-600 dark:text-amber-400">{{ hint }}</div>
-          <div v-if="micError" class="mt-0.5 text-red-600 dark:text-red-400">{{ micError }}</div>
+          <div v-if="hint" class="mt-0.5 text-amber-600">{{ hint }}</div>
+          <div v-if="micError" class="mt-0.5 text-red-600">{{ micError }}</div>
         </div>
 
         <div v-if="clips.length" class="mt-1.5">
@@ -625,7 +625,7 @@ watch(voiceError, (msg) => {
               :class="
                 armedClear
                   ? 'bg-red-600 text-white'
-                  : 'text-faint hover:text-red-600 dark:hover:text-red-400'
+                  : 'text-faint hover:text-red-600'
               "
               :title="armedClear ? '再点一下确认清空（只清这根 K 线，不可撤销）' : '清空这根 K 线上的全部语音'"
               @click="clearBar"
@@ -637,7 +637,7 @@ watch(voiceError, (msg) => {
             v-for="c in clips"
             :key="c.file"
             class="mt-0.5 flex items-center gap-1 rounded px-0.5 hover:bg-elev"
-            :class="playingFile === c.file ? 'text-amber-600 dark:text-amber-400' : 'text-faint'"
+            :class="playingFile === c.file ? 'text-amber-600' : 'text-faint'"
           >
             <span class="tnum w-7 shrink-0">{{ clockMs(c.durationMs) }}</span>
             <span class="h-4 min-w-0 flex-1">
@@ -675,7 +675,7 @@ watch(voiceError, (msg) => {
               v-for="c in store.voiceElsewhere"
               :key="c.file"
               class="mt-0.5 flex items-center gap-1 rounded px-0.5 hover:bg-elev"
-              :class="playingFile === c.file ? 'text-amber-600 dark:text-amber-400' : 'text-faint'"
+              :class="playingFile === c.file ? 'text-amber-600' : 'text-faint'"
             >
               <span class="tnum w-14 shrink-0 text-[9px]">{{ shortTime(c.time) }}</span>
               <span class="h-4 min-w-0 flex-1">

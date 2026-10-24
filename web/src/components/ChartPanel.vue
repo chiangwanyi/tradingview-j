@@ -3,7 +3,7 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 
 import { buildFigure, resolveStyle, type Figure, type FigureView } from '@/components/chart/annotations'
 import { orderKindFor, orderKindLabel } from '@/components/chart/orders'
-import { ORDER_RESERVE_RIGHT, drawChart, themeOf, type HoverState } from '@/components/chart/render'
+import { ORDER_RESERVE_RIGHT, CHART_THEME, drawChart, type HoverState } from '@/components/chart/render'
 import {
   ChartScale,
   MAX_FORWARD_OFFSET,
@@ -54,8 +54,8 @@ import type { Order, OrderKind, Point, Side } from '@/types/protocol'
 
 const store = useReplayStore()
 
-/** 画布配色跟着主题走：两套配色都在 render.ts 里，这里只选一套 */
-const theme = computed(() => themeOf(store.theme))
+/** 画布配色：只有一套（浅色），和页面同一套方向语义（绿涨红跌） */
+const theme = CHART_THEME
 
 const host = ref<HTMLDivElement | null>(null)
 const canvas = ref<HTMLCanvasElement | null>(null)
@@ -237,7 +237,7 @@ function draw(): void {
   drawChart({
     ctx,
     scale,
-    theme: theme.value,
+    theme,
     hover: hover.value,
     symbol: inst?.symbol ?? '',
     orders: effectiveOrders(),
@@ -388,8 +388,7 @@ watch(
   () => requestDraw(),
 )
 
-// 换主题要立刻重画（Canvas 的像素不会跟着 CSS 变量变）
-watch(() => store.theme, () => requestDraw())
+// 指标开关 / 参数都是纯显示状态，改了就重画（没有主题要跟了：v0.20.0 只剩浅色）
 watch(() => store.showEma, () => requestDraw())
 // 指标设置：开关和两个参数都会整份换新对象，watch 一次就够（见 store.setIndicator）
 watch(() => store.indicator, () => requestDraw())
@@ -1422,6 +1421,27 @@ function onKeyDown(ev: KeyboardEvent): void {
     requestDraw()
     return
   }
+  /*
+   * →（方向键右键）= 【下一根】（v0.20.0）。
+   *
+   * 和工具条上那个按钮**同一套开关条件**：有操作权、进了实例、至少有一根 K 线。
+   * 三件都不满足时什么都不做、也不 preventDefault —— 让方向键在该滚的地方照常滚。
+   *
+   * 两个细节：
+   *   - 先 preventDefault 再判断 repeat：焦点停在某个按钮上时，方向键会被浏览器
+   *     当成一次点击 / 一次横向滚动，不拦住就会「步进一根 + 顺手点了别的按钮」；
+   *   - **忽略长按重复**（ev.repeat）。每重复一次都是一条广播、一根 K 线，
+   *     按住不放会在半秒内跑过几十根行情，而且退不回来 —— 一次按键只走一根。
+   */
+  if (ev.key === 'ArrowRight') {
+    if (ev.ctrlKey || ev.metaKey || ev.altKey) return
+    if (!store.canOperate || !store.instance || store.bars.length === 0) return
+    ev.preventDefault()
+    if (ev.repeat) return
+    store.step()
+    return
+  }
+
   // 回放是只读的：Delete 不能把「录像里的图形」发一条删除请求出去。
   //
   // 判定用 selectedId（= 真的画出来、带手柄的那一个），不是 store.selectedAnnotation：
@@ -1781,8 +1801,8 @@ defineExpose({ requestDraw })
       class="absolute z-20 flex h-4 w-4 items-center justify-center rounded-[3px] text-[13px] leading-none ring-1 transition disabled:cursor-not-allowed disabled:opacity-30"
       :class="
         o.side === 'buy'
-          ? 'bg-panel text-emerald-700 ring-emerald-500/60 hover:bg-emerald-600 hover:text-white dark:text-emerald-300'
-          : 'bg-panel text-red-700 ring-red-500/60 hover:bg-red-600 hover:text-white dark:text-red-300'
+          ? 'bg-panel text-up ring-up/60 hover:bg-up hover:text-white'
+          : 'bg-panel text-down ring-down/60 hover:bg-down hover:text-white'
       "
       :style="{ left: `${o.left}px`, top: `${o.top}px` }"
       :title="o.title"
@@ -1826,7 +1846,7 @@ defineExpose({ requestDraw })
     </div>
     <div
       v-if="modifierLabel"
-      class="pointer-events-none absolute top-2 left-2 rounded bg-elev px-2 py-1 text-[13px] text-amber-600 ring-1 ring-line dark:text-amber-300"
+      class="pointer-events-none absolute top-2 left-2 rounded bg-elev px-2 py-1 text-[13px] text-amber-600 ring-1 ring-line"
     >
       {{ modifierLabel }}
     </div>
@@ -1866,7 +1886,7 @@ defineExpose({ requestDraw })
         "
         @click="menuOrder('buy')"
       >
-        <span class="h-0 w-0 border-x-[4px] border-b-[6px] border-x-transparent border-b-emerald-500" />
+        <span class="h-0 w-0 border-x-[4px] border-b-[6px] border-x-transparent border-b-up" />
         买入 {{ store.orderQuantity }} 手 {{ menuPriceText }} {{ orderKindLabel(buyKind) }}
       </button>
       <button
@@ -1880,7 +1900,7 @@ defineExpose({ requestDraw })
         "
         @click="menuOrder('sell')"
       >
-        <span class="h-0 w-0 border-x-[4px] border-t-[6px] border-x-transparent border-t-red-500" />
+        <span class="h-0 w-0 border-x-[4px] border-t-[6px] border-x-transparent border-t-down" />
         卖出 {{ store.orderQuantity }} 手 {{ menuPriceText }} {{ orderKindLabel(sellKind) }}
       </button>
       <div class="my-1 h-px bg-line" />
@@ -1904,7 +1924,7 @@ defineExpose({ requestDraw })
         class="flex w-full items-center gap-2 px-3 py-1.5 text-left disabled:cursor-not-allowed disabled:opacity-40"
         :class="
           clearArmed
-            ? 'bg-red-50 text-red-700 hover:bg-red-100 dark:bg-red-950/50 dark:text-red-300 dark:hover:bg-red-950'
+            ? 'bg-down-soft text-down hover:bg-down-soft'
             : 'hover:bg-elev'
         "
         :disabled="annotationCount === 0 || !store.canOperate"

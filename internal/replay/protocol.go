@@ -31,6 +31,7 @@ const (
 	ReqStep           = "step"
 	ReqAnnAdd         = "annotation_add"
 	ReqAnnMove        = "annotation_move"
+	ReqAnnStyle       = "annotation_style" // 改已画好的图形的样式（换模板）：不动端点
 	ReqAnnDelete      = "annotation_delete"
 	ReqAnnClear       = "annotation_clear" // 一次清掉当前实例的全部绘图（画布右键菜单「移除 N 个绘图」）
 	ReqListTemplates  = "list_templates"
@@ -38,8 +39,9 @@ const (
 	ReqDelTemplate    = "delete_template"
 	ReqOrderPlace     = "order_place"
 	ReqOrderMarket    = "order_market"
-	ReqOrderModify    = "order_modify" // 改挂单价：画布上拖动挂单线走这条
+	ReqOrderModify    = "order_modify"  // 改挂单价：画布上拖动挂单线走这条
 	ReqOrderCancel    = "order_cancel"
+	ReqOrderFlatAll   = "order_flat_all" // 市价退仓 + 撤销全部挂单：一次动作换一条广播
 	ReqBotStart       = "bot_start"
 	ReqBotStop        = "bot_stop"
 	ReqListStrategies = "list_strategies" // 有哪些策略可加载（启动面板用）
@@ -92,10 +94,10 @@ type Request struct {
 	Kind  string           `json:"kind"` // trend | ray | rect | arrow | fib
 	Start *Point           `json:"start"`
 	End   *Point           `json:"end"`
-	Style *AnnotationStyle `json:"style"` // 只在 annotation_add 里用；画下去那一刻的快照
+	Style *AnnotationStyle `json:"style"` // annotation_add：画下去那一刻的快照；annotation_style：换上的新样式
 	Snap  bool             `json:"snap"`  // true = 端点吸附到该 K 线的 OHLC（前端按住 Ctrl）
 
-	// annotation_move / annotation_delete
+	// annotation_move / annotation_delete / annotation_style
 	AnnotationID string `json:"annotationId"`
 
 	// save_template
@@ -154,12 +156,14 @@ const (
 	ActBarAdvanced      = "bar_advanced"
 	ActAnnotationAdded  = "annotation_added"
 	ActAnnotationMoved  = "annotation_moved"
+	ActAnnotationStyled = "annotation_styled"
 	ActAnnotationDelete = "annotation_deleted"
 	ActAnnotationClear  = "annotation_cleared"
 	ActOrderPlaced      = "order_placed"
 	ActOrderFilled      = "order_filled"
 	ActOrderMoved       = "order_moved" // 改挂单价
 	ActOrderCancelled   = "order_cancelled"
+	ActFlatAll          = "flat_all" // 市价退仓 + 撤销全部挂单
 	ActControlChanged   = "control_changed"
 	ActMembersChanged   = "members_changed"
 	ActBotStarted       = "bot_started"
@@ -598,6 +602,26 @@ type OrderMovedPayload struct {
 type OrderFilledPayload struct {
 	Order         Order       `json:"order"`
 	Trade         Trade       `json:"trade"`
+	Orders        []Order     `json:"orders"`
+	Trades        []Trade     `json:"trades"`
+	ClosedLots    []ClosedLot `json:"closedLots"`
+	Position      Position    `json:"position"`
+	RealizedPnl   float64     `json:"realizedPnl"`
+	UnrealizedPnl float64     `json:"unrealizedPnl"`
+}
+
+// FlatAllPayload 是【市价退仓并取消所有挂单】的广播负载（v0.20.0）。
+//
+// 一次动作可能做两件事：撤掉全部挂单、按现价把整个仓位平掉。所以它既不是
+// OrdersPayload（还带着成交和持仓）也不是 OrderFilledPayload（本来空仓时没有成交）：
+// `Order` / `Trade` 是**指针**，只有真的有仓位时才有值。
+//
+// 空仓 + 没挂单是唯一会被拒的情况（返回错误，不广播）—— 静默成功会让用户
+// 以为「点了一下什么都没发生」，而到底是「没东西可平」还是「按钮坏了」分不清。
+type FlatAllPayload struct {
+	Order         *Order      `json:"order,omitempty"`
+	Trade         *Trade      `json:"trade,omitempty"`
+	Cancelled     int         `json:"cancelled"` // 撤销了几张挂单
 	Orders        []Order     `json:"orders"`
 	Trades        []Trade     `json:"trades"`
 	ClosedLots    []ClosedLot `json:"closedLots"`

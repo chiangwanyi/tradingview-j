@@ -71,7 +71,7 @@ func kindLabel(kind string) string {
 	return kind
 }
 
-// defaultLevelColors 是斐波那契四个水平的出厂颜色：四条线一眼能分清，深浅两套配色下都看得见。
+// defaultLevelColors 是斐波那契四个水平的出厂颜色：四条线一眼能分清，白底上都看得见，也不和涨跌红绿撞。
 var levelColorByRatio = map[float64]string{
 	-1: "#38bdf8",
 	0:  "#f59e0b",

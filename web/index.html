@@ -5,18 +5,10 @@
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>看盘 · 复盘</title>
-    <script>
-      /*
-       * 在样式生效前先把主题挂上去，避免「上次选的是浅色，进来先闪一下深色」。
-       * 键名和 stores/replay.ts 里的 THEME_KEY 必须一致（tv-replay-theme）。
-       */
-      try {
-        var saved = localStorage.getItem('tv-replay-theme')
-        document.documentElement.dataset.theme = saved === 'light' ? 'light' : 'dark'
-      } catch (e) {
-        document.documentElement.dataset.theme = 'dark'
-      }
-    </script>
+    <!--
+      v0.20.0 起只有一套浅色配色，所以这里不再需要「在样式生效前先把主题挂上去」
+      那段内联脚本（它当年只是为了避免进页面先闪一下深色）。
+    -->
   </head>
   <body>
     <div id="app"></div>

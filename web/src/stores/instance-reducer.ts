@@ -22,6 +22,7 @@ import type {
   BarAdvancedPayload,
   BotPayload,
   ControlChangedPayload,
+  FlatAllPayload,
   InstanceDetail,
   MembersChangedPayload,
   OrderFilledPayload,
@@ -53,7 +54,10 @@ export function applyInstanceEvent(inst: InstanceDetail, action: string, payload
       inst.annotations = [...inst.annotations, p.annotation]
       break
     }
-    case ACTION.annotationMoved: {
+    case ACTION.annotationMoved:
+    case ACTION.annotationStyled: {
+      // 移动和换样式都是「同一个 id 换成新的一份」，走同一段替换：
+      // 两条广播都带完整的 annotation（不是补丁），所以不需要区分字段。
       const p = payload as AnnotationPayload
       inst.annotations = inst.annotations.map((a) => (a.id === p.annotation.id ? p.annotation : a))
       break
@@ -85,6 +89,19 @@ export function applyInstanceEvent(inst: InstanceDetail, action: string, payload
     case ACTION.orderFilled: {
       // 市价单是同步成交的：订单、成交流水、持仓和盈亏一次到位
       const p = payload as OrderFilledPayload
+      inst.orders = p.orders
+      inst.trades = p.trades
+      inst.closedLots = p.closedLots
+      inst.position = p.position
+      inst.realizedPnl = p.realizedPnl
+      inst.unrealizedPnl = p.unrealizedPnl
+      break
+    }
+    case ACTION.flatAll: {
+      // 【市价退仓并取消所有挂单】：一次广播换掉整块交易状态。
+      // 可能只撤了单（本来空仓），也可能既平了仓又撤了单 —— 两种情况字段形状一样，
+      // 前端不做分支，直接照抄服务端给的这一份。
+      const p = payload as FlatAllPayload
       inst.orders = p.orders
       inst.trades = p.trades
       inst.closedLots = p.closedLots

@@ -251,7 +251,7 @@ onBeforeUnmount(() => voiceStop())
         :class="[
           offLeft.length ? 'left-7' : 'left-2',
           offRight.length ? 'right-7' : 'right-2',
-          voiceError ? 'text-amber-600 dark:text-amber-400' : 'text-faint',
+          voiceError ? 'text-amber-600' : 'text-faint',
         ]"
       >
         {{ hint }}
@@ -291,7 +291,7 @@ onBeforeUnmount(() => voiceStop())
         class="absolute top-1/2 z-10 flex -translate-y-1/2 items-center justify-center rounded-[3px] border p-[2px] transition hover:z-30"
         :class="[
           playingHere(m)
-            ? 'border-amber-500 bg-amber-500/10 text-amber-600 dark:text-amber-400'
+            ? 'border-amber-500 bg-amber-500/10 text-amber-600'
             : 'border-line bg-elev text-accent hover:border-accent',
           m.time === currentTime && !playingHere(m) ? 'ring-1 ring-accent/50' : '',
         ]"
@@ -309,7 +309,7 @@ onBeforeUnmount(() => voiceStop())
         <span
           v-if="m.clips.length > 1"
           class="tnum pointer-events-none absolute -top-1.5 -right-1 rounded-full border border-line bg-panel px-[3px] text-[8px] leading-[10px]"
-          :class="playingHere(m) ? 'text-amber-600 dark:text-amber-400' : 'text-faint'"
+          :class="playingHere(m) ? 'text-amber-600' : 'text-faint'"
         >
           {{ m.clips.length }}
         </span>
@@ -339,7 +339,7 @@ onBeforeUnmount(() => voiceStop())
         class="rounded border border-line px-1 leading-4 transition disabled:cursor-not-allowed disabled:opacity-40"
         :class="
           voicePlaying
-            ? 'border-amber-500 text-amber-600 dark:text-amber-400'
+            ? 'border-amber-500 text-amber-600'
             : 'text-dim hover:border-accent hover:text-accent'
         "
         :disabled="clips.length === 0"

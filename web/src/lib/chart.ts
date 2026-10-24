@@ -40,9 +40,8 @@ export default echarts
 /**
  * 图表配色：**从 CSS 变量读**，而不是再写一份十六进制。
  *
- * 页面的两套色（浅色 / 深色）已经由 style.css 的 `[data-theme]` 定好了，
- * 图表再抄一遍就等于多了一个会忘记同步的地方。这里只在真正画图时读一次，
- * 所以切换主题后只要重算 option，颜色就跟着变。
+ * 页面的语义色已经由 style.css 的 `:root` 定好了，图表再抄一遍就等于多了一个
+ * 会忘记同步的地方。这里只在真正画图时读一次。
  */
 export interface ChartPalette {
   /** 正文 / 数值 */
@@ -57,9 +56,9 @@ export interface ChartPalette {
   panel: string
   /** 强调色（主线、选中） */
   accent: string
-  /** 盈 / 涨：国内习惯**红** */
+  /** 盈 / 涨：美股习惯**绿** */
   up: string
-  /** 亏 / 跌：国内习惯**绿** */
+  /** 亏 / 跌：美股习惯**红** */
   down: string
   /** 打平 / 中性 */
   flat: string
@@ -73,19 +72,19 @@ function cssVar(name: string, fallback: string): string {
 }
 
 export function chartPalette(): ChartPalette {
-  const dark = document.documentElement.dataset.theme === 'dark'
   return {
-    ink: cssVar('--c-ink', dark ? '#e2e8f0' : '#0f172a'),
-    dim: cssVar('--c-dim', dark ? '#94a3b8' : '#475569'),
-    faint: cssVar('--c-faint', dark ? '#64748b' : '#64748b'),
-    line: cssVar('--c-line', dark ? '#1e293b' : '#d7e0ea'),
-    panel: cssVar('--c-panel', dark ? '#0e1626' : '#ffffff'),
-    accent: cssVar('--c-accent', dark ? '#38bdf8' : '#0369a1'),
-    // 红涨绿跌：和 K 线、交易记录列表里的盈亏配色保持同一套，整个程序只用这两种语义色
-    up: dark ? '#f87171' : '#dc2626',
-    down: dark ? '#34d399' : '#059669',
-    flat: dark ? '#94a3b8' : '#64748b',
-    upSoft: dark ? 'rgba(248,113,113,0.18)' : 'rgba(220,38,38,0.12)',
-    downSoft: dark ? 'rgba(52,211,153,0.18)' : 'rgba(5,150,105,0.12)',
+    ink: cssVar('--c-ink', '#0f172a'),
+    dim: cssVar('--c-dim', '#475569'),
+    faint: cssVar('--c-faint', '#64748b'),
+    line: cssVar('--c-line', '#d7e0ea'),
+    panel: cssVar('--c-panel', '#ffffff'),
+    accent: cssVar('--c-accent', '#0369a1'),
+    // 绿涨红跌：和 K 线（render.ts）、列表里的盈亏配色是同一套语义色 ——
+    // 整个程序只有这两个方向色，不区分页面、组件、图表库。
+    up: cssVar('--c-up', '#15803d'),
+    down: cssVar('--c-down', '#b91c1c'),
+    flat: '#64748b',
+    upSoft: 'rgba(21, 128, 61, 0.12)',
+    downSoft: 'rgba(185, 28, 28, 0.12)',
   }
 }

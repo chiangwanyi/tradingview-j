@@ -22,11 +22,14 @@ import {
  * 标注不在这里画 —— 标注是 SVG 图层（便于命中测试与拖动），见 ChartPanel.vue。
  * 两层的坐标换算都来自同一个 ChartScale，不会出现「图形和 K 线对不上」。
  *
- * 两套配色（深色 / 浅色）都在这个文件里，组件只传一个 `theme` 进来：
+ * **只有一套配色（浅色）**，而且和页面用同一套方向语义（美股习惯）：
  *
- *   深色：阳线绿、阴线红（实心）
- *   浅色：阳线**白填充 + 黑边框/影线**、阴线**全黑**（空心 vs 实心的经典画法，
- *         打印出来也分得清；纯红绿在白底上偏刺眼，且红绿色弱看着一样）
+ *   涨 / 做多 / 盈利 / 胜  -> 绿（up）
+ *   跌 / 做空 / 亏损 / 负  -> 红（down）
+ *
+ * 阳线画成**绿边空心**、阴线画成**红实心**：颜色表达方向，空心/实心再给一层冗余编码，
+ * 红绿色弱的人也能一眼分出涨跌（纯色块对他们是同一个灰）。
+ * 页面那边的 `--c-up` / `--c-down` 是同一组数值，改颜色两处一起改。
  */
 
 /** 一根 K 线的描边与填充分开给：浅色模式靠「空心/实心」区分涨跌。 */
@@ -36,7 +39,6 @@ export interface CandleColors {
 }
 
 export interface ChartTheme {
-  mode: 'light' | 'dark'
   bg: string
   grid: string
   axisLine: string
@@ -81,66 +83,38 @@ export interface ChartTheme {
   snapText: string
 }
 
-export const DARK_THEME: ChartTheme = {
-  mode: 'dark',
-  bg: '#0b1120',
-  grid: '#1b2637',
-  axisLine: '#1f2a3c',
-  text: '#cbd5e1',
-  textDim: '#7c8ba1',
-  crosshair: '#64748b',
-  up: { stroke: '#22c55e', fill: '#22c55e' },
-  down: { stroke: '#ef4444', fill: '#ef4444' },
-  flat: { stroke: '#94a3b8', fill: '#94a3b8' },
-  ema: '#fbbf24',
-  zigzag: '#60a5fa',
-  zigzagLine: 'rgba(96, 165, 250, 0.72)',
-  doji: '#e2e8f0',
-  lastBoxBg: '#22c55e',
-  lastBoxText: '#04130a',
-  crossBoxBg: '#334155',
-  crossBoxText: '#e2e8f0',
-  orderBuy: 'rgba(96, 165, 250, 0.85)',
-  orderSell: 'rgba(251, 146, 60, 0.85)',
-  orderBuyBox: 'rgba(30, 64, 175, 0.9)',
-  orderSellBox: 'rgba(124, 45, 18, 0.9)',
-  orderText: '#e2e8f0',
-  posLong: 'rgba(34, 197, 94, 0.9)',
-  posShort: 'rgba(239, 68, 68, 0.9)',
-  posLongBox: 'rgba(6, 78, 59, 0.92)',
-  posShortBox: 'rgba(127, 29, 29, 0.92)',
-  posText: '#f1f5f9',
-  tradeBuy: '#4ade80',
-  tradeSell: '#f87171',
-  selection: '#cbd5e1',
-  // 深色底上用琥珀色标「吸住了」：和涨跌红绿都不撞，一眼能认出这不是普通十字线
-  snap: '#fbbf24',
-  snapText: '#1c1206',
-}
-
-export const LIGHT_THEME: ChartTheme = {
-  mode: 'light',
+/**
+ * 唯一的一套画布配色（浅色）。
+ *
+ * 方向语义和页面 CSS 变量 `--c-up` / `--c-down` 是同一组数值：
+ * 绿 = 涨 / 做多 / 盈利，红 = 跌 / 做空 / 亏损。
+ */
+export const CHART_THEME: ChartTheme = {
   bg: '#ffffff',
   grid: '#e8eef6',
   axisLine: '#cbd5e1',
   text: '#0f172a',
   textDim: '#475569',
   crosshair: '#64748b',
-  up: { stroke: '#111827', fill: '#ffffff' },
-  down: { stroke: '#111827', fill: '#111827' },
+  // 阳线：绿边 + 白填充（空心）；阴线：红边 + 红填充（实心）。
+  // 颜色之外再给一层「空心 / 实心」，红绿色弱的人也能分清。
+  up: { stroke: '#15803d', fill: '#ffffff' },
+  down: { stroke: '#b91c1c', fill: '#b91c1c' },
   flat: { stroke: '#6b7280', fill: '#ffffff' },
   ema: '#b45309',
   zigzag: '#1d4ed8',
   zigzagLine: 'rgba(29, 78, 216, 0.5)',
   doji: '#0f172a',
-  lastBoxBg: '#111827',
+  // 现价标签跟着最后一根的涨跌走（见 drawLastPrice），这里只是「取不到时」的兜底
+  lastBoxBg: '#15803d',
   lastBoxText: '#ffffff',
   crossBoxBg: '#475569',
   crossBoxText: '#ffffff',
-  orderBuy: 'rgba(37, 99, 235, 0.85)',
-  orderSell: 'rgba(217, 119, 6, 0.85)',
-  orderBuyBox: 'rgba(37, 99, 235, 0.95)',
-  orderSellBox: 'rgba(180, 83, 9, 0.95)',
+  // 挂单：买入（做多方向）绿、卖出（做空方向）红 —— 和持仓线、成交三角同一套
+  orderBuy: 'rgba(21, 128, 61, 0.85)',
+  orderSell: 'rgba(185, 28, 28, 0.85)',
+  orderBuyBox: 'rgba(21, 128, 61, 0.95)',
+  orderSellBox: 'rgba(185, 28, 28, 0.95)',
   orderText: '#ffffff',
   posLong: 'rgba(21, 128, 61, 0.9)',
   posShort: 'rgba(185, 28, 28, 0.9)',
@@ -150,13 +124,9 @@ export const LIGHT_THEME: ChartTheme = {
   tradeBuy: '#15803d',
   tradeSell: '#b91c1c',
   selection: '#334155',
-  // 浅色底上压暗一档（和浅色主题里 ema 用的同一枚琥珀）
+  // 白底上压暗一档的琥珀：和涨跌红绿都不撞，一眼能认出这不是普通十字线
   snap: '#b45309',
   snapText: '#ffffff',
-}
-
-export function themeOf(mode: 'light' | 'dark'): ChartTheme {
-  return mode === 'light' ? LIGHT_THEME : DARK_THEME
 }
 
 export interface HoverState {
@@ -337,8 +307,8 @@ function drawCandles(
     ctx.lineTo(xCenter, yLow)
     ctx.stroke()
 
-    // 实体：先填后描边。浅色模式的「白填充 + 黑边框」就是靠这两步得到的；
-    // 深色模式填充色和描边色相同，看起来是实心块。
+    // 实体：先填后描边。阳线是「绿边 + 白填充」（空心），阴线是「红边 + 红填充」（实心）
+    // —— 这两步同时用得上，颜色和空心/实心一起编码方向。
     const yOpen = scale.yOf(b.open)
     const yClose = scale.yOf(b.close)
     const top = Math.min(yOpen, yClose)
@@ -386,8 +356,8 @@ function drawCandles(
  *   - 原脚本用 `plot()` 画蓝点，na 一断，孤立的那几个点在实际渲染里几乎看不见；
  *     这里画成**实心圆点 + 背景色描边**，扎在影线尖端上，一眼能数清有几个转折；
  *     点与点之间再连一条同色细线（原脚本没有），高低点连起来就是一条 ZigZag。
- *   - 原脚本的 `✖` 是 `color.black`，在深色底上等于没画。这里按主题取色
- *     （浅色近黑、深色近白），形状和位置保持「阳线在上、阴线在下」不变。
+ *   - 原脚本的 `✖` 是 `color.black`，白底上直接用会糊进网格。这里取主题的
+ *     `doji`（近黑），形状和位置保持「阳线在上、阴线在下」不变。
  *
  * 只画可见区间里的点：几百根 K 线的指标数组每帧都扫一遍是最容易白烧 CPU 的地方。
  * 折线例外 —— 左右各多取一个屏外的点，否则跨出屏幕的那一段会贴边断掉。
@@ -542,7 +512,7 @@ function drawOrders(
  * 标签写浮动盈亏而不是已实现盈亏：仓位没平时已实现盈亏一直是 0，写在成本线上
  * 等于什么都没说；浮动盈亏才是「这条线现在值多少钱」。
  *
- * 多头绿、空头红（深色主题是亮绿/亮红，浅色主题压暗一档，白底上才看得清）。
+ * 多头绿、空头红 —— 和白底上的文字色同一组数值，画布与列表不会出现两种绿。
  * 标签贴左边：右边留给挂单标签（也是同一行的矩形块），两者不会叠在一起。
  */
 function drawPositionLine(
@@ -673,7 +643,7 @@ function drawLastPrice(
   ctx.globalAlpha = 1
 
   // 标签底色跟着涨跌色走，但文字色单独给：浅色模式是「黑底白字」，
-  // 深色模式是「绿底深字」，两者都保证对比度。
+  // 底色跟着这根 K 线的涨跌走（绿涨红跌），文字固定白色，两种底色上都够对比度。
   drawAxisBox(ctx, scale, formatPrice(last.close, decimals), y, up ? theme.lastBoxBg : color, theme.lastBoxText)
 }
 
@@ -751,7 +721,7 @@ function drawWatermark(
 ): void {
   if (!symbol) return
   ctx.save()
-  ctx.globalAlpha = theme.mode === 'light' ? 0.07 : 0.06
+  ctx.globalAlpha = 0.07
   ctx.fillStyle = theme.text
   ctx.font = '700 28px system-ui, "Microsoft YaHei", sans-serif'
   ctx.textAlign = 'center'

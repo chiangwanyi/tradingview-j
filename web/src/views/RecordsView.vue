@@ -63,10 +63,13 @@ const totalSize = computed(() => all.value.reduce((n, r) => n + r.size, 0))
 
 // ---------------- 展示辅助 ----------------
 
-/** 赚红亏绿（国内习惯），和 K 线、列表、图表用的是同一套语义色。 */
+/**
+ * 盈亏着色：**绿赚红亏（美股习惯）**，和 K 线、画布上的持仓线、统计图用的是同一套语义色。
+ * 0 用正文色 —— 别把「打平」说成赚钱，也别把「没亏」说成亏。
+ */
 function tone(n: number): string {
-  if (n > 1e-6) return 'text-red-600 dark:text-red-400'
-  if (n < -1e-6) return 'text-emerald-600 dark:text-emerald-400'
+  if (n > 1e-6) return 'text-up'
+  if (n < -1e-6) return 'text-down'
   return 'text-ink'
 }
 
@@ -146,7 +149,6 @@ const statusColor = computed(() => {
       return 'bg-red-500'
   }
 })
-const themeLabel = computed(() => (store.theme === 'dark' ? '浅色' : '深色'))
 
 onMounted(() => {
   // 直接打开 /records（刷新页面、从书签进来）也要能用：自己连一次、自己拉一次列表
@@ -187,14 +189,6 @@ const td = 'whitespace-nowrap px-2.5 py-2'
         </span>
         <button type="button" :class="btn" title="重新扫描记录目录" @click="store.listRecordings()">
           刷新
-        </button>
-        <button
-          type="button"
-          :class="btn"
-          :title="`切换到${themeLabel}模式`"
-          @click="store.toggleTheme()"
-        >
-          {{ themeLabel }}
         </button>
       </div>
     </header>
@@ -313,9 +307,7 @@ const td = 'whitespace-nowrap px-2.5 py-2'
           </div>
           <div class="rounded-lg border border-line bg-panel px-3 py-2">
             <div class="text-[12px] text-faint">最大回撤</div>
-            <div
-              class="tnum mt-0.5 text-[20px] leading-6 font-semibold text-emerald-600 dark:text-emerald-400"
-            >
+            <div class="tnum mt-0.5 text-[20px] leading-6 font-semibold" :class="tone(agg.maxDrawdown)">
               {{ moneyText(agg.maxDrawdown) }}
             </div>
             <div class="tnum text-[11px] text-faint">
@@ -351,9 +343,9 @@ const td = 'whitespace-nowrap px-2.5 py-2'
           <div class="rounded-lg border border-line bg-panel px-3 py-2">
             <div class="text-[12px] text-faint">连胜 / 连亏</div>
             <div class="tnum mt-0.5 text-[20px] leading-6 font-semibold">
-              <span class="text-red-600 dark:text-red-400">{{ agg.maxWinStreak }}</span>
+              <span class="text-up">{{ agg.maxWinStreak }}</span>
               <span class="mx-1 text-faint">/</span>
-              <span class="text-emerald-600 dark:text-emerald-400">{{ agg.maxLossStreak }}</span>
+              <span class="text-down">{{ agg.maxLossStreak }}</span>
             </div>
             <div class="text-[11px] text-faint">最长连续盈利 / 亏损笔数</div>
           </div>
@@ -435,13 +427,8 @@ const td = 'whitespace-nowrap px-2.5 py-2'
                   </td>
                   <td :class="[td, 'text-dim']">{{ row.rec.symbol }}</td>
                   <td :class="td">
-                    <span
-                      :class="
-                        row.rec.stats.side === 'long'
-                          ? 'text-red-600 dark:text-red-400'
-                          : 'text-emerald-600 dark:text-emerald-400'
-                      "
-                    >
+                    <!-- 多 = 绿、空 = 红（和 K 线、持仓线、画布上的多空标记同一套） -->
+                    <span :class="row.rec.stats.side === 'long' ? 'text-up' : 'text-down'">
                       {{ dirText(row.rec) }}
                     </span>
                     <span class="tnum ml-1 text-[11px] text-faint"
@@ -476,7 +463,7 @@ const td = 'whitespace-nowrap px-2.5 py-2'
                     </span>
                     <span
                       v-else
-                      class="rounded bg-sky-500/15 px-1 text-[11px] text-sky-600 dark:text-sky-300"
+                      class="rounded bg-sky-500/15 px-1 text-[11px] text-sky-600"
                       title="这一笔还没平仓：记录停在最后一次操作上（可能实例被删、程序退出，或还在持仓中）"
                     >
                       持仓中
@@ -498,7 +485,7 @@ const td = 'whitespace-nowrap px-2.5 py-2'
                         :class="
                           armed === row.rec.id
                             ? 'bg-red-600 text-white'
-                            : 'text-faint hover:text-red-600 dark:hover:text-red-400'
+                            : 'text-faint hover:text-red-600'
                         "
                         :title="
                           armed === row.rec.id ? '再点一下确认删除（不可撤销）' : '删除这笔交易记录'

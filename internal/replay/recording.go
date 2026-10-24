@@ -225,8 +225,11 @@ func newTradeRecorder(inst *Instance, base RecordingBase, by, id, dir string, lo
 func recordableAction(action string) bool {
 	switch action {
 	case ActBarAdvanced,
-		ActAnnotationAdded, ActAnnotationMoved, ActAnnotationDelete, ActAnnotationClear,
-		ActOrderPlaced, ActOrderFilled, ActOrderMoved, ActOrderCancelled:
+		ActAnnotationAdded, ActAnnotationMoved, ActAnnotationStyled, ActAnnotationDelete, ActAnnotationClear,
+		ActOrderPlaced, ActOrderFilled, ActOrderMoved, ActOrderCancelled,
+		// 一键退仓是一次真实操作（可能既撤单又平仓），回放时要占一步 ——
+		// 否则「平仓那一下」在记录里凭空消失，那正是最该被看见的一步。
+		ActFlatAll:
 		return true
 	}
 	return false

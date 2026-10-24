@@ -90,7 +90,7 @@ const btn =
         </span>
         <span
           v-if="stepAudio > 0"
-          class="shrink-0 rounded bg-amber-500/15 px-1 text-[11px] text-amber-600 dark:text-amber-400"
+          class="shrink-0 rounded bg-amber-500/15 px-1 text-[11px] text-amber-600"
         >
           本步 {{ stepAudio }} 条语音
         </span>
@@ -98,7 +98,7 @@ const btn =
           <RouterLink :to="{ name: 'records' }" class="text-faint hover:text-accent">
             全部记录与统计 →
           </RouterLink>
-          <span :class="pb.audioPlaying ? 'text-amber-600 dark:text-amber-400' : 'text-faint'">
+          <span :class="pb.audioPlaying ? 'text-amber-600' : 'text-faint'">
             {{ pb.audioPlaying ? pb.audioLabel : pb.playing ? '播放中' : '已暂停' }}
           </span>
         </span>
@@ -185,7 +185,7 @@ const btn =
           class="flex shrink-0 items-center gap-1 rounded border px-1 py-0.5 text-[11px] transition"
           :class="
             pb.currentClip?.file === c.file
-              ? 'border-amber-500 bg-amber-500/10 text-amber-600 dark:text-amber-400'
+              ? 'border-amber-500 bg-amber-500/10 text-amber-600'
               : 'border-line text-dim hover:border-accent hover:text-accent'
           "
           :title="`第 ${i + 1} 条 · ${c.time} · ${(c.durationMs / 1000).toFixed(1)} 秒（点一下播放，再点停止）`"

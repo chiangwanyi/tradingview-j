@@ -10,6 +10,7 @@ import type {
   BarAdvancedPayload,
   BotPayload,
   ControlChangedPayload,
+  FlatAllPayload,
   MembersChangedPayload,
   OrderFilledPayload,
   OrdersPayload,
@@ -53,6 +54,8 @@ function actionLabel(action: string): string {
       return '加标注'
     case ACTION.annotationMoved:
       return '移标注'
+    case ACTION.annotationStyled:
+      return '换样式'
     case ACTION.annotationDeleted:
       return '删标注'
     case ACTION.annotationCleared:
@@ -63,6 +66,8 @@ function actionLabel(action: string): string {
       return '市价成交'
     case ACTION.orderCancelled:
       return '撤单'
+    case ACTION.flatAll:
+      return '一键退仓'
     case ACTION.controlChanged:
       return '操作权'
     case ACTION.membersChanged:
@@ -90,12 +95,18 @@ function detail(ev: ReplayEvent): string {
       return `${p.bar.time} → 第 ${p.cursor + 1} 根${fills}`
     }
     case ACTION.annotationAdded:
-    case ACTION.annotationMoved: {
+    case ACTION.annotationMoved:
+    case ACTION.annotationStyled: {
       const p = ev.payload as AnnotationPayload
       const a = p.annotation
       // 类型名只在 store 的 TOOL_LABEL 里写一次；这里遇到不认识的 kind 就原样显示
       const kind = TOOL_LABEL[a.kind as ChartTool] ?? a.kind
-      return `${kind} ${a.id}${a.snapped ? ' · 已吸附' : ''}`
+      const marks = [a.snapped ? '已吸附' : '']
+      // 换样式的那一条要能一眼看出「换成了什么颜色/线型」，否则日志里只有个编号
+      if (ev.action === ACTION.annotationStyled) {
+        marks.push(`样式 ${a.style?.color ?? ''} ${a.style?.width ?? ''}px ${a.style?.dash === 'dashed' ? '虚线' : '实线'}`)
+      }
+      return `${kind} ${a.id}${marks.filter(Boolean).map((m) => ` · ${m}`).join('')}`
     }
     case ACTION.annotationDeleted: {
       const p = ev.payload as { annotationId: string }
@@ -118,6 +129,20 @@ function detail(ev: ReplayEvent): string {
       const sign = p.order.side === 'buy' ? '买' : '卖'
       const pnl = p.trade.realizedPnl !== 0 ? ` · 实现 ${formatSigned(p.trade.realizedPnl)}` : ''
       return `${sign}市价 ${p.trade.price.toFixed(store.priceDecimals)} × ${p.trade.quantity}${pnl}`
+    }
+    case ACTION.flatAll: {
+      // 一句话说清它到底做了什么：可能只撤了单，也可能既平仓又撤单
+      const p = ev.payload as FlatAllPayload
+      const parts: string[] = []
+      if (p.trade) {
+        parts.push(
+          `${p.trade.side === 'buy' ? '买' : '卖'}市价平 ${p.trade.quantity} 手 @ ${p.trade.price.toFixed(
+            store.priceDecimals,
+          )}`,
+        )
+      }
+      if (p.cancelled > 0) parts.push(`撤销 ${p.cancelled} 张挂单`)
+      return parts.join(' · ') || '已空仓'
     }
     case ACTION.controlChanged: {
       const p = ev.payload as ControlChangedPayload
@@ -145,10 +170,11 @@ function detail(ev: ReplayEvent): string {
 }
 
 function actionClass(action: string): string {
-  if (action === ACTION.barAdvanced) return 'text-emerald-600 dark:text-emerald-400'
-  if (action.startsWith('annotation')) return 'text-amber-600 dark:text-amber-400'
-  if (action.startsWith('order')) return 'text-sky-600 dark:text-sky-400'
-  if (action === ACTION.controlChanged) return 'text-fuchsia-600 dark:text-fuchsia-400'
+  if (action === ACTION.barAdvanced) return 'text-emerald-600'
+  if (action.startsWith('annotation')) return 'text-amber-600'
+  // 一键退仓不是 order_* 前缀，但它属于交易动作，和挂单/成交同色
+  if (action.startsWith('order') || action === ACTION.flatAll) return 'text-sky-600'
+  if (action === ACTION.controlChanged) return 'text-fuchsia-600'
   return 'text-dim'
 }
 </script>

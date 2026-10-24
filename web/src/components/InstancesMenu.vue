@@ -141,7 +141,7 @@ function statusOf(inst: { operator: string; bot: boolean; botStrategy?: string }
 
       <div
         v-if="pb.active"
-        class="mt-2 rounded border border-amber-400 bg-amber-500/10 px-2 py-1 text-[12px] text-amber-700 dark:text-amber-300"
+        class="mt-2 rounded border border-amber-400 bg-amber-500/10 px-2 py-1 text-[12px] text-amber-700"
       >
         正在回放录像（只读）。新建或进入实例会先退出回放。
       </div>
@@ -184,7 +184,7 @@ function statusOf(inst: { operator: string; bot: boolean; botStrategy?: string }
             <span v-if="inst.trades > 0">· {{ inst.trades }} 笔</span>
             <span
               v-if="inst.realizedPnl !== 0"
-              :class="inst.realizedPnl > 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'"
+              :class="inst.realizedPnl > 0 ? 'text-up' : 'text-down'"
             >
               · {{ inst.realizedPnl > 0 ? '+' : '' }}{{ inst.realizedPnl.toFixed(2) }}
             </span>
@@ -198,7 +198,7 @@ function statusOf(inst: { operator: string; bot: boolean; botStrategy?: string }
             >
               进入
             </button>
-            <span v-else class="text-[12px] text-emerald-600 dark:text-emerald-400">当前</span>
+            <span v-else class="text-[12px] text-emerald-600">当前</span>
             <button
               type="button"
               class="ml-auto text-[12px] text-faint hover:text-red-500"

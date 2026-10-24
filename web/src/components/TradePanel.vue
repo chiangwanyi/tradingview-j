@@ -15,9 +15,10 @@ const store = useReplayStore()
 
 const trades = computed(() => (store.instance?.trades ?? []).slice().reverse())
 
+// 绿赚红亏（美股习惯），和持仓面板、交易记录页共用同一套语义色
 function pnlClass(v: number): string {
-  if (v > 0) return 'text-emerald-600 dark:text-emerald-400'
-  if (v < 0) return 'text-red-600 dark:text-red-400'
+  if (v > 0) return 'text-up'
+  if (v < 0) return 'text-down'
   return 'text-faint'
 }
 </script>
@@ -50,7 +51,7 @@ function pnlClass(v: number): string {
             <td class="tnum px-2.5 py-1 text-dim">{{ t.time.slice(5) }}</td>
             <td
               class="px-2.5 py-1"
-              :class="t.side === 'buy' ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'"
+              :class="t.side === 'buy' ? 'text-up' : 'text-down'"
             >
               {{ t.side === 'buy' ? '买' : '卖' }}
             </td>

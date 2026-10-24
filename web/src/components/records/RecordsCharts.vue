@@ -14,7 +14,6 @@ import { chartPalette } from '@/lib/chart'
 import type { ChartPalette } from '@/lib/chart'
 import { moneyText, pctText, pnlText } from '@/lib/records'
 import type { RecordAggregate } from '@/lib/records'
-import { useReplayStore } from '@/stores/replay'
 
 /**
  * 交易统计的六张图。
@@ -22,19 +21,13 @@ import { useReplayStore } from '@/stores/replay'
  * 这一层只负责「哪张图放在哪、标题写什么」—— option 全部来自
  * `chart-options.ts` 的纯函数，配色来自 `lib/chart.ts`（源头是 CSS 变量）。
  *
- * 主题切换要重算：`palette` 里显式读了 `store.theme`，否则改的是 <html> 上的
- * data-theme 属性，computed 不知道要重算，图会一直是上一个主题的颜色。
+ * 只剩浅色一套配色之后，`palette` 不再依赖任何主题状态：读一次就是最终颜色。
  */
 const props = defineProps<{
   agg: RecordAggregate
 }>()
 
-const store = useReplayStore()
-
-const palette = computed<ChartPalette>(() => {
-  void store.theme // 依赖主题：切换后重新读一遍 CSS 变量
-  return chartPalette()
-})
+const palette = computed<ChartPalette>(() => chartPalette())
 
 const equity = computed(() => equityOption(props.agg, palette.value))
 const perTrade = computed(() => perTradeOption(props.agg, palette.value))
@@ -57,10 +50,10 @@ const sides = computed(() =>
   })),
 )
 
-/** 赚红亏绿（国内习惯）；0 用中性色，别把「打平」说成赚钱。 */
+/** 绿赚红亏（美股习惯）；0 用中性色，别把「打平」说成赚钱。 */
 function toneClass(n: number): string {
-  if (n > 1e-6) return 'text-red-600 dark:text-red-400'
-  if (n < -1e-6) return 'text-emerald-600 dark:text-emerald-400'
+  if (n > 1e-6) return 'text-up'
+  if (n < -1e-6) return 'text-down'
   return 'text-dim'
 }
 
@@ -79,9 +72,8 @@ const hint = 'ml-auto shrink-0 text-[12px] text-faint'
         <h2 :class="title">累计盈亏与回撤</h2>
         <span :class="hint">
           最大回撤
-          <b class="tnum text-emerald-600 dark:text-emerald-400">{{
-            moneyText(agg.maxDrawdown)
-          }}</b>
+          <!-- 回撤本身是负数：按「负 = 红」着色，和列表里的盈亏同一套 -->
+          <b class="tnum text-down">{{ moneyText(agg.maxDrawdown) }}</b>
           <template v-if="agg.ddFrom > 0"> · 第 {{ agg.ddFrom }}→{{ agg.ddTo }} 笔</template>
         </span>
       </header>

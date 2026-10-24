@@ -2,6 +2,7 @@
 import { computed, ref } from 'vue'
 
 import { defaultLevels, resolveStyle } from '@/components/chart/annotations'
+import TemplateSwatch from '@/components/TemplateSwatch.vue'
 import { TOOL_LABEL, useReplayStore, type DrawTool } from '@/stores/replay'
 import { ANNOTATION_COLORS, type AnnotationStyle, type DashStyle, type Template } from '@/types/protocol'
 
@@ -90,13 +91,6 @@ function describe(t: Template): string {
   return parts.join(' · ')
 }
 
-/** fib 模板的色块：四条水平的颜色；其他工具就是一条（矩形再加一层填充） */
-function swatchColors(t: Template): string[] {
-  const s = resolveStyle({ kind: props.kind, style: t.style })
-  if (props.kind === 'fib') return (s.levels ?? defaultLevels()).map((lv) => lv.color)
-  return [s.color]
-}
-
 /** 编辑器里改某一条斐波那契水平的颜色 */
 function setLevelColor(index: number, color: string): void {
   const d = editing.value
@@ -131,43 +125,7 @@ const inputClass = `${field} w-full`
       :class="t.id === activeId ? 'border-accent bg-accent-soft text-accent' : 'border-line bg-panel text-dim hover:border-accent'"
       @click="store.selectTemplate(props.kind, t.id)"
     >
-      <svg width="16" height="10" viewBox="0 0 16 10" class="shrink-0">
-        <template v-if="props.kind === 'fib'">
-          <line
-            v-for="(c, i) in swatchColors(t)"
-            :key="i"
-            x1="0"
-            x2="16"
-            :y1="1.5 + i * 2.4"
-            :y2="1.5 + i * 2.4"
-            :stroke="c"
-            stroke-width="1.4"
-          />
-        </template>
-        <template v-else-if="props.kind === 'rect'">
-          <rect
-            x="1"
-            y="1"
-            width="14"
-            height="8"
-            :stroke="swatchColors(t)[0]"
-            :fill="resolveStyle({ kind: props.kind, style: t.style }).fill"
-            fill-opacity="0.35"
-            stroke-width="1.2"
-          />
-        </template>
-        <template v-else>
-          <line
-            x1="0"
-            y1="5"
-            x2="16"
-            y2="5"
-            :stroke="swatchColors(t)[0]"
-            stroke-width="2"
-            :stroke-dasharray="resolveStyle({ kind: props.kind, style: t.style }).dash === 'dashed' ? '5 3' : ''"
-          />
-        </template>
-      </svg>
+      <TemplateSwatch :kind="props.kind" :style="t.style" />
       {{ t.name }}
     </button>
 

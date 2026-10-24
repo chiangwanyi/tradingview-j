@@ -26,10 +26,10 @@ const store = useReplayStore()
 <template>
   <div class="rounded border border-line bg-panel text-[13px] text-ink shadow-xl">
     <div class="flex items-center gap-1.5 border-b border-line px-2.5 py-1">
-      <span class="h-1.5 w-1.5 shrink-0 rounded-full" :class="trade.side === 'long' ? 'bg-emerald-500' : 'bg-red-500'" />
+      <span class="h-1.5 w-1.5 shrink-0 rounded-full" :class="trade.side === 'long' ? 'bg-up' : 'bg-down'" />
       <span
         class="font-medium"
-        :class="trade.side === 'long' ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'"
+        :class="trade.side === 'long' ? 'text-up' : 'text-down'"
       >
         {{ trade.side === 'long' ? '多' : '空' }} {{ trade.quantity }} 手
       </span>
@@ -58,9 +58,9 @@ const store = useReplayStore()
         class="tnum text-right font-medium"
         :class="
           trade.realizedPnl > 0
-            ? 'text-emerald-600 dark:text-emerald-400'
+            ? 'text-up'
             : trade.realizedPnl < 0
-              ? 'text-red-600 dark:text-red-400'
+              ? 'text-down'
               : 'text-dim'
         "
       >

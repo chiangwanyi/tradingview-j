@@ -1,14 +1,23 @@
 @import 'tailwindcss';
 
 /*
- * 两套配色，靠 <html data-theme="light|dark"> 切换。
+ * **只有一套配色：浅色。**
  *
- * 用的是 CSS 变量 + @theme 的语义色（surface / panel / line / ink / dim / faint）：
- * 组件里只写 `bg-panel text-ink border-line`，不再出现 slate-950 这种具体色号 ——
- * 否则加浅色模式时要在几百个类名后面各补一个 dark: 变体，迟早漏一个。
+ * v0.20.0 删掉了深色模式：两套配色意味着每个语义色都要有两份取值、每个组件都要
+ * 记得补 dark: 变体，而复盘是一个白天对着 K 线看半小时的活儿 —— 真正被用到的只有浅色。
+ * 现在 CSS 变量只有一份，`<html data-theme>` 也不再被写入。
  *
- * 画布本身不用这里的变量：Canvas 的配色在 components/chart/render.ts 里
- * （两套 ChartTheme），因为它要的粒度更细（K 线描边/填充、轴框底色…）。
+ * 用的是 CSS 变量 + @theme 的语义色（surface / panel / line / ink / dim / faint /
+ * up / down）：组件里只写 `bg-panel text-ink border-line`，不再出现 slate-950 这种具体色号。
+ *
+ * 画布本身不用这里的变量：Canvas 的配色在 components/chart/render.ts 里（ChartTheme），
+ * 因为它要的粒度更细（K 线描边/填充、轴框底色…）。两处的 up / down **必须是同一套语义**：
+ *
+ *   up   = 涨 / 做多 / 盈利 / 胜        -> 绿
+ *   down = 跌 / 做空 / 亏损 / 负        -> 红
+ *
+ * 这是美股习惯（和国内「红涨绿跌」相反），全项目统一按这一套走，
+ * 不区分页面、组件、Canvas、图表库。
  */
 
 @theme {
@@ -21,28 +30,14 @@
   --color-faint: var(--c-faint);
   --color-accent: var(--c-accent);
   --color-accent-soft: var(--c-accent-soft);
+  /* 方向语义色：text-up / bg-down / border-up / ring-down … 由 Tailwind 自动生成 */
+  --color-up: var(--c-up);
+  --color-down: var(--c-down);
+  --color-up-soft: var(--c-up-soft);
+  --color-down-soft: var(--c-down-soft);
 }
-
-/*
- * Tailwind 默认的 dark: 变体看的是「系统深色偏好」，而这里的主题是**用户点出来的**，
- * 跟着 <html data-theme> 走。这条把两者接上，个别还需要分主题的细节就能直接写 dark:。
- */
-@custom-variant dark (&:where([data-theme='dark'], [data-theme='dark'] *));
 
 :root {
-  color-scheme: dark;
-  --c-surface: #0b1120;
-  --c-panel: #0e1626;
-  --c-elev: #16233a;
-  --c-line: #1e293b;
-  --c-ink: #e2e8f0;
-  --c-dim: #94a3b8;
-  --c-faint: #64748b;
-  --c-accent: #38bdf8;
-  --c-accent-soft: #0b3a56;
-}
-
-:root[data-theme='light'] {
   color-scheme: light;
   --c-surface: #f1f5f9;
   --c-panel: #ffffff;
@@ -53,6 +48,14 @@
   --c-faint: #64748b;
   --c-accent: #0369a1;
   --c-accent-soft: #e0f2fe;
+  /*
+   * 语义色压暗一档（700 号）：白底上当正文字色用，对比度才够读小字。
+   * 和 render.ts 里 LIGHT_THEME 的 up / down 是同一组数值 —— 改一边就要改另一边。
+   */
+  --c-up: #15803d;
+  --c-down: #b91c1c;
+  --c-up-soft: #dcfce7;
+  --c-down-soft: #fee2e2;
 }
 
 html,

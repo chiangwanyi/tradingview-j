@@ -62,28 +62,9 @@ export function isDrawTool(tool: ChartTool): tool is DrawTool {
   return tool !== 'select'
 }
 
-/** 界面配色。只影响显示（画布配色 + 页面语义色），跟后端无关。 */
-export type ThemeMode = 'light' | 'dark'
-
 const MAX_LOG = 200
-const THEME_KEY = 'tv-replay-theme'
 /** 指标的开关与参数记在本机：它是显示偏好，换实例、重启程序都不该被重置 */
 const INDICATOR_KEY = 'tv-replay-doji-zigzag'
-
-function readTheme(): ThemeMode {
-  try {
-    const saved = localStorage.getItem(THEME_KEY)
-    if (saved === 'light' || saved === 'dark') return saved
-  } catch {
-    // 某些隐私模式下 localStorage 会直接抛，忽略即可（大不了不记住）
-  }
-  return 'dark'
-}
-
-function applyTheme(mode: ThemeMode): void {
-  // 挂在 <html> 上，style.css 里的 [data-theme='light'] 靠它切换 CSS 变量
-  document.documentElement.dataset.theme = mode
-}
 
 /**
  * 读回上次的指标设置。
@@ -147,6 +128,17 @@ export const useReplayStore = defineStore('replay', () => {
    */
   const editingId = computed(() => (tool.value === 'select' ? selectedAnnotation.value : null))
   const editing = computed(() => editingId.value !== null)
+  /**
+   * 正在编辑的那个图形（**对象本身**，不是 id）。
+   *
+   * 编辑态的模板条要拿它的 `kind` 去筛同类模板、拿它的 `style` 去高亮「当前是哪一条」。
+   * 不在图上的选中（被删掉、锚点落在未揭示区）返回 null —— 那种情况下没有可改的东西。
+   */
+  const editingAnnotation = computed(() => {
+    const id = editingId.value
+    if (!id) return null
+    return (instance.value?.annotations ?? []).find((a) => a.id === id) ?? null
+  })
 
   /**
    * 进入 / 切换 / 退出编辑。
@@ -191,8 +183,6 @@ export const useReplayStore = defineStore('replay', () => {
    * 复盘页取走之后立即清空 —— 留着它会在每次断线重连时把同一笔重复播一遍。
    */
   const pendingPlaybackId = ref('')
-  const theme = ref<ThemeMode>(readTheme())
-  applyTheme(theme.value)
   /** 是否显示 EMA20（纯显示开关，跟后端无关） */
   const showEma = ref(true)
   /**
@@ -519,20 +509,6 @@ export const useReplayStore = defineStore('replay', () => {
     socket.connect()
   }
 
-  function setTheme(mode: ThemeMode): void {
-    theme.value = mode
-    applyTheme(mode)
-    try {
-      localStorage.setItem(THEME_KEY, mode)
-    } catch {
-      // 记不住就算了，不影响本次使用
-    }
-  }
-
-  function toggleTheme(): void {
-    setTheme(theme.value === 'dark' ? 'light' : 'dark')
-  }
-
   /**
    * 改指标设置。
    *
@@ -658,6 +634,21 @@ export const useReplayStore = defineStore('replay', () => {
   }
 
   /**
+   * 把某个**已经画好的图形**换成另一条模板的样式（v0.20.0）。
+   *
+   * 和 `annotation_move` 分开：那条只挪位置（后端明确说过「样式不跟着移动变」），
+   * 这一条只换样式、不动端点。两者合起来会让「拖一下线」也可能被当成改样式，
+   * 而用户拖的时候根本没想改颜色。
+   *
+   * 后端拿图形自己的 kind 去 `sanitizeStyle`，所以「只在同类图形之间切换」是**服务端**
+   * 也守着的约束，不只是界面上只列同类模板。
+   */
+  function restyleAnnotation(id: string, style: AnnotationStyle): void {
+    if (!instance.value) return
+    send({ type: 'annotation_style', instanceId: instance.value.id, annotationId: id, style })
+  }
+
+  /**
    * 移除当前画布上的**全部**绘图（右键菜单）。
    *
    * 走一条专门的 `annotation_clear`，而不是循环调 deleteAnnotation：那样会连发 N 条消息、
@@ -692,6 +683,20 @@ export const useReplayStore = defineStore('replay', () => {
   function cancelOrder(orderId: string): void {
     if (!instance.value) return
     send({ type: 'order_cancel', instanceId: instance.value.id, orderId })
+  }
+
+  /**
+   * 【市价退仓并取消所有挂单】（v0.20.0）：一键回到空仓、画布上没有一张挂着的单。
+   *
+   * 一条消息而不是「前端先撤单再反向市价」：那样会连发 N+1 条，别人的画布上一张张
+   * 消失、仓位在中间还可能瞬间翻倍（撤到一半失败时）。服务端在一次锁里做完，
+   * 只广播一条 `flat_all` —— 界面上看到的就是「一次性全平了」。
+   *
+   * 空仓 + 没有挂单时后端会回一句错误（不静默成功），所以按钮那边也要按同一个条件灰掉。
+   */
+  function flatAll(): void {
+    if (!instance.value) return
+    send({ type: 'order_flat_all', instanceId: instance.value.id })
   }
 
   /**
@@ -840,9 +845,9 @@ export const useReplayStore = defineStore('replay', () => {
     pointerMode,
     editingId,
     editing,
+    editingAnnotation,
     templates,
     activeTemplate,
-    theme,
     showEma,
     indicator,
     setIndicator,
@@ -862,8 +867,6 @@ export const useReplayStore = defineStore('replay', () => {
     openOrders,
     // 动作
     connect,
-    setTheme,
-    toggleTheme,
     refresh,
     createInstance,
     joinInstance,
@@ -880,11 +883,13 @@ export const useReplayStore = defineStore('replay', () => {
     addAnnotation,
     moveAnnotation,
     deleteAnnotation,
+    restyleAnnotation,
     clearAnnotations,
     placeOrder,
     marketOrder,
     moveOrder,
     cancelOrder,
+    flatAll,
     startBot,
     stopBot,
     listStrategies,

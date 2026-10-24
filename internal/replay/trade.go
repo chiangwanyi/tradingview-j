@@ -76,11 +76,17 @@ func newStatsTracker(pv float64) statsTracker {
 	return statsTracker{pv: pv}
 }
 
-// note 吃一条广播。只有会动仓位的两种动作有意义，其余直接忽略。
+// note 吃一条广播。只有会动仓位的几种动作有意义，其余直接忽略。
 func (t *statsTracker) note(action string, payload any) {
 	switch v := payload.(type) {
 	case OrderFilledPayload:
 		t.fill(v.Trade, v.Position)
+	case FlatAllPayload:
+		// 【市价退仓并取消所有挂单】：本来空仓时只有撤单，没有成交（Trade 是 nil），
+		// 这一条对统计没有影响；有仓位时它就是最后一笔平仓成交，必须记进来。
+		if v.Trade != nil {
+			t.fill(*v.Trade, v.Position)
+		}
 	case BarAdvancedPayload:
 		if len(v.Fills) > 0 {
 			// 这一根里有成交：只记成交，不拿这根的高低点算波动（见类型注释）
@@ -182,6 +188,13 @@ func deriveStats(rec *Recording) TradeStats {
 			switch ev.Action {
 			case ActOrderFilled:
 				var p OrderFilledPayload
+				if err := json.Unmarshal(ev.Payload, &p); err == nil {
+					t.note(ev.Action, p)
+				}
+			case ActFlatAll:
+				// 新记录都自带 stats，这条只对「手工从新文件反推」有意义；
+				// 但口径要和实时路径一致，否则反推出来的钱会少最后一笔平仓。
+				var p FlatAllPayload
 				if err := json.Unmarshal(ev.Payload, &p); err == nil {
 					t.note(ev.Action, p)
 				}

@@ -47,9 +47,10 @@ function sideLabel(sideValue: string): string {
   return sideValue === 'buy' ? '买' : '卖'
 }
 
+// 绿赚红亏（美股习惯）：和画布、交易记录页、统计图同一套语义色
 function pnlClass(v: number): string {
-  if (v > 0) return 'text-emerald-600 dark:text-emerald-400'
-  if (v < 0) return 'text-red-600 dark:text-red-400'
+  if (v > 0) return 'text-up'
+  if (v < 0) return 'text-down'
   return 'text-dim'
 }
 </script>
@@ -84,7 +85,7 @@ function pnlClass(v: number): string {
 
       <div v-if="openOrders.length === 0" class="text-[12px] text-faint">没有挂单</div>
       <div v-for="o in openOrders" :key="o.id" class="flex items-center gap-1.5 text-[12px]">
-        <span :class="o.side === 'buy' ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'">
+        <span :class="o.side === 'buy' ? 'text-up' : 'text-down'">
           {{ sideLabel(o.side) }}{{ orderLabel(o.kind) }}
         </span>
         <span class="tnum">{{ o.price.toFixed(store.priceDecimals) }}</span>
