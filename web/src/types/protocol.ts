@@ -195,13 +195,11 @@ export interface InstanceDetail {
   notes: string[]
   createdBy: string
   createdAt: number
-  /** 正在录制时的状态；没在录是 null/undefined */
-  recording?: RecordingState | null
   /**
    * 当前这根 K 线上的语音讲解（v0.16.0）。
    *
-   * **永远是对象**（没录过就是空清单），且**不依赖 recording** —— 不录制也能录，
-   * 这就是「语音从录制里解耦出来」在协议上的样子。
+   * **永远是对象**（没录过就是空清单），和交易记录**完全无关** —— 语音是盘面数据，
+   * 空仓也能录、交易结束后也能录。这是「语音从录制里解耦出来」在协议上的样子。
    */
   voice: VoiceState
   /**
@@ -288,13 +286,6 @@ export interface ServerEvent {
   by: string
   action: string
   payload?: unknown
-  /**
-   * 这条广播被录成了第几步（0 / 缺省 = 没在录或这一步不记录）。
-   *
-   * v0.15.0 之前前端在收到 `bar_advanced` 时自己把步数 +1；改成一操作一步之后
-   * 那样必然算错（画图、录音也各占一步），所以步号由服务端下发，界面只显示。
-   */
-  recStep?: number
 }
 
 export interface LeftMessage {
@@ -335,6 +326,7 @@ export type ServerMessage =
   | StrategiesMessage
   | RecordingsMessage
   | RecordingMessage
+  | TradeRecordedMessage
 
 // ---------------- 广播负载 ----------------
 
@@ -468,13 +460,18 @@ export const ACTION = {
   membersChanged: 'members_changed',
   botStarted: 'bot_started',
   botStopped: 'bot_stopped',
-  recordingStarted: 'recording_started',
-  recordingStopped: 'recording_stopped',
-  recordingAudio: 'recording_audio',
-  recordingAudioCleared: 'recording_audio_cleared',
   voiceAdded: 'voice_added',
   voiceCleared: 'voice_cleared',
 } as const
+
+/**
+ * 交易记录里的「语音步」类型名（v0.18.0）。
+ *
+ * 它**不是一条广播动作**（语音的广播是 voice_added / voice_cleared），只是记录里
+ * 那一步的 `kind` —— 这一步不改盘面，只挂一段语音。所以它单独放一个常量，
+ * 不和上面的 ACTION 混在一起。
+ */
+export const STEP_AUDIO = 'recording_audio'
 
 /**
  * 调色板：模板编辑器里的快捷色块。挑的都是「深浅两套配色下都看得清」的中间调 ——
@@ -490,63 +487,64 @@ export const ANNOTATION_COLORS = [
   '#e5e7eb',
 ] as const
 
-// ---------------- 录制与回放（v0.11.0） ----------------
+// ---------------- 交易记录（v0.11.0 叫「录像」，v0.18.0 起是自动的交易记录） ----------------
 
 /**
- * 这个实例现在的录制状态。跟着实例快照下发，也随三条录制广播更新。
+ * 一笔交易的统计，**全部由后端算好**，前端只排版。
  *
- * 步数与录音数**都是服务端数的**：界面只是显示，不自己累加 ——
- * 否则「界面写第 12 步、文件里只有 11 段」这种问题永远查不清。
+ * 为什么不让前端算：这些数字要能经得起追问 —— 口径（尤其 MFE/MAE 只统计
+ * 「全程持仓且这一根没有成交」的整根 K 线）必须只有一份实现。前端从记录里的
+ * 事件流再算一遍，早晚会和后端的口径对不上。
  *
- * 术语（v0.15.0）：**一步 = 一次操作**。点【下一根】、画一个图形、挂一张单、
- * 录一段音各占一步；一根 K 线上可以有很多步，所以还有 `barNo`。
+ * 口径：
+ * - `entryPrice` / `entryTime` 这一笔**第一次成交**的价格与 K 线时间
+ * - `exitPrice` / `exitTime` 最后一次成交的价格与时间（部分平仓时一路更新）
+ * - `quantity` 开仓手数；`maxQuantity` 持仓期间的最大手数（加减仓时两者不同）
+ * - `realizedPnl` 全部成交的已实现盈亏之和（美元）
+ * - `mfe` / `mae` 最大有利 / 不利波动（美元，`mfe >= 0 >= mae`）
+ * - `barsHeld` 持仓期间**完整**走过的 K 线根数
+ * - `closed` 是否正常平完（false = 记录结束时仓位还在：实例被删 / 程序退出 / 崩溃草稿）
  */
-export interface RecordingState {
-  active: boolean
-  id?: string
-  by?: string
-  startedAt?: number
-  /** 当前第几步（1 = 点录制时那一屏） */
-  step: number
-  /** 一共几步（含起点） */
-  total: number
-  /** 当前是第几根 K 线（1 起，第 1 根 = 起点那根） */
-  barNo: number
-  /** 当前这一步是什么操作（base / bar_advanced / annotation_added / recording_audio …） */
-  kind?: string
-  /** 第 1 步对应的 K 线时间 */
-  startTime?: string
-  /** 当前这一步对应的 K 线时间 */
-  current?: string
-  /** 整条录像已录几条（**不限**） */
-  audios: number
-  /**
-   * 当前**这根 K 线**上已录几条。
-   *
-   * v0.16.0 起这几个录音计数**不再是界面的事实来源**：语音讲解有自己的
-   * VoiceState（不录制也成立），HUD 显示的是它。这里的 barAudios / maxBarAudios /
-   * clips 保留给旧客户端和录像自身的口径，两边数出来必须是同一个值。
-   */
-  barAudios: number
-  /** 同一根 K 线的上限（9） */
-  maxBarAudios: number
-  /** 当前这根 K 线上的录音清单（录像口径；盘面请用 instance.voice） */
-  clips: AudioClip[]
+export interface TradeStats {
+  /** long / short（开仓方向） */
+  side: 'long' | 'short' | ''
+  quantity: number
+  maxQuantity: number
+  entryTime: string
+  entryPrice: number
+  exitTime: string
+  exitPrice: number
+  realizedPnl: number
+  mfe: number
+  mae: number
+  barsHeld: number
+  /** 成交笔数（开仓 + 加减仓 + 平仓） */
+  fills: number
+  /** 这段记录里的操作步数（含起点） */
+  steps: number
+  closed: boolean
 }
 
-/** 录像列表里的一行。 */
+/** 交易记录列表里的一行。 */
 export interface RecordingSummary {
   id: string
+  /** 一眼能认出是哪一笔：标的 · 方向手数 · 盈亏 · 进出时间 */
   name: string
   symbol: string
   folder: string
+  /** 第 1 步（开仓**之前**那一屏）的 K 线时间 */
   anchor: string
   endTime: string
   /**
+   * 这笔交易发生在哪个实例上。**只用于追溯和显示**：记录是独立的一份数据，
+   * 实例被删掉之后这里会指向一个不存在的 id，打开 / 回放 / 删除都不依赖它。
+   */
+  instanceId?: string
+  /**
    * 摘要里的计数（带 Count 是为了不和 Recording.steps 那个数组撞名）。
    *
-   * `stepCount` 是**操作步数**（v0.15.0 起一步一个操作，所以比以前大得多），
-   * 想知道录了多长看 `bars`（推进了几根 K 线）。
+   * `stepCount` 是**操作步数**（一步一个操作，所以比根数大得多），
+   * 想知道这笔走了多长看 `bars`（推进了几根 K 线）。
    */
   stepCount: number
   audioCount: number
@@ -555,10 +553,12 @@ export interface RecordingSummary {
   size: number
   createdBy: string
   createdAt: number
+  /** 收尾时间；还在持仓中时等于最后一次写盘时间 */
   endedAt: number
+  stats: TradeStats
 }
 
-/** 录制起点那一刻的盘面。 */
+/** 开仓**之前**那一刻的盘面。 */
 export interface RecordingBase {
   cursor: number
   bars: Bar[]
@@ -587,12 +587,13 @@ export interface RecordingEvent {
 }
 
 /**
- * 录像里的一步 —— **一步 = 一次真实操作**（v0.15.0）。
+ * 交易记录里的一步 —— **一步 = 一次真实操作**（v0.15.0）。
  *
- * 第 1 步是起点（`kind: 'base'`，没有事件）；之后每一条放行的广播开一步：
- * 点一次【下一根】、画一个图形、拖一次挂单价、录一段音，各占一步。
+ * 第 1 步是起点（`kind: 'base'`，没有事件，它就是「开仓之前那一屏」）；之后
+ * 每一条放行的广播开一步：点一次【下一根】、画一个图形、拖一次挂单价、说一段话，
+ * 各占一步。第 2 步必然是把仓位从 0 变成非 0 的那一笔成交 —— 入境那一下看得见。
  *
- * 录音步（`kind: 'recording_audio'`）特殊：`events` 为空（不改盘面），
+ * 语音步（`kind: STEP_AUDIO`）特殊：`events` 为空（不改盘面），
  * 那段音频在 `audio` 里。回放到它画面不动，但语音该响。
  */
 export interface RecordingStep {
@@ -607,7 +608,7 @@ export interface RecordingStep {
   time: string
   /** 这一步发生后的游标（跳步时自检用） */
   cursor: number
-  /** 仅录音步：挂在这一步上的那一段 */
+  /** 仅语音步：挂在这一步上的那一段 */
   audio?: AudioClip
   events: RecordingEvent[]
 }
@@ -615,23 +616,23 @@ export interface RecordingStep {
 /** 一段挂在某根 K 线上的录音。`time` 是 K 线时间（存储键）。 */
 export interface AudioClip {
   id: string
-  /** 在录像里是第几步；0 = 录制之外录的（v0.16.0 起语音可以独立于录制存在） */
+  /** 在交易记录里是第几步；0 = 空仓时录的（语音是盘面数据，和记录无关） */
   step: number
   time: string
   durationMs: number
-  /** 文件名（录像里是 audio-N.wav，实例上的语音是 voice-N.wav），音频本身走 HTTP 取 */
+  /** 文件名（记录里是 audio-N.wav，实例上的语音是 voice-N.wav），音频本身走 HTTP 取 */
   file: string
   size: number
   createdAt: number
-  /** 谁录的（human / bot）；旧录像里没有这个字段 */
+  /** 谁录的（human / bot）；旧记录里没有这个字段 */
   by?: string
 }
 
 /**
  * 当前这根 K 线上的语音讲解（v0.16.0）。
  *
- * 服务端数的，界面只显示 —— 和录制状态一个道理：界面写「9/9」而磁盘上只有 8 条
- * 这种事，一旦出现就查不清是谁算错了。
+ * 服务端数的，界面只显示：界面写「9/9」而磁盘上只有 8 条这种事，
+ * 一旦出现就查不清是谁算错了。
  */
 export interface VoiceState {
   /** 这份清单属于哪根 K 线（换根就整体换一份） */
@@ -644,10 +645,10 @@ export interface VoiceState {
   max: number
 }
 
-/** 一条完整的录像：起始盘面 + 每一步的事件 + 录音。 */
+/** 一条完整的交易记录：开仓前的盘面 + 每一步的事件 + 语音。 */
 export interface Recording extends RecordingSummary {
   /**
-   * 录像格式：2 = 一步一个操作（v0.15.0 起），1 = 旧的一步一根 K 线。
+   * 记录格式：2 = 一步一个操作（v0.15.0 起），1 = 旧的一步一根 K 线。
    * 服务端只下发 2（旧格式在 scan / Load 处就被挡掉了），这个字段留着是为了
    * 排查时能一眼看出手里这份文件是哪一代。
    */
@@ -670,26 +671,20 @@ export interface RecordingMessage {
   recording: Recording | null
 }
 
-export interface RecordingStoppedPayload {
+/**
+ * 「一笔交易刚刚收尾、记录已保存」的一次性通知（v0.18.0）。
+ *
+ * 它**不是广播**（不进实例的操作记录）：交易记录是独立的数据集，和事件流不是一回事。
+ * 前端拿它做两件事 —— 刷新列表、给一句「这笔赚了多少」的轻提示；
+ * 不需要也不应该因此把界面切到某种「正在记录」的状态（那个状态已经被取消了）。
+ *
+ * `warning` 非空表示记录本身是完整的，只是没落到磁盘（没配目录 / 磁盘满）。
+ */
+export interface TradeRecordedMessage {
+  type: 'trade_recorded'
   recording: RecordingSummary
   dir?: string
-  error?: string
-}
-
-export interface RecordingAudioPayload {
-  audio: AudioClip
-  state: RecordingState
-  /** 盘面上同一份语音的新状态（老别名 record_audio 和新入口共用） */
-  voice: VoiceState
-  voiceAll: AudioClip[]
-}
-
-/** 「清空当前这一步的录音」的广播：removed 是刚被删掉的那几条。 */
-export interface RecordingAudioClearedPayload {
-  removed: AudioClip[]
-  state: RecordingState
-  voice: VoiceState
-  voiceAll: AudioClip[]
+  warning?: string
 }
 
 /** 「盘面上多了一段语音」的广播：清单与计数都是服务端算好的。 */
@@ -698,8 +693,6 @@ export interface VoiceAddedPayload {
   voice: VoiceState
   /** 整个实例的清单（「其他 K 线还有 N 条」要用） */
   voiceAll: AudioClip[]
-  /** 当前录制状态（没在录就是缺省）。录制中录的那条会同时占录像的一步 */
-  recording?: RecordingState | null
 }
 
 /** 「这根 K 线上的语音全被清掉」的广播。 */
@@ -707,5 +700,4 @@ export interface VoiceClearedPayload {
   removed: AudioClip[]
   voice: VoiceState
   voiceAll: AudioClip[]
-  recording?: RecordingState | null
 }

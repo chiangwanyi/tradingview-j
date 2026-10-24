@@ -7,12 +7,15 @@ import RecordingPanel from '@/components/RecordingPanel.vue'
 import { useReplayStore } from '@/stores/replay'
 
 /**
- * 底部停靠区：模拟交易 / 操作记录 / 回放 三个 Tab（需求要求「以 Tab 切换显示」）。
+ * 底部停靠区：模拟交易 / 操作记录 / 交易记录 三个 Tab（需求要求「以 Tab 切换显示」）。
  *
  * 两个面板都用 v-show 而不是 v-if —— 切 Tab 时不该丢掉滚动位置，
  * 操作记录也要能继续自动滚到最新一条。
  *
  * 可以整体收起（只留 Tab 条），这样想全力看盘时画布能再高 180px。
+ *
+ * v0.18.0：第三个 Tab 从【回放】改名【交易记录】。它本来就不是「录像」——
+ * 内容是一笔交易从开仓到平仓之间的全部操作，而且现在是自动产生的。
  */
 
 const store = useReplayStore()
@@ -48,7 +51,7 @@ const summary = computed(() => {
         <span class="text-faint">({{ store.log.length }})</span>
       </button>
       <button type="button" :class="tabClass('rec')" @click="((tab = 'rec'), (collapsed = false))">
-        回放
+        交易记录
         <span class="text-faint">({{ store.recordings.length }})</span>
       </button>
 

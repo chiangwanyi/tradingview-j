@@ -16,9 +16,10 @@ import type { AudioClip } from '@/types/protocol'
  * 语音讲解浮窗（v0.16.0）—— **和「绘制图形」同级的一级功能**，不再挂在录制底下。
  *
  * 为什么要独立成一个组件：v0.11 – v0.15 里麦克风、波形、试听、清空全塞在录制浮窗里，
- * 而那个浮窗只在 `store.isRecording` 时存在 —— 于是「不开录像就讲不了话」。
- * 现在这个窗在**任何**有实例的时候都能开（回放除外），录制只是它的一个下游：
- * 录制中录的那条会被后端额外抄一份进录像，回放到那一步语音响。
+ * 而那个浮窗只在「录制中」时存在 —— 于是「不开录像就讲不了话」。
+ * 现在这个窗在**任何**有实例的时候都能开（回放除外）。v0.18.0 起交易记录自动开始，
+ * 持仓期间录的那条会被后端顺手在记录里占一步（回放到那一步语音响），空仓时录的
+ * 只留在盘面上 —— 这件事前端不需要知道，也不需要多显示一个「录制中」。
  *
  * 交互沿用录制浮窗那一套（用户已经熟了，不必再学一遍）：
  *   - 空格**按一下开始、再按一下结束**；开麦在**抬起之后**（再等 90ms，躲开键盘回弹声）
@@ -83,8 +84,6 @@ const totalAudios = computed(() => store.voice.total)
 const full = computed(() => store.voiceFull)
 /** 当前这根 K 线的时间（浮窗里显示一行，确认「讲的是哪一根」） */
 const barTime = computed(() => store.voice.barTime || store.currentBar?.time || '')
-/** 录制中：这条语音会同时进录像（界面上要说清，不然「录像里怎么多了一条」很费解） */
-const recordingStep = computed(() => (store.isRecording ? (store.recording?.step ?? 0) : 0))
 
 const canvas = ref<HTMLCanvasElement | null>(null)
 let hist: number[] = []
@@ -542,16 +541,16 @@ watch(voiceError, (msg) => {
           本根 {{ barAudios }}/{{ maxAudios }}
         </span>
         <span
-          v-if="store.isRecording"
-          class="ml-auto rounded bg-red-500/15 px-1 text-[10px] text-red-600 dark:text-red-400"
-          title="录制中：这条语音会同时记进录像，回放到那一步会响"
+          v-if="store.voice.total > 0"
+          class="ml-auto tnum text-[10px] text-faint"
+          title="这段盘面上一共讲了几条（每根 K 线最多 9 条）"
         >
-          录 {{ recordingStep ? `#${recordingStep}` : '中' }}
+          共 {{ totalAudios }} 条
         </span>
         <button
           type="button"
           class="flex h-4 w-4 items-center justify-center rounded text-[13px] leading-none text-faint hover:bg-surface hover:text-ink"
-          :class="store.isRecording ? '' : 'ml-auto'"
+          :class="store.voice.total > 0 ? '' : 'ml-auto'"
           title="折叠成小图标（仍可拖动）"
           @pointerdown.stop
           @click.stop="setExpanded(false)"

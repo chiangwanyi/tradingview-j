@@ -87,10 +87,10 @@ web/
 │     ├─ ChartPanel.vue    Canvas + SVG 容器与全部指针交互（平移 / 缩放 / 画 / 拖 / 吸附）
 │     ├─ ChartToolbar.vue  工具选择、颜色、EMA20 开关、步进、接管、机器人
 │     ├─ InstancesMenu.vue 右上角折叠面板：标的、随机/指定时间建实例、实例列表与删除
-│     ├─ TradeDock.vue     底部停靠区：模拟交易 / 操作记录 两个 Tab，可整体收起
+│     ├─ TradeDock.vue     底部停靠区：模拟交易 / 操作记录 / 交易记录 三个 Tab，可整体收起
+│     ├─ RecordingPanel.vue 交易记录列表（盈亏 / MFE·MAE / 进出场）+ 回放播放器
 │     ├─ TradeFloat.vue    下单浮窗：fixed、拖标题栏换位置、折叠成 44px 图标、位置存本机
-│     ├─ RecordHud.vue     录制浮窗：和下单浮窗同一套拖动/折叠；空格抬起后 90ms 才开麦（避开按键声）
-│     ├─ OrderPanel.vue    三列横排：下单 / 持仓与挂单 / 成交流水
+│  │     ├─ OrderPanel.vue    三列横排：下单 / 持仓与挂单 / 成交流水
 │     ├─ TradePanel.vue    成交流水
 │     └─ EventLog.vue      后端广播的事件流（谁做了什么）
 └─ dist/                   构建产物（已 gitignore）

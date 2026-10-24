@@ -294,10 +294,14 @@ func (h *Hub) EnablePersistence(dir string) error {
 	return nil
 }
 
-// stateLoop 每两秒把脏状态写一次盘。
+// stateLoop 每两秒把脏状态写一次盘，顺带写一次交易记录的检查点。
 //
 // 不「每次操作都写」是因为机器人演示时一秒好几个动作，每根 K 线都重写几百 KB
 // 没有必要；两秒的窗口在崩溃时最多丢最后几个动作，而标注/成交都是即时可见的。
+//
+// 检查点（checkpointTrades）借着同一个节拍：一笔交易可能持续几十分钟甚至过夜，
+// 只在收尾时落盘的话，一次崩溃就把整段操作丢光了。它自己看 dirty 标记，
+// 没有新内容就什么都不做。
 func (h *Hub) stateLoop() {
 	t := time.NewTicker(2 * time.Second)
 	defer t.Stop()
@@ -307,6 +311,7 @@ func (h *Hub) stateLoop() {
 			return
 		case <-t.C:
 			h.flushState()
+			h.checkpointTrades()
 		}
 	}
 }

@@ -1,9 +1,9 @@
-import { ACTION } from '@/types/protocol'
+import { ACTION, STEP_AUDIO } from '@/types/protocol'
 
 /**
  * 步骤类型的「中文名 + 颜色」。
  *
- * v0.15.0 起一步 = 一次操作，回放的步进条会有几百格 —— 光靠位置看不出哪里是
+ * 一步 = 一次操作，一条交易记录会有几百格 —— 光靠位置看不出哪里是
  * 「换了一根 K 线」、哪里是「画了个图形」。所以按类型上色 + 给一句中文名，
  * 让整条时间轴能一眼扫出结构：一串蓝点 = 连点了几下【下一根】，中间夹着橙点
  * 就是边步进边下单。
@@ -11,13 +11,13 @@ import { ACTION } from '@/types/protocol'
  * 颜色刻意用 Tailwind 的字面色值（不拼字符串）：JIT 只认源码里出现过的完整类名。
  */
 
-/** 起点（点【录制】那一刻的盘面）。 */
+/** 起点（开仓**之前**那一刻的盘面）。 */
 export const STEP_BASE = 'base'
 
 export function stepKindLabel(kind: string): string {
   switch (kind) {
     case STEP_BASE:
-      return '起点'
+      return '入场前'
     case ACTION.barAdvanced:
       return '下一根'
     case ACTION.annotationAdded:
@@ -36,8 +36,8 @@ export function stepKindLabel(kind: string): string {
       return '改价'
     case ACTION.orderCancelled:
       return '撤单'
-    case ACTION.recordingAudio:
-      return '录音'
+    case STEP_AUDIO:
+      return '语音'
     default:
       return kind
   }
@@ -60,7 +60,7 @@ export function stepKindClass(kind: string): string {
     case ACTION.orderMoved:
     case ACTION.orderCancelled:
       return 'border-violet-500/80 bg-violet-500/35'
-    case ACTION.recordingAudio:
+    case STEP_AUDIO:
       return 'border-amber-500 bg-amber-500/50'
     default:
       return 'border-line bg-elev'

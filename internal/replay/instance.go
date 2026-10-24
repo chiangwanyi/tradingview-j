@@ -80,9 +80,14 @@ type Instance struct {
 	botQty      float64
 	run         *strategyRun
 
-	// rec 是「正在录制的那一份」（v0.11.0）。nil = 没在录。
-	// 它挂在实例上而不是 Hub 上：录制属于「这一个盘面」，换实例就该换一段录像。
-	rec *recorder
+	// trade 是「这一笔交易正在记的那一份」（v0.18.0，自动录制）。
+	// nil = 当前空仓或还没开始。它挂在实例上而不是 Hub 上：一笔交易属于
+	// 「这个盘面上的这个仓位」，换实例就该换一段记录。
+	trade *tradeRecorder
+	// pendingBase 是「可能开仓的那次操作之前」抓的盘面快照，由紧随其后的广播
+	// 消费掉当作交易记录的第 1 步（见 trade.go 的 captureTradeBaseLocked）。
+	// 每个 do* 操作开始前都会重新覆盖它，所以不会串到别操作上。
+	pendingBase *RecordingBase
 
 	// voice 是这个实例的语音讲解（v0.16.0）。**永远不该是 nil**（创建/恢复时挂上），
 	// 取用时走 voiceNotes() 兜底 —— 它和 rec 是两件事：语音不录制也在，
@@ -751,16 +756,9 @@ func (inst *Instance) position() Position {
 }
 
 // pointValue 是「价格每走 1.0，一手值多少美元」。
-//
-// 它由 _symbols.json 里的 tickValue / tick 算出来，而不是另存一个乘数：
-// MNQ 0.50/0.25 = 2 美元/点，MES 1.25/0.25 = 5，MGC 1.00/0.1 = 10，CL 10.00/0.01 = 1000。
-// 用户只要填「一跳值多少」，乘数自然就对了。没配置（或配置不成对）时退化成 1 美元/点 ——
-// 至少数字还能互相比较，而不是算出一个 0。
+// 公式只有一份（pointValueOf，交易记录的统计也用它）。
 func (inst *Instance) pointValue() float64 {
-	if inst.Tick > 0 && inst.TickValue > 0 {
-		return inst.TickValue / inst.Tick
-	}
-	return 1
+	return pointValueOf(inst.Tick, inst.TickValue)
 }
 
 // unrealizedPnl 按当前这根 K 线的收盘价算浮动盈亏（美元）。
@@ -926,20 +924,9 @@ func (inst *Instance) snapshot(members []Member) InstanceDTO {
 		Notes:         notes,
 		CreatedBy:     inst.CreatedBy,
 		CreatedAt:     inst.CreatedAt,
-		Recording:     inst.recordingState(),
 		Voice:         inst.voiceState(),
 		VoiceAll:      inst.voiceNotes().all(),
 	}
-}
-
-// recordingState 返回录制状态（没在录时 nil，序列化成 null）。
-// 单独抽出来是因为快照和广播都要用它，口径必须只有一份。
-func (inst *Instance) recordingState() *RecordingState {
-	if inst.rec == nil {
-		return nil
-	}
-	st := inst.rec.state()
-	return &st
 }
 
 // stepContext 是「这一步发生在盘面的哪个位置」：当前那根 K 线的时间 + 游标。

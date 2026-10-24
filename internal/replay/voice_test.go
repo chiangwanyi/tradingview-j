@@ -4,13 +4,15 @@ package replay
 //
 // 这些用例钉住的是**解耦之后的三条底线**：
 //
-//  1. **不录制也能录**：没有 record_start 一样能往当前那根 K 线上挂语音，
+//  1. **不持仓也能录**：没有任何交易记录时一样能往当前那根 K 线上挂语音，
 //     快照里能看见、HTTP 能取回、重启之后还在。
-//  2. **额度还是每根 9 条**（不按步数、不按是否在录制），换一根就重新有 9 条。
-//  3. **录制是下游**：录制期间录的那几条会额外抄一份进录像（照旧是一个
-//     recording_audio 步），录制结束后再录的就只留在盘面上。
+//  2. **额度还是每根 9 条**（不按步数、不按是否在记交易），换一根就重新有 9 条。
+//  3. **交易记录是下游**：持仓期间录的那几条会额外抄一份进记录（照旧是一个
+//     recording_audio 步），空仓时录的只留在盘面上。
 //
-// 还有一条兼容用例：老的 record_audio / record_audio_delete 仍然可用、语义不变。
+// 还有一条兼容用例：老的 record_audio / record_audio_delete 仍然可用 ——
+// v0.18.0 起它们就是 voice_add / voice_clear 的别名（交易记录自动开始之后，
+// 「必须在录制中」这个前置条件本身已经不存在了）。
 
 import (
 	"encoding/base64"
@@ -51,8 +53,8 @@ func voicePayload(t *testing.T, ev map[string]any) (clip, state map[string]any) 
 	return clip, state
 }
 
-// TestVoiceWorksWithoutRecording 是这次改动的核心：
-// **一次 record_start 都没发过**，照样能录、能听、能清空。
+// TestVoiceWorksWithoutRecording 是解耦的核心：
+// **既没有 record_start，也没有任何持仓**，照样能录、能听、能清空。
 func TestVoiceWorksWithoutRecording(t *testing.T) {
 	root := writeTestData(t, 3)
 	stateDir := t.TempDir()
@@ -83,7 +85,7 @@ func TestVoiceWorksWithoutRecording(t *testing.T) {
 		t.Fatalf("语音应当记下是谁录的，实际 %v", clip["by"])
 	}
 	if clip["step"].(float64) != 0 {
-		t.Fatalf("没在录制时录的语音不该有录像步号，实际 %v", clip["step"])
+		t.Fatalf("空仓时录的语音不该有记录步号，实际 %v", clip["step"])
 	}
 	if n := len(state["clips"].([]any)); n != 1 {
 		t.Fatalf("本根应当有 1 条语音，实际 %d", n)
@@ -91,11 +93,8 @@ func TestVoiceWorksWithoutRecording(t *testing.T) {
 	if state["max"].(float64) != maxClipsPerBar || state["total"].(float64) != 1 {
 		t.Fatalf("状态不对：%v", state)
 	}
-	if ev["recStep"] != nil && ev["recStep"].(float64) != 0 {
-		t.Fatalf("语音不是录像里的一步（recStep 应当缺省或 0），实际 %v", ev["recStep"])
-	}
-	if inst.rec != nil {
-		t.Fatal("没开录制，实例上不该有录制缓冲")
+	if inst.trade != nil {
+		t.Fatal("空仓时不该有正在记的交易（记录只跟仓位走）")
 	}
 
 	// 换一根：清单整体换成新那根的（上一根的还在，只是不显示）
@@ -263,81 +262,84 @@ func TestVoiceClearBar(t *testing.T) {
 	}
 }
 
-// TestVoiceDuringRecordingIsMirroredIntoRecording 钉住「录制是下游」：
-// 录制期间录的语音会**额外**抄一份进录像（连同它那一步），录制结束后录的只留在盘面。
-func TestVoiceDuringRecordingIsMirroredIntoRecording(t *testing.T) {
+// TestVoiceIsMirroredIntoTradeRecord 钉住「交易记录是下游」：
+// 持仓期间录的语音会**额外**抄一份进记录（连同它那一步），空仓时录的只留在盘面。
+func TestVoiceIsMirroredIntoTradeRecord(t *testing.T) {
 	recDir := t.TempDir()
 	hub, _ := newTestHub(t, 2)
 	if err := hub.EnableRecordings(recDir); err != nil {
-		t.Fatalf("启用录像目录失败：%v", err)
+		t.Fatalf("启用交易记录目录失败：%v", err)
 	}
 	a := newFakeClient(t, hub)
 	a.waitFor(MsgWelcome)
 	instID := createInstance(t, hub, a, "2026-01-05 10:00")
 	inst := mustInstance(t, hub, instID)
 
-	// 录制**之前**先录一条：它属于盘面，不该进录像
+	// 开仓**之前**先录一条：它属于盘面，不该进记录（第 1 步是空仓那一屏）
 	sendVoice(t, hub, a, instID, testWAV(64))
 
-	a.send(hub, map[string]any{"type": "record_start", "instanceId": instID})
-	a.waitAction(ActRecordingStarted)
+	// 市价开仓 → 记录自动开始（第 1、2 步）
+	marketOrder(t, hub, a, instID, "buy", 1)
 
-	// 录制中录两条：每条都占录像里的一步
+	// 持仓中录两条：每条都占记录里的一步
 	ev := sendVoice(t, hub, a, instID, testWAV(128))
 	clip, _ := voicePayload(t, ev)
-	if clip["step"].(float64) != 2 {
-		t.Fatalf("录制中的第一条语音应当是录像第 2 步（起点之后），实际 %v", clip["step"])
-	}
-	recState := ev["payload"].(map[string]any)["recording"].(map[string]any)
-	if got := recState["step"].(float64); got != 2 {
-		t.Fatalf("广播里应当带上「这一步是第 2 步」，实际 %v", got)
+	if clip["step"].(float64) != 3 {
+		t.Fatalf("持仓中的第一条语音应当是记录第 3 步（起点 + 开仓之后），实际 %v", clip["step"])
 	}
 	ev = sendVoice(t, hub, a, instID, testWAV(128))
 	clip2, state := voicePayload(t, ev)
-	if clip2["step"].(float64) != 3 {
-		t.Fatalf("第二条应当是第 3 步，实际 %v", clip2["step"])
+	if clip2["step"].(float64) != 4 {
+		t.Fatalf("第二条应当是第 4 步，实际 %v", clip2["step"])
 	}
-	// 盘面上是 3 条（录制前 1 条 + 录制中 2 条），录像里只有 2 条
+	// 盘面上是 3 条（开仓前 1 条 + 持仓中 2 条），记录里只有 2 条
 	if n := len(state["clips"].([]any)); n != 3 {
 		t.Fatalf("本根应当有 3 条语音，实际 %d", n)
 	}
+	if n := len(inst.trade.rec.Audios); n != 2 {
+		t.Fatalf("记录里应当只有持仓期间那 2 条，实际 %d", n)
+	}
 
-	// 结束录制
-	a.send(hub, map[string]any{"type": "record_stop", "instanceId": instID})
-	stop := a.waitAction(ActRecordingStopped)
-	sum := stop["payload"].(map[string]any)["recording"].(map[string]any)
+	// 平仓 → 自动收尾
+	marketOrder(t, hub, a, instID, "sell", 1)
+	sum := a.waitFor(MsgTradeRecorded)["recording"].(map[string]any)
 	recID := sum["id"].(string)
 	if got := sum["audioCount"].(float64); got != 2 {
-		t.Fatalf("录像里应当只有录制期间那 2 条，实际 %v", got)
+		t.Fatalf("记录里应当只有持仓期间那 2 条，实际 %v", got)
 	}
-	if got := sum["stepCount"].(float64); got != 3 {
-		t.Fatalf("录像应当是 3 步（起点 + 两条语音），实际 %v", got)
+	if got := sum["stepCount"].(float64); got != 5 {
+		t.Fatalf("记录应当是 5 步（起点 / 开仓 / 两条语音 / 平仓），实际 %v", got)
 	}
 
-	// 录像目录里是它自己的一份副本，步里挂着那段音频
+	// 记录目录里是它自己的一份副本，步里挂着那段音频
 	var rec Recording
-	raw, _ := json.Marshal(stop)
-	_ = raw
 	a.send(hub, map[string]any{"type": "get_recording", "recordingId": recID})
-	got := a.waitFor(MsgRecording)
-	raw, _ = json.Marshal(got["recording"])
+	raw, _ := json.Marshal(a.waitFor(MsgRecording)["recording"])
 	if err := json.Unmarshal(raw, &rec); err != nil {
-		t.Fatalf("录像反序列化失败：%v", err)
+		t.Fatalf("记录反序列化失败：%v", err)
 	}
 	if len(rec.Audios) != 2 {
-		t.Fatalf("录像里应当有 2 条录音，实际 %d", len(rec.Audios))
+		t.Fatalf("记录里应当有 2 条语音，实际 %d", len(rec.Audios))
 	}
-	for i, st := range rec.Steps[1:] {
-		if st.Kind != ActRecordingAudio || st.Audio == nil || len(st.Events) != 0 {
-			t.Fatalf("第 %d 步应当是一个录音步（无事件、挂音频）：%+v", i+2, st)
+	audioSteps := 0
+	for _, st := range rec.Steps {
+		if st.Kind != ActRecordingAudio {
+			continue
 		}
+		audioSteps++
+		if st.Audio == nil || len(st.Events) != 0 {
+			t.Fatalf("第 %d 步应当是语音步（无事件、挂音频）：%+v", st.Step, st)
+		}
+	}
+	if audioSteps != 2 {
+		t.Fatalf("记录里应当正好有 2 个语音步，实际 %d", audioSteps)
 	}
 	for _, au := range rec.Audios {
 		if !strings.HasPrefix(au.File, "audio-") {
-			t.Fatalf("录像里的音频必须是它自己那份（audio-N.wav），实际 %s", au.File)
+			t.Fatalf("记录里的音频必须是它自己那份（audio-N.wav），实际 %s", au.File)
 		}
 		if _, err := os.Stat(filepath.Join(recDir, recordingFolder(recID), au.File)); err != nil {
-			t.Fatalf("录像里的音频没落盘：%v", err)
+			t.Fatalf("记录里的音频没落盘：%v", err)
 		}
 	}
 	// 盘面那一份用的是另一套文件（voice-N.wav），两份互不覆盖
@@ -351,14 +353,17 @@ func TestVoiceDuringRecordingIsMirroredIntoRecording(t *testing.T) {
 		t.Fatalf("盘面上应当有 3 个 voice-N.wav，实际 %v", voiceFiles)
 	}
 
-	// 录制结束之后再录：只进盘面，录像已经定稿
+	// 平仓之后再录：只进盘面，记录已经定稿
 	ev = sendVoice(t, hub, a, instID, testWAV(64))
 	clip3, state3 := voicePayload(t, ev)
 	if clip3["step"].(float64) != 0 {
-		t.Fatalf("录制结束后录的语音不该有步号，实际 %v", clip3["step"])
+		t.Fatalf("平仓之后录的语音不该有记录步号，实际 %v", clip3["step"])
 	}
 	if n := len(state3["clips"].([]any)); n != 4 {
 		t.Fatalf("本根应当有 4 条语音，实际 %d", n)
+	}
+	if n := len(inst.voiceNotes().clips); n != 4 {
+		t.Fatalf("盘面上应当是 4 条语音，实际 %d", n)
 	}
 }
 
@@ -443,50 +448,61 @@ func TestVoiceSurvivesRestart(t *testing.T) {
 	}
 }
 
-// TestLegacyRecordAudioStillWorks 兼容：老的 record_audio 仍然要「必须在录制中」，
-// 报错、步号、state 一个都不能变（前端老版本、外部脚本还在用）。
-func TestLegacyRecordAudioStillWorks(t *testing.T) {
+// TestLegacyRecordAudioIsAnAlias 兼容：老的 record_audio / record_audio_delete
+// 现在就是 voice_add / voice_clear 的别名。
+//
+// v0.16.0 时它还有「必须在录制中」这条前置条件（那是它和新入口的区别）；
+// v0.18.0 起交易记录自动开始，「在不在录制」这件事根本不存在了，所以这里钉住的是
+// 新的语义：**任何时刻都能用旧消息录，落点仍然是盘面那根 K 线**；持仓期间录的
+// 会顺手在记录里占一步，清空时两边一起清。
+func TestLegacyRecordAudioIsAnAlias(t *testing.T) {
 	hub, _ := newTestHub(t, 2)
 	if err := hub.EnableRecordings(t.TempDir()); err != nil {
-		t.Fatalf("启用录像目录失败：%v", err)
+		t.Fatalf("启用交易记录目录失败：%v", err)
 	}
 	a := newFakeClient(t, hub)
 	a.waitFor(MsgWelcome)
 	instID := createInstance(t, hub, a, "2026-01-05 10:00")
+	inst := mustInstance(t, hub, instID)
 
-	// 不在录制中：老路径必须拒绝（这是它和新入口的区别）
-	a.drain()
-	a.send(hub, map[string]any{
-		"type": "record_audio", "instanceId": instID,
-		"audioData": base64.StdEncoding.EncodeToString(testWAV(64)),
-	})
-	if e := a.waitFor(MsgError); !strings.Contains(fmt.Sprint(e["message"]), "没有在录制") {
-		t.Fatalf("不在录制中时 record_audio 应当被拒，实际 %v", e["message"])
-	}
-
-	a.send(hub, map[string]any{"type": "record_start", "instanceId": instID})
-	a.waitAction(ActRecordingStarted)
+	// 空仓：旧消息照样能录（不再有「必须在录制中」这道门）
 	ev := sendAudio(t, hub, a, instID, testWAV(64))
-	if got := ev["recStep"].(float64); got != 2 {
-		t.Fatalf("老路径录音仍然是第 2 步，实际 %v", got)
+	if got, _ := ev["payload"].(map[string]any)["voice"].(map[string]any); got == nil {
+		t.Fatal("旧入口也要把盘面那份语音状态带上（否则新界面会漏一条）")
 	}
-	p := ev["payload"].(map[string]any)
-	if p["voice"] == nil {
-		t.Fatal("老路径也要把盘面那份语音状态带上（否则新界面会漏一条）")
+	if n := len(inst.voiceNotes().clips); n != 1 {
+		t.Fatalf("旧入口录的音也要落在盘面上，实际 %d 条", n)
 	}
-	if n := len(mustInstance(t, hub, instID).voiceNotes().clips); n != 1 {
-		t.Fatalf("老路径录的音也要落在盘面上，实际 %d 条", n)
+	// 旧入口在空仓时录的语音没有记录步号（压根没有记录）
+	if clip, _ := voicePayload(t, ev); clip["step"].(float64) != 0 {
+		t.Fatalf("空仓时没有记录，步号应当是 0，实际 %v", clip["step"])
 	}
 
-	// 老的清空也走同一条路：盘面和录像一起清
+	// 开仓之后再录：旧入口同样会镜像进记录，并占记录里的一步
+	marketOrder(t, hub, a, instID, "buy", 1)
+	ev = sendAudio(t, hub, a, instID, testWAV(64))
+	if got := audioStep(t, ev); got != 3 {
+		t.Fatalf("持仓中通过旧入口录的语音应当是第 3 步，实际 %d", got)
+	}
+	if n := len(inst.trade.rec.Audios); n != 1 {
+		t.Fatalf("记录里应当有 1 条语音，实际 %d", n)
+	}
+
+	// 老的清空也走同一条路：盘面和记录一起清
 	a.drain()
 	a.send(hub, map[string]any{"type": "record_audio_delete", "instanceId": instID})
-	cleared := a.waitAction(ActRecordingAudioCleared)
+	cleared := a.waitAction(ActVoiceCleared)
 	cp := cleared["payload"].(map[string]any)
-	if n := len(cp["removed"].([]any)); n != 1 {
-		t.Fatalf("应当清掉 1 条，实际 %d", n)
+	if n := len(cp["removed"].([]any)); n != 2 {
+		t.Fatalf("应当清掉本根上的 2 条（空仓时那条 + 持仓中那条），实际 %d", n)
 	}
-	if n := len(mustInstance(t, hub, instID).voiceNotes().clips); n != 0 {
+	if n := len(inst.voiceNotes().clips); n != 0 {
 		t.Fatalf("清空之后盘面上不该还剩语音，实际 %d 条", n)
+	}
+	if n := len(inst.trade.rec.Audios); n != 0 {
+		t.Fatalf("清空之后记录里也不该还剩语音，实际 %d 条", n)
+	}
+	if n := len(inst.trade.rec.Steps); n != 2 {
+		t.Fatalf("语音步应当被一起摘掉（只剩起点 + 开仓），实际 %d 步", n)
 	}
 }

@@ -1,23 +1,30 @@
 package replay
 
-// 录制与回放的回归测试。
+// 交易记录（v0.18.0）的回归测试。
 //
-// 这里钉住四件事：
+// v0.18.0 把「录制」从一个用户要记得按的开关，改成了交易本身的副产品：**开仓开始、
+// 平仓结束**。所以这一组用例的重点不是「按钮好不好使」，而是四件更容易出错的事：
 //
-//  1. **一步 = 一次操作**（v0.15.0）：第 1 步 = 开始录制时那一屏，之后每一条放行的
-//     广播各占一步 —— 同一根 K 线上画两个图形就是两步，不会攒成一步一次性蹦出来。
-//  2. **录的是操作，不是画面**：步号连续、Kind 对得上、步里就一条事件；
-//     录音自己占一步（Events 为空、Audio 挂在步上）。
-//  3. **机器人走的是同一条通道**：机器人不经过任何后门，它的操作会以 by="bot"
-//     出现在同一份录像里 —— 这条用例就是需求里「验证前端用户操作与后端机器人操作
-//     完全等价」的机器化版本：把录像重放一遍，最终状态必须和实例一模一样。
-//  4. **录音按 K 线时间挂载、同一根最多 9 条**，并且音频文件能被 HTTP 路由正确取回。
+//  1. **触发条件是仓位**（TestTradeRecordingIsAutomatic）：空仓时画图、换根都不产生
+//     记录；仓位从 0 变成非 0 的那一刻自动开始；回到 0 的那一刻自动收尾，并且
+//     「平仓那一笔」必须在记录里 —— 那是整笔交易最该被看见的一步。
+//  2. **第 1 步是开仓之前那一屏**：Base 取的是成交**之前**的盘面，所以回放从空仓演起，
+//     「怎么进的场」看得见。挂单成交开仓同样如此（TestTradeRecordingStartsOnLimitFill）：
+//     快照必须在 advance 之前抓，否则第一帧就已经带着仓位。
+//  3. **统计口径**（TestTradeRecordingStatsAreComputed / ...ForShort）：盈亏、MFE/MAE
+//     全部由后端按录到的成交和 K 线算，多头空头符号不能反；同一根内往返时两项都是 0。
+//  4. **记录独立于实例**（TestTradeRecordingSurvivesInstanceDeletion）：删实例不删记录、
+//     删记录不动实例，两边各自完整。
+//
+// 旧的手动开关（record_start / record_stop）现在只回一句「已经改为自动」的解释 ——
+// 直接删掉会让老前端收到「不认识的消息类型」，那看起来像 bug（见 ...ManualSwitchesGoAway）。
 
 import (
 	"encoding/base64"
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
+	"math"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -25,6 +32,10 @@ import (
 	"strings"
 	"testing"
 )
+
+// ---------------------------------------------------------------------------
+// 辅助
+// ---------------------------------------------------------------------------
 
 // testWAV 造一段合法的 WAV（RIFF/WAVE + 16bit 单声道静音）。
 // 后端只校验文件头，但测试里给真数据，将来加解码也不会立刻失效。
@@ -47,6 +58,8 @@ func testWAV(samples int) []byte {
 	return buf
 }
 
+// sendAudio 走的是**老入口** record_audio —— 它现在是 voice_add 的别名。
+// 交易记录测试也用它：老前端和外部脚本还在发这个类型，它必须照旧能录。
 func sendAudio(t *testing.T, hub *Hub, fc *fakeClient, instID string, wav []byte) map[string]any {
 	t.Helper()
 	fc.send(hub, map[string]any{
@@ -55,10 +68,89 @@ func sendAudio(t *testing.T, hub *Hub, fc *fakeClient, instID string, wav []byte
 		"audioData":  base64.StdEncoding.EncodeToString(wav),
 		"durationMs": 1000,
 	})
-	return fc.waitAction(ActRecordingAudio)
+	return fc.waitAction(ActVoiceAdded)
 }
 
-// snippetForLog 把一段 JSON 截短，失败信息里不要把整份录像（几百根 K 线）都打出来。
+// audioStep 取广播里「这段语音在交易记录里是第几步」（没有记录时是 0）。
+func audioStep(t *testing.T, ev map[string]any) int {
+	t.Helper()
+	p, ok := ev["payload"].(map[string]any)
+	if !ok {
+		t.Fatalf("广播没有 payload：%v", ev)
+	}
+	clip, ok := p["audio"].(map[string]any)
+	if !ok {
+		t.Fatalf("广播里没有 audio：%v", p)
+	}
+	n, _ := clip["step"].(float64)
+	return int(n)
+}
+
+// marketOrder 下市价单并等成交广播，返回 payload。
+func marketOrder(t *testing.T, hub *Hub, fc *fakeClient, instID, side string, qty float64) map[string]any {
+	t.Helper()
+	fc.send(hub, map[string]any{
+		"type": "order_market", "instanceId": instID, "side": side, "quantity": qty,
+	})
+	p, ok := fc.waitAction(ActOrderFilled)["payload"].(map[string]any)
+	if !ok {
+		t.Fatalf("成交广播没有 payload")
+	}
+	return p
+}
+
+// tradePrice 取成交广播里那一笔的成交价。
+func tradePrice(t *testing.T, payload map[string]any) float64 {
+	t.Helper()
+	tr, ok := payload["trade"].(map[string]any)
+	if !ok {
+		t.Fatalf("成交广播里没有 trade：%v", payload)
+	}
+	price, _ := tr["price"].(float64)
+	if price <= 0 {
+		t.Fatalf("成交价不对：%v", tr)
+	}
+	return price
+}
+
+// addRay 在当前 K 线上画一条射线。
+func addRay(t *testing.T, hub *Hub, fc *fakeClient, instID string, from, to Bar) map[string]any {
+	t.Helper()
+	fc.send(hub, map[string]any{
+		"type": "annotation_add", "instanceId": instID, "kind": AnnRay,
+		"start": map[string]any{"time": from.Time, "price": from.Close},
+		"end":   map[string]any{"time": to.Time, "price": to.High},
+	})
+	return fc.waitAction(ActAnnotationAdded)
+}
+
+// tradeSteps 取「这一笔正在记的」步。
+func tradeSteps(t *testing.T, inst *Instance) []RecordingStep {
+	t.Helper()
+	if inst.trade == nil {
+		t.Fatal("这一刻应当在记一笔交易，实际没有")
+	}
+	return inst.trade.rec.Steps
+}
+
+// near 比较浮点（录像里存的是 JSON，往返一趟可能有末位误差）。
+func near(got, want float64) bool { return math.Abs(got-want) < 1e-6 }
+
+func wantNear(t *testing.T, what string, got, want float64) {
+	t.Helper()
+	if !near(got, want) {
+		t.Fatalf("%s 应当是 %.4f，实际 %.4f", what, want, got)
+	}
+}
+
+// num 取 map 里的数字（缺失按 0）。
+func numOf(m map[string]any, key string) float64 {
+	v, _ := m[key].(float64)
+	return v
+}
+
+// snippetForLog 把一段 JSON 截短，失败信息里不要把整份记录（几百根 K 线）都打出来。
+//
 // maxInt 只给测试用：生产代码里不再需要它（v0.15.0 起 Bars 靠数 Kind 算，
 // 不再用「基础根数 + 步数 - 1」那种估法），所以放在测试文件里。
 func maxInt(a, b int) int {
@@ -76,183 +168,229 @@ func snippetForLog(raw []byte) string {
 	return string(raw[:max]) + "…（已截断）"
 }
 
-// TestRecordingCapturesOpsAndReplays 是主用例：录一段「真人 + 机器人混着来」的操作，
-// 再把它重放出来，逐项比对最终状态。
+// ---------------------------------------------------------------------------
+// 主用例：整套流程走一遍协议
+// ---------------------------------------------------------------------------
+
+// TestTradeRecordingIsAutomatic 是这次改动的核心用例。步序表（一步一个操作）：
 //
-// 步序表（v0.15.0 起一步一个操作，所以这张表本身就是断言）：
+//	空仓阶段（不进记录）
+//	  画射线、点【下一根】
 //
-//	1 base          开始录制那一屏
-//	2 bar_advanced  真人点【下一根】
-//	3 annotation_added  真人画射线      ← 同一根 K 线
-//	4 order_placed      真人挂限价单    ← 同一根 K 线
-//	5 annotation_added  机器人画趋势线
-//	6 bar_advanced      机器人步进
-//	7 recording_audio   真人录一段（不改盘面）
-//	8 bar_advanced      真人再点【下一根】
-func TestRecordingCapturesOpsAndReplays(t *testing.T) {
+//	市价买入 2 手 → 记录自动开始
+//	1 base             开仓**之前**那一屏（空仓，但已经有那条射线）
+//	2 order_filled     开仓成交
+//	3 annotation_added 持仓中画一条
+//	4 recording_audio  持仓中讲一段（语音自己占一步）
+//	5 bar_advanced     换一根（全程持仓、无成交 → 唯一能算 MFE/MAE 的那一根）
+//	6 order_filled     平仓 → 记录自动收尾
+//
+// 然后验：通知里的统计、落盘文件、读回来的步序、重放等价、删除互不影响。
+func TestTradeRecordingIsAutomatic(t *testing.T) {
 	hub, _ := newTestHub(t, 3)
 	recDir := t.TempDir()
 	if err := hub.EnableRecordings(recDir); err != nil {
-		t.Fatalf("启用录像目录失败：%v", err)
+		t.Fatalf("启用交易记录目录失败：%v", err)
 	}
-
 	a := newFakeClient(t, hub)
 	a.waitFor(MsgWelcome)
 	instID := createInstance(t, hub, a, "2026-01-05 10:00")
 	inst := mustInstance(t, hub, instID)
 
-	// 1. 开始录制：第 1 步就是当前这一屏
-	a.drain()
-	a.send(hub, map[string]any{"type": "record_start", "instanceId": instID})
-	started := a.waitAction(ActRecordingStarted)
-	state := started["payload"].(map[string]any)
-	if state["active"] != true || state["step"].(float64) != 1 {
-		t.Fatalf("开始录制后的状态不对：%v", state)
-	}
-	if got := int(state["total"].(float64)); got != 1 {
-		t.Fatalf("刚开始录制时应当只有 1 步（起点），实际 %d", got)
-	}
-	if state["startTime"] != inst.Bars[inst.Cursor].Time {
-		t.Fatalf("第 1 步应当对应当前 K 线 %s，实际 %v", inst.Bars[inst.Cursor].Time, state["startTime"])
-	}
-
-	// 2. 真人步进 → 第 2 步。步号由服务端随消息下发（前端不再自己 +1）
-	a.send(hub, map[string]any{"type": "step", "instanceId": instID})
-	adv := a.waitAction(ActBarAdvanced)
-	if got := int(adv["recStep"].(float64)); got != 2 {
-		t.Fatalf("点【下一根】应当是第 2 步，实际 %d", got)
-	}
-
-	nowBar := inst.Bars[inst.Cursor]
+	// ---- 空仓：画图 + 换根都不该开始记录 ----
+	firstBar := inst.Bars[inst.Cursor]
 	prevBar := inst.Bars[inst.Cursor-1]
-	a.send(hub, map[string]any{
-		"type": "annotation_add", "instanceId": instID, "kind": AnnRay,
-		"start": map[string]any{"time": prevBar.Time, "price": prevBar.Close},
-		"end":   map[string]any{"time": nowBar.Time, "price": nowBar.High},
-	})
-	if got := int(a.waitAction(ActAnnotationAdded)["recStep"].(float64)); got != 3 {
-		t.Fatalf("画完一个图形应当是第 3 步（和第 2 步是同一条 K 线，但必须是独立的一步），实际 %d", got)
-	}
-	a.send(hub, map[string]any{
-		"type": "order_place", "instanceId": instID,
-		"side": "buy", "kind": KindLimit, "price": nowBar.Low - 1, "quantity": 2,
-	})
-	if got := int(a.waitAction(ActOrderPlaced)["recStep"].(float64)); got != 4 {
-		t.Fatalf("挂单应当是第 4 步，实际 %d", got)
-	}
-
-	// 3. 机器人操作：画一条 + 步进（和机器人 tick 完全相同的那几条路径）→ 第 5、6 步
-	hub.mu.Lock()
-	hub.botTickProbeLocked(inst)
-	hub.mu.Unlock()
-	if got := inst.rec.state().Step; got != 6 {
-		t.Fatalf("机器人画图 + 步进之后应当是第 6 步，实际 %d", got)
-	}
-
-	// 4. 录音挂到**当前**这根 K 线上，并且自己占一步
-	audioBar := inst.Bars[inst.Cursor]
-	audioEv := sendAudio(t, hub, a, instID, testWAV(400))
-	if got := int(audioEv["recStep"].(float64)); got != 7 {
-		t.Fatalf("录音应当是第 7 步（录音本身就是一次操作），实际 %d", got)
-	}
-	audioPayload := audioEv["payload"].(map[string]any)
-	clip := audioPayload["audio"].(map[string]any)
-	if clip["time"] != audioBar.Time {
-		t.Fatalf("录音应当挂在当前 K 线 %s 上，实际 %v", audioBar.Time, clip["time"])
-	}
-	if clip["step"].(float64) != 7 {
-		t.Fatalf("录音应当挂在第 7 步，实际 %v", clip["step"])
-	}
-
-	// 5. 再步进一次 → 第 8 步
+	addRay(t, hub, a, instID, prevBar, firstBar)
 	a.send(hub, map[string]any{"type": "step", "instanceId": instID})
 	a.waitAction(ActBarAdvanced)
-
-	// 6. 结束录制
-	a.send(hub, map[string]any{"type": "record_stop", "instanceId": instID})
-	stopped := a.waitAction(ActRecordingStopped)
-	stopPayload := stopped["payload"].(map[string]any)
-	if stopPayload["error"] != nil && stopPayload["error"] != "" {
-		t.Fatalf("录像保存失败：%v", stopPayload["error"])
+	if n := inst.TradeRecordCount(); n != 0 {
+		t.Fatalf("空仓时不该开始记录，实际记了 %d 笔", n)
 	}
-	sum := stopPayload["recording"].(map[string]any)
+	if n := len(hub.Records().List()); n != 0 {
+		t.Fatalf("空仓时不该有交易记录，实际 %d 条", n)
+	}
+
+	// ---- 市价开仓：自动开始，第 1 步是「开仓之前」那一屏 ----
+	openBar := inst.Bars[inst.Cursor]
+	openCursor := inst.Cursor
+	entryPrice := tradePrice(t, marketOrder(t, hub, a, instID, "buy", 2))
+	if inst.TradeRecordCount() != 1 {
+		t.Fatal("开仓之后应当自动开始记一笔交易")
+	}
+	steps := tradeSteps(t, inst)
+	if len(steps) != 2 {
+		t.Fatalf("开仓之后应当有 2 步（开仓前那一屏 + 开仓成交），实际 %d 步", len(steps))
+	}
+	if steps[0].Kind != StepBase || len(steps[0].Events) != 0 {
+		t.Fatalf("第 1 步应当是起点（无事件），实际 %+v", steps[0])
+	}
+	if steps[0].Time != openBar.Time || steps[0].Cursor != openCursor {
+		t.Fatalf("第 1 步应当锚在开仓那根 K 线 %s（游标 %d），实际 %s / %d",
+			openBar.Time, openCursor, steps[0].Time, steps[0].Cursor)
+	}
+	if steps[0].By != "human" {
+		t.Fatalf("记录应当记下是谁开的这一笔，实际 %q", steps[0].By)
+	}
+	base := inst.trade.rec.Base
+	if base.Position.Quantity != 0 {
+		t.Fatalf("第 1 步必须是**空仓**那一屏，实际仓位 %v", base.Position)
+	}
+	if len(base.Annotations) != 1 {
+		t.Fatalf("第 1 步应当包含开仓前画的那条射线，实际 %d 个图形", len(base.Annotations))
+	}
+	if steps[1].Kind != ActOrderFilled || len(steps[1].Events) != 1 {
+		t.Fatalf("第 2 步应当是开仓成交，实际 %+v", steps[1])
+	}
+	if steps[1].Events[0].Action != ActOrderFilled || steps[1].Events[0].By != "human" {
+		t.Fatalf("第 2 步的事件不对：%+v", steps[1].Events[0])
+	}
+
+	// ---- 持仓期间：机器人动手（同一份记录）、真人画图、说一段、换根 ----
+	//
+	// 机器人走的是和真人一模一样的 do*Locked，所以它的两步也会出现在**同一份记录**里
+	// （by="bot"）—— 这就是「用户操作与机器人操作完全等价」在数据上的样子。
+	hub.mu.Lock()
+	hub.botTickProbeLocked(inst) // 画一条（第 3 步）+ 换根（第 4 步）
+	hub.mu.Unlock()
+	if n := len(tradeSteps(t, inst)); n != 4 {
+		t.Fatalf("机器人动手之后应当是第 4 步，实际 %d 步", n)
+	}
+	addRay(t, hub, a, instID, openBar, openBar)
+	if got := audioStep(t, sendAudio(t, hub, a, instID, testWAV(400))); got != 6 {
+		t.Fatalf("持仓中录的语音应当是第 6 步（语音就是一次操作），实际 %d", got)
+	}
+	a.send(hub, map[string]any{"type": "step", "instanceId": instID})
+	a.waitAction(ActBarAdvanced)
+	exitBar := inst.Bars[inst.Cursor]
+	if n := len(tradeSteps(t, inst)); n != 7 {
+		t.Fatalf("再换一根之后应当是第 7 步，实际 %d 步", n)
+	}
+
+	// 统计只能拿「全程持仓、且这一根没有成交」的整根 K 线算 MFE/MAE
+	// （开仓那一根、出场那一根都不算 —— 一根 K 线看不出高低点谁先来）
+	pv := inst.pointValue()
+	var wantMfe, wantMae float64
+	for _, b := range inst.Bars[openCursor+1 : inst.Cursor] {
+		wantMfe = math.Max(wantMfe, math.Max((b.High-entryPrice)*2*pv, (b.Low-entryPrice)*2*pv))
+		wantMae = math.Min(wantMae, math.Min((b.High-entryPrice)*2*pv, (b.Low-entryPrice)*2*pv))
+	}
+	wantBarsHeld := inst.Cursor - (openCursor + 1)
+
+	// ---- 平仓：自动收尾，并收到一条 trade_recorded ----
+	exitPrice := tradePrice(t, marketOrder(t, hub, a, instID, "sell", 2))
+	if n := inst.TradeRecordCount(); n != 0 {
+		t.Fatalf("平仓之后记录应当自动收尾，实际还记着 %d 笔", n)
+	}
+	msg := a.waitFor(MsgTradeRecorded)
+	if dir, _ := msg["dir"].(string); dir != recDir {
+		t.Fatalf("记录应当落在 %s，实际 %q", recDir, msg["dir"])
+	}
+	if w, _ := msg["warning"].(string); w != "" {
+		t.Fatalf("正常保存不该带警告，实际 %q", w)
+	}
+	sum, ok := msg["recording"].(map[string]any)
+	if !ok {
+		t.Fatalf("通知里没有记录摘要：%v", msg)
+	}
 	recID, _ := sum["id"].(string)
 	if recID == "" {
-		t.Fatalf("结束后没有录像 id：%v", sum)
+		t.Fatalf("记录没有 id：%v", sum)
 	}
-	if got := int(sum["stepCount"].(float64)); got != 8 {
-		t.Fatalf("录像应当是 8 步（1 起点 + 7 次操作），实际 %v", got)
+	if sum["instanceId"] != instID {
+		t.Fatalf("摘要应当记下发生在哪个实例上，实际 %v", sum["instanceId"])
 	}
-	if got := int(sum["bars"].(float64)); got != 4 {
-		t.Fatalf("录像里推进了 4 根 K 线（起点 + 3 次步进），实际 %v", got)
+	if got := int(numOf(sum, "stepCount")); got != 8 {
+		t.Fatalf("整笔交易应当是 8 步（入场前 / 开仓 / 机器人画图 / 机器人换根 / 真人画图 / 语音 / 换根 / 平仓），实际 %d", got)
 	}
-	if got := int(sum["eventCount"].(float64)); got != 6 {
-		t.Fatalf("应当有 6 个改盘面的操作（起点和录音步不算），实际 %v", got)
+	if got := int(numOf(sum, "bars")); got != 3 {
+		t.Fatalf("记录里推进了 3 根 K 线（入场那根 + 换了两次），实际 %d", got)
 	}
-	if got := sum["audioCount"].(float64); got != 1 {
-		t.Fatalf("录像应当有 1 条录音，实际 %v", got)
+	if got := int(numOf(sum, "eventCount")); got != 6 {
+		t.Fatalf("改盘面的操作应当有 6 个（语音步不算），实际 %d", got)
+	}
+	if got := int(numOf(sum, "audioCount")); got != 1 {
+		t.Fatalf("记录里应当有 1 条语音，实际 %d", got)
 	}
 
-	// 7. 落盘结构：recording.json + audio-1.wav
+	// ---- 统计：一并算好，前端只排版 ----
+	stats, ok := sum["stats"].(map[string]any)
+	if !ok {
+		t.Fatalf("摘要里没有 stats：%v", sum)
+	}
+	if stats["side"] != "long" {
+		t.Fatalf("方向应当是 long，实际 %v", stats["side"])
+	}
+	wantNear(t, "开仓手数", numOf(stats, "quantity"), 2)
+	wantNear(t, "最大手数", numOf(stats, "maxQuantity"), 2)
+	if got := int(numOf(stats, "fills")); got != 2 {
+		t.Fatalf("这一笔应当有 2 次成交（开 + 平），实际 %d", got)
+	}
+	if stats["closed"] != true {
+		t.Fatalf("正常平完的一笔应当标成 closed：%v", stats["closed"])
+	}
+	if stats["entryTime"] != openBar.Time || stats["exitTime"] != exitBar.Time {
+		t.Fatalf("进出场时间应当是 %s → %s，实际 %v → %v",
+			openBar.Time, exitBar.Time, stats["entryTime"], stats["exitTime"])
+	}
+	wantNear(t, "开仓价", numOf(stats, "entryPrice"), entryPrice)
+	wantNear(t, "平仓价", numOf(stats, "exitPrice"), exitPrice)
+	wantNear(t, "已实现盈亏", numOf(stats, "realizedPnl"), (exitPrice-entryPrice)*2*pv)
+	wantNear(t, "最大有利波动", numOf(stats, "mfe"), wantMfe)
+	wantNear(t, "最大不利波动", numOf(stats, "mae"), wantMae)
+	if got := int(numOf(stats, "barsHeld")); got != wantBarsHeld {
+		t.Fatalf("持仓走过的整根 K 线应当是 %d 根，实际 %d", wantBarsHeld, got)
+	}
+	if got := int(numOf(stats, "steps")); got != 8 {
+		t.Fatalf("统计里的步数应当和摘要一致（8），实际 %d", got)
+	}
+
+	// ---- 落盘结构：recording.json + audio-1.wav ----
 	folder := filepath.Join(recDir, recordingFolder(recID))
 	recPath := filepath.Join(folder, recordingFileName)
 	if _, err := os.Stat(recPath); err != nil {
-		t.Fatalf("录像没有落盘（%s）：%v", recPath, err)
+		t.Fatalf("记录没有落盘（%s）：%v", recPath, err)
 	}
 	if _, err := os.Stat(filepath.Join(folder, "audio-1.wav")); err != nil {
-		t.Fatalf("录音没有落盘：%v", err)
+		t.Fatalf("语音没有随记录落盘：%v", err)
 	}
 
-	// 8. 列表 / 取详情
+	// ---- 列表 / 详情 ----
 	a.send(hub, map[string]any{"type": "list_recordings"})
 	list := a.waitFor(MsgRecordings)
-	items := list["recordings"].([]any)
+	items, _ := list["recordings"].([]any)
 	if len(items) != 1 {
-		t.Fatalf("录像列表应当有 1 条，实际 %d", len(items))
+		t.Fatalf("记录列表应当有 1 条，实际 %d", len(items))
 	}
 	a.send(hub, map[string]any{"type": "get_recording", "recordingId": recID})
-	got := a.waitFor(MsgRecording)
-	raw, _ := json.Marshal(got["recording"])
+	raw, _ := json.Marshal(a.waitFor(MsgRecording)["recording"])
 	var rec Recording
 	if err := json.Unmarshal(raw, &rec); err != nil {
-		t.Fatalf("录像反序列化失败：%v", err)
+		t.Fatalf("记录反序列化失败：%v", err)
 	}
 	if rec.Format != RecordingFormat {
-		t.Fatalf("新录的录像应当是 format=%d，实际 %d", RecordingFormat, rec.Format)
+		t.Fatalf("新记录应当是 format=%d，实际 %d", RecordingFormat, rec.Format)
 	}
-	if len(rec.Steps) != 8 {
-		t.Fatalf("读回来的录像应当有 8 步，实际 %d", len(rec.Steps))
-	}
-	// 数组字段必须序列化成 `[]` 而不是 `null`：起点和录音步天然没有事件，前端步进条
-	// 直接读 `s.events.length`，null 会让「打开回放」当场抛 TypeError
-	// （2026-10 实测：冒烟时整个播放器渲染不出来，顶栏却已经进了回放态）。
+	// 数组字段必须序列化成 `[]` 而不是 `null`：前端步进条直接读 `s.events.length`，
+	// null 会让「打开回放」当场抛 TypeError（2026-10 实测：整个播放器渲染不出来）。
 	if !strings.Contains(string(raw), `"events":[]`) {
-		t.Fatalf("events 不能是 null，必须是 []（原始 JSON 里找不到 \"events\":[]）：%s", snippetForLog(raw))
+		t.Fatalf("events 不能是 null，必须是 []：%s", snippetForLog(raw))
 	}
-	if !strings.Contains(string(raw), `"audios":[`) {
-		t.Fatalf("audios 不能是 null，必须是数组：%s", snippetForLog(raw))
-	}
-	if len(rec.Audios) != 1 || rec.Audios[0].Time != audioBar.Time {
-		t.Fatalf("读回来的录音不对：%+v", rec.Audios)
-	}
-
-	// 9. 步序表：步号连续、Kind 一一对应、每步只有一条事件（起点/录音步没有事件）
 	wantKind := []string{
-		StepBase, ActBarAdvanced, ActAnnotationAdded, ActOrderPlaced,
-		ActAnnotationAdded, ActBarAdvanced, ActRecordingAudio, ActBarAdvanced,
+		StepBase, ActOrderFilled, ActAnnotationAdded, ActBarAdvanced,
+		ActAnnotationAdded, ActRecordingAudio, ActBarAdvanced, ActOrderFilled,
+	}
+	if len(rec.Steps) != len(wantKind) {
+		t.Fatalf("读回来的记录应当有 %d 步，实际 %d", len(wantKind), len(rec.Steps))
 	}
 	for i, st := range rec.Steps {
 		if st.Step != i+1 {
 			t.Fatalf("第 %d 个元素的步号应当是 %d，实际 %d（步号必须连续）", i, i+1, st.Step)
 		}
-		if i < len(wantKind) && st.Kind != wantKind[i] {
+		if st.Kind != wantKind[i] {
 			t.Fatalf("第 %d 步的类型应当是 %s，实际 %s", i+1, wantKind[i], st.Kind)
 		}
-		if st.Time == "" {
-			t.Fatalf("第 %d 步没有盘面锚点（K 线时间）", st.Step)
-		}
-		if st.At == 0 {
-			t.Fatalf("第 %d 步没有真实时刻（At）", st.Step)
+		if st.Time == "" || st.At == 0 {
+			t.Fatalf("第 %d 步缺盘面锚点或真实时刻：%+v", st.Step, st)
 		}
 		switch st.Kind {
 		case StepBase, ActRecordingAudio:
@@ -265,45 +403,43 @@ func TestRecordingCapturesOpsAndReplays(t *testing.T) {
 			}
 		}
 	}
-	if rec.Steps[6].Audio == nil || rec.Steps[6].Audio.ID != rec.Audios[0].ID {
-		t.Fatalf("第 7 步应当挂着那段录音，实际 %+v", rec.Steps[6].Audio)
+	if rec.Steps[5].Audio == nil || rec.Steps[5].Audio.ID != rec.Audios[0].ID {
+		t.Fatalf("第 6 步应当挂着那段语音，实际 %+v", rec.Steps[5].Audio)
 	}
-	if rec.Steps[2].Events[0].By != "human" || rec.Steps[2].Events[0].Action != ActAnnotationAdded {
-		t.Fatalf("第 3 步应当是真人画的那条射线：%+v", rec.Steps[2].Events[0])
+	// 机器人画的那条也在同一份记录里（by=bot），机器人没有后门
+	if rec.Steps[2].Events[0].By != "bot" {
+		t.Fatalf("第 3 步应当是机器人画的线：%+v", rec.Steps[2].Events[0])
 	}
-	if rec.Steps[4].Events[0].By != "bot" {
-		t.Fatalf("第 5 步应当是机器人画的线（机器人走同一出口，没有后门）：%+v", rec.Steps[4].Events[0])
+	if rec.Steps[4].Events[0].By != "human" {
+		t.Fatalf("第 5 步应当是真人画的线：%+v", rec.Steps[4].Events[0])
 	}
-	// 第 3、4 步是同一条 K 线上的两次操作 —— 这正是 v0.15.0 要的形状
-	if rec.Steps[2].Time != rec.Steps[3].Time {
-		t.Fatalf("第 3、4 步应当在同一条 K 线上（%s / %s）", rec.Steps[2].Time, rec.Steps[3].Time)
+	// 画图和说话发生在同一根 K 线上，但必须是**两步**（「一步 = 一次操作」要的形状）
+	if rec.Steps[4].Time != rec.Steps[5].Time {
+		t.Fatalf("第 5、6 步应当在同一条 K 线上（%s / %s）", rec.Steps[4].Time, rec.Steps[5].Time)
 	}
 
-	// 10. **重放等价**：Base + 事件演一遍，最终状态必须和实例完全一致
+	// ---- 重放等价：Base + 事件演一遍，最终状态必须和实例完全一致 ----
 	replayed := replayRecording(t, &rec)
 	assertSameState(t, inst, replayed)
-	// 逐步重放：第 N 步之后，游标必须等于录像里记的那一个 —— 跳步不会演错的前提
 	for _, st := range rec.Steps {
-		partial := replaySteps(t, &rec, st.Step)
-		if partial.Cursor != st.Cursor {
+		if partial := replaySteps(t, &rec, st.Step); partial.Cursor != st.Cursor {
 			t.Fatalf("演到第 %d 步时游标应当是 %d，实际 %d", st.Step, st.Cursor, partial.Cursor)
 		}
 	}
 
-	// 11. 音频能通过 HTTP 路由取回
+	// ---- 音频能通过 HTTP 路由取回 ----
 	srv := httptest.NewServer(NewHandler(hub, t.TempDir()))
 	defer srv.Close()
-	url := fmt.Sprintf("%s/api/recordings/%s/audio/audio-1.wav", srv.URL, recID)
-	resp, err := http.Get(url)
+	resp, err := http.Get(fmt.Sprintf("%s/api/recordings/%s/audio/audio-1.wav", srv.URL, recID))
 	if err != nil {
-		t.Fatalf("取录音失败：%v", err)
+		t.Fatalf("取语音失败：%v", err)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("录音应当 200，实际 %d", resp.StatusCode)
+		t.Fatalf("语音应当 200，实际 %d", resp.StatusCode)
 	}
 	if ct := resp.Header.Get("Content-Type"); ct != "audio/wav" {
-		t.Fatalf("录音的 Content-Type 应当是 audio/wav，实际 %q", ct)
+		t.Fatalf("语音的 Content-Type 应当是 audio/wav，实际 %q", ct)
 	}
 	// 路径穿越要被挡住
 	bad, err := http.Get(fmt.Sprintf("%s/api/recordings/%s/audio/..%%2Frecording.json", srv.URL, recID))
@@ -314,112 +450,395 @@ func TestRecordingCapturesOpsAndReplays(t *testing.T) {
 		}
 	}
 
-	// 12. 删除：列表清空、文件夹消失
+	// ---- 删记录不动实例：盘面、成交、盈亏一条都不能少 ----
+	before := len(inst.Trades)
+	pnlBefore := inst.RealizedPnl
 	a.send(hub, map[string]any{"type": "delete_recording", "recordingId": recID})
 	after := a.waitFor(MsgRecordings)
 	if n := len(after["recordings"].([]any)); n != 0 {
 		t.Fatalf("删除后列表应当是空的，实际 %d 条", n)
 	}
 	if _, err := os.Stat(folder); !os.IsNotExist(err) {
-		t.Fatalf("删除后录像目录应当没了，实际 err=%v", err)
+		t.Fatalf("删除后记录目录应当没了，实际 err=%v", err)
+	}
+	alive := mustInstance(t, hub, instID)
+	if len(alive.Trades) != before {
+		t.Fatalf("删记录不该动实例的成交：删前 %d 笔、删后 %d 笔", before, len(alive.Trades))
+	}
+	if !near(alive.RealizedPnl, pnlBefore) {
+		t.Fatalf("删记录不该动实例的盈亏：%v → %v", pnlBefore, alive.RealizedPnl)
+	}
+	if len(alive.Annotations) != 3 {
+		t.Fatalf("删记录不该动实例的图形（开仓前 1 个 + 机器人 1 个 + 持仓中 1 个 = 3），实际 %d", len(alive.Annotations))
+	}
+
+	// ---- 再开一笔：记录按仓位自动重来，不会因为「已经记过一次」而失效 ----
+	marketOrder(t, hub, a, instID, "buy", 1)
+	if n := alive.TradeRecordCount(); n != 1 {
+		t.Fatal("第二次开仓应当再自动开始一笔新记录")
+	}
+	if got := tradeSteps(t, alive)[0].Kind; got != StepBase {
+		t.Fatalf("新一笔的第 1 步仍然是起点，实际 %s", got)
 	}
 }
 
-// TestRecordingStepsFollowRealOperations 是需求原话的形状：
-// 「点击下一根 K 线」→「绘制图形」→「录音」→「再次绘制图形」，**四次操作 = 四步**。
+// TestTradeRecordingStatsAreComputed 专门钉空头的统计符号。
 //
-// v0.14 及以前这四件事全落在同一根 K 线的那一步里，回放时一次性摆出来，
-// 看不出用户先画了线、再讲了话、又画了一条。这条用例把「逐步出现」钉死：
-// 演到第 3 步只有第一个图形，演到第 5 步才有第二个。
-func TestRecordingStepsFollowRealOperations(t *testing.T) {
+// 多头那一条已经由主用例覆盖，但「空头时 High 是浮亏、Low 是浮盈」正好相反 ——
+// 这里如果写反，数字看起来照样"合理"（都是正数/负数），只有拿一个只有空头的
+// 用例才能发现。
+func TestTradeRecordingStatsAreComputed(t *testing.T) {
 	hub, _ := newTestHub(t, 2)
 	if err := hub.EnableRecordings(t.TempDir()); err != nil {
-		t.Fatalf("启用录像目录失败：%v", err)
+		t.Fatalf("启用交易记录目录失败：%v", err)
 	}
 	a := newFakeClient(t, hub)
 	a.waitFor(MsgWelcome)
 	instID := createInstance(t, hub, a, "2026-01-05 10:00")
 	inst := mustInstance(t, hub, instID)
 
-	a.send(hub, map[string]any{"type": "record_start", "instanceId": instID})
-	a.waitAction(ActRecordingStarted)
+	// 卖开 1 手 → 空头
+	entryPrice := tradePrice(t, marketOrder(t, hub, a, instID, "sell", 1))
+	// 走两根：第一根是「全程持仓且无成交」，第二根是出场那根（它的高低点不算）
+	a.send(hub, map[string]any{"type": "step", "instanceId": instID})
+	a.waitAction(ActBarAdvanced)
+	holdBar := inst.Bars[inst.Cursor]
+	a.send(hub, map[string]any{"type": "step", "instanceId": instID})
+	a.waitAction(ActBarAdvanced)
+	pv := inst.pointValue()
+	// 空头：数量是负的，(high - avg) * qty 天然是负的（浮亏），(low - avg) * qty 是正的
+	up := (holdBar.High - entryPrice) * -1 * pv
+	dn := (holdBar.Low - entryPrice) * -1 * pv
 
-	// 1) 点击下一根
+	exitPrice := tradePrice(t, marketOrder(t, hub, a, instID, "buy", 1))
+	sum := a.waitFor(MsgTradeRecorded)["recording"].(map[string]any)
+	stats, _ := sum["stats"].(map[string]any)
+	if stats["side"] != "short" {
+		t.Fatalf("方向应当是 short，实际 %v", stats["side"])
+	}
+	wantNear(t, "空头已实现盈亏", numOf(stats, "realizedPnl"), (entryPrice-exitPrice)*1*pv)
+	wantNear(t, "空头 MFE", numOf(stats, "mfe"), math.Max(0, math.Max(up, dn)))
+	wantNear(t, "空头 MAE", numOf(stats, "mae"), math.Min(0, math.Min(up, dn)))
+	if numOf(stats, "mfe") < 0 || numOf(stats, "mae") > 0 {
+		t.Fatalf("MFE 不该是负的、MAE 不该是正的：%v / %v", stats["mfe"], stats["mae"])
+	}
+	// 出场那一根不算：持仓走过的整根 K 线只有 1 根
+	if got := int(numOf(stats, "barsHeld")); got != 1 {
+		t.Fatalf("barsHeld 应当是 1（出场那根不算），实际 %d", got)
+	}
+}
+
+// TestTradeRecordingStartsOnLimitFill 钉住「挂单成交开仓也要能被记上，而且第 1 步
+// 仍然在成交之前」。
+//
+// 这条路径和第 2 步的市价成交不同：快照必须在 advance **之前**抓（见 doStepLocked），
+// 否则记录的第一帧就已经带着仓位，「怎么进的场」永远看不到。第 2 步是一条
+// bar_advanced（成交撮合的结果就带在它的 Fills 里），不是 order_filled。
+func TestTradeRecordingStartsOnLimitFill(t *testing.T) {
+	hub, _ := newTestHub(t, 2)
+	if err := hub.EnableRecordings(t.TempDir()); err != nil {
+		t.Fatalf("启用交易记录目录失败：%v", err)
+	}
+	a := newFakeClient(t, hub)
+	a.waitFor(MsgWelcome)
+	instID := createInstance(t, hub, a, "2026-01-05 10:00")
+	inst := mustInstance(t, hub, instID)
+
+	bar := inst.Bars[inst.Cursor]
+	// 买在现价：下一根的低点一定会打穿它
+	a.send(hub, map[string]any{
+		"type": "order_place", "instanceId": instID,
+		"side": "buy", "kind": KindLimit, "price": bar.Close, "quantity": 1,
+	})
+	a.waitAction(ActOrderPlaced)
+	if inst.TradeRecordCount() != 0 {
+		t.Fatal("挂单还没成交，不该开始记录（空仓）")
+	}
+
+	a.send(hub, map[string]any{"type": "step", "instanceId": instID})
+	adv := a.waitAction(ActBarAdvanced)
+	fills, _ := adv["payload"].(map[string]any)["fills"].([]any)
+	if len(fills) != 1 {
+		t.Fatalf("这一根应当撮合掉那张挂单，实际 %d 笔成交", len(fills))
+	}
+	if inst.TradeRecordCount() != 1 {
+		t.Fatal("挂单成交把空仓变成有仓，应当自动开始记录")
+	}
+	steps := tradeSteps(t, inst)
+	if len(steps) != 2 {
+		t.Fatalf("应当有 2 步（成交前那一屏 + 成交那一根），实际 %d", len(steps))
+	}
+	if steps[0].Kind != StepBase || steps[0].Time != bar.Time {
+		t.Fatalf("第 1 步应当锚在成交之前那根 %s，实际 %+v", bar.Time, steps[0])
+	}
+	if q := inst.trade.rec.Base.Position.Quantity; q != 0 {
+		t.Fatalf("第 1 步必须是空仓那一屏，实际仓位 %v", q)
+	}
+	if n := len(inst.trade.rec.Base.Orders); n != 1 {
+		t.Fatalf("第 1 步应当还带着那张挂单（成交发生在下一步），实际 %d 张", n)
+	}
+	if steps[1].Kind != ActBarAdvanced {
+		t.Fatalf("第 2 步应当是换根（成交结果在 Fills 里），实际 %s", steps[1].Kind)
+	}
+	if steps[1].Time != inst.Bars[inst.Cursor].Time {
+		t.Fatalf("第 2 步应当锚在成交那一根，实际 %s", steps[1].Time)
+	}
+
+	// 直接平掉：这一笔一根都没完整持仓过，MFE/MAE 都是 0
+	marketOrder(t, hub, a, instID, "sell", 1)
+	stats := a.waitFor(MsgTradeRecorded)["recording"].(map[string]any)["stats"].(map[string]any)
+	if stats["closed"] != true {
+		t.Fatalf("平完之后应当是 closed：%v", stats["closed"])
+	}
+	if got := int(numOf(stats, "fills")); got != 2 {
+		t.Fatalf("应当有 2 次成交（挂单成交 + 平仓），实际 %d", got)
+	}
+	wantNear(t, "MFE", numOf(stats, "mfe"), 0)
+	wantNear(t, "MAE", numOf(stats, "mae"), 0)
+	if got := int(numOf(stats, "barsHeld")); got != 0 {
+		t.Fatalf("没有完整持仓过的 K 线，barsHeld 应当是 0，实际 %d", got)
+	}
+}
+
+// TestTradeRecordingSameBarRoundTrip 钉住「同一根 K 线里开了又平」：
+// 那也是一笔完整的交易，记录不能丢，而且 MFE/MAE 都是 0（看不出高低点谁先来）。
+func TestTradeRecordingSameBarRoundTrip(t *testing.T) {
+	hub, _ := newTestHub(t, 2)
+	recDir := t.TempDir()
+	if err := hub.EnableRecordings(recDir); err != nil {
+		t.Fatalf("启用交易记录目录失败：%v", err)
+	}
+	a := newFakeClient(t, hub)
+	a.waitFor(MsgWelcome)
+	instID := createInstance(t, hub, a, "2026-01-05 10:00")
+	inst := mustInstance(t, hub, instID)
+
+	bar := inst.Bars[inst.Cursor]
+	entry := tradePrice(t, marketOrder(t, hub, a, instID, "buy", 3))
+	if n := len(tradeSteps(t, inst)); n != 2 {
+		t.Fatalf("开仓后应当是 2 步，实际 %d", n)
+	}
+	exit := tradePrice(t, marketOrder(t, hub, a, instID, "sell", 3))
+	if entry != exit {
+		t.Fatalf("同一根 K 线内往返的成交价应当相同，实际 %v / %v", entry, exit)
+	}
+	sum := a.waitFor(MsgTradeRecorded)["recording"].(map[string]any)
+	stats := sum["stats"].(map[string]any)
+	if got := int(numOf(sum, "stepCount")); got != 3 {
+		t.Fatalf("同一根内往返应当是 3 步（起点 + 开 + 平），实际 %d", got)
+	}
+	if stats["closed"] != true || numOf(stats, "fills") != 2 {
+		t.Fatalf("往返应当是一笔已平完的交易：%v", stats)
+	}
+	wantNear(t, "往返盈亏", numOf(stats, "realizedPnl"), 0)
+	wantNear(t, "MFE", numOf(stats, "mfe"), 0)
+	wantNear(t, "MAE", numOf(stats, "mae"), 0)
+	if got := int(numOf(stats, "barsHeld")); got != 0 {
+		t.Fatalf("同一根内往返不该有持仓根数，实际 %d", got)
+	}
+	// 名字要能一眼看出是哪一笔
+	name, _ := sum["name"].(string)
+	if !strings.Contains(name, "多") || !strings.Contains(name, "3 手") {
+		t.Fatalf("记录名字应当带方向和手数，实际 %q", name)
+	}
+	// 同一根 K 线上的三步必须挂着同一个时间锚点
+	a.send(hub, map[string]any{"type": "get_recording", "recordingId": sum["id"]})
+	var rec Recording
+	raw, _ := json.Marshal(a.waitFor(MsgRecording)["recording"])
+	if err := json.Unmarshal(raw, &rec); err != nil {
+		t.Fatalf("记录反序列化失败：%v", err)
+	}
+	for _, st := range rec.Steps {
+		if st.Time != bar.Time {
+			t.Fatalf("第 %d 步应当锚在 %s，实际 %s", st.Step, bar.Time, st.Time)
+		}
+	}
+}
+
+// TestTradeRecordingIgnoresManualSwitches 钉住「开关没了，但老消息不会变成哑巴」：
+// record_start / record_stop 仍然认，回一句「已经改为自动」的解释；期间不会有任何记录。
+func TestTradeRecordingIgnoresManualSwitches(t *testing.T) {
+	hub, _ := newTestHub(t, 2)
+	if err := hub.EnableRecordings(t.TempDir()); err != nil {
+		t.Fatalf("启用交易记录目录失败：%v", err)
+	}
+	a := newFakeClient(t, hub)
+	a.waitFor(MsgWelcome)
+	instID := createInstance(t, hub, a, "2026-01-05 10:00")
+	inst := mustInstance(t, hub, instID)
+
+	for _, typ := range []string{"record_start", "record_stop"} {
+		a.drain()
+		a.send(hub, map[string]any{"type": typ, "instanceId": instID})
+		e := a.waitFor(MsgError)
+		msg, _ := e["message"].(string)
+		if !strings.Contains(msg, "自动") {
+			t.Fatalf("%s 应当解释「已经改为自动」，实际 %q", typ, msg)
+		}
+	}
+	if n := inst.TradeRecordCount(); n != 0 {
+		t.Fatalf("手动开关不该让记录开始，实际 %d 笔", n)
+	}
+	if n := len(hub.Records().List()); n != 0 {
+		t.Fatalf("手动开关不该产生记录，实际 %d 条", n)
+	}
+	// 空仓做操作也不产生记录
+	addRay(t, hub, a, instID, inst.Bars[inst.Cursor], inst.Bars[inst.Cursor])
+	if n := inst.TradeRecordCount(); n != 0 {
+		t.Fatalf("空仓画图不该开始记录，实际 %d 笔", n)
+	}
+}
+
+// TestTradeRecordingSurvivesInstanceDeletion 钉住「记录独立于实例」：
+// 删实例时这一笔**立即收尾并保存**（Closed 仍是 false —— 那笔仓位确实还没平），
+// 记录文件留在 <recordingsDir> 下，和实例存档目录互不牵连。
+func TestTradeRecordingSurvivesInstanceDeletion(t *testing.T) {
+	root := writeTestData(t, 2)
+	stateDir := t.TempDir()
+	recDir := t.TempDir()
+	hub := newPersistentHub(t, root, stateDir)
+	if err := hub.EnableRecordings(recDir); err != nil {
+		t.Fatalf("启用交易记录目录失败：%v", err)
+	}
+	a := newFakeClient(t, hub)
+	a.waitFor(MsgWelcome)
+	instID := createInstance(t, hub, a, "2026-01-05 10:00")
+	inst := mustInstance(t, hub, instID)
+
+	marketOrder(t, hub, a, instID, "buy", 2)
+	addRay(t, hub, a, instID, inst.Bars[inst.Cursor], inst.Bars[inst.Cursor])
+	hub.flushState() // 先把实例存档写出来，删之前它确实存在
+
+	a.send(hub, map[string]any{"type": "delete_instance", "instanceId": instID})
+	if m := a.waitFor(MsgDeleted); m["instanceId"] != instID {
+		t.Fatalf("删除回执不对：%v", m)
+	}
+	// 实例已经没了，但这条记录刚被保存 —— 通知仍然要发出去（否则列表看着像丢了）
+	msg := a.waitFor(MsgTradeRecorded)
+	sum := msg["recording"].(map[string]any)
+	if sum["instanceId"] != instID {
+		t.Fatalf("记录应当记下原实例 id（追溯用），实际 %v", sum["instanceId"])
+	}
+	stats := sum["stats"].(map[string]any)
+	if stats["closed"] != false {
+		t.Fatalf("实例被删时仓位还在，closed 必须是 false：%v", stats["closed"])
+	}
+	if got := int(numOf(stats, "fills")); got != 1 {
+		t.Fatalf("这一笔只成交过一次（开仓），实际 %d", got)
+	}
+
+	recID := sum["id"].(string)
+	recPath := filepath.Join(recDir, recordingFolder(recID), recordingFileName)
+	if _, err := os.Stat(recPath); err != nil {
+		t.Fatalf("记录没有落盘：%v", err)
+	}
+	hub.flushState()
+	if _, err := os.Stat(filepath.Join(stateDir, "instances", instanceFolder(instID))); !os.IsNotExist(err) {
+		t.Fatalf("实例存档目录应当被删掉，实际 err=%v", err)
+	}
+
+	// 重新打开记录目录（= 重启程序）：崩溃/删除留下的「持仓中」记录不能被当成坏文件
+	st, err := OpenRecordingStore(recDir, t.Logf)
+	if err != nil {
+		t.Fatalf("打开记录目录失败：%v", err)
+	}
+	items := st.List()
+	if len(items) != 1 {
+		t.Fatalf("重新扫描后应当还有 1 条记录，实际 %d", len(items))
+	}
+	if items[0].ID != recID || items[0].Stats.Closed {
+		t.Fatalf("读回来的摘要不对：%+v", items[0])
+	}
+	if !strings.Contains(items[0].Name, "持仓中") {
+		t.Fatalf("没平完的记录名字里应当写「持仓中」，实际 %q", items[0].Name)
+	}
+	rec, err := st.Load(recID)
+	if err != nil {
+		t.Fatalf("读回记录失败：%v", err)
+	}
+	if rec.Base.Position.Quantity != 0 || len(rec.Steps) != 3 {
+		t.Fatalf("记录内容不对：仓位 %v / %d 步", rec.Base.Position, len(rec.Steps))
+	}
+}
+
+// TestTradeRecordingStepsFollowRealOperations 是需求原话的形状：
+// 「点击下一根 K 线」→「绘制图形」→「录音」→「再次绘制图形」，**四次操作 = 四步**。
+//
+// v0.14 及以前这四件事全落在同一根 K 线的那一步里，回放时一次性摆出来，
+// 看不出用户先画了线、再讲了话、又画了一条。这条用例把「逐步出现」钉死。
+func TestTradeRecordingStepsFollowRealOperations(t *testing.T) {
+	hub, _ := newTestHub(t, 2)
+	if err := hub.EnableRecordings(t.TempDir()); err != nil {
+		t.Fatalf("启用交易记录目录失败：%v", err)
+	}
+	a := newFakeClient(t, hub)
+	a.waitFor(MsgWelcome)
+	instID := createInstance(t, hub, a, "2026-01-05 10:00")
+	inst := mustInstance(t, hub, instID)
+
+	marketOrder(t, hub, a, instID, "buy", 1) // 第 1、2 步
 	a.send(hub, map[string]any{"type": "step", "instanceId": instID})
 	a.waitAction(ActBarAdvanced)
 	bar := inst.Bars[inst.Cursor]
 
-	// 2) 绘制图形
-	addRay := func(price float64) {
-		a.send(hub, map[string]any{
-			"type": "annotation_add", "instanceId": instID, "kind": AnnRay,
-			"start": map[string]any{"time": bar.Time, "price": price},
-			"end":   map[string]any{"time": bar.Time, "price": price},
-		})
-		a.waitAction(ActAnnotationAdded)
+	addRay(t, hub, a, instID, bar, bar)
+	if got := audioStep(t, sendAudio(t, hub, a, instID, testWAV(64))); got != 5 {
+		t.Fatalf("语音应当是第 5 步，实际 %d", got)
 	}
-	addRay(bar.Close)
+	addRay(t, hub, a, instID, bar, bar)
 
-	// 3) 录音
-	ev := sendAudio(t, hub, a, instID, testWAV(64))
-	if got := int(ev["recStep"].(float64)); got != 4 {
-		t.Fatalf("录音应当是第 4 步，实际 %d", got)
+	steps := tradeSteps(t, inst)
+	want := []string{
+		StepBase, ActOrderFilled, ActBarAdvanced,
+		ActAnnotationAdded, ActRecordingAudio, ActAnnotationAdded,
 	}
-
-	// 4) 再次绘制图形（同一根 K 线）
-	addRay(bar.Open)
-
-	steps := inst.rec.rec.Steps
-	want := []string{StepBase, ActBarAdvanced, ActAnnotationAdded, ActRecordingAudio, ActAnnotationAdded}
 	if len(steps) != len(want) {
-		t.Fatalf("四次操作应当录成 5 步（含起点），实际 %d 步：%+v", len(steps), steps)
+		t.Fatalf("应当是 %d 步，实际 %d 步", len(want), len(steps))
 	}
 	for i, k := range want {
 		if steps[i].Kind != k {
 			t.Fatalf("第 %d 步应当是 %s，实际 %s", i+1, k, steps[i].Kind)
 		}
 	}
-	// 四次操作都发生在同一根 K 线上（除了第 2 步本身就是换根）
-	for _, st := range steps[1:] {
+	// 后四步都发生在同一根 K 线上（除了第 3 步本身就是换根）
+	for _, st := range steps[2:] {
 		if st.Time != bar.Time {
 			t.Fatalf("这几步都该挂在 %s 上，第 %d 步却是 %s", bar.Time, st.Step, st.Time)
 		}
 	}
-	if len(steps[3].Events) != 0 || steps[3].Audio == nil {
-		t.Fatalf("录音步不该有事件、但必须带着那段音频：%+v", steps[3])
+	if len(steps[4].Events) != 0 || steps[4].Audio == nil {
+		t.Fatalf("语音步不该有事件、但必须带着那段音频：%+v", steps[4])
 	}
 
-	// 逐步出现：第 3 步只有 1 个图形，第 4 步还只有 1 个（录音不改盘面），第 5 步才有 2 个
-	if n := len(replaySteps(t, inst.rec.rec, 3).Annotations); n != 1 {
-		t.Fatalf("演到第 3 步应当只有 1 个图形，实际 %d", n)
+	// 逐步出现：演到第 4 步只有 1 个图形，第 5 步还只有 1 个（语音不改盘面），第 6 步才有 2 个
+	rec := inst.trade.rec
+	if n := len(replaySteps(t, rec, 4).Annotations); n != 1 {
+		t.Fatalf("演到第 4 步应当只有 1 个图形，实际 %d", n)
 	}
-	if n := len(replaySteps(t, inst.rec.rec, 4).Annotations); n != 1 {
-		t.Fatalf("录音那一步不该改变盘面（还是 1 个图形），实际 %d", n)
+	if n := len(replaySteps(t, rec, 5).Annotations); n != 1 {
+		t.Fatalf("语音那一步不该改变盘面（还是 1 个图形），实际 %d", n)
 	}
-	if n := len(replaySteps(t, inst.rec.rec, 5).Annotations); n != 2 {
-		t.Fatalf("演到第 5 步应当有 2 个图形，实际 %d", n)
+	if n := len(replaySteps(t, rec, 6).Annotations); n != 2 {
+		t.Fatalf("演到第 6 步应当有 2 个图形，实际 %d", n)
 	}
 }
 
-// TestRecordingAudioLimit 钉住「**同一根 K 线**最多 9 条，整条录像不限」和「必须是 WAV」。
+// TestTradeRecordingAudioLimit 钉住「**同一根 K 线**最多 9 条，整条记录不限」。
 //
-// 这条限制的用处是防止用户在同一根 K 线上反复重录；换到下一根 K 线，
-// 额度就该重新从 0 开始 —— 所以下面第 3 段要明确验「步进之后又能录」。
-//
-// 同时钉住 v0.15.0 的新口径：**每段录音自己占一步**（录音是一次操作），
-// 但额度按 K 线数，不按步数 —— 否则同一根 K 线上画几个图形就会莫名其妙少几条额度。
-func TestRecordingAudioLimit(t *testing.T) {
+// 这条限制的用处是防止用户在同一根 K 线上反复重录；换到下一根，额度就该重新从 0
+// 开始。语音步自己占一步，但额度按 K 线数，不按步数 —— 否则同一根 K 线上画几个
+// 图形就会莫名其妙少几条额度。
+func TestTradeRecordingAudioLimit(t *testing.T) {
 	hub, _ := newTestHub(t, 2)
 	if err := hub.EnableRecordings(t.TempDir()); err != nil {
-		t.Fatalf("启用录像目录失败：%v", err)
+		t.Fatalf("启用交易记录目录失败：%v", err)
 	}
 	a := newFakeClient(t, hub)
 	a.waitFor(MsgWelcome)
 	instID := createInstance(t, hub, a, "2026-01-05 10:00")
+	inst := mustInstance(t, hub, instID)
 
-	a.send(hub, map[string]any{"type": "record_start", "instanceId": instID})
-	a.waitAction(ActRecordingStarted)
-
+	marketOrder(t, hub, a, instID, "buy", 1) // 第 1、2 步
 	// 不是 WAV 的二进制不收（先验这条，否则录满之后只会先报「已经录满了」）
 	a.send(hub, map[string]any{
 		"type": "record_audio", "instanceId": instID,
@@ -429,116 +848,98 @@ func TestRecordingAudioLimit(t *testing.T) {
 		t.Fatalf("非 WAV 数据应当被拒，实际 %v", e["message"])
 	}
 
-	// 同一根 K 线上灌满 9 条：计数按「本根 K 线」走，步数按「一条一步」走
 	wav := testWAV(64)
 	for i := 0; i < maxAudiosPerBar; i++ {
-		ev := sendAudio(t, hub, a, instID, wav)
-		st := ev["payload"].(map[string]any)["state"].(map[string]any)
-		if int(st["barAudios"].(float64)) != i+1 {
-			t.Fatalf("第 %d 条录音后的**本根**计数不对：%v", i+1, st["barAudios"])
-		}
-		if int(st["audios"].(float64)) != i+1 {
-			t.Fatalf("第 %d 条录音后的总数不对：%v", i+1, st["audios"])
-		}
-		// 起点 + i 条录音 = 第 i+2 步
-		if got := int(st["step"].(float64)); got != i+2 {
-			t.Fatalf("第 %d 段录音应当自己占第 %d 步，实际第 %d 步", i+1, i+2, got)
-		}
-		if got := st["kind"].(string); got != ActRecordingAudio {
-			t.Fatalf("录音步的 kind 应当是 %s，实际 %s", ActRecordingAudio, got)
-		}
-		if n := len(st["clips"].([]any)); n != i+1 {
-			t.Fatalf("state 里应当带着本根的 %d 条录音，实际 %d", i+1, n)
+		if got := audioStep(t, sendAudio(t, hub, a, instID, wav)); got != i+3 {
+			t.Fatalf("第 %d 段语音应当是第 %d 步，实际 %d", i+1, i+3, got)
 		}
 	}
+	if n := len(tradeSteps(t, inst)); n != maxAudiosPerBar+2 {
+		t.Fatalf("起点 + 开仓 + %d 段语音 = %d 步，实际 %d", maxAudiosPerBar, maxAudiosPerBar+2, n)
+	}
 
-	// 第 10 条：明确报错，而不是静默丢掉
+	// 第 10 条：明确报错，而不是静默丢掉，也不该多出一步
 	a.drain()
 	a.send(hub, map[string]any{
 		"type": "record_audio", "instanceId": instID,
 		"audioData": base64.StdEncoding.EncodeToString(wav),
 	})
-	e := a.waitFor(MsgError)
-	if msg, _ := e["message"].(string); msg == "" || !strings.Contains(msg, "最多") {
+	if e := a.waitFor(MsgError); !strings.Contains(fmt.Sprint(e["message"]), "最多") {
 		t.Fatalf("超限时应当明确报错，实际 %v", e["message"])
 	}
+	if n := len(tradeSteps(t, inst)); n != maxAudiosPerBar+2 {
+		t.Fatalf("被拒的那条不该占一步，实际 %d 步", n)
+	}
 
-	// 步进一次 → 新的一根 K 线，额度重新开始（这就是「整条录像不限」）
+	// 换一根 → 额度重新开始（这就是「整条记录不限」）
 	a.send(hub, map[string]any{"type": "step", "instanceId": instID})
 	a.waitAction(ActBarAdvanced)
-	inst := hub.mustInstance(t, instID)
-	st := inst.rec.state()
-	if st.BarNo != 2 {
-		t.Fatalf("步进之后应当是第 2 根 K 线，实际 %d", st.BarNo)
+	if got := audioStep(t, sendAudio(t, hub, a, instID, wav)); got != maxAudiosPerBar+4 {
+		t.Fatalf("新一根上的第一条应当接着排在第 %d 步，实际 %d", maxAudiosPerBar+4, got)
 	}
-	if st.Step != 11 {
-		t.Fatalf("步进之后应当是第 11 步（起点 + 9 段录音 + 1 次步进），实际 %d", st.Step)
+
+	// 平仓收尾：记录里 10 条语音、14 步
+	marketOrder(t, hub, a, instID, "sell", 1)
+	sum := a.waitFor(MsgTradeRecorded)["recording"].(map[string]any)
+	if got := int(numOf(sum, "audioCount")); got != maxAudiosPerBar+1 {
+		t.Fatalf("记录里应当有 %d 条语音，实际 %d", maxAudiosPerBar+1, got)
 	}
-	ev := sendAudio(t, hub, a, instID, wav)
-	payload := ev["payload"].(map[string]any)
-	got := payload["state"].(map[string]any)
-	if n := int(got["barAudios"].(float64)); n != 1 {
-		t.Fatalf("新的一根应当从 1 开始计数，实际 %d", n)
-	}
-	if n := int(got["audios"].(float64)); n != maxAudiosPerBar+1 {
-		t.Fatalf("整条录像的总数应当继续累加（%d），实际 %d", maxAudiosPerBar+1, n)
-	}
-	if n := int(got["step"].(float64)); n != 12 {
-		t.Fatalf("换了一根再录，应当是第 12 步，实际 %d", n)
-	}
-	if n := len(hub.mustInstance(t, instID).rec.audios); n != maxAudiosPerBar+1 {
-		t.Fatalf("内存里应当有 %d 条录音，实际 %d", maxAudiosPerBar+1, n)
+	if got := int(numOf(sum, "stepCount")); got != maxAudiosPerBar+5 {
+		t.Fatalf("记录应当是 %d 步，实际 %d", maxAudiosPerBar+5, got)
 	}
 }
 
-// TestRecordingClearBarAudio 钉住「一键清空当前这根 K 线的录音」：
+// TestTradeRecordingClearBarAudio 钉住「一键清空当前这根 K 线的语音」：
 // 只清本根、磁盘上的文件也删掉、**那几步跟着一起摘掉且步号重排**、清完还能接着录。
-func TestRecordingClearBarAudio(t *testing.T) {
+func TestTradeRecordingClearBarAudio(t *testing.T) {
 	hub, _ := newTestHub(t, 2)
 	recDir := t.TempDir()
 	if err := hub.EnableRecordings(recDir); err != nil {
-		t.Fatalf("启用录像目录失败：%v", err)
+		t.Fatalf("启用交易记录目录失败：%v", err)
 	}
 	a := newFakeClient(t, hub)
 	a.waitFor(MsgWelcome)
 	instID := createInstance(t, hub, a, "2026-01-05 10:00")
-	a.send(hub, map[string]any{"type": "record_start", "instanceId": instID})
-	a.waitAction(ActRecordingStarted)
+	inst := mustInstance(t, hub, instID)
 
+	marketOrder(t, hub, a, instID, "buy", 1) // 第 1、2 步
 	wav := testWAV(64)
 	sendAudio(t, hub, a, instID, wav)
-	ev := sendAudio(t, hub, a, instID, wav)
-	if got := int(ev["recStep"].(float64)); got != 3 {
-		t.Fatalf("第 2 段录音应当是第 3 步（起点 + 两条录音），实际 %d", got)
+	if got := audioStep(t, sendAudio(t, hub, a, instID, wav)); got != 4 {
+		t.Fatalf("第 2 段语音应当是第 4 步，实际 %d", got)
 	}
 
-	// 录制中音频已经落盘（HUD 的预览播放要靠它），所以此刻文件就该在
-	inst := hub.mustInstance(t, instID)
-	dir := inst.rec.dir
+	// 记录进行中语音已经落盘（浮窗的预览播放要靠它）
+	dir := inst.trade.dir
+	if dir == "" {
+		t.Fatal("配了记录目录，进行中的记录也该有目录（语音要能试听）")
+	}
 	for _, name := range []string{"audio-1.wav", "audio-2.wav"} {
 		if _, err := os.Stat(filepath.Join(dir, name)); err != nil {
-			t.Fatalf("录制中 %s 就该在磁盘上（预览播放要用）：%v", name, err)
+			t.Fatalf("记录进行中 %s 就该在磁盘上（预览播放要用）：%v", name, err)
 		}
 	}
 
-	// 清空本根
+	// 清空本根（老入口 = 新入口，两者同一条路）
 	a.drain()
 	a.send(hub, map[string]any{"type": "record_audio_delete", "instanceId": instID})
-	ev = a.waitAction(ActRecordingAudioCleared)
-	p := ev["payload"].(map[string]any)
+	cleared := a.waitAction(ActVoiceCleared)
+	p := cleared["payload"].(map[string]any)
 	if n := len(p["removed"].([]any)); n != 2 {
 		t.Fatalf("应当删掉 2 条，实际 %d", n)
 	}
-	st := p["state"].(map[string]any)
-	if got := int(st["barAudios"].(float64)); got != 0 {
-		t.Fatalf("清空后本根计数应当是 0，实际 %d", got)
+	// 语音步被一起摘掉：只剩起点 + 开仓两步，步号重排
+	steps := tradeSteps(t, inst)
+	if len(steps) != 2 {
+		t.Fatalf("清空后应当只剩 2 步（起点 + 开仓），实际 %d", len(steps))
 	}
-	if n := len(st["clips"].([]any)); n != 0 {
-		t.Fatalf("清空后 state 里不该还有录音，实际 %d 条", n)
+	for i, st := range steps {
+		if st.Step != i+1 {
+			t.Fatalf("清空重排之后步号必须连续：第 %d 个元素是 %d", i, st.Step)
+		}
 	}
-	// 录音步被一起摘掉：只剩起点那一步
-	if got := int(st["total"].(float64)); got != 1 {
-		t.Fatalf("清空后应当只剩起点 1 步（录音步跟着删了），实际 %d", got)
+	if n := len(inst.trade.rec.Audios); n != 0 {
+		t.Fatalf("清空后记录里不该还有语音，实际 %d 条", n)
 	}
 	for _, name := range []string{"audio-1.wav", "audio-2.wav"} {
 		if _, err := os.Stat(filepath.Join(dir, name)); !os.IsNotExist(err) {
@@ -546,44 +947,31 @@ func TestRecordingClearBarAudio(t *testing.T) {
 		}
 	}
 
-	// 换一根继续录：清空只影响那一根，别的 K 线不受影响
+	// 换一根继续录：清空只影响那一根
 	a.send(hub, map[string]any{"type": "step", "instanceId": instID})
 	a.waitAction(ActBarAdvanced)
-	ev = sendAudio(t, hub, a, instID, wav)
-	if got := int(ev["recStep"].(float64)); got != 3 {
-		t.Fatalf("重排之后：起点 + 步进 + 录音 = 第 3 步，实际 %d", got)
+	if got := audioStep(t, sendAudio(t, hub, a, instID, wav)); got != 4 {
+		t.Fatalf("重排之后：起点 + 开仓 + 换根 + 语音 = 第 4 步，实际 %d", got)
+	}
+	if got := audioStep(t, sendAudio(t, hub, a, instID, wav)); got != 5 {
+		t.Fatalf("第 2 根上的第 2 段语音应当是第 5 步，实际 %d", got)
 	}
 
-	// 清完还能接着录（同一根 K 线上的额度也回来了）
-	a.send(hub, map[string]any{
-		"type": "record_audio", "instanceId": instID,
-		"audioData": base64.StdEncoding.EncodeToString(wav),
-	})
-	ev = a.waitAction(ActRecordingAudio)
-	got := ev["payload"].(map[string]any)["state"].(map[string]any)
-	if n := int(got["barAudios"].(float64)); n != 2 {
-		t.Fatalf("第 2 根 K 线上应当有 2 条录音，实际 %d", n)
-	}
-	if n := int(got["step"].(float64)); n != 4 {
-		t.Fatalf("第 4 步应当是第 2 根上的第 2 段录音，实际 %d", n)
-	}
-
-	// 落盘之后：audios 只剩后面那两条，被清掉的不复活，步号与录音步号一致
-	a.send(hub, map[string]any{"type": "record_stop", "instanceId": instID})
-	stop := a.waitAction(ActRecordingStopped)
-	id := stop["payload"].(map[string]any)["recording"].(map[string]any)["id"].(string)
-	a.send(hub, map[string]any{"type": "get_recording", "recordingId": id})
-	got2 := a.waitFor(MsgRecording)
+	// 收尾之后：audios 只剩后面那两条，被清掉的不复活
+	marketOrder(t, hub, a, instID, "sell", 1)
+	sum := a.waitFor(MsgTradeRecorded)["recording"].(map[string]any)
+	recID := sum["id"].(string)
+	a.send(hub, map[string]any{"type": "get_recording", "recordingId": recID})
+	raw, _ := json.Marshal(a.waitFor(MsgRecording)["recording"])
 	var rec Recording
-	raw, _ := json.Marshal(got2["recording"])
 	if err := json.Unmarshal(raw, &rec); err != nil {
-		t.Fatalf("录像反序列化失败：%v", err)
+		t.Fatalf("记录反序列化失败：%v", err)
 	}
 	if len(rec.Audios) != 2 {
-		t.Fatalf("录像里应当只剩后面那 2 条录音，实际 %d 条：%+v", len(rec.Audios), rec.Audios)
+		t.Fatalf("记录里应当只剩后面那 2 条语音，实际 %d 条：%+v", len(rec.Audios), rec.Audios)
 	}
-	if len(rec.Steps) != 4 {
-		t.Fatalf("录像应当是 4 步（起点 / 步进 / 录音 / 录音），实际 %d", len(rec.Steps))
+	if len(rec.Steps) != 6 {
+		t.Fatalf("记录应当是 6 步（起点/开仓/换根/语音/语音/平仓），实际 %d", len(rec.Steps))
 	}
 	for i, st := range rec.Steps {
 		if st.Step != i+1 {
@@ -592,16 +980,16 @@ func TestRecordingClearBarAudio(t *testing.T) {
 	}
 	for _, au := range rec.Audios {
 		if au.Step < 1 || au.Step > len(rec.Steps) {
-			t.Fatalf("录音挂到了不存在的步上：%+v", au)
+			t.Fatalf("语音挂到了不存在的步上：%+v", au)
 		}
 		if st := rec.Steps[au.Step-1]; st.Audio == nil || st.Audio.ID != au.ID {
-			t.Fatalf("第 %d 步上挂的录音和 audios 里那条对不上：%+v / %+v", au.Step, st.Audio, au)
+			t.Fatalf("第 %d 步上挂的语音和 audios 里那条对不上：%+v / %+v", au.Step, st.Audio, au)
 		}
 	}
 	// 目录里也不该留下孤儿音频（audio-1/2 被删了，重录的两条是 audio-3/4）
-	entries, err := os.ReadDir(filepath.Join(recDir, recordingFolder(id)))
+	entries, err := os.ReadDir(filepath.Join(recDir, recordingFolder(recID)))
 	if err != nil {
-		t.Fatalf("读录像目录失败：%v", err)
+		t.Fatalf("读记录目录失败：%v", err)
 	}
 	for _, e := range entries {
 		if strings.HasPrefix(e.Name(), "audio-") && e.Name() != rec.Audios[0].File && e.Name() != rec.Audios[1].File {
@@ -610,60 +998,20 @@ func TestRecordingClearBarAudio(t *testing.T) {
 	}
 }
 
-// TestRecordingStopsWhenOperatorLeaves 操作者关掉页面时，录像要收尾并保存，
-// 否则这个实例会永远停在「已经在录制了」。
-func TestRecordingStopsWhenOperatorLeaves(t *testing.T) {
-	hub, _ := newTestHub(t, 2)
-	recDir := t.TempDir()
-	if err := hub.EnableRecordings(recDir); err != nil {
-		t.Fatalf("启用录像目录失败：%v", err)
-	}
-	a := newFakeClient(t, hub)
-	a.waitFor(MsgWelcome)
-	instID := createInstance(t, hub, a, "2026-01-05 10:00")
-	a.send(hub, map[string]any{"type": "record_start", "instanceId": instID})
-	a.waitAction(ActRecordingStarted)
-
-	hub.Unregister(a.conn)
-
-	inst := mustInstance(t, hub, instID)
-	if inst.rec != nil {
-		t.Fatal("操作者离开后不该还在录制")
-	}
-	// 录像写在 Handle/Unregister 之外的锁外路径上（Unregister 是同步的），
-	// 这里直接看目录：有 recording.json 才算真的保存了。
-	entries, err := os.ReadDir(recDir)
-	if err != nil {
-		t.Fatalf("读录像目录失败：%v", err)
-	}
-	found := false
-	for _, e := range entries {
-		if e.IsDir() {
-			if _, err := os.Stat(filepath.Join(recDir, e.Name(), recordingFileName)); err == nil {
-				found = true
-			}
-		}
-	}
-	if !found {
-		t.Fatal("操作者离开后录像没有落盘")
-	}
-}
-
-// ---------------------------------------------------------------------------
-// TestRecordingRejectsOldFormat 钉住「旧录像不读」：v0.15.0 的 Steps 语义变了，
+// TestTradeRecordingRejectsOldFormat 钉住「旧记录不读」：v0.15.0 的 Steps 语义变了，
 // 旧文件（format=1，按 K 线分步）如果被硬读出来，步进条会显示成一堆「一步蹦出一整根
 // K 线变化」的怪物。宁可明确说「这条不兼容」，也不要让人以为回放坏了。
-func TestRecordingRejectsOldFormat(t *testing.T) {
+func TestTradeRecordingRejectsOldFormat(t *testing.T) {
 	recDir := t.TempDir()
-	// 造一条旧格式录像（没有 format 字段 = 1）
+	// 造一条旧格式记录（没有 format 字段 = 1）
 	old := filepath.Join(recDir, "rec-20260101-000000")
 	if err := os.MkdirAll(old, 0o755); err != nil {
 		t.Fatalf("建目录失败：%v", err)
 	}
-	body := `{"id":"rec-20260101-000000","symbol":"CME_MINI:MNQ1!","name":"旧录像",
+	body := `{"id":"rec-20260101-000000","symbol":"CME_MINI:MNQ1!","name":"旧记录",
 		"base":{"cursor":0,"bars":[]},"steps":[{"step":1,"time":"2026-01-01 09:00","events":[]}]}`
 	if err := os.WriteFile(filepath.Join(old, recordingFileName), []byte(body), 0o644); err != nil {
-		t.Fatalf("写旧格式录像失败：%v", err)
+		t.Fatalf("写旧格式记录失败：%v", err)
 	}
 
 	var logs []string
@@ -671,26 +1019,26 @@ func TestRecordingRejectsOldFormat(t *testing.T) {
 		logs = append(logs, fmt.Sprintf(f, a...))
 	})
 	if err != nil {
-		t.Fatalf("打开录像目录失败：%v", err)
+		t.Fatalf("打开记录目录失败：%v", err)
 	}
 	if n := len(st.List()); n != 0 {
-		t.Fatalf("旧格式录像不该出现在列表里，实际 %d 条", n)
+		t.Fatalf("旧格式记录不该出现在列表里，实际 %d 条", n)
 	}
 	joined := strings.Join(logs, "\n")
 	if !strings.Contains(joined, "旧格式") {
-		t.Fatalf("跳过旧格式录像时应当说一句，实际日志：%s", joined)
+		t.Fatalf("跳过旧格式记录时应当说一句，实际日志：%s", joined)
 	}
 	if _, err := st.Load("rec-20260101-000000"); err == nil || !strings.Contains(err.Error(), "旧格式") {
-		t.Fatalf("读旧格式录像应当明确报「旧格式」，实际 %v", err)
+		t.Fatalf("读旧格式记录应当明确报「旧格式」，实际 %v", err)
 	}
 	// 旧目录**不自动删**：别人的数据，说一下就够
 	if _, err := os.Stat(filepath.Join(old, recordingFileName)); err != nil {
-		t.Fatalf("不该擅自删掉旧录像目录：%v", err)
+		t.Fatalf("不该擅自删掉旧记录目录：%v", err)
 	}
 }
 
 // ---------------------------------------------------------------------------
-// 测试辅助
+// 录制 / 重放的测试辅助（重放器是前端 instance-reducer.ts 的 Go 镜像）
 // ---------------------------------------------------------------------------
 
 func (h *Hub) mustInstance(t *testing.T, id string) *Instance {
@@ -712,7 +1060,7 @@ func mustInstance(t *testing.T, hub *Hub, id string) *Instance {
 // botTickProbeLocked 模拟机器人「干过几件事」：画一条标注 + 步进一次。
 //
 // 直接走 h.do* 而不是 runBot，是为了确定性 —— 机器人 tick 本身就是随机挑一个
-// do* 调用的薄壳，这里验的是「do* -> 广播 -> 录制」这条链路。
+// do* 调用的薄壳，这里验的是「do* -> 广播 -> 记录」这条链路。
 func (h *Hub) botTickProbeLocked(inst *Instance) {
 	idx := inst.Cursor
 	if idx > 1 {
@@ -725,10 +1073,10 @@ func (h *Hub) botTickProbeLocked(inst *Instance) {
 	_ = h.doStepLocked(inst, "bot")
 }
 
-// replayRecording 用录像的 Base + 每一步的事件重建一个实例状态。
+// replayRecording 用记录的 Base + 每一步的事件重建一个实例状态。
 //
 // 它是前端 stores/instance-reducer.ts 在 Go 里的最小镜像：只实现「改盘面」的
-// 那几个动作。存在的意义不是给生产代码用，而是**证明录像里的事件足够还原当时**：
+// 那几个动作。存在的意义不是给生产代码用，而是**证明记录里的事件足够还原当时**：
 // 少录一个字段、动作漏挂一个，这里就会和实例对不上。
 func replayRecording(t *testing.T, rec *Recording) *Instance {
 	t.Helper()
@@ -738,8 +1086,7 @@ func replayRecording(t *testing.T, rec *Recording) *Instance {
 // replaySteps 只演到第 upto 步（1 起）。
 //
 // 前端「跳到第 N 步」做的是同一件事：从 Base 重算，而不是在上一帧上做减法 ——
-// 这样任意跳步都不会错位。这里顺带钉住每一步自称的 Cursor 和演出来的对得上，
-// 否则步号和盘面对不上，用户点步进条会看到错位的画面。
+// 这样任意跳步都不会错位。这里顺带钉住每一步自称的 Cursor 和演出来的对得上。
 func replaySteps(t *testing.T, rec *Recording, upto int) *Instance {
 	t.Helper()
 	inst := &Instance{
@@ -835,9 +1182,9 @@ func applyRecorded(t *testing.T, inst *Instance, ev RecordingEvent) {
 			inst.RealizedPnl = p.RealizedPnl
 		}
 	case ActRecordingAudio:
-		// 录音步不改盘面：步里没有事件，这条分支只是把「允许出现」说清楚
+		// 语音步不改盘面：步里没有事件，这条分支只是把「允许出现」说清楚
 	default:
-		t.Fatalf("录像里出现了不该被录的动作：%s", ev.Action)
+		t.Fatalf("记录里出现了不该被录的动作：%s", ev.Action)
 	}
 }
 

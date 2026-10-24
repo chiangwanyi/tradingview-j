@@ -281,13 +281,13 @@ func (inst *Instance) voiceState() VoiceState {
 	return inst.voiceNotes().state(inst.stepContext().Time)
 }
 
-// addVoiceLocked 落一段语音：**先写实例这一份，录制中再同步进录像**。
+// addVoiceLocked 落一段语音：**先写实例这一份，交易记录里再抄一份**。
 //
-// 顺序不能反：实例是唯一真相，录像只是下游。录像写失败（比如录像目录不可写）
+// 顺序不能反：实例是唯一真相，交易记录只是下游。写记录失败（比如记录目录不可写）
 // 不该让用户刚讲的那句话丢掉 —— 记一条日志就够，界面上那条语音已经挂好了。
 //
-// 返回值：voice 是挂在盘面上的那一条；recorded 是录像里那一条
-// （不在录制中时为 nil，此时 voice.Step 是 0）。
+// 返回值：voice 是挂在盘面上的那一条；recorded 是交易记录里那一条
+// （当前没有进行中的交易记录时为 nil，此时 voice.Step 是 0）。
 func (h *Hub) addVoiceLocked(inst *Instance, data []byte, durationMs int, by string) (AudioClip, *AudioClip, error) {
 	barTime := inst.stepContext().Time
 	v := inst.voiceNotes()
@@ -295,14 +295,14 @@ func (h *Hub) addVoiceLocked(inst *Instance, data []byte, durationMs int, by str
 	if err != nil {
 		return AudioClip{}, nil, err
 	}
-	if inst.rec == nil {
+	if inst.trade == nil {
 		return clip, nil, nil
 	}
-	// 录制中：同一条音频在录像里也占一步（回放到那一步画面不动、语音响）。
-	// 录像里存的是**自己的副本**（audio-N.wav），所以录像文件夹可以单独拷走。
-	rc, rerr := inst.rec.addAudio(data, durationMs, by)
+	// 有进行中的交易记录：同一条语音在记录里也占一步（回放到那一步画面不动、语音响）。
+	// 记录里存的是**自己的副本**（audio-N.wav），所以记录文件夹可以单独拷走。
+	rc, rerr := inst.trade.addAudio(data, durationMs, by)
 	if rerr != nil {
-		h.log("[replay] 语音 %s 已挂到盘面，但没能同时写进录像：%v", clip.ID, rerr)
+		h.log("[replay] 语音 %s 已挂到盘面，但没能同时写进交易记录：%v", clip.ID, rerr)
 		return clip, nil, nil
 	}
 	v.setStep(clip.ID, rc.Step)
@@ -343,10 +343,9 @@ func (h *Hub) handleVoiceAdd(c *Client, req Request) {
 		return
 	}
 	h.broadcastInstanceLocked(inst, ActVoiceAdded, VoiceAddedPayload{
-		Audio:     clip,
-		Voice:     inst.voiceState(),
-		VoiceAll:  inst.voiceNotes().all(),
-		Recording: inst.recordingState(),
+		Audio:    clip,
+		Voice:    inst.voiceState(),
+		VoiceAll: inst.voiceNotes().all(),
 	}, c.Name)
 }
 
@@ -369,24 +368,23 @@ func (h *Hub) handleVoiceClear(c *Client, req Request) {
 		return
 	}
 	h.broadcastInstanceLocked(inst, ActVoiceCleared, VoiceClearedPayload{
-		Removed:   removed,
-		Voice:     inst.voiceState(),
-		VoiceAll:  inst.voiceNotes().all(),
-		Recording: inst.recordingState(),
+		Removed:  removed,
+		Voice:    inst.voiceState(),
+		VoiceAll: inst.voiceNotes().all(),
 	}, c.Name)
-	h.log("[replay] %s 上的 %d 条语音已清除（录像里 %d 条）", barTime, len(removed), len(recRemoved))
+	h.log("[replay] %s 上的 %d 条语音已清除（交易记录里 %d 条）", barTime, len(removed), len(recRemoved))
 }
 
-// clearVoiceOfBarLocked 清掉一根 K 线上的语音，返回（盘面上的，录像里的）两份清单。
+// clearVoiceOfBarLocked 清掉一根 K 线上的语音，返回（盘面上的，交易记录里的）两份清单。
 //
-// 两处都要清，而且是同一个动作的两个落点：盘面那一份是用户看见的，录像那一份
+// 两处都要清，而且是同一个动作的两个落点：盘面那一份是用户看见的，记录那一份
 // 是回放时听的。只清一处就会出现「界面上空了、回放到这根还在说话」（或者反过来）。
-// 录像那一步被摘掉之后步号会重排，新的 state 随广播下发（见 VoiceClearedPayload.Recording）。
+// 记录里那一步被摘掉之后步号会重排（见 tradeRecorder.renumber）。
 func (h *Hub) clearVoiceOfBarLocked(inst *Instance, barTime string) ([]AudioClip, []AudioClip) {
 	removed := inst.voiceNotes().clearBar(barTime)
 	var recRemoved []AudioClip
-	if inst.rec != nil {
-		recRemoved = inst.rec.clearAudioOfBar(barTime)
+	if inst.trade != nil {
+		recRemoved = inst.trade.clearAudioOfBar(barTime)
 	}
 	return removed, recRemoved
 }
