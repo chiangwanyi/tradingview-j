@@ -124,7 +124,8 @@ function submitMarket(dir: Side): void {
  *     每手亏     = 距离 × 每点价值（MNQ 每点 $2 → $384.80）
  *     手数       = 四舍五入(最大亏损 / 每手亏)（$2000 → 5.197 → 5 手）
  *
- * 算式只有一份，在 `lib/natr.ts`；这里只负责显示和发两条市价单。
+ * 算式只有一份，在 `lib/natr.ts`；这里只负责显示、发**一条**市价单，
+ * 并把**止损距离**一起交给后端（后端在同一个锁里成交完就挂 stop 单）。
  * 用**当前这根 K 线的 ATR**（和【指标 ▾】里那套 Length / Smoothing 同一份），
  * 所以盘中 ATR 变了，手数会跟着变 —— 这正好是「以损定仓」的意思。
  *
@@ -167,31 +168,53 @@ function onNatrMaxLoss(e: Event): void {
 }
 
 /**
- * 按算出来的手数市价成交。**方向是参数**、手数只来自 `plan` ——
- * 不读也不写上面的「数量」输入框：那一格是手填挂单用的，两个数混在一起
- * 就会出现「点了 nATR 买入，手数和输入框对不上」的困惑。
+ * 按算出来的手数市价成交，**并让后端顺手挂上保护性止损**。
+ * **方向是参数**、手数只来自 `plan` —— 不读也不写上面的「数量」输入框：那一格是
+ * 手填挂单用的，两个数混在一起就会出现「点了 nATR 买入，手数和输入框对不上」的困惑。
+ *
+ * 传的是**距离**（n × ATR）而不是止损价：价格由后端按它自己的成交价算
+ * （成交价 ∓ 距离）。前端拿这份现价去减会在四舍五入上差一跳，而那一跳正好在止损位上。
+ * 一条消息 = 服务端一次做完（市价成交 + 挂 stop 单），中间不会出现「有仓、没止损」。
  */
 function submitNatrMarket(dir: Side): void {
   if (!store.canOperate || !plan.value) return
   if (!(currentPrice.value > 0)) return
-  store.marketOrder(dir, plan.value.lots)
+  store.marketOrder(dir, plan.value.lots, plan.value.stopDistance)
 }
 
 const natrDisabled = computed(
   () => !store.canOperate || !inst.value || !plan.value || !(currentPrice.value > 0),
 )
 
+/**
+ * 两个按钮**各自**会挂上的止损价（买 = 现价 − 距离，卖 = 现价 + 距离）。
+ *
+ * 这只是预告：真正的止损价由后端按它自己的成交价算（见 store.marketOrder）。
+ * 两边差不出一个小数位，但方向上不能含糊 —— 按下去之前要能看见「止损会挂在哪」。
+ */
+const natrStopPrices = computed(() => {
+  const p = plan.value
+  if (!p || !(currentPrice.value > 0)) return null
+  return { buy: currentPrice.value - p.stopDistance, sell: currentPrice.value + p.stopDistance }
+})
+
 /** 一句话说清这次是怎么算出来的（鼠标停在按钮上就能核对，不用回翻文档）。 */
 const natrCalc = computed(() => {
   const p = plan.value
   if (!p) return ''
-  return `${store.natr.n}×ATR ${fmtPoints(p.stopDistance)} 点 · 每手亏 ${fmtUsd(p.riskPerLot)} · 理论 ${p.exact.toFixed(2)} 手 → ${p.lots} 手（实际 ${fmtUsd(p.actualLoss)}）`
+  const stops = natrStopPrices.value
+  const where = stops
+    ? ` · 止损 ${stops.buy.toFixed(store.priceDecimals)}（买）/ ${stops.sell.toFixed(store.priceDecimals)}（卖）`
+    : ''
+  return `${store.natr.n}×ATR ${fmtPoints(p.stopDistance)} 点 · 每手亏 ${fmtUsd(p.riskPerLot)} · 理论 ${p.exact.toFixed(2)} 手 → ${p.lots} 手（实际 ${fmtUsd(p.actualLoss)}）${where}`
 })
 
 const natrButtonTitle = computed(() => {
   const p = plan.value
   if (!p) return 'ATR 还没算出来：K 线不足 Length 根，先往前多揭示几根'
-  return `${natrCalc.value}；下单价按现价 ${priceText.value}，止损要你自己挂在 ${store.natr.n}×ATR 之外`
+  const stops = natrStopPrices.value
+  if (!stops) return `${natrCalc.value}；按现价成交，止损挂在成交价 ${store.natr.n}×ATR 之外`
+  return `${natrCalc.value}；买入会在 ${stops.buy.toFixed(store.priceDecimals)}、卖出会在 ${stops.sell.toFixed(store.priceDecimals)} 自动挂一张同手数的 stop 单`
 })
 
 // ---------------- 市价退仓并取消所有挂单（v0.20.0） ----------------
@@ -461,9 +484,12 @@ const inputClass =
 
         <!--
           【nATR 定手数】＝ 以损定仓：先填「最多亏多少」，手数由 n × ATR 推出来。
-          算式只有一份（lib/natr.ts），这里显示它算的三件事：止损距离、每手亏多少、几手。
+          算式只有一份（lib/natr.ts），这里显示它算的三件事：止损距离、每手亏多少、几手，
+          再加一句「止损会挂在哪」—— 按下去后端就在那个价格自动挂一张同手数的 stop 单，
+          不用用户自己补（以前忘了补就是裸仓）。
           两个按钮用**描边**而不是实心 —— 和上面那对实心的普通市价按钮区分开：
-          它们的区别只在「手数从哪来」（手填 vs 按 ATR 算出来），长得一样会点错。
+          它们的区别不只是「手数从哪来」（手填 vs 按 ATR 算出来），
+          还在于**这两个按钮带止损**，长得一样会点错。
         -->
         <div class="rounded border border-line bg-elev p-1.5">
           <div class="flex items-baseline justify-between gap-1">
@@ -509,6 +535,13 @@ const inputClass =
               <div>
                 <span class="text-faint">每手亏 {{ fmtUsd(plan.riskPerLot) }} →</span>
                 <b class="ml-1 text-[12px] text-ink">{{ plan.lots }} 手</b>
+              </div>
+              <!-- 止损不是「你自己去挂」：按下去就由后端在最大亏损价格挂一张 stop 单 -->
+              <div v-if="natrStopPrices" class="text-faint">
+                止损自动挂
+                <span class="text-up">{{ natrStopPrices.buy.toFixed(store.priceDecimals) }}</span>
+                /
+                <span class="text-down">{{ natrStopPrices.sell.toFixed(store.priceDecimals) }}</span>
               </div>
               <!-- 取整后略超上限是正常结果（用户定的口径），淡淡提一句；1 手都亏不起才标红 -->
               <div v-if="plan.overRisk" class="text-down">

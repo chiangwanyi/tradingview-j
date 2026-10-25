@@ -857,11 +857,18 @@ export const useReplayStore = defineStore('replay', () => {  const socket = new 
    * 市价单：不带价格，后端按当前收盘价立即成交。
    * 它和 placeOrder 分开是因为协议上「不需要 price」本身就是语义的一部分 ——
    * 复用 order_place 再传一个假价格，会让日志里出现一个不存在的挂单价。
+   *
+   * `stopDistance` > 0 时（nATR 定手数按下的那对按钮）后端会在**同一次动作**里
+   * 再挂一张反方向的 stop 单，价格 = 成交价 ∓ 距离，也就是「最大亏损所在的那个价格」。
+   * 前端只传距离、不传价格：成交价是后端 roundPrice(收盘价) 算的，拿这边的现价去减，
+   * 差一跳就正好差在止损位上。合成一条消息也是为了不给别人看「有仓、没止损」的中间态。
    */
-  function marketOrder(side: Side, quantity: number): void {
+  function marketOrder(side: Side, quantity: number, stopDistance = 0): void {
     if (!instance.value) return
     const lots = Math.max(1, Math.round(quantity))
-    send({ type: 'order_market', instanceId: instance.value.id, side, quantity: lots })
+    const msg: ClientMessage = { type: 'order_market', instanceId: instance.value.id, side, quantity: lots }
+    if (stopDistance > 0) msg.stopDistance = stopDistance
+    send(msg)
   }
 
   function cancelOrder(orderId: string): void {

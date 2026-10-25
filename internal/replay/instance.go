@@ -465,6 +465,88 @@ func (inst *Instance) marketOrder(by, side string, qty float64) (Order, Trade, e
 	return o, tr, nil
 }
 
+// marketOrderWithStop 是「市价开仓 + 顺手挂上保护性止损」（nATR 定手数用）。
+//
+// stopDistance > 0 时，开仓成交后立刻在同一把锁里挂一张**反方向的 stop 单**，
+// 价格 = 成交价 ∓ 距离（买减、卖加）—— 那个价格就是「亏到上限」所在的位置，
+// 手数和开仓一样，所以触发时正好把这一仓平掉（见 applyFill 的反向平仓分支）。
+// stopDistance == 0 时退化成普通的 marketOrder（不挂单）。
+//
+// **为什么合成一个方法，而不是让前端发两条消息（市价 + 挂止损）**：
+//  1. 中间态不能被看见：两条消息之间必然有一帧「有仓、没止损」，别人画面上就是一个裸仓；
+//  2. 失败不能留半截：第二条被拒（操作权被抢、连接断了）时仓位就真的裸着了，
+//     而用户以为自己按的是「带止损的下单」。
+//
+// **距离由前端给、价格由后端算**：ATR 只在界面上算（`web/src/components/chart/atr.ts`），
+// 后端根本不知道 n 和 ATR 是多少；但成交价必须是后端自己的那个
+// （roundPrice(收盘价)，见 marketOrder）。让前端拿自己那份现价去减，
+// 遇到四舍五入或数据差异就会差一跳 —— 而这一跳正好落在止损位上。
+//
+// **不打 OCO 组**：组是给「止损 + 止盈同时挂」用的（见 bot_strategy.go 的 botEnterLocked），
+// 这里只有一张保护单，塞一个只有一张单的组只会给将来的 OCO 逻辑多一个半成品入口。
+func (inst *Instance) marketOrderWithStop(by, side string, qty, stopDistance float64) (Order, Trade, *Order, error) {
+	if stopDistance == 0 {
+		o, tr, err := inst.marketOrder(by, side, qty)
+		return o, tr, nil, err
+	}
+	if err := validateSide(side); err != nil {
+		return Order{}, Trade{}, nil, err
+	}
+	qty, err := normalizeQuantity(qty)
+	if err != nil {
+		return Order{}, Trade{}, nil, err
+	}
+	if !finitePositive(stopDistance) {
+		return Order{}, Trade{}, nil, errors.New("止损距离必须是大于 0 的有限数字")
+	}
+
+	// 先用「预计成交价」验一遍止损价，**验完再开仓**：价格验不过时一个仓位都不该留下。
+	// 预计成交价和 marketOrder 里那个算法逐字相同（roundPrice(当前收盘价)），
+	// 所以真开仓之后重算出来的止损价一定还是这个（跳空/滑点在这里不存在）。
+	entry := roundPrice(inst.currentBar().Close)
+	if !finitePositive(entry) {
+		return Order{}, Trade{}, nil, errors.New("当前 K 线没有可成交的收盘价")
+	}
+	stopPrice := stopPriceFor(entry, stopDistance, side)
+	if stopPrice <= 0 {
+		return Order{}, Trade{}, nil, fmt.Errorf("止损价算出来是 %.2f（成交价 %.2f，距离 %.2f 点），这个价格挂不了单",
+			stopPrice, entry, stopDistance)
+	}
+
+	o, tr, err := inst.marketOrder(by, side, qty)
+	if err != nil {
+		return Order{}, Trade{}, nil, err
+	}
+
+	closeSide := "sell"
+	if side == "sell" {
+		closeSide = "buy"
+	}
+	// 按**实际**成交价重算：上面那一步只是预校验，止损位必须钉在这一笔真实的开仓价上。
+	stopPrice = stopPriceFor(o.FillPrice, stopDistance, side)
+	stop, err := inst.placeOrder(by, closeSide, KindStop, stopPrice, qty)
+	if err != nil {
+		// 价格和手数都预校验过了，走到这里说明代码被改出了新分支。
+		// 无论如何不能留裸仓：立刻反向市价平掉，让「没挂上止损」等于「这单没做」。
+		if _, _, cerr := inst.marketOrder(by, closeSide, qty); cerr != nil {
+			return o, tr, nil, fmt.Errorf("挂止损失败（%v），平仓也失败（%v）：这个仓位现在没有保护", err, cerr)
+		}
+		return o, tr, nil, fmt.Errorf("挂止损失败（%v），已按现价平掉这笔仓位", err)
+	}
+	return o, tr, &stop, nil
+}
+
+// stopPriceFor 是「最大亏损所在的那个价格」：买入开仓往下减、卖出开仓往上加。
+//
+// 单独抽出来是为了让预校验和真挂单用同一个算式 —— 两处各写一遍迟早会有一处
+// 把加减写反，而那正好是「止损挂在盈利方向」这种灾难。
+func stopPriceFor(entry, distance float64, side string) float64 {
+	if side == "buy" {
+		return roundPrice(entry - distance)
+	}
+	return roundPrice(entry + distance)
+}
+
 // flatAll 一键回到空仓：按现价把整个仓位平掉，并撤掉**全部**挂着的单（v0.20.0）。
 //
 // 顺序是「先平仓、后撤单」，理由是**失败时不留半截状态**：平仓是唯一可能失败的一步

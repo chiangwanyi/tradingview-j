@@ -124,6 +124,14 @@ type Request struct {
 	Price    float64 `json:"price"`
 	Quantity float64 `json:"quantity"`
 
+	// order_market：保护性止损距离（点）。> 0 时后端在**同一次动作**里先市价成交、
+	// 再按「成交价 ∓ 距离」挂一张反方向的 stop 单（nATR 定手数用）。
+	//
+	// 传距离而不是传价格：ATR 只在界面上算，后端不知道 n 是多少；而成交价必须用
+	// 后端自己那个（roundPrice(收盘价)），否则止损位会差一跳。
+	// 0 = 不挂止损，和以前的市价单完全一样（老客户端不带这个字段，解析出来就是 0）。
+	StopDistance float64 `json:"stopDistance"`
+
 	// order_cancel / order_modify
 	OrderID string `json:"orderId"`
 
@@ -620,8 +628,14 @@ type OrderMovedPayload struct {
 // 和挂单不同，市价单会**立刻**改持仓、成交和盈亏，所以一次把订单、成交、持仓、盈亏
 // 全部发全量：前端不用再要一次快照，也不会出现「成交了但持仓没变」的中间态。
 type OrderFilledPayload struct {
-	Order         Order       `json:"order"`
-	Trade         Trade       `json:"trade"`
+	Order Order `json:"order"`
+	Trade Trade `json:"trade"`
+	// StopOrder 是这一笔**顺手挂上的**保护性止损（nATR 定手数时才有）。
+	//
+	// 它同时出现在 Orders 里（全量列表，前端照旧整份替换），这个字段是给
+	// 「操作记录那一行」用的：只写「买市价 5 手」看不出还挂了止损，
+	// 而复盘时最该一眼看到的就是「这一笔是有保护的」。
+	StopOrder     *Order      `json:"stopOrder,omitempty"`
 	Orders        []Order     `json:"orders"`
 	Trades        []Trade     `json:"trades"`
 	ClosedLots    []ClosedLot `json:"closedLots"`

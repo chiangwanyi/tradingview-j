@@ -291,6 +291,46 @@ func TestMarketOrderOverProtocol(t *testing.T) {
 	}
 }
 
+// nATR 定手数：带 stopDistance 的 order_market 要**一次广播**里同时出现
+// 「成交」和「那张止损单」—— 中间态（有仓、没止损）绝不能漏给客户端。
+func TestMarketOrderWithStopOverProtocol(t *testing.T) {
+	hub, _ := newTestHub(t, 5)
+	a := newFakeClient(t, hub)
+	a.waitFor(MsgWelcome)
+	id := createInstance(t, hub, a, "2026-01-06 10:00")
+
+	a.send(hub, map[string]any{
+		"type":         "order_market",
+		"instanceId":   id,
+		"side":         "buy",
+		"quantity":     2,
+		"stopDistance": 4,
+	})
+	ev := a.waitAction(ActOrderFilled)
+	payload := ev["payload"].(map[string]any)
+
+	order := payload["order"].(map[string]any)
+	fill := order["fillPrice"].(float64)
+	stop, ok := payload["stopOrder"].(map[string]any)
+	if !ok {
+		t.Fatalf("广播里应当带 stopOrder：%v", payload)
+	}
+	if stop["side"] != "sell" || stop["kind"] != KindStop || stop["status"] != OrderOpen {
+		t.Fatalf("保护单应当是 open 的 sell/stop：%v", stop)
+	}
+	if want := fill - 4; stop["price"].(float64) != want {
+		t.Fatalf("止损价应当是成交价-4=%v，实际 %v", want, stop["price"])
+	}
+	if stop["quantity"].(float64) != 2 {
+		t.Fatalf("止损手数应当和开仓一致：%v", stop["quantity"])
+	}
+	// 同一份 payload 的 orders 里也要有它（前端整份替换挂单列表靠这个）
+	orders := payload["orders"].([]any)
+	if len(orders) != 2 {
+		t.Fatalf("应当有市价单 + 止损单两张，实际 %d", len(orders))
+	}
+}
+
 // 观看者不能下市价单：它和挂单一样要操作权。
 func TestMarketOrderRequiresOperator(t *testing.T) {
 	hub, _ := newTestHub(t, 5)

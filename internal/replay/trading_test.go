@@ -736,3 +736,122 @@ func TestOrdersInDifferentGroupsAllFill(t *testing.T) {
 		t.Fatalf("持仓应当是 3 手，实际 %v", inst.Position.Quantity)
 	}
 }
+
+// ---------------------------------------------------------------------------
+// nATR 定手数：市价开仓 + 自动在最大亏损价格挂止损
+// ---------------------------------------------------------------------------
+
+// 买入开仓：止损挂在「成交价 − 距离」，反方向、同手数，等下一根才参与撮合。
+func TestMarketOrderWithStopPlacesStopBelowForBuy(t *testing.T) {
+	inst := newTradingInstance()
+	ds := emptyDS()
+
+	// 现价 100（第一根收盘），距离 3 点 -> 止损 97
+	o, tr, stop, err := inst.marketOrderWithStop("human", "buy", 2, 3)
+	if err != nil {
+		t.Fatalf("开仓失败：%v", err)
+	}
+	if tr.Price != 100 || inst.Position.Quantity != 2 {
+		t.Fatalf("应当按现价 100 成交 2 手：trade=%+v pos=%+v", tr, inst.Position)
+	}
+	if stop == nil {
+		t.Fatal("带 stopDistance 的市价单必须挂一张止损")
+	}
+	if stop.Side != "sell" || stop.Kind != KindStop {
+		t.Fatalf("多头的保护单应当是 sell/stop，实际 %s/%s", stop.Side, stop.Kind)
+	}
+	if stop.Price != 97 {
+		t.Fatalf("止损价应当是 100-3=97，实际 %v", stop.Price)
+	}
+	if stop.Quantity != 2 || stop.Status != OrderOpen {
+		t.Fatalf("止损应当是同手数、挂着的：%+v", *stop)
+	}
+	if stop.ID == o.ID {
+		t.Fatal("止损单和开仓单不该是同一张")
+	}
+
+	// 09:05 最低 98 > 97：不成交（止损不能在本根立刻吃掉自己刚开的仓）
+	if _, fills, err := inst.advance(ds); err != nil || len(fills) != 0 {
+		t.Fatalf("09:05 不该止损：fills=%v err=%v", fills, err)
+	}
+	// 09:10 最低 97：触发，成交价就是 97，亏 (97-100)×2 = -6
+	_, fills, err := inst.advance(ds)
+	if err != nil {
+		t.Fatalf("步进失败：%v", err)
+	}
+	if len(fills) != 1 {
+		t.Fatalf("应当止损成交 1 笔，实际 %d", len(fills))
+	}
+	if fills[0].Price != 97 || math.Abs(fills[0].RealizedPnl+6) > 1e-9 {
+		t.Fatalf("止损应当是 @97 亏 6，实际 %+v", fills[0])
+	}
+	if inst.Position.Quantity != 0 || math.Abs(inst.RealizedPnl+6) > 1e-9 {
+		t.Fatalf("止损后应当空仓、累计 -6：pos=%+v pnl=%v", inst.Position, inst.RealizedPnl)
+	}
+}
+
+// 卖出开仓：止损往上加，方向反过来。
+func TestMarketOrderWithStopPlacesStopAboveForSell(t *testing.T) {
+	inst := newTradingInstance()
+	ds := emptyDS()
+
+	_, _, stop, err := inst.marketOrderWithStop("human", "sell", 1, 3)
+	if err != nil {
+		t.Fatalf("开仓失败：%v", err)
+	}
+	if stop == nil || stop.Side != "buy" || stop.Kind != KindStop || stop.Price != 103 {
+		t.Fatalf("空头的保护单应当是 buy/stop @103，实际 %+v", stop)
+	}
+	if _, fills, _ := inst.advance(ds); len(fills) != 0 {
+		t.Fatalf("09:05 最高 102 < 103，不该止损：%v", fills)
+	}
+	_, fills, err := inst.advance(ds) // 09:10 最高 103
+	if err != nil || len(fills) != 1 {
+		t.Fatalf("应当止损成交：fills=%v err=%v", fills, err)
+	}
+	if math.Abs(fills[0].RealizedPnl+3) > 1e-9 {
+		t.Fatalf("空头止损应当亏 3，实际 %v", fills[0].RealizedPnl)
+	}
+	if inst.Position.Quantity != 0 {
+		t.Fatalf("止损后应当空仓：%+v", inst.Position)
+	}
+}
+
+// stopDistance = 0 就是普通市价单：一张保护单都不该冒出来（老客户端不带这个字段）。
+func TestMarketOrderWithoutStopDistancePlacesNothing(t *testing.T) {
+	inst := newTradingInstance()
+	_, _, stop, err := inst.marketOrderWithStop("human", "buy", 1, 0)
+	if err != nil {
+		t.Fatalf("开仓失败：%v", err)
+	}
+	if stop != nil {
+		t.Fatalf("距离为 0 时不该挂止损，实际 %+v", *stop)
+	}
+	if len(inst.Orders) != 1 || inst.Orders[0].Status != OrderFilled {
+		t.Fatalf("应当只有那一张市价单：%+v", inst.Orders)
+	}
+}
+
+// 距离不合法时**一个仓位都不该留下**：先把止损价验清楚再开仓。
+func TestMarketOrderWithStopRejectsBadDistanceBeforeEntry(t *testing.T) {
+	cases := []struct {
+		name     string
+		distance float64
+	}{
+		{"负数", -1},
+		{"NaN", math.NaN()},
+		{"大到算出负价", 500},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			inst := newTradingInstance()
+			if _, _, _, err := inst.marketOrderWithStop("human", "buy", 1, c.distance); err == nil {
+				t.Fatal("不合法的止损距离应当报错")
+			}
+			if inst.Position.Quantity != 0 || len(inst.Orders) != 0 || len(inst.Trades) != 0 {
+				t.Fatalf("校验失败时不该留下任何仓位或订单：pos=%+v orders=%d trades=%d",
+					inst.Position, len(inst.Orders), len(inst.Trades))
+			}
+		})
+	}
+}

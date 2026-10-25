@@ -383,6 +383,13 @@ export interface OrderMovedPayload {
 export interface OrderFilledPayload {
   order: Order
   trade: Trade
+  /**
+   * 这一笔**顺手挂上的**保护性止损（nATR 定手数时才有，价格 = 成交价 ∓ n×ATR）。
+   *
+   * 它同时出现在 `orders` 里（前端照旧整份替换挂单列表），这个字段是给
+   * 「操作记录那一行」用的：只写「买市价 5 手」看不出还挂了止损。
+   */
+  stopOrder?: Order
   orders: Order[]
   trades: Trade[]
   /** 逐批平仓记录（画布上那些平仓虚线的数据源，盈亏已由后端算好） */

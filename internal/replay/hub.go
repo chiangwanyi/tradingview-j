@@ -546,7 +546,8 @@ func (h *Hub) handleOrderMarket(c *Client, req Request) {
 	if !h.requireOperatorLocked(c, req, inst) {
 		return
 	}
-	if _, _, err := h.doMarketOrderLocked(inst, c.Name, req.Side, req.Quantity); err != nil {
+	// StopDistance > 0 = nATR 定手数按下的那一对按钮：一次动作里连止损一起挂上。
+	if _, _, _, err := h.doMarketOrderWithStopLocked(inst, c.Name, req.Side, req.Quantity, req.StopDistance); err != nil {
 		h.fail(c, req, err.Error())
 	}
 }
@@ -707,15 +708,30 @@ func (h *Hub) doPlaceOrderGroupedLocked(inst *Instance, by, side, kind string, p
 // 快照在 order **之前**抓：市价单一定会成交，而这一笔很可能就是开仓 ——
 // 第 1 步要的是「还没进场的那一屏」。
 func (h *Hub) doMarketOrderLocked(inst *Instance, by, side string, qty float64) (Order, Trade, error) {
+	o, tr, _, err := h.doMarketOrderWithStopLocked(inst, by, side, qty, 0)
+	return o, tr, err
+}
+
+// doMarketOrderWithStopLocked 是市价成交 + （可选）自动挂保护性止损。
+//
+// 只广播**一条** order_filled：成交和那张止损单在同一个 payload 里出去（Orders 是全量
+// 列表，StopOrder 单独带一份给操作记录用）。拆成两条的话，别人画面上会先有一帧
+// 「有仓、没止损」—— 那正是这个方法要消灭的中间态。
+//
+// 出错时依然可能已经成交（挂止损失败后仓位被平掉那一路），所以广播照发、错误照报：
+// 静默会让「按钮点了没反应」和「真的挂了」分不清，而这两种情况用户要做的动作相反。
+func (h *Hub) doMarketOrderWithStopLocked(inst *Instance, by, side string, qty, stopDistance float64) (Order, Trade, *Order, error) {
 	h.captureTradeBaseLocked(inst)
-	o, tr, err := inst.marketOrder(by, side, qty)
-	if err != nil {
+	o, tr, stop, err := inst.marketOrderWithStop(by, side, qty, stopDistance)
+	if o.ID == "" {
+		// 一张单都没下成（校验没过）：盘面没变，别广播，也别留着那份快照。
 		inst.pendingBase = nil
-		return Order{}, Trade{}, err
+		return Order{}, Trade{}, nil, err
 	}
 	h.broadcastInstanceLocked(inst, ActOrderFilled, OrderFilledPayload{
 		Order:         o,
 		Trade:         tr,
+		StopOrder:     stop,
 		Orders:        copies(inst.Orders),
 		Trades:        copies(inst.Trades),
 		ClosedLots:    inst.closedLots(),
@@ -723,7 +739,7 @@ func (h *Hub) doMarketOrderLocked(inst *Instance, by, side string, qty float64) 
 		RealizedPnl:   inst.RealizedPnl,
 		UnrealizedPnl: inst.unrealizedPnl(),
 	}, by)
-	return o, tr, nil
+	return o, tr, stop, err
 }
 
 // doMoveOrderLocked 改价并广播。列表每次都发全量（挂单本来就只有几张），

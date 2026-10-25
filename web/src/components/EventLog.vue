@@ -128,7 +128,12 @@ function detail(ev: ReplayEvent): string {
       const p = ev.payload as OrderFilledPayload
       const sign = p.order.side === 'buy' ? '买' : '卖'
       const pnl = p.trade.realizedPnl !== 0 ? ` · 实现 ${formatSigned(p.trade.realizedPnl)}` : ''
-      return `${sign}市价 ${p.trade.price.toFixed(store.priceDecimals)} × ${p.trade.quantity}${pnl}`
+      // nATR 定手数的单会顺手挂一张止损：日志里必须写出来，否则「这一笔有没有保护」
+      // 在复盘时完全看不出来（挂单列表里那张也看不出是跟着这一笔来的）
+      const stop = p.stopOrder
+        ? ` · 止损 ${p.stopOrder.price.toFixed(store.priceDecimals)} × ${p.stopOrder.quantity}`
+        : ''
+      return `${sign}市价 ${p.trade.price.toFixed(store.priceDecimals)} × ${p.trade.quantity}${pnl}${stop}`
     }
     case ACTION.flatAll: {
       // 一句话说清它到底做了什么：可能只撤了单，也可能既平仓又撤单
