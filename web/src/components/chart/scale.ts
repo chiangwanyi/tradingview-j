@@ -17,6 +17,16 @@ export const PLOT_TOP = 10
 export const PLOT_LEFT = 10
 
 /**
+ * ATR 副图的高度（不开 ATR 时这块地方归价格区）。
+ *
+ * 给一个**比例 + 上下限**而不是写死 76px：画布在高分屏和小窗口下高度差很多，
+ * 写死了在小窗口里会挤掉一半 K 线，在大屏上又细得像条缝。
+ */
+export const ATR_PANE_RATIO = 0.18
+export const ATR_PANE_MIN = 56
+export const ATR_PANE_MAX = 110
+
+/**
  * 标注端点最多能向右延伸多少根 —— 和后端 instance.go 的 maxForwardBars 是同一个数。
  *
  * 前端夹一次是为了「预览 == 定稿」（后端也会夹，两边夹出同一个结果才不会点完就跳）；
@@ -41,14 +51,34 @@ export interface ChartLayout {
   height: number
   /** 价格区（K 线、EMA、挂单线都画在这里） */
   plot: { left: number; top: number; right: number; bottom: number; width: number; height: number }
+  /**
+   * ATR 副图：价格区下方、时间轴上方的一条独立区域（关掉 ATR 时是 null）。
+   *
+   * 为什么要独立一块而不是叠在价格区上：ATR 的量纲就是价格（MNQ 上通常 20–60 点），
+   * 和 30000 的报价放在同一个纵轴里只会被压成一条贴底的直线。
+   *
+   * 它**不是行情区**：右键下单、画标注这些动作在副图里要挡住（见 ChartPanel 的 `inAtrPane`）。
+   */
+  atr: { top: number; bottom: number; height: number } | null
   /** 底部时间轴（不画任何行情，只放时间标签） */
   timeAxis: { top: number; height: number }
 }
 
-export function computeLayout(width: number, height: number): ChartLayout {
+export function computeLayout(width: number, height: number, showAtr = false): ChartLayout {
   const left = PLOT_LEFT
   const right = Math.max(left + 60, width - PRICE_AXIS_WIDTH)
-  const bottom = Math.max(PLOT_TOP + 40, height - TIME_AXIS_HEIGHT)
+  const timeTop = Math.max(PLOT_TOP + 40, height - TIME_AXIS_HEIGHT)
+
+  // 副图从时间轴往上切。没空间时（窗口被压得很扁）宁可不给副图，
+  // 也不要把价格区挤成负数 —— 那时 `plot.height` 是 1px，K 线会整片消失。
+  let atrHeight = 0
+  if (showAtr) {
+    const wanted = Math.round(height * ATR_PANE_RATIO)
+    atrHeight = Math.min(ATR_PANE_MAX, Math.max(ATR_PANE_MIN, wanted))
+    if (timeTop - atrHeight - PLOT_TOP < 120) atrHeight = 0
+  }
+  const bottom = timeTop - atrHeight
+
   return {
     width,
     height,
@@ -60,7 +90,8 @@ export function computeLayout(width: number, height: number): ChartLayout {
       width: Math.max(1, right - left),
       height: Math.max(1, bottom - PLOT_TOP),
     },
-    timeAxis: { top: bottom, height: TIME_AXIS_HEIGHT },
+    atr: atrHeight > 0 ? { top: bottom, bottom: timeTop, height: atrHeight } : null,
+    timeAxis: { top: timeTop, height: TIME_AXIS_HEIGHT },
   }
 }
 
@@ -68,11 +99,21 @@ export function clamp(v: number, lo: number, hi: number): number {
   return Math.min(hi, Math.max(lo, v))
 }
 
+/**
+ * 画布的坐标换算与布局：价格轴、横轴下标、可见区间、ATR 副图的地盘。
+ * 绘制（render.ts）、标注图层、指针命中全都从这里取像素，口径只有一份。
+ *
+ * ATR：v0.23.0 起它的**值**来自 `chart/atr.ts`（前端按 Length / Smoothing 现算），
+ * 不再读协议里的字段 —— 后端那套写死的 ATR14 已经删掉。这一层只负责「按下标取值、
+ * 按可见区间贴合纵轴」，见下面的 `setAtrSeries` / `atrAt` / `fitAtr`。
+ */
 export class ChartScale {
   width = 0
   height = 0
   layout: ChartLayout = computeLayout(0, 0)
   bars: Bar[] = []
+  /** 和 `bars` 一一对应的 ATR 序列（没有值的下标是 NaN），由 `setAtrSeries` 灌进来 */
+  atrValues: number[] = []
 
   /** 一根 K 线占多少像素 */
   barWidth = 7
@@ -82,19 +123,53 @@ export class ChartScale {
   priceMax = 1
   /** 价格轴是否自动贴合可见区间；用户纵向拖动/Shift 滚轮后转为手动 */
   autoPrice = true
+  /** ATR 副图是否占位（关掉时这块地方还给价格区） */
+  atrOn = false
+  /** ATR 副图自己的纵轴，左右边界由 `fitAtr()` 按可见区间算 */
+  atrMin = 0
+  atrMax = 1
 
   private indexOf = new Map<string, number>()
 
   setSize(width: number, height: number): void {
     this.width = width
     this.height = height
-    this.layout = computeLayout(width, height)
+    this.layout = computeLayout(width, height, this.atrOn)
+  }
+
+  /**
+   * 开关 ATR 副图。
+   *
+   * 必须**重算 layout**：副图占的是价格区的地盘，`plot.height` 一变，
+   * yOf / priceAtY / 标注图层全都得跟着变。只翻一个布尔值不重算，
+   * 画出来就是「K 线还是原来那么高，ATR 压在下面一截上」。
+   */
+  setAtrPane(on: boolean): void {
+    if (this.atrOn === on) return
+    this.atrOn = on
+    this.layout = computeLayout(this.width, this.height, on)
   }
 
   setBars(bars: Bar[]): void {
     this.bars = bars
     this.indexOf.clear()
     for (let i = 0; i < bars.length; i += 1) this.indexOf.set(bars[i].time, i)
+  }
+
+  /**
+   * 换一份 ATR 序列（改参数、多了一根、换了实例都要换）。
+   *
+   * 传进来的数组必须和 `bars` **按下标对齐**：两头都靠下标取数，错一格就是整条线平移一格，
+   * 而且肉眼看不太出来 —— 只有和 K 线高低点对不上时才会觉得「这线怪怪的」。
+   */
+  setAtrSeries(values: number[]): void {
+    this.atrValues = values
+  }
+
+  /** 第 i 根 K 线的 ATR；没有值（na / 越界 / 还没算）返回 null。 */
+  atrAt(i: number): number | null {
+    const v = this.atrValues[i]
+    return typeof v === 'number' && Number.isFinite(v) ? v : null
   }
 
   indexOfTime(time: string): number | undefined {
@@ -198,6 +273,46 @@ export class ChartScale {
   priceAtY(y: number): number {
     const ratio = (y - this.layout.plot.top) / this.plotHeight
     return this.priceMax - ratio * (this.priceMax - this.priceMin)
+  }
+
+  /**
+   * ATR 副图纵轴贴合可见区间。
+   *
+   * 和价格轴不同，**没有手动模式**：副图上不存在任何拖拽/缩放的手势，
+   * 一直是自动的，所以每次重绘都跟着可见区间重算（不缓存，缓存了平移一下就过期）。
+   */
+  fitAtr(): void {
+    const atr = this.layout.atr
+    if (!atr) return
+    const { from, to } = this.visibleRange()
+    let lo = Number.POSITIVE_INFINITY
+    let hi = Number.NEGATIVE_INFINITY
+    for (let i = from; i <= to; i += 1) {
+      const v = this.atrAt(i)
+      if (v === null) continue
+      if (v < lo) lo = v
+      if (v > hi) hi = v
+    }
+    if (!Number.isFinite(lo) || !Number.isFinite(hi)) {
+      this.atrMin = 0
+      this.atrMax = 1
+      return
+    }
+    const span = hi - lo
+    // 全段 ATR 完全相同（横盘）时 span 是 0：给一个按数值大小取的余量，
+    // 否则上下界相等，`atrYOf` 会把整条线画在同一个像素上（看起来像没画出来）。
+    const pad = span > 0 ? span * 0.12 : Math.max(hi * 0.15, 0.5)
+    this.atrMin = Math.max(0, lo - pad)
+    this.atrMax = hi + pad
+  }
+
+  /** ATR 值 -> 副图里的像素 y */
+  atrYOf(v: number): number {
+    const atr = this.layout.atr
+    if (!atr) return this.layout.plot.bottom
+    const span = this.atrMax - this.atrMin
+    if (!(span > 0)) return atr.bottom
+    return atr.top + ((this.atrMax - v) / span) * atr.height
   }
 
   /** 当前可见的 K 线下标范围（闭区间，已夹到数据范围内） */

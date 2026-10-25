@@ -24,6 +24,18 @@ const busy = ref(false)
 
 const symbolInfo = computed(() => store.symbols.find((s) => s.symbol === symbol.value))
 
+/**
+ * 【新增实例（最新）】下面那行说明。
+ *
+ * 拼成一句话而不是写在模板里：模板里的空白有它自己的规则（换行会变成一个空格），
+ * 条件片段一多就会出现「（2026-10-22）， 不用填时间」这种多余的间隙。
+ */
+const latestHint = computed(() => {
+  const last = symbolInfo.value?.lastDate
+  const where = last ? `（${last} 这天）` : ''
+  return `「最新」不用填时间：取数据目录里最近的一根 K 线作为起点${where}，之后没有更多行情可揭示。`
+})
+
 onMounted(() => {
   store.refresh()
 })
@@ -51,10 +63,25 @@ function enter(id: string): void {
 }
 
 function create(): void {
+  submit(timeText.value.trim(), false)
+}
+
+/**
+ * 【新增实例（最新）】：不读时间输入框，让后端把锚点定在「数据目录里最新的那一根」。
+ *
+ * 为什么不在前端算好这个时间再走 create：文件名只精确到「哪一天」，最后一根在几点
+ * 取决于那天有没有提前收市，只有读 CSV 才知道；猜一个钟点发过去，多半换来一句
+ * 「时间点 xxx 不在 CSV 里」。所以这件事必须由有数据的后端决定。
+ */
+function createLatest(): void {
+  submit('', true)
+}
+
+function submit(time: string, latest: boolean): void {
   if (!symbol.value) return
   leavePlayback()
   busy.value = true
-  store.createInstance(symbol.value, timeText.value.trim())
+  store.createInstance(symbol.value, time, latest)
   window.setTimeout(() => {
     busy.value = false
   }, 600)
@@ -137,6 +164,18 @@ function statusOf(inst: { operator: string; bot: boolean; botStrategy?: string }
         >
           {{ busy ? '加载中…' : '新建实例' }}
         </button>
+
+        <!-- 第二个入口：不用输时间，后端直接把锚点定在数据目录里最新的那一根 -->
+        <button
+          type="button"
+          class="w-full rounded border border-accent px-2 py-1.5 text-[14px] font-medium text-accent hover:bg-accent-soft disabled:opacity-50"
+          :disabled="busy || store.symbols.length === 0 || store.status !== 'open'"
+          title="不用输时间：直接以数据目录里最新的那一根 K 线为起点"
+          @click="createLatest"
+        >
+          新增实例（最新）
+        </button>
+        <div class="text-[12px] text-faint">{{ latestHint }}</div>
       </div>
 
       <div

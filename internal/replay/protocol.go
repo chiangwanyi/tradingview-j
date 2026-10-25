@@ -39,7 +39,7 @@ const (
 	ReqDelTemplate    = "delete_template"
 	ReqOrderPlace     = "order_place"
 	ReqOrderMarket    = "order_market"
-	ReqOrderModify    = "order_modify"  // 改挂单价：画布上拖动挂单线走这条
+	ReqOrderModify    = "order_modify" // 改挂单价：画布上拖动挂单线走这条
 	ReqOrderCancel    = "order_cancel"
 	ReqOrderFlatAll   = "order_flat_all" // 市价退仓 + 撤销全部挂单：一次动作换一条广播
 	ReqBotStart       = "bot_start"
@@ -88,11 +88,17 @@ type Request struct {
 	Name string `json:"name"`
 
 	// create_instance
-	Symbol      string `json:"symbol"`
-	Time        string `json:"time"`        // 空 = 由后端随机挑一个时间点
-	Bars        int    `json:"bars"`        // 画布上初始显示多少根（含锚点之前的历史），0 = 默认
-	ForwardDays int    `json:"forwardDays"` // 锚点之后预加载几天，0 = 默认
-	Seed        int64  `json:"seed"`        // 非 0 时随机锚点可复现（测试/复现问题用）
+	Symbol string `json:"symbol"`
+	Time   string `json:"time"` // 空 = 由后端随机挑一个时间点
+	// Latest = true 表示锚点取「数据目录里最新的那一根 K 线」（界面上的【新增实例（最新）】），
+	// 这时 Time 和 Seed 都不起作用：用户不想（也不必）知道那个时间是什么。
+	//
+	// 为什么不在前端算好时间传过来：最新一根的时刻只存在于 CSV 内容里，文件名只到「哪一天」。
+	// 让前端拼一个 "最后一天 + 某个钟点" 出来，遇到那天提前收市就会指向一根不存在的 K 线。
+	Latest      bool  `json:"latest"`
+	Bars        int   `json:"bars"`        // 画布上初始显示多少根（含锚点之前的历史），0 = 默认
+	ForwardDays int   `json:"forwardDays"` // 锚点之后预加载几天，0 = 默认
+	Seed        int64 `json:"seed"`        // 非 0 时随机锚点可复现（测试/复现问题用）
 
 	// 所有和某个实例有关的请求
 	InstanceID string `json:"instanceId"`
@@ -221,6 +227,9 @@ type Point struct {
 
 // Bar 是送给前端的一根 K 线。ema20 在 Go 里算好，前端只负责画 ——
 // 指标口径只有一份，不会出现「终端和网页算出两条 EMA」。
+//
+// ATR **不在这里**（v0.23.0 起）：它的周期和平滑方式由用户在界面上现调
+// （RMA / SMA / EMA / WMA），前端拿着 OHLC 自己算，见 web/src/components/chart/atr.ts。
 //
 // 价格在加载时已经四舍五入到两位小数（CSV 里有 89.97000000000001 这种浮点噪声，
 // 直接下发会让价格轴和提示里冒出一串尾巴）。

@@ -790,7 +790,7 @@ func (h *Hub) repairDayGapsLocked(inst *Instance) bool {
 		// 连游标那根都对不上：宁可不动，也不要悄悄把用户挪到别的位置
 		return false
 	}
-	computeEMA(bars)
+	computeIndicators(bars)
 	for i := range inst.Orders {
 		o := &inst.Orders[i]
 		if j, ok := indexOfTimeIn(bars, o.PlacedAt); ok {

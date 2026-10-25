@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
 
+import { DEFAULT_ATR, sanitizeAtr, type AtrSettings } from '@/components/chart/atr'
 import { DEFAULT_INDICATOR, sanitizeIndicator, type IndicatorSettings } from '@/components/chart/indicators'
 import { ReplaySocket, defaultSocketUrl } from '@/net/socket'
 import { applyInstanceEvent } from '@/stores/instance-reducer'
@@ -66,6 +67,8 @@ export function isDrawTool(tool: ChartTool): tool is DrawTool {
 const MAX_LOG = 200
 /** 指标的开关与参数记在本机：它是显示偏好，换实例、重启程序都不该被重置 */
 const INDICATOR_KEY = 'tv-replay-doji-zigzag'
+/** ATR 的开关与参数（Length / Smoothing）也记在本机，理由同上 */
+const ATR_KEY = 'tv-replay-atr'
 
 /**
  * 读回上次的指标设置。
@@ -85,6 +88,26 @@ function readIndicator(): IndicatorSettings {
     // 隐私模式 / 存的是坏 JSON：回到出厂值，不影响本次使用
   }
   return { ...DEFAULT_INDICATOR }
+}
+
+/**
+ * 读回上次的 ATR 设置（v0.23.0 起 ATR 有了 Length / Smoothing，值得记住）。
+ *
+ * 和 `readIndicator` 同一条路：整份 JSON 存、读回来先 sanitize。
+ * 第一次运行时键不存在（v0.22.0 那会儿 ATR 只有一个「显示」开关、压根没落过盘），
+ * 于是直接回出厂值 14 / RMA —— 和 TradingView 刚把指标加到图上时一致。
+ */
+function readAtr(): AtrSettings {
+  try {
+    const raw = localStorage.getItem(ATR_KEY)
+    if (raw) {
+      const saved = JSON.parse(raw) as Partial<AtrSettings>
+      return sanitizeAtr({ ...DEFAULT_ATR, ...saved })
+    }
+  } catch {
+    // 隐私模式 / 存的是坏 JSON：回到出厂值，不影响本次使用
+  }
+  return { ...DEFAULT_ATR }
 }
 
 export const useReplayStore = defineStore('replay', () => {
@@ -186,6 +209,16 @@ export const useReplayStore = defineStore('replay', () => {
   const pendingPlaybackId = ref('')
   /** 是否显示 EMA20（纯显示开关，跟后端无关） */
   const showEma = ref(true)
+  /**
+   * ATR 副图的开关与参数（v0.23.0）：Length / Smoothing，和 TradingView 的
+   * 「Average true range」一模一样（RMA / SMA / EMA / WMA 四种平滑）。
+   *
+   * 默认**不显示**：副图会从价格区切走一条（约 18% 高度），第一次进复盘的人不该
+   * 平白少看几十根 K 线；要看波动率就自己在【指标 ▾】里勾上。
+   * 参数（不是开关）会记在 localStorage 里 —— 每个人的 14 / RMA 未必合用，
+   * 调过一次就别每次重开都回到默认。
+   */
+  const atr = ref<AtrSettings>(readAtr())
   /**
    * Doji X + Blue ZigZag 的开关与两个参数。
    *
@@ -526,13 +559,35 @@ export const useReplayStore = defineStore('replay', () => {
     }
   }
 
+  /**
+   * 改 ATR 设置（v0.23.0）：开关 / Length / Smoothing。
+   *
+   * 和 `setIndicator` 同一套写法 —— 整份换新对象（画布 watch 的是 `store.atr`，
+   * 原地改字段不会触发重画），夹值走 `sanitizeAtr`，改完就落 localStorage。
+   */
+  function setAtr(patch: Partial<AtrSettings>): void {
+    atr.value = sanitizeAtr({ ...atr.value, ...patch })
+    try {
+      localStorage.setItem(ATR_KEY, JSON.stringify(atr.value))
+    } catch {
+      // 记不住就算了，不影响本次使用
+    }
+  }
+
   function refresh(): void {
     send({ type: 'list_symbols' })
     send({ type: 'list_instances' })
   }
 
-  function createInstance(symbol: string, time: string): void {
-    send({ type: 'create_instance', symbol, time, bars: 400, forwardDays: 5 })
+  /**
+   * 新建实例。
+   *
+   * `latest = true` 走【新增实例（最新）】那条路：锚点由后端取「数据目录里最新的那一根」，
+   * `time` 会被忽略。**不在前端算这个时间** —— 文件名只到「哪一天」，最后一根在几点
+   * （那天可能提前收市）只有读 CSV 才知道，拼一个猜的时刻只会得到「这个时间点不在 CSV 里」。
+   */
+  function createInstance(symbol: string, time: string, latest = false): void {
+    send({ type: 'create_instance', symbol, time, latest, bars: 400, forwardDays: 5 })
   }
 
   function joinInstance(id: string): void {
@@ -864,6 +919,8 @@ export const useReplayStore = defineStore('replay', () => {
     templates,
     activeTemplate,
     showEma,
+    atr,
+    setAtr,
     indicator,
     setIndicator,
     orderQuantity,

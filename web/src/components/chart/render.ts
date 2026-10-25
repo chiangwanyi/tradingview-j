@@ -1,5 +1,6 @@
 import type { Order, Position, Trade } from '@/types/protocol'
 
+import { atrLegend, type AtrSettings } from './atr'
 import { indicatorSeries, type IndicatorSettings } from './indicators'
 import { snapAtCursor, type OHLCItem } from './snap'
 import type { ClosedTrade } from './trades'
@@ -17,7 +18,8 @@ import {
 } from './scale'
 
 /**
- * Canvas 上画的东西：网格、坐标轴、K 线、EMA20、Doji X + Blue ZigZag、挂单价线、十字光标。
+ * Canvas 上画的东西：网格、坐标轴、K 线、EMA20、ATR 副图、Doji X + Blue ZigZag、
+ * 挂单价线、十字光标。
  *
  * 标注不在这里画 —— 标注是 SVG 图层（便于命中测试与拖动），见 ChartPanel.vue。
  * 两层的坐标换算都来自同一个 ChartScale，不会出现「图形和 K 线对不上」。
@@ -52,6 +54,8 @@ export interface ChartTheme {
   down: CandleColors
   flat: CandleColors
   ema: string
+  /** ATR 副图那条线：和 EMA（琥珀）、ZigZag（蓝）、Doji（近黑）都不撞 */
+  atr: string
   /** Doji X + Blue ZigZag 的两个颜色：蓝点（Pine 的 color.blue）、✖（Pine 的 color.black） */
   zigzag: string
   /** 连蓝点的那条折线：同色但压低透明度，免得比 K 线还抢眼 */
@@ -105,6 +109,7 @@ export const CHART_THEME: ChartTheme = {
   down: { stroke: '#111827', fill: '#111827' },
   flat: { stroke: '#6b7280', fill: '#ffffff' },
   ema: '#b45309',
+  atr: '#7c3aed',
   zigzag: '#1d4ed8',
   zigzagLine: 'rgba(29, 78, 216, 0.5)',
   doji: '#0f172a',
@@ -162,6 +167,8 @@ export interface DrawInput {
   /** 浮动盈亏（后端按当前 K 线收盘价算好，美元） */
   unrealizedPnl: number
   showEma: boolean
+  /** ATR 副图的开关与参数（纯显示设置，值在 chart/atr.ts 里算；序列由 ChartPanel 灌进 scale） */
+  atr: AtrSettings
   /** Doji X + Blue ZigZag 的开关与参数（纯显示设置，值在 chart/indicators.ts 里算） */
   indicator: IndicatorSettings
   /** 最小跳动，来自 _symbols.json（0.25 / 0.1 / 0.01…） */
@@ -200,6 +207,7 @@ export function drawChart(input: DrawInput): void {
     position,
     unrealizedPnl,
     showEma,
+    atr,
     indicator,
     tick,
     activeOrderId = null,
@@ -227,6 +235,8 @@ export function drawChart(input: DrawInput): void {
   const priceTicks = niceTicks(scale.priceMin, scale.priceMax, 6, tick)
 
   drawGrid(ctx, scale, theme, priceTicks)
+  // ATR 副图：独立一块，压在网格之上、K 线之下（两者不重叠，顺序只是习惯）
+  if (atr.show) drawAtrPane(ctx, scale, theme, decimals, hover, atr)
   drawCandles(ctx, scale, theme, showEma)
   // 指标压在 K 线之上、成交标记之下：蓝点要落在影线尖端上，不能被后面的三角盖住
   drawIndicator(ctx, scale, theme, indicator)
@@ -258,25 +268,121 @@ function drawGrid(
     ctx.moveTo(plot.left, y)
     ctx.lineTo(plot.right, y)
   }
-  // 时间网格线（只画竖线，和标签同一个步长）
+  // 时间网格线（只画竖线，和标签同一个步长）。
+  // 有 ATR 副图时一直画到副图底边：副图和 K 线共用横轴，断在中间会让「对齐」这件事看着不确定。
   const tickStep = scale.timeTickStep()
   const { from, to } = scale.visibleRange()
+  const gridBottom = scale.layout.atr ? scale.layout.atr.bottom : plot.bottom
   const first = Math.ceil(from / tickStep) * tickStep
   for (let i = first; i <= to; i += tickStep) {
     const x = Math.round(scale.xOf(i)) + 0.5
     if (x < plot.left || x > plot.right) continue
     ctx.moveTo(x, plot.top)
-    ctx.lineTo(x, plot.bottom)
+    ctx.lineTo(x, gridBottom)
   }
   ctx.stroke()
 
-  // 价格区与时间轴之间的分隔线
+  // 内容区（价格区，或开着 ATR 时的副图）与时间轴之间的分隔线
   ctx.strokeStyle = theme.axisLine
   const baseY = Math.round(timeAxis.top) + 0.5
   ctx.beginPath()
   ctx.moveTo(plot.left, baseY)
   ctx.lineTo(plot.right, baseY)
   ctx.stroke()
+}
+
+/**
+ * ATR 副图（价格区下方一条独立区域）。
+ *
+ * 为什么不叠在价格区里：ATR 的量纲就是价格（MNQ 上通常 20–60 点），而报价是 30000 ——
+ * 同一个纵轴下它会变成贴着底边的一条直线，什么都看不出来。
+ *
+ * 画法上的几条约定：
+ *   - 纵轴**自动贴合可见区间**（`scale.fitAtr()`），没有手动缩放：副图用来判断「现在波动
+ *     比刚才大还是小」，不像价格那样需要盯某个具体价位；
+ *   - 值的来源是前端算好的 ATR 序列（见 chart/atr.ts，参数由用户拧），这里只管画；
+ *   - 线在 na 处**断开**（前 length-1 根没有值），不补点，否则会凭空造出一段不存在的历史；
+ *   - 左上角常驻一个数值：不悬停也要能读到「现在多大」，这正是看 ATR 的目的。
+ */
+function drawAtrPane(
+  ctx: CanvasRenderingContext2D,
+  scale: ChartScale,
+  theme: ChartTheme,
+  decimals: number,
+  hover: HoverState | null,
+  settings: AtrSettings,
+): void {
+  const atr = scale.layout.atr
+  if (!atr) return
+  const { plot } = scale.layout
+  const { from, to } = scale.visibleRange()
+  scale.fitAtr()
+
+  ctx.save()
+
+  // 与价格区之间的分界线
+  ctx.strokeStyle = theme.axisLine
+  ctx.lineWidth = 1
+  ctx.beginPath()
+  ctx.moveTo(plot.left, Math.round(atr.top) + 0.5)
+  ctx.lineTo(plot.right, Math.round(atr.top) + 0.5)
+  ctx.stroke()
+
+  // 中值参考线：只画一条。上界下界就是区域边界，再画线会跟边框重影。
+  const mid = (scale.atrMax + scale.atrMin) / 2
+  ctx.strokeStyle = theme.grid
+  ctx.setLineDash([2, 4])
+  ctx.beginPath()
+  ctx.moveTo(plot.left, Math.round(scale.atrYOf(mid)) + 0.5)
+  ctx.lineTo(plot.right, Math.round(scale.atrYOf(mid)) + 0.5)
+  ctx.stroke()
+  ctx.setLineDash([])
+
+  // 折线
+  ctx.strokeStyle = theme.atr
+  ctx.lineWidth = 1.4
+  ctx.beginPath()
+  let started = false
+  for (let i = from; i <= to; i += 1) {
+    const v = scale.atrAt(i)
+    if (v === null) {
+      started = false
+      continue
+    }
+    const x = scale.xOf(i)
+    const y = scale.atrYOf(v)
+    if (!started) {
+      ctx.moveTo(x, y)
+      started = true
+    } else {
+      ctx.lineTo(x, y)
+    }
+  }
+  ctx.stroke()
+
+  // 右侧刻度：只标上下界（中间那条参考线的值一眼能算出来，标了反而挤）
+  ctx.font = MONO
+  ctx.textAlign = 'left'
+  ctx.textBaseline = 'middle'
+  ctx.fillStyle = theme.textDim
+  ctx.fillText(formatPrice(scale.atrMax, decimals), plot.right + 5, atr.top + 8)
+  ctx.fillText(formatPrice(scale.atrMin, decimals), plot.right + 5, atr.bottom - 8)
+
+  // 左上角：图例 + 数值。悬停时显示光标那根的，不悬停显示最后一根（= 当前这根）。
+  // 图例带上参数（`ATR 14 RMA`）：副图开着的窗口不止一屏，光看线条分不出这是哪一套参数。
+  const shown = hover ? hover.index : scale.bars.length - 1
+  const value = scale.atrAt(shown)
+  const legend = atrLegend(settings)
+  let lx = plot.left + 6
+  ctx.textAlign = 'left'
+  ctx.textBaseline = 'top'
+  ctx.fillStyle = theme.textDim
+  ctx.fillText(legend, lx, atr.top + 3)
+  lx += ctx.measureText(legend).width + 4
+  ctx.fillStyle = theme.atr
+  ctx.fillText(value === null ? '—' : formatPrice(value, decimals), lx, atr.top + 3)
+
+  ctx.restore()
 }
 
 function drawCandles(
@@ -743,6 +849,11 @@ function drawCrosshair(
   const b = scale.bars[hover.index]
   if (!b) return
 
+  // 指针在 ATR 副图里：那儿**没有价格可言**（副图的纵轴是波幅，不是报价），
+  // 所以只留竖线、时间标签和顶部的 OHLC 图例 —— 横线、吸附圈、价格标签全部不画，
+  // 否则右边价格轴上会冒出一个按副图像素外推出来的、屏幕上根本不存在的价。
+  const below = !!(scale.layout.atr && hover.y > scale.layout.atr.top)
+
   // 按住 Ctrl 时十字线**自己跳到 OHLC 上**，横竖两条线一起跳。
   //
   // 这一条以前没有：那时吸附只在「画下去的那一刻」发生，用户按住 Ctrl 之后十字线纹丝不动，
@@ -750,7 +861,7 @@ function drawCrosshair(
   //
   // 吸附在这里**每帧现算**（不读缓存值）：缩放/平移/步进之后它永远是对的。
   // 没吸时照旧：价格吸到最小跳动（MES 只有 .00/.25/.50/.75，不该出现 6484.12）。
-  const hit = hover.snap ? snapAtCursor(scale, hover.x, hover.y) : null
+  const hit = hover.snap && !below ? snapAtCursor(scale, hover.x, hover.y) : null
   const bar = hit ? (scale.bars[hit.index] ?? b) : b
   const price = hit ? hit.price : snapToTick(scale.priceAtY(hover.y), tick)
   const x = Math.round(scale.xOf(hit ? hit.index : hover.index)) + 0.5
@@ -760,10 +871,14 @@ function drawCrosshair(
   ctx.lineWidth = hit ? 1.4 : 1
   ctx.setLineDash([4, 4])
   ctx.beginPath()
+  // 竖线一直画到底（开着 ATR 时穿过副图）：横轴是共用的，光标落在哪一根，
+  // 副图上那个时刻的 ATR 就该在同一列上被读到。
   ctx.moveTo(x, plot.top)
-  ctx.lineTo(x, plot.bottom)
-  ctx.moveTo(plot.left, Math.round(y) + 0.5)
-  ctx.lineTo(plot.right, Math.round(y) + 0.5)
+  ctx.lineTo(x, scale.layout.atr ? scale.layout.atr.bottom : plot.bottom)
+  if (!below) {
+    ctx.moveTo(plot.left, Math.round(y) + 0.5)
+    ctx.lineTo(plot.right, Math.round(y) + 0.5)
+  }
   ctx.stroke()
   ctx.setLineDash([])
 
@@ -776,15 +891,17 @@ function drawCrosshair(
     ctx.stroke()
   }
 
-  // 价格标签：吸附生效时底色调成吸附色
-  drawAxisBox(
-    ctx,
-    scale,
-    formatPrice(price, decimals),
-    Math.round(y),
-    hit ? theme.snap : theme.crossBoxBg,
-    hit ? theme.snapText : theme.crossBoxText,
-  )
+  // 价格标签：吸附生效时底色调成吸附色（在副图里时不画，见上面的 below）
+  if (!below) {
+    drawAxisBox(
+      ctx,
+      scale,
+      formatPrice(price, decimals),
+      Math.round(y),
+      hit ? theme.snap : theme.crossBoxBg,
+      hit ? theme.snapText : theme.crossBoxText,
+    )
+  }
 
   // 时间标签：跟着**被吸住的那根 K 线**走（竖线在它身上，标签就必须是它的时间）
   ctx.font = MONO

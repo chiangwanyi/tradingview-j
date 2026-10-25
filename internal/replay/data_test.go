@@ -3,6 +3,7 @@ package replay
 import (
 	"math"
 	"math/rand"
+	"os"
 	"path/filepath"
 	"testing"
 	"time"
@@ -79,6 +80,51 @@ func TestOpenRejectsUnknownTimeAndSymbol(t *testing.T) {
 	}
 	if _, err := ds.Open("NOT:THERE", "", 30, 1, nil); err == nil {
 		t.Fatal("不存在的标的应当报错")
+	}
+}
+
+// 【新增实例（最新）】走的是 OpenLatest：锚点 = 数据目录里最新的那一根，
+// 所以游标停在已加载数据的末尾 —— 后面没有「已加载未揭示」的部分，也没有更多日文件。
+func TestOpenLatestAnchorsAtNewestBar(t *testing.T) {
+	root := writeTestData(t, 4) // 01-05 ~ 01-08，每天 09:00 ~ 11:00 共 25 根
+	ds := NewDataSource(root, time.Local)
+	inst, err := ds.OpenLatest(testSymbol, 30, 1)
+	if err != nil {
+		t.Fatalf("打开最新实例失败：%v", err)
+	}
+	if want := "2026-01-08 11:00"; inst.Anchor != want {
+		t.Fatalf("最新模式的锚点应当是 %s，实际 %s", want, inst.Anchor)
+	}
+	if inst.Cursor != len(inst.Bars)-1 {
+		t.Fatalf("最新模式不该有「已加载未揭示」的 K 线：cursor=%d，共 %d 根", inst.Cursor, len(inst.Bars))
+	}
+	if inst.hiddenBars() != 0 {
+		t.Fatalf("最新模式不该有隐藏 K 线，实际 %d 根", inst.hiddenBars())
+	}
+	if inst.hasMore() {
+		t.Fatal("锚点已经在最后一个日文件上，不该再说后面还有数据")
+	}
+	// 历史照旧要凑够：锚点前至少 30 根（这里跨了前两天）
+	if inst.Cursor < 29 {
+		t.Fatalf("锚点前应当至少有 30 根历史，实际游标 %d", inst.Cursor)
+	}
+}
+
+// 最后一个日文件是空的（周日休市、节假日停市）时，「最新」要往前翻到有数据的那一天，
+// 而不是报「这一天没有 K 线」。
+func TestOpenLatestSkipsEmptyTrailingDay(t *testing.T) {
+	root := writeTestData(t, 3) // 01-05 ~ 01-07
+	empty := filepath.Join(root, testFolder, "2026-01-08.csv")
+	if err := os.WriteFile(empty, []byte("time,open,high,low,close,volume\n"), 0o644); err != nil {
+		t.Fatalf("写空日文件失败：%v", err)
+	}
+	ds := NewDataSource(root, time.Local)
+	inst, err := ds.OpenLatest(testSymbol, 30, 1)
+	if err != nil {
+		t.Fatalf("打开最新实例失败：%v", err)
+	}
+	if want := "2026-01-07 11:00"; inst.Anchor != want {
+		t.Fatalf("应当跳过空文件、落到 %s，实际 %s", want, inst.Anchor)
 	}
 }
 

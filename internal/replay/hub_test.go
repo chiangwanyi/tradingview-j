@@ -96,6 +96,36 @@ func TestCreateJoinAndOperator(t *testing.T) {
 	}
 }
 
+// 【新增实例（最新）】走 create_instance 的 latest 开关：锚点由后端取数据目录里最新的
+// 那一根，请求里带了 time 也一律忽略（前端的「最新」按钮就是这么发的）。
+func TestCreateLatestInstanceAnchorsAtNewestBar(t *testing.T) {
+	hub, _ := newTestHub(t, 5) // 01-05 ~ 01-09，每天 09:00 ~ 11:00
+	a := newFakeClient(t, hub)
+	a.waitFor(MsgWelcome)
+
+	a.send(hub, map[string]any{
+		"type": "create_instance", "symbol": testSymbol,
+		"latest": true, "time": "2026-01-06 10:00", "bars": 40, "forwardDays": 1,
+	})
+	st := a.waitFor(MsgInstanceState)
+	inst := st["instance"].(map[string]any)
+
+	if want := "2026-01-09 11:00"; inst["anchor"] != want {
+		t.Fatalf("最新模式的锚点应当是 %s，实际 %v", want, inst["anchor"])
+	}
+	bars, _ := inst["bars"].([]any)
+	if len(bars) == 0 {
+		t.Fatal("实例没有 K 线")
+	}
+	// 快照只含已揭示的 K 线，最后一根就是锚点
+	if last := bars[len(bars)-1].(map[string]any)["time"]; last != inst["anchor"] {
+		t.Fatalf("快照最后一根应当是锚点 %v，实际 %v", inst["anchor"], last)
+	}
+	if inst["hiddenBars"] != float64(0) || inst["hasMore"] != false {
+		t.Fatalf("最新模式后面不该还有行情：hiddenBars=%v hasMore=%v", inst["hiddenBars"], inst["hasMore"])
+	}
+}
+
 func TestInstancesAreIsolated(t *testing.T) {
 	hub, _ := newTestHub(t, 5)
 	a := newFakeClient(t, hub)

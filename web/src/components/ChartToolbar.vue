@@ -2,6 +2,7 @@
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 
 import AnnotationEditTemplates from '@/components/AnnotationEditTemplates.vue'
+import { ATR_SMOOTHINGS, type AtrSmoothing } from '@/components/chart/atr'
 import AnnotationTemplates from '@/components/AnnotationTemplates.vue'
 import BotMenu from '@/components/BotMenu.vue'
 import { TOOL_LABEL, isDrawTool, useReplayStore, type DrawTool } from '@/stores/replay'
@@ -70,6 +71,8 @@ const btnActive = 'border-accent bg-accent-soft text-accent'
 
 /** 参数输入框：小一号、贴边，和按钮同一行不显胖 */
 const num = 'w-12 rounded border border-line bg-panel px-1 py-0.5 text-[12px] text-ink'
+/** 参数下拉框（平滑方式）：和输入框等高，别在面板里显得凹进去一块 */
+const sel = 'rounded border border-line bg-panel px-1 py-0.5 text-[12px] text-ink'
 
 /**
  * 指标参数用 `change` 而不是 `input`：输到一半的「0.」「1」不该立刻被夹成 0.01，
@@ -88,6 +91,28 @@ function onDojiSize(e: Event): void {
   el.value = String(store.indicator.dojiSize)
 }
 
+/**
+ * ATR 的三个参数（v0.23.0）：开关 / Length / Smoothing。
+ *
+ * 和 Doji 那两个输入框同一套手感：`change` 才生效（输到一半的「1」不该立刻被夹成 1），
+ * 生效后把夹过的真实值写回 DOM —— 否则框里会留着用户敲的那个越界值。
+ * 下拉框不用写回：它的可选值是写死的四个，改不出别的。
+ */
+function onAtrShow(e: Event): void {
+  store.setAtr({ show: (e.target as HTMLInputElement).checked })
+}
+
+function onAtrLength(e: Event): void {
+  const el = e.target as HTMLInputElement
+  store.setAtr({ length: Number(el.value) })
+  el.value = String(store.atr.length)
+}
+
+function onAtrSmoothing(e: Event): void {
+  const el = e.target as HTMLSelectElement
+  store.setAtr({ smoothing: el.value as AtrSmoothing })
+}
+
 // ---------------- 指标下拉框 ----------------
 
 const indicatorOpen = ref(false)
@@ -98,8 +123,11 @@ const indicatorBox = ref<HTMLElement | null>(null)
  *
  * 为什么要这个角标：指标收进下拉框之后，工具条上不再能一眼看出「EMA 关掉了没有」。
  * 一个数字就是最小的提示 —— 不用点开也知道现在图上有没有指标。
+ * ATR 也算一个：它占的是价格区下方的地盘，收起状态下更看不出来。
  */
-const activeIndicators = computed(() => (store.showEma ? 1 : 0) + (store.indicator.show ? 1 : 0))
+const activeIndicators = computed(
+  () => (store.showEma ? 1 : 0) + (store.atr.show ? 1 : 0) + (store.indicator.show ? 1 : 0),
+)
 
 /** 点下拉框外面就收起：面板是浮在画布上的，不收起会一直挡住 K 线 */
 function onDocPointerDown(ev: PointerEvent): void {
@@ -183,7 +211,7 @@ onBeforeUnmount(() => {
       <button
         type="button"
         :class="[btn, indicatorOpen ? btnActive : btnIdle]"
-        title="指标：EMA20 / Doji X + Blue ZigZag（点开设置开关与参数）"
+        title="指标：EMA20 / ATR / Doji X + Blue ZigZag（点开设置开关与参数）"
         @click="indicatorOpen = !indicatorOpen"
       >
         指标
@@ -203,6 +231,47 @@ onBeforeUnmount(() => {
           <input v-model="store.showEma" type="checkbox" class="h-3.5 w-3.5 accent-sky-600" />
           <span class="text-ink">EMA20</span>
           <span class="ml-auto text-[11px] text-faint">后端算好的均线</span>
+        </label>
+
+        <!--
+          ATR（v0.22.0 只有开关，v0.23.0 起可调）：和 TradingView 内置的
+          「Average true range」同一套参数 —— Length + Smoothing（RMA / SMA / EMA / WMA），
+          默认 14 / RMA，和脚本里那两个 `input()` 的 defval 一致。
+
+          它画在价格区下方一条独立副图里：波幅的量纲就是价格，和 30000 的报价共用一个
+          纵轴会被压成贴底的直线。参数关掉时也能改 ——「先调好再打开」少一次来回。
+        -->
+        <label class="flex items-center gap-2 py-1" title="ATR：平均真实波幅（副图画在价格区下方，参数见下面两行）">
+          <input
+            type="checkbox"
+            class="h-3.5 w-3.5 accent-sky-600"
+            :checked="store.atr.show"
+            @change="onAtrShow"
+          />
+          <span class="text-ink">ATR</span>
+          <span class="ml-auto text-[11px] text-faint">下方独立副图</span>
+        </label>
+        <label class="flex items-center gap-2 py-1" title="Length：ATR 的平滑周期（Pine 的 length，1..1000）">
+          <span class="w-[4.75rem] shrink-0 text-dim">Length</span>
+          <input
+            type="number"
+            min="1"
+            max="1000"
+            step="1"
+            :class="num"
+            :value="store.atr.length"
+            @change="onAtrLength"
+          />
+          <span class="text-[11px] text-faint">1 – 1000</span>
+        </label>
+        <label
+          class="flex items-center gap-2 py-1"
+          title="Smoothing：真实波幅的平滑方式（Pine 的 ta.rma / ta.sma / ta.ema / ta.wma；RMA 就是 Wilder 平滑）"
+        >
+          <span class="w-[4.75rem] shrink-0 text-dim">Smoothing</span>
+          <select :class="sel" :value="store.atr.smoothing" @change="onAtrSmoothing">
+            <option v-for="s in ATR_SMOOTHINGS" :key="s" :value="s">{{ s }}</option>
+          </select>
         </label>
 
         <div class="my-1 h-px bg-line" />

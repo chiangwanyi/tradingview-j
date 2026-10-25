@@ -17,6 +17,11 @@ export interface Bar {
   volume: number
   /** 前 19 根没有值（Go 里是 *float64，序列化成 null） */
   ema20: number | null
+  /*
+   * 这里**没有** atr：ATR 从 v0.23.0 起由前端现算（Length / Smoothing 是用户调的），
+   * 见 `components/chart/atr.ts`。旧的交易记录里还可能带着 `atr14` 这个键 ——
+   * 多出来的字段没人读，也就不需要在这里声明。
+   */
 }
 
 /**

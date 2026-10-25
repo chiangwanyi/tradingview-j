@@ -2,6 +2,7 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 
 import { buildFigure, resolveStyle, type Figure, type FigureView } from '@/components/chart/annotations'
+import { atrSeries } from '@/components/chart/atr'
 import { orderKindFor, orderKindLabel } from '@/components/chart/orders'
 import { ORDER_RESERVE_RIGHT, CHART_THEME, drawChart, type HoverState } from '@/components/chart/render'
 import {
@@ -234,6 +235,10 @@ function draw(): void {
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
   const inst = store.instance
   const trades = inst?.trades ?? []
+  // ATR 序列：每帧都过一遍 `atrSeries`（内部按「数组 + 参数」缓存，没变就直接吐上一份），
+  // 这样「多了一根 K 线」「改了 Length / Smoothing」两条路都只有这里一处要管。
+  // 必须和 scale.bars 是**同一个数组**：两头都按下标对齐，错一格整条线就平移一格。
+  scale.setAtrSeries(atrSeries(scale.bars, store.atr.length, store.atr.smoothing))
   drawChart({
     ctx,
     scale,
@@ -246,6 +251,7 @@ function draw(): void {
     position: inst?.position ?? { quantity: 0, side: 'flat', averagePrice: 0 },
     unrealizedPnl: inst?.unrealizedPnl ?? 0,
     showEma: store.showEma,
+    atr: store.atr,
     indicator: store.indicator,
     tick: store.tick,
     activeOrderId: activeOrderId.value,
@@ -270,6 +276,9 @@ const activeClosed = computed(() => tip.value?.index ?? pinned.value?.index ?? n
 
 onMounted(() => {
   scale.setBars(store.bars)
+  // 先定副图开关再量尺寸：setSize 会按这个标志算 layout，
+  // 反过来的话第一帧会按「没有副图」铺一次，开了 ATR 的人会看到 K 线跳一下。
+  scale.setAtrPane(store.atr.show)
   scale.setSize(host.value?.clientWidth ?? 0, host.value?.clientHeight ?? 0)
   scale.resetView()
   requestDraw()
@@ -390,8 +399,34 @@ watch(
 
 // 指标开关 / 参数都是纯显示状态，改了就重画（没有主题要跟了：v0.20.0 只剩浅色）
 watch(() => store.showEma, () => requestDraw())
+// ATR 副图：开关要**重算布局**（它占的是价格区的地盘，见 scale.setAtrPane），
+// 只改 Length / Smoothing 就不用动布局，重画即可（序列在绘制前统一算，见 draw()）。
+watch(
+  () => store.atr.show,
+  (on) => {
+    scale.setAtrPane(on)
+    requestDraw()
+  },
+)
+watch(
+  () => [store.atr.length, store.atr.smoothing],
+  () => requestDraw(),
+)
 // 指标设置：开关和两个参数都会整份换新对象，watch 一次就够（见 store.setIndicator）
 watch(() => store.indicator, () => requestDraw())
+
+/**
+ * 指针是不是落在 ATR 副图里。
+ *
+ * 副图不是行情区：那里**没有价格**（ATR 的纵轴和报价的纵轴不是一回事），
+ * 所以右键下单、单击画图这些动作都不能在那儿发生 —— 否则会按 `priceAtY` 外推出一个
+ * 远在屏幕外的价格，挂上一张谁都看不见（也永远不会成交）的单。
+ * 平移、缩放、十字光标不受限制：那些只关心横向位置。
+ */
+function inAtrPane(y: number): boolean {
+  const atr = scale.layout.atr
+  return !!atr && y > atr.top
+}
 
 // ---------------- 坐标换算 ----------------
 
@@ -512,7 +547,9 @@ function onPointerDown(ev: PointerEvent): void {
   if (ev.button !== 0) return
 
   // 绘图工具：两次单击。第 1 次定起点，第 2 次定终点。
+  // ATR 副图里不接：那里没有价格坐标可言（见 inAtrPane）。
   if (drawMode.value) {
+    if (inAtrPane(p.y)) return
     clickToDraw(p, ev)
     return
   }
@@ -858,7 +895,9 @@ function onWheel(ev: WheelEvent): void {
   // 注意价格轴的系数要取倒数：`zoomTime` 的 factor 是乘在 **barWidth** 上（大 = 放大），
   // 而 `zoomPrice` 的 factor 是乘在 **离锚点的距离** 上（大 = 缩小）。同一个滚轮方向
   // 两边必须给出相反的系数，否则「往上滚」在时间轴是放大、在价格轴却成了缩小。
-  if (p.x >= scale.layout.plot.right) scale.zoomPrice(1 / factor, p.y)
+  // ATR 副图里的滚轮一律缩时间：副图纵轴是自动的、没有手动缩放这回事，
+  // 在它右边的刻度上滚一下就改变价格轴会更让人迷惑。
+  if (p.x >= scale.layout.plot.right && !inAtrPane(p.y)) scale.zoomPrice(1 / factor, p.y)
   else scale.zoomTime(factor, p.x)
   requestDraw()
 }
@@ -1264,6 +1303,9 @@ function onContextMenu(ev: MouseEvent): void {
   if (!store.instance) return
   const p = localPoint(ev)
   if (!p) return
+  // 右键菜单的每一项都要一个**价格**（挂单 / 复制价）。ATR 副图里没有价格，
+  // `priceAtY` 只会外推出一个屏幕外的数 —— 挂上去的单看不见、也永远不会成交。
+  if (inAtrPane(p.y)) return
   // 每次打开都从「没上膛」开始：上一次按了一半就走开，不该让下一次一点就删
   clearArmed.value = false
   menu.value = { x: p.x, y: p.y, price: snapToTick(scale.priceAtY(p.y), store.tick) }

@@ -300,7 +300,15 @@ func (h *Hub) handleCreate(c *Client, req Request) {
 		// 显式种子：只影响这一次随机锚点的选择，不动全局随机源
 		rnd = rand.New(rand.NewSource(req.Seed))
 	}
-	inst, err := h.ds.Open(req.Symbol, strings.TrimSpace(req.Time), req.Bars, req.ForwardDays, rnd)
+	// Latest（【新增实例（最新）】）时锚点由数据决定，Time / Seed 一律不看：
+	// 让这两个字段还生效会出现「填了时间却被忽略」的歧义，不如在协议层就定死优先级。
+	var inst *Instance
+	var err error
+	if req.Latest {
+		inst, err = h.ds.OpenLatest(req.Symbol, req.Bars, req.ForwardDays)
+	} else {
+		inst, err = h.ds.Open(req.Symbol, strings.TrimSpace(req.Time), req.Bars, req.ForwardDays, rnd)
+	}
 	if err != nil {
 		h.fail(c, req, err.Error())
 		return

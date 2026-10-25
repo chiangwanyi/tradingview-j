@@ -15,6 +15,10 @@ package replay
 //
 // 随机锚点会避开首尾各一天（首日没有历史、尾日没有未来），这样「随机加载某个时间点
 // 及之前的 K 线」才真的能步进起来。
+//
+// 锚点有三种来源：指定时刻（time）、随机（time 留空）、以及「最新」——
+// 最后一种对应界面上的【新增实例（最新）】：锚点就是数据目录里最新的那一根（见 OpenLatest），
+// 因此它之后没有可揭示的行情。三种来源共用同一条加载路径，只有「挑哪一根」不同。
 
 import (
 	"errors"
@@ -114,6 +118,26 @@ func (ds *DataSource) TickValue(symbol, folder string) float64 {
 // anchorTime 为空时随机挑一个时间点：挑日期 -> 挑那天的某一根 -> 以它为止。
 // rnd 传 nil 就用当前时间做种子；传固定种子可复现（测试与排查用）。
 func (ds *DataSource) Open(symbol, anchorTime string, history, forwardDays int, rnd *rand.Rand) (*Instance, error) {
+	return ds.open(symbol, anchorTime, false, history, forwardDays, rnd)
+}
+
+// OpenLatest 以「数据目录里最新的那一根 K 线」为锚点准备一个实例。
+//
+// 它就是界面上的【新增实例（最新）】：用户不必知道那个时刻是什么，也不用管最后一天
+// 是不是提前收市（最后一天的最后一根根数是不确定的，只有读文件才知道）。
+//
+// 代价要说清楚：锚点已经在数据的末端，所以之后**没有可揭示的行情**（hiddenBars = 0、
+// hasMore = false，【下一根】会走到 ErrNoMoreBars）。这个实例是用来「看最新这一屏」的，
+// 不是用来往前后推演的 —— 要推演就选一个更早的时间点。
+func (ds *DataSource) OpenLatest(symbol string, history, forwardDays int) (*Instance, error) {
+	return ds.open(symbol, "", true, history, forwardDays, nil)
+}
+
+// open 是 Open / OpenLatest 共用的那一条路径。
+//
+// latest = true 时忽略 anchorTime 与 rnd：锚点不是「挑」出来的，而是读到的
+// （见 pickAnchor）。
+func (ds *DataSource) open(symbol, anchorTime string, latest bool, history, forwardDays int, rnd *rand.Rand) (*Instance, error) {
 	if history <= 0 {
 		history = DefaultHistory
 	}
@@ -152,7 +176,7 @@ func (ds *DataSource) Open(symbol, anchorTime string, history, forwardDays int, 
 	}
 	var notes []string
 
-	dayIdx, rowIdx, anchorRow, err := ds.pickAnchor(dir, files, anchorTime, rnd, &notes)
+	dayIdx, rowIdx, anchorRow, err := ds.pickAnchor(dir, files, anchorTime, latest, rnd, &notes)
 	if err != nil {
 		return nil, err
 	}
@@ -202,7 +226,7 @@ func (ds *DataSource) Open(symbol, anchorTime string, history, forwardDays int, 
 	// 同一根 K 线可能出现两次（日文件边界被手工改过）：按时间去掉后来的那份，
 	// 保证 time 在实例里是**唯一**的 —— 协议就用它当标识。
 	bars = dedupeBars(bars)
-	computeEMA(bars)
+	computeIndicators(bars)
 
 	cursor := 0
 	if idx, ok := indexOfTimeIn(bars, cursorTime); ok {
@@ -221,7 +245,12 @@ func (ds *DataSource) Open(symbol, anchorTime string, history, forwardDays int, 
 }
 
 // pickAnchor 决定锚点落在哪一天、那一天的哪一根。
-func (ds *DataSource) pickAnchor(dir string, files []string, anchorTime string, rnd *rand.Rand, notes *[]string) (dayIdx, rowIdx int, rows []store.TimeBar, err error) {
+//
+// 三种模式，优先级从高到低：latest（数据里最新的那一根）> anchorTime（指定时刻）> 随机。
+func (ds *DataSource) pickAnchor(dir string, files []string, anchorTime string, latest bool, rnd *rand.Rand, notes *[]string) (dayIdx, rowIdx int, rows []store.TimeBar, err error) {
+	if latest {
+		return ds.pickLatestAnchor(dir, files, notes)
+	}
 	if anchorTime != "" {
 		date, ok := anchorDate(anchorTime)
 		if !ok {
@@ -271,6 +300,33 @@ func (ds *DataSource) pickAnchor(dir string, files []string, anchorTime string, 
 	return 0, 0, nil, errors.New("随机挑时间点失败：连续 30 个日文件都是空的")
 }
 
+// pickLatestAnchor 找「目录里最新的那一根」：从最后一个日文件往前翻，
+// 取第一份有 K 线的那一天的最后一根。
+//
+// 为什么不是「直接读最后一个文件」：周日的日文件是空的（休市），节假日、临时停市
+// 也会留下空文件甚至坏文件。直接取最后一个文件会得到「这一天没有数据」，
+// 而用户点【新增实例（最新）】想要的是**有数据的**最后那一根。
+//
+// 往前翻不设上限，但一旦找到就立刻返回；数据目录里空文件最多几十个，
+// 这个循环的成本和「随机模式」里那 30 次尝试是同一个量级。
+func (ds *DataSource) pickLatestAnchor(dir string, files []string, notes *[]string) (dayIdx, rowIdx int, rows []store.TimeBar, err error) {
+	for d := len(files) - 1; d >= 0; d-- {
+		dayRows, stat, readErr := store.ReadDayRows(filepath.Join(dir, files[d]), ds.Loc)
+		if readErr != nil {
+			*notes = append(*notes, fmt.Sprintf("%s 读不了（%v）", files[d], readErr))
+			continue
+		}
+		if stat.Bad > 0 {
+			*notes = append(*notes, fmt.Sprintf("%s 有 %d 行解析不了（已跳过）", files[d], stat.Bad))
+		}
+		if len(dayRows) == 0 {
+			continue
+		}
+		return d, len(dayRows) - 1, dayRows, nil
+	}
+	return 0, 0, nil, errors.New("数据目录里一根 K 线都没有（全是空文件或坏文件）")
+}
+
 // ensureFuture 在游标走到已加载数据末尾时，顺序续读后面的日文件。
 //
 // 空文件（周日、临时休市）会被跳过，最多连续看 40 个文件 —— 不能因为一个长假
@@ -306,7 +362,7 @@ func (inst *Instance) ensureFuture(ds *DataSource) error {
 			}
 			inst.Bars = append(inst.Bars, b)
 		}
-		computeEMA(inst.Bars)
+		computeIndicators(inst.Bars)
 		added = len(next)
 	}
 	if inst.Cursor+1 >= len(inst.Bars) {
@@ -340,6 +396,18 @@ func rowsToBars(rows []store.TimeBar) []Bar {
 		out = append(out, toBar(r))
 	}
 	return out
+}
+
+// computeIndicators 把「盘面事实上算出来的指标」一次算全。
+//
+// 之所以收成一个入口：这些字段都是**派生数据**，加载 / 续读 / 从存档补缺口都要重算一遍，
+// 分散成几行调用迟早会漏一处 —— 漏掉的那一处在画布上就是「某段历史没有指标线」。
+//
+// 现在只剩 EMA20 一个。ATR 在 v0.23.0 挪到了前端（web/src/components/chart/atr.ts）：
+// 它的 Length / Smoothing 由用户现调，参数组合无穷，后端没法预先算好几套下发 ——
+// 详见那个文件开头「为什么从后端搬到前端」。
+func computeIndicators(bars []Bar) {
+	computeEMA(bars)
 }
 
 // computeEMA 算 EMA20：前 20 根用简单平均做种子，之后按 2/(20+1) 递推。
