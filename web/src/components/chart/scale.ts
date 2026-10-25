@@ -131,10 +131,31 @@ export class ChartScale {
 
   private indexOf = new Map<string, number>()
 
+  /**
+   * 容器尺寸变了（窗口缩放、工具栏多出一行、开关 ATR 副图……）。
+   *
+   * 布局当然要重算，但**用户自己调好的价格取景不能跟着丢**：
+   *   - 手动缩过价格轴（`autoPrice === false`）时，「一个价格占多少像素」是他的成果。
+   *     以前 ChartPanel 在尺寸变化时无条件 `fitPrice(true)`，于是「点一下图形」
+   *     （工具条多出编辑模板条 → 画布矮了 27px）就把价格轴弹回自动贴合，
+   *     看起来就是「画布缩放被重置了」。
+   *   - 这里的做法：按**旧高度**记住每像素多少价格，再按新高度铺回去；顶边的价格
+   *     （就是 `priceMax`，因为 `plot.top` 是常数）保持不动。于是视野上半部分
+   *     一个像素都不移，变矮只是「下方少看见一段」。
+   *
+   * 自动模式（`autoPrice === true`）什么都不做：贴合可见区间是它的本职，交给 `fitPrice()`。
+   */
   setSize(width: number, height: number): void {
+    const keepMax = this.priceMax
+    const span = this.priceMax - this.priceMin
+    const oldPlotHeight = this.plotHeight
     this.width = width
     this.height = height
     this.layout = computeLayout(width, height, this.atrOn)
+    if (!this.autoPrice && oldPlotHeight > 1 && span > 0) {
+      this.priceMax = keepMax
+      this.priceMin = keepMax - (span / oldPlotHeight) * this.plotHeight
+    }
   }
 
   /**

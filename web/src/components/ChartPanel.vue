@@ -226,7 +226,11 @@ function draw(): void {
     size.value = { width: w, height: h }
     scale.setSize(w, h)
     scale.clampScroll()
-    scale.fitPrice(true)
+    // 只有**自动价格轴**才重新贴合。手动缩过价格轴的人（滚过右轴、或者拖动时带过
+    // 纵向位移）已经用 `setSize` 把那份取景原样搬到新高度上了（见 scale.setSize）；
+    // 这里再 `fitPrice(true)` 就是把它抹掉 —— 「点一下图形，画布缩放被重置」正是
+    // 这么来的：选中图形 → 工具条多出编辑模板条 → 画布矮 27px → 强制贴合一次。
+    if (scale.autoPrice) scale.fitPrice(true)
     // 尺寸变了 left/right 也变（右下角的价格轴宽度是固定的），再同步一次
     publishViewport()
   }
@@ -905,9 +909,13 @@ function onWheel(ev: WheelEvent): void {
   requestDraw()
 }
 
-function onDoubleClick(): void {
+function onDoubleClick(ev: MouseEvent): void {
   // 绘图时双击是「两次单击」，不能顺手把价格轴重置了
   if (drawMode.value) return
+  // 双击**图形**（手快的人选一个图形会连点两下）也不是「双击空白」：
+  // 那一下的意图是选中它，不该顺手把价格轴重置掉。图形的 pointerdown 会
+  // stopPropagation，但 dblclick 照样冒上来 —— 这里按事件源再挡一次。
+  if ((ev.target as Element | null)?.closest?.('svg')) return
   scale.resetPrice()
   requestDraw()
 }

@@ -24,7 +24,9 @@ import { TOOL_LABEL, isDrawTool, useReplayStore, type DrawTool } from '@/stores/
  *     宽度（还带两个数字输入框），而复盘时它们一整天都不会改一次。现在只有一个
  *     【指标 ▾】，点开才是开关和参数。
  *   - **编辑图形时多一条模板条**（AnnotationEditTemplates）：选中图形后直接列出
- *     同类模板，点一下就换样式 —— 不用「先选模板再重画」。
+ *     同类模板，点一下就换样式 —— 不用「先选模板再重画」。它**浮在画布左上角**、
+ *     不进这一行的排版流（见模板里的注释）：选中一个图形只是「看一眼样式」，
+ *     不该把工具条挤成两行、连带把画布高度也改掉。
  */
 const store = useReplayStore()
 
@@ -168,7 +170,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div class="flex flex-wrap items-center gap-2 border-b border-line px-2 py-1.5">
+  <div class="relative flex flex-wrap items-center gap-2 border-b border-line px-2 py-1.5">
     <div class="flex items-center gap-1">
       <!--
         只有绘图工具。指针 / 修改两个按钮已经删掉：
@@ -193,11 +195,19 @@ onBeforeUnmount(() => {
     <!--
       编辑态的模板条（v0.20.0）：选中一个图形之后出现，只列**同类**模板，
       点一下就把样式套到那个图形上（不动位置）。
+
+      **必须脱离排版流**（绝对定位 + `top-full`）：它比上面那一行宽得多，留在
+      flex 里就会把工具条从一行挤成两行，画布跟着矮 27px。而画布一矮，价格轴就
+      要重新铺一遍 —— 用户自己调好的缩放会被抹掉（正是「点一下图形，画布缩放
+      就被重置」的来路，见 ChartPanel.draw / scale.setSize）。选中一个图形只是
+      「看一眼、换个样式」，画布不该跟着动。所以它像下拉面板一样浮在画布上沿。
     -->
-    <AnnotationEditTemplates
+    <div
       v-else-if="store.editingAnnotation"
-      :annotation="store.editingAnnotation"
-    />
+      class="absolute top-full left-2 z-40 mt-1 max-w-[calc(100%-1rem)] shadow-md"
+    >
+      <AnnotationEditTemplates :annotation="store.editingAnnotation" />
+    </div>
 
     <!--
       语音讲解（v0.16.0）：**和上面的绘图工具同级**，不再是录制的子功能。
