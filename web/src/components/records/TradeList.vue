@@ -5,6 +5,7 @@ import RecordTagCell from '@/components/records/RecordTagCell.vue'
 import {
   dirText,
   pnlText,
+  recordTime,
   sortRows,
   sourceNameOf,
   sourceOf,
@@ -27,7 +28,7 @@ const props = defineProps<{
   rows: TradeRow[]
   /** 全部记录里出现过的标签（打标签面板里的「已有标签」） */
   library: TagUsage[]
-  /** 显示「交易时间」里的日期（统计页跨天要显示，当日详情页不需要） */
+  /** 显示「交易时间」里的日期（跨天的明细都要：当日详情里的几笔行情可能横跨几年） */
   showDate?: boolean
   /** 空列表时显示的话 */
   emptyText?: string
@@ -68,7 +69,7 @@ function tone(n: number): string {
   return 'text-ink'
 }
 
-/** 时间列：跨天的那几笔要把日期带上，否则「00:05」这种数字看不出是哪天。 */
+/** 时间列：**行情**时间（入场那根 K 线）。跨天的明细要把日期带上，否则「00:05」看不出是哪天。 */
 function timeText(rec: RecordingSummary): string {
   const t = tradeTime(rec)
   return props.showDate === false ? t.slice(11) || t : t
@@ -80,13 +81,6 @@ function exitText(rec: RecordingSummary): string {
   const entry = rec.stats.entryTime
   if (entry && exit.startsWith(entry.slice(0, 10))) return exit.slice(11)
   return exit
-}
-
-function clock(at: number): string {
-  if (!at) return ''
-  const d = new Date(at * 1000)
-  const pad = (n: number) => String(n).padStart(2, '0')
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`
 }
 
 function armDelete(rec: RecordingSummary): void {
@@ -113,7 +107,7 @@ const td = 'px-2.5 py-2'
         <tr class="border-b border-line">
           <th :class="th">
             <button type="button" class="hover:text-accent" @click="sortBy('time')">
-              交易时间 {{ arrow('time') }}
+              行情时间 {{ arrow('time') }}
             </button>
           </th>
           <th :class="th">标的</th>
@@ -148,7 +142,7 @@ const td = 'px-2.5 py-2'
           <td :class="[td, 'tnum whitespace-nowrap']">
             <div class="text-ink">{{ timeText(row.rec) }}</div>
             <div class="text-[11px] text-faint">
-              → {{ exitText(row.rec) }} · 记于 {{ clock(row.rec.createdAt) }}
+              → {{ exitText(row.rec) }} · 记于 {{ recordTime(row.rec) }}
             </div>
           </td>
           <td :class="[td, 'whitespace-nowrap text-dim']">{{ row.rec.symbol }}</td>

@@ -13,12 +13,17 @@ import type { RecordSource, RecordTag, RecordingSummary } from '@/types/protocol
  *
  * 另一个刻意的选择：函数全部是纯函数（输入列表 → 输出统计），不碰 store、不碰 DOM。
  * 页面换筛选条件时只是换一份输入，不存在「筛完之后状态没同步」这种问题。
+ *
+ * **时间轴只有一个口径：`recordTime`（后端 createdAt，这笔是什么时候做的）。**
+ * 日历归日、按天求和、累计曲线排序、明细里的「记于」全用它。行情时间（K 线时间，
+ * `tradeTime`）只在每一条自己的「行情时间」列和 tooltip 里出现 ——
+ * 复盘可以今天补做去年的行情，两个时间本来就可以差一年，混用会让日历和明细像两套账。
  */
 
 /** 一笔交易在时间轴上的位置：累计盈亏与回撤都相对它之前的所有笔。 */
 export interface TradeRow {
   rec: RecordingSummary
-  /** 1 起的序号（按交易时间正序） */
+  /** 1 起的序号（按记录时间正序） */
   seq: number
   /** 到这一笔为止的累计已实现盈亏 */
   cum: number
@@ -26,7 +31,9 @@ export interface TradeRow {
   peak: number
   /** 这一笔之后的回撤（<= 0）；-100 就是「从峰值回撤了 100」 */
   dd: number
-  /** 排序键：交易时间（入场那根 K 线的时间），格式 `YYYY-MM-DD HH:MM` */
+  /** 排序键 / 累计曲线的时间轴：**记录时间**（`YYYY-MM-DD HH:MM`） */
+  recTime: string
+  /** 行情时间（入场那根 K 线的时间），只是这一笔的附加信息，不参与排序 */
   time: string
 }
 
@@ -111,7 +118,7 @@ export interface RecordAggregate {
   short: SideStats
   bySymbol: SymbolStats[]
   histogram: HistBin[]
-  /** 按交易时间正序排好的每一笔 */
+  /** 按记录时间正序排好的每一笔 */
   rows: TradeRow[]
 }
 
@@ -128,7 +135,7 @@ export interface RecordsFilter {
   source: string
   /** 标签名（小写）。**同时满足**才留下：多选是收窄，不是并集 */
   tags: string[]
-  /** 起止日期，`YYYY-MM-DD`；'' = 不限。两端都含（结束日按整天算） */
+  /** 起止的**记录日**，`YYYY-MM-DD`；'' = 不限。两端都含（结束日按整天算） */
   from: string
   to: string
   /** 关键字：匹配名称 / 标的 / 操作者 / 标签 */
@@ -175,15 +182,49 @@ export function clock(at: number): string {
 }
 
 /**
- * 一笔交易的时间。
+ * 一笔交易在**行情**上的时间：入场那根 K 线的时间。
  *
- * 优先用**入场那根 K 线的时间**（`stats.entryTime`），因为复盘看的是行情时间；
- * 老记录里它可能为空（没成交就断了），退到 anchor（记录第 1 步的 K 线），
- * 再退到「记录生成时间」。三种格式都是 `YYYY-MM-DD HH:MM`，可以直接字符串比大小 ——
- * 这比 new Date() 解析快得多，也不会因为时区/格式差异悄悄错一天。
+ * 优先用 `stats.entryTime`，老记录里它可能为空（没成交就断了），退到 anchor
+ * （记录第 1 步的 K 线），再退到「记录生成时间」。三种格式都是 `YYYY-MM-DD HH:MM`，
+ * 可以直接字符串比大小 —— 这比 new Date() 解析快得多，也不会因为时区/格式差异悄悄错一天。
+ *
+ * **这不是「什么时候做的这笔」**。复盘时可以今天坐在这儿补做去年的行情，两者能差一年。
+ * 日历、按天统计、累计曲线一律用下面的 `recordTime`；这里的时间只出现在明细的
+ * 「交易时间」列和图表 tooltip 里（「这一笔属于哪根 K 线」）。
  */
 export function tradeTime(rec: RecordingSummary): string {
   return rec.stats.entryTime || rec.anchor || clock(rec.createdAt)
+}
+
+/**
+ * 一笔记录的**记录时间**：后端 `createdAt`（开仓那一刻建出这条记录的时间）。
+ *
+ * 这是全站的时间轴口径：
+ *
+ *  - 日历上落在哪一格、某一天的盈亏是多少 —— 按它归日；
+ *  - 累计曲线 / 最大回撤的先后 —— 按它排序（钱是在「做的那一刻」实现的，
+ *    不是在那根 K 线所属的日期实现的）；
+ *  - 明细里那行灰色小字「记于 …」也是它。
+ *
+ * createdAt 缺失（0，老记录或测试数据造的）时退到行情时间：宁可把它归到行情那一天，
+ * 也不要让这条记录从日历上直接消失。
+ */
+export function recordTime(rec: RecordingSummary): string {
+  return clock(rec.createdAt) || tradeTime(rec)
+}
+
+/**
+ * 排序用的比较函数：记录时间正序，同一时刻再看行情时间，最后用 id 兜底。
+ *
+ * 为什么需要兜底：`createdAt` 只到秒，机器人连开两笔、或者测试里同一个时刻造好几条，
+ * 没有第三个键的话顺序会随输入顺序漂移 —— 那会让「累计」这一列在两次刷新之间不一样。
+ */
+function byRecordTime(a: RecordingSummary, b: RecordingSummary): number {
+  return (
+    recordTime(a).localeCompare(recordTime(b)) ||
+    tradeTime(a).localeCompare(tradeTime(b)) ||
+    a.id.localeCompare(b.id)
+  )
 }
 
 export function pnlText(n: number): string {
@@ -337,7 +378,7 @@ export function sourceOptions(list: RecordingSummary[]): { all: number; human: n
 
 /** 一天的汇总：日历格子上写的就是这几个数。 */
 export interface DayStats {
-  /** `YYYY-MM-DD`（交易时间的那一天，不是记录生成的那一天） */
+  /** `YYYY-MM-DD`：**记录日**（那天做了几笔），不是行情走到的那一天 */
   day: string
   count: number
   /** 其中正常平完的笔数 */
@@ -346,26 +387,29 @@ export interface DayStats {
   pnl: number
   wins: number
   losses: number
-  /** 当天的记录，按交易时间正序 —— 详情页照着这个顺序列 */
+  /** 当天的记录，按记录时间正序 —— 详情页照着这个顺序列 */
   rows: RecordingSummary[]
 }
 
-/** 这一笔属于哪一天（`YYYY-MM-DD`）。用的是 tradeTime，和列表里的时间列同源。 */
-export function dayOf(rec: RecordingSummary): string {
-  return tradeTime(rec).slice(0, 10)
+/** 这一笔属于哪一天（`YYYY-MM-DD`）：**记录生成的那一天**，不是行情那一天。 */
+export function recordDay(rec: RecordingSummary): string {
+  return recordTime(rec).slice(0, 10)
 }
 
 /**
- * 把记录按「交易日」分组。
+ * 把记录按「记录日」分组 —— 日历上一天 = 你那天做了几笔。
  *
- * 为什么是交易日而不是记录生成日：复盘时问的是「那天我怎么做的」，
- * 而记录生成时间只是「我什么时候点开这一段」（同一天可能补做前几天的行情）。
- * 两者混用会让日历上的格子对不上列表里的时间列 —— 那是最容易让人不信任的一张图。
+ * 为什么是记录生成日而不是交易（K 线）日：这一页回答的是「我哪天练了、那天赚了多少」。
+ * 今天补做去年的行情，钱是今天赚到的，格子就该落在今天；按 K 线日期排会让 10 月
+ * 的日历上突然冒出 2025 年 1 月、5 月、8 月的格子，点进去还是同一批操作 ——
+ * 那时「日历」和「明细里的交易时间」看起来像两套账，最难让人信任。
+ *
+ * 行情时间没有丢：明细里每行都写着，格子 tooltip 也只在有记录时才出现。
  */
 export function groupByDay(list: RecordingSummary[]): Map<string, DayStats> {
   const out = new Map<string, DayStats>()
   for (const rec of list) {
-    const day = dayOf(rec)
+    const day = recordDay(rec)
     if (!day) continue
     let d = out.get(day)
     if (!d) {
@@ -382,7 +426,7 @@ export function groupByDay(list: RecordingSummary[]): Map<string, DayStats> {
     d.rows.push(rec)
   }
   for (const d of out.values()) {
-    d.rows.sort((a, b) => tradeTime(a).localeCompare(tradeTime(b)))
+    d.rows.sort(byRecordTime)
   }
   return out
 }
@@ -403,7 +447,7 @@ export interface TagUsage {
  * 面板上应该显示红 —— 那才是他下次想点的那一个。所以这里按记录时间从新到旧扫。
  */
 export function tagUsage(list: RecordingSummary[]): TagUsage[] {
-  const sorted = [...list].sort((a, b) => tradeTime(b).localeCompare(tradeTime(a)))
+  const sorted = [...list].sort((a, b) => byRecordTime(b, a))
   const m = new Map<string, TagUsage>()
   for (const rec of sorted) {
     for (const t of rec.tags ?? []) {
@@ -478,7 +522,7 @@ export function filterRecords(list: RecordingSummary[], f: RecordsFilter): Recor
       if (!hasTag(r, name)) return false
     }
     if (f.from || f.to) {
-      const day = tradeTime(r).slice(0, 10) // YYYY-MM-DD
+      const day = recordDay(r) // YYYY-MM-DD
       if (f.from && day < f.from) return false
       if (f.to && day > f.to) return false
     }
@@ -569,11 +613,15 @@ function emptySide(): SideStats {
 /**
  * 汇总一批交易记录。
  *
- * 顺序很重要：先按**交易时间正序**排，再累加 —— 累计曲线、峰值、回撤、连胜连亏
+ * 顺序很重要：先按**记录时间正序**排，再累加 —— 累计曲线、峰值、回撤、连胜连亏
  * 全都依赖这个顺序，而后端给的列表是「新 → 旧」。
+ *
+ * 为什么不是按行情时间（K 线）：盈亏是在你按下开平仓那一刻实现的，不是在那根 K 线
+ * 所属的那一天实现的。今天补做去年的单子，如果按行情排，「累计盈亏」会莫名其妙地
+ * 跳回一年前重排，和日历上的「今天赚了多少」对不上。
  */
 export function aggregate(list: RecordingSummary[]): RecordAggregate {
-  const sorted = [...list].sort((a, b) => tradeTime(a).localeCompare(tradeTime(b)))
+  const sorted = [...list].sort(byRecordTime)
 
   const rows: TradeRow[] = []
   let cum = 0
@@ -597,7 +645,7 @@ export function aggregate(list: RecordingSummary[]): RecordAggregate {
       ddFrom = peakAt
       ddTo = i + 1
     }
-    rows.push({ rec, seq: i + 1, cum, peak, dd, time: tradeTime(rec) })
+    rows.push({ rec, seq: i + 1, cum, peak, dd, recTime: recordTime(rec), time: tradeTime(rec) })
   }
 
   const agg: RecordAggregate = {

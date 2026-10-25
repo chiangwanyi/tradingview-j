@@ -18,7 +18,7 @@ import { useReplayStore } from '@/stores/replay'
 defineProps<{
   /** 页面标题，例如「交易记录」/「2026年10月24日」 */
   title: string
-  /** 左上角返回链接的目标（复盘画布 / 交易日历） */
+  /** 左上角返回链接的目标（复盘画布 / 记录日历） */
   backTo: RouteLocationRaw
   /** 返回链接的文字 */
   backText: string

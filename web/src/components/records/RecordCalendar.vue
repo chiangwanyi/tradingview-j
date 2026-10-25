@@ -6,11 +6,15 @@ import { moneyShort } from '@/lib/records'
 import type { DayStats } from '@/lib/records'
 
 /**
- * 交易日历（月视图）。
+ * 记录日历（月视图）。
  *
- * 一台「每天赚了多少」的仪表：**有交易的日子按盈亏染色，没交易的日子置灰**。
+ * 一台「哪天做了几笔、赚了多少」的仪表：**有记录的日子按盈亏染色，没记录的日子置灰**。
  * 灰不是「没有数据」，而是「那天我没练」—— 这正是复盘时最该一眼看见的东西，
  * 所以空日子不给任何数字，只给一块浅灰的底。
+ *
+ * 格子的日期是**记录日**（这笔是什么时候做的），不是行情走到的那天 ——
+ * 今天补做去年 1 月的行情，格子照样落在今天。口径由 `lib/records.ts` 的
+ * `groupByDay` 决定，这一层只负责画。
  *
  * 配色沿用全项目那一套（绿 = 盈利、红 = 亏损），和 K 线、列表、统计图完全一致；
  * 亏损日同时带一个 ▼、盈利日带 ▲ —— 只靠颜色的话，色觉障碍的人读不出来，
@@ -58,7 +62,7 @@ const isCurrentMonth = computed(() => props.month === monthOf(props.today))
  * 把「格子的日期」和「那天的汇总」合成一份**给模板用的视图**。
  *
  * 为什么不在模板里现查 `days.get(cell.day)`：那样每个格子要写四五次
- * 非空断言（`dayOf(...)!`），而 Vue 的模板表达式按 JS 解析，`!` 这种 TS 语法
+ * 非空断言（`stats!`），而 Vue 的模板表达式按 JS 解析，`!` 这种 TS 语法
  * 不一定编得过去；更重要的是「格子的颜色」和「格子里写什么」会散在模板各处，
  * 改一处忘一处。这里算完就只有一份。
  */
@@ -88,7 +92,7 @@ const cells = computed(() =>
         ? ''
         : stats
           ? `${cell.day} · ${stats.count} 笔 · ${moneyShort(stats.pnl)}$ · 点开看当天每一笔`
-          : `${cell.day} · 没有交易`,
+          : `${cell.day} · 没有记录`,
     }
   }),
 )
@@ -196,9 +200,9 @@ function move(delta: number): void {
       </span>
       <span class="flex items-center gap-1.5">
         <span class="h-2.5 w-2.5 rounded-sm border border-line/70 bg-elev/40" />
-        没有交易
+        没有记录
       </span>
-      <span class="ml-auto">点有交易的格子看当天每一笔</span>
+      <span class="ml-auto">点有记录的格子看当天每一笔</span>
     </footer>
   </section>
 </template>

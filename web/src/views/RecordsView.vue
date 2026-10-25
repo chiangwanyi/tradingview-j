@@ -94,9 +94,9 @@ const library = computed(() => tagUsage(store.recordings))
 /**
  * 打开时看哪一个月。
  *
- * 优先「今天所在的月」—— 用户说「进入首页即见本月日历」。但行情时间来自回放数据，
- * 可能根本不是今天：这时候停在一个空月份上，页面看起来就像坏了。所以退一步去看
- * **最近有交易的那个月**。两者都没有才回到本月，让用户自己按月翻。
+ * 优先「今天所在的月」—— 用户说「进入首页即见本月日历」。但记录只在做过交易之后才有，
+ * 这个月可能还一笔都没做：这时候停在一个空月份上，页面看起来就像坏了。所以退一步去看
+ * **最近有记录的那个月**。两者都没有才回到本月，让用户自己按月翻。
  */
 function pickMonth(): string {
   const current = monthOf(today)
@@ -307,7 +307,7 @@ const tabBtn = 'rounded px-2.5 py-1 text-[13px] transition'
               v-if="autoJumped"
               class="rounded-lg border border-line bg-accent-soft px-3 py-2 text-[12px] text-dim"
             >
-              {{ monthLabel(monthOf(today)) }}还没有交易，已跳到最近有记录的
+              {{ monthLabel(monthOf(today)) }}还没有记录，已跳到最近有记录的
               <b class="text-ink">{{ monthLabel(month) }}</b>。
               <button
                 type="button"
@@ -327,8 +327,9 @@ const tabBtn = 'rounded px-2.5 py-1 text-[13px] transition'
             />
 
             <p class="px-1 text-[12px] leading-5 text-faint">
-              日历按<b class="text-dim">交易日</b>排（K 线时间），不是按记录生成时间 ——
-              同一天补做前几天的行情，格子落在行情那一天。点有交易的格子进当天详情。
+              日历按<b class="text-dim">记录日</b>排（这笔是什么时候做的），不是行情走到的那一天 ——
+              今天补做去年 1 月、5 月的行情，格子照样落在今天。每一笔各自的行情时间在明细里。
+              点有记录的格子进当天详情。
             </p>
           </div>
 
@@ -337,7 +338,7 @@ const tabBtn = 'rounded px-2.5 py-1 text-[13px] transition'
             <section class="rounded-xl border border-line bg-panel p-3">
               <header class="flex items-baseline gap-2">
                 <h2 class="text-[13px] font-medium text-ink">{{ monthLabel(month) }}概览</h2>
-                <span class="ml-auto text-[11px] text-faint">{{ monthSummary.days }} 天有交易</span>
+                <span class="ml-auto text-[11px] text-faint">{{ monthSummary.days }} 天有记录</span>
               </header>
               <dl class="mt-2 space-y-1.5 text-[12px]">
                 <div class="flex items-baseline justify-between gap-2">

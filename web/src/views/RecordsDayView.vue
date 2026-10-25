@@ -11,10 +11,10 @@ import TradeList from '@/components/records/TradeList.vue'
 import { dayLabel, todayKey } from '@/lib/calendar'
 import {
   aggregate,
-  dayOf,
   groupByDay,
   matchSource,
   moneyShort,
+  recordDay,
   sourceOptions,
   tagUsage,
 } from '@/lib/records'
@@ -23,7 +23,7 @@ import { useReplayStore } from '@/stores/replay'
 import type { RecordTag, RecordingSummary } from '@/types/protocol'
 
 /**
- * 【某一天的交易记录】详情页（v0.21.0）。
+ * 【某个记录日】详情页（v0.21.0）。
  *
  * 从日历点进来，回答三个问题：**那天做了几笔、每一笔什么样、当时是怎么做的**。
  * 所以这一页是三段式 —— 统计（KPI）→ 图（累计曲线 / 每笔盈亏）→ 明细（点一行进回放），
@@ -31,11 +31,15 @@ import type { RecordTag, RecordingSummary } from '@/types/protocol'
  *
  * 几个刻意的选择：
  *
- *  1. **日期在 URL 上**（`/records/day/2026-10-24`）。刷新、分享、浏览器返回都对得上，
+ *  1. **「那一天」= 记录生成日**（开仓那一刻落盘的时间），不是行情走到的那一天。
+ *     今天补做 2025 年 1 月 / 5 月 / 8 月和 2026 年 6 月 / 9 月的行情，五笔都算今天。
+ *     所以明细里必须带日期（`show-date`）：这五笔的行情日期是散的，不写日期就看不出
+ *     哪一笔对应哪段行情。
+ *  2. **日期在 URL 上**（`/records/day/2026-10-25`）。刷新、分享、浏览器返回都对得上，
  *     返回键直接回日历 —— 比「弹窗里看详情」自然得多。
- *  2. **上一天 / 下一天按「有交易的交易日」跳**，不是自然日。复盘时想看的是
- *     「上一笔单子」，不是「昨天（可能没做）」。只跳当前来源下还有记录的那些天。
- *  3. **数据只按日期 + 来源筛**，不做别的过滤：这一页要看的是「那天真实的全部」。
+ *  3. **上一天 / 下一天按「有记录的日子」跳**，不是自然日。复盘时想看的是
+ *     「上一次练是什么时候」，不是「昨天（可能没做）」。只跳当前来源下还有记录的那些天。
+ *  4. **数据只按日期 + 来源筛**，不做别的过滤：这一页要看的是「那天真实的全部」。
  */
 const store = useReplayStore()
 const route = useRoute()
@@ -56,12 +60,12 @@ const sourceRecs = computed(() => store.recordings.filter((r) => matchSource(r, 
 const options = computed(() => sourceOptions(store.recordings))
 const library = computed(() => tagUsage(store.recordings))
 
-/** 当天的记录（按交易时间正序，由 aggregate 排） */
-const dayRecs = computed(() => sourceRecs.value.filter((r) => dayOf(r) === date.value))
+/** 当天的记录（记录日匹配，顺序由 aggregate 按记录时间排） */
+const dayRecs = computed(() => sourceRecs.value.filter((r) => recordDay(r) === date.value))
 const agg = computed(() => aggregate(dayRecs.value))
 
 /**
- * 有交易的交易日清单（当前来源下），用来做「上一天 / 下一天」。
+ * 有记录的日子（当前来源下），用来做「上一个 / 下一个」。
  *
  * 排序键就是字符串日期：`YYYY-MM-DD` 的字典序和时间序一致，不必再解析成 Date。
  */
@@ -70,7 +74,7 @@ const tradeDays = computed(() => [...groupByDay(sourceRecs.value).keys()].sort()
 const prevDay = computed(() => {
   const i = tradeDays.value.indexOf(date.value)
   if (i > 0) return tradeDays.value[i - 1]
-  // 当前这一天没有记录时（比如刚把它删空），退到它之前最近的一个交易日
+  // 当前这一天没有记录时（比如刚把它删空），退到它之前最近的一个记录日
   const earlier = tradeDays.value.filter((d) => d < date.value)
   return earlier.length ? earlier[earlier.length - 1] : ''
 })
@@ -99,16 +103,16 @@ function applyTags(rec: RecordingSummary, tags: RecordTag[]): void {
   store.setRecordingTags(rec.id, tags)
 }
 
-/** 那一天的「最好 / 最差」写得具体一点：金额 + 那一笔的进出场时间。 */
+/** 那一天的「最好 / 最差」写得具体一点：金额 + 那一笔的**行情**时间（可能压根不是同一天） */
 const bestText = computed(() => {
   const b = agg.value.best
   if (!b) return '—'
-  return `${moneyShort(b.rec.stats.realizedPnl)}$ · ${b.time.slice(11)}`
+  return `${moneyShort(b.rec.stats.realizedPnl)}$ · 行情 ${b.time}`
 })
 const worstText = computed(() => {
   const w = agg.value.worst
   if (!w) return '—'
-  return `${moneyShort(w.rec.stats.realizedPnl)}$ · ${w.time.slice(11)}`
+  return `${moneyShort(w.rec.stats.realizedPnl)}$ · 行情 ${w.time}`
 })
 
 onMounted(() => {
@@ -128,7 +132,7 @@ watch(
 
 <template>
   <div class="min-h-screen bg-surface text-ink">
-    <RecordsTopBar :title="dayLabel(date)" :back-to="{ name: 'records' }" back-text="交易日历">
+    <RecordsTopBar :title="dayLabel(date)" :back-to="{ name: 'records' }" back-text="记录日历">
       <template #sub>
         <div class="mx-auto flex w-full max-w-[1440px] flex-wrap items-center gap-2 px-4 pb-2">
           <div class="flex items-center gap-1">
@@ -136,19 +140,19 @@ watch(
               type="button"
               class="rounded border border-line px-2 py-0.5 text-[12px] text-dim transition hover:border-accent hover:text-accent disabled:cursor-not-allowed disabled:opacity-40"
               :disabled="!prevDay"
-              :title="prevDay ? `上一个交易日：${prevDay}` : '前面没有别的交易日了'"
+              :title="prevDay ? `上一个有记录的日子：${prevDay}` : '前面没有别的记录日了'"
               @click="go(prevDay)"
             >
-              ‹ 上一个交易日
+              ‹ 上一个记录日
             </button>
             <button
               type="button"
               class="rounded border border-line px-2 py-0.5 text-[12px] text-dim transition hover:border-accent hover:text-accent disabled:cursor-not-allowed disabled:opacity-40"
               :disabled="!nextDay"
-              :title="nextDay ? `下一个交易日：${nextDay}` : '后面没有别的交易日了'"
+              :title="nextDay ? `下一个有记录的日子：${nextDay}` : '后面没有别的记录日了'"
               @click="go(nextDay)"
             >
-              下一个交易日 ›
+              下一个记录日 ›
             </button>
             <button
               v-if="date !== today"
@@ -188,9 +192,9 @@ watch(
         v-else-if="agg.count === 0"
         class="rounded-lg border border-line bg-panel px-5 py-10 text-center text-[14px] text-dim"
       >
-        <p class="text-[15px] font-medium text-ink">{{ dayLabel(date) }} 没有交易</p>
+        <p class="text-[15px] font-medium text-ink">{{ dayLabel(date) }} 没有记录</p>
         <p class="mt-1 text-[13px] text-faint">
-          当前来源下这一天是空的；换一个来源，或者翻到别的交易日看看。
+          当前来源下这一天没做过交易；换一个来源，或者翻到别的记录日看看。
         </p>
         <div class="mt-4 flex items-center justify-center gap-2">
           <button
@@ -199,7 +203,7 @@ watch(
             :disabled="!prevDay"
             @click="go(prevDay)"
           >
-            ‹ 上一个交易日
+            ‹ 上一个记录日
           </button>
           <RouterLink
             :to="{ name: 'records' }"
@@ -213,7 +217,7 @@ watch(
             :disabled="!nextDay"
             @click="go(nextDay)"
           >
-            下一个交易日 ›
+            下一个记录日 ›
           </button>
         </div>
       </section>
@@ -222,7 +226,7 @@ watch(
         <!-- ---------------- 当日统计 ---------------- -->
         <RecordsKpi :agg="agg" scope="（当天）" />
 
-        <!-- 极值单加一句「几点进出的」：只看金额不知道是哪一笔 -->
+        <!-- 极值单加一句「哪一段行情」：只看金额不知道是哪一笔（这一天里的几笔可能来自好几年） -->
         <section
           class="flex flex-wrap items-center gap-x-5 gap-y-1 rounded-lg border border-line bg-panel px-3 py-2 text-[12px] text-faint"
         >
@@ -254,13 +258,12 @@ watch(
             <span class="text-[11px] text-faint">
               {{ agg.count }} 笔 · 点任意一行回到画布逐格看这一笔怎么进的场
             </span>
-            <span class="ml-auto text-[11px] text-faint">按交易时间正序</span>
+            <span class="ml-auto text-[11px] text-faint">按记录时间正序</span>
           </header>
           <TradeList
             :rows="agg.rows"
             :library="library"
-            :show-date="false"
-            empty-text="这一天没有交易"
+            empty-text="这一天没有记录"
             @replay="replay"
             @remove="remove"
             @tags="applyTags"

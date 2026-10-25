@@ -71,14 +71,23 @@ function tooltipBase(p: ChartPalette) {
   }
 }
 
-/** 表格/提示里统一的「一笔」摘要：时间 · 方向手数 · 盈亏。 */
+/** 表格/提示里统一的「一笔」摘要：行情时间 · 方向手数 · 盈亏。 */
 function rowLine(r: TradeRow, p: ChartPalette): string {
   const s = r.rec.stats
   const dir = s.side === 'long' ? '多' : s.side === 'short' ? '空' : '—'
   return `<div style="display:flex;gap:8px;justify-content:space-between">
-    <span style="color:${p.dim}">${r.time} · ${dir} ${s.quantity}</span>
+    <span style="color:${p.dim}">入场 ${r.time} · ${dir} ${s.quantity}</span>
     <b style="color:${signColor(p, s.realizedPnl)}">${pnlText(s.realizedPnl)}</b>
   </div>`
+}
+
+/**
+ * 一笔的提示表头：序号 + **记录时间**（这笔是什么时候做的）。
+ * 行情时间在下一行（`入场 …`）—— 两者都要给：图上的顺序按记录时间走，
+ * 而用户脑子里记的是行情那一段（「2025 年 1 月那单」）。
+ */
+function rowHead(r: TradeRow, p: ChartPalette): string {
+  return `<div style="margin-bottom:3px;color:${p.dim}">第 ${r.seq} 笔 · 记于 ${r.recTime}</div>`
 }
 
 // ---------------- 1. 累计盈亏 + 回撤 ----------------
@@ -91,11 +100,16 @@ function rowLine(r: TradeRow, p: ChartPalette): string {
  * 分轴之后两条曲线的形状才都看得清。
  */
 export function equityOption(a: RecordAggregate, p: ChartPalette): EChartsCoreOption {
-  const x = a.rows.map((r) => r.time)
+  // 横轴 = **记录时间**（和日历、累计口径同一根时间轴），不是行情时间
+  const x = a.rows.map((r) => r.recTime)
   const cum = a.rows.map((r) => r.cum)
   const dd = a.rows.map((r) => r.dd)
   const last = cum.length ? cum[cum.length - 1] : 0
   const tone = signColor(p, last)
+  // 同一天（当日详情）时横轴只写时刻：`2026-10-25 14:03` 这种十六个字符的标签，
+  // 五个点以上就互相压住了，而那一天是哪天标题里已经写了
+  const sameDay = x.length > 0 && x.every((t) => t.slice(0, 10) === x[0].slice(0, 10))
+  const timeLabel = sameDay ? (t: string) => t.slice(11) : undefined
 
   return {
     animationDuration: 420,
@@ -110,7 +124,7 @@ export function equityOption(a: RecordAggregate, p: ChartPalette): EChartsCoreOp
       formatter: (params: { dataIndex: number }[]) => {
         const r = a.rows[params[0]?.dataIndex ?? 0]
         if (!r) return ''
-        return `<div style="margin-bottom:3px;color:${p.dim}">第 ${r.seq} 笔 · ${r.time}</div>${rowLine(
+        return `${rowHead(r, p)}${rowLine(
           r,
           p,
         )}<div style="color:${p.dim}">累计 <b style="color:${signColor(p, r.cum)}">${moneyText(
@@ -124,7 +138,7 @@ export function equityOption(a: RecordAggregate, p: ChartPalette): EChartsCoreOp
         data: x,
         gridIndex: 1,
         boundaryGap: false,
-        axisLabel: { color: p.faint, fontSize: 11, hideOverlap: true },
+        axisLabel: { color: p.faint, fontSize: 11, hideOverlap: true, formatter: timeLabel },
       }),
     ],
     yAxis: [
@@ -176,7 +190,8 @@ export function equityOption(a: RecordAggregate, p: ChartPalette): EChartsCoreOp
                 itemStyle: { color: p.upSoft, opacity: 0.5 },
                 label: { show: false },
                 data: [
-                  [{ xAxis: a.rows[a.ddFrom - 1]?.time }, { xAxis: a.rows[a.ddTo - 1]?.time }],
+                  { xAxis: a.rows[a.ddFrom - 1]?.recTime },
+                  { xAxis: a.rows[a.ddTo - 1]?.recTime },
                 ],
               }
             : undefined,
@@ -231,7 +246,7 @@ export function perTradeOption(a: RecordAggregate, p: ChartPalette): EChartsCore
         const r = a.rows[params[0]?.dataIndex ?? 0]
         if (!r) return ''
         const s = r.rec.stats
-        return `<div style="margin-bottom:3px;color:${p.dim}">第 ${r.seq} 笔 · ${r.time}</div>${rowLine(
+        return `${rowHead(r, p)}${rowLine(
           r,
           p,
         )}<div style="color:${p.dim}">持仓 ${s.barsHeld} 根 · 成交 ${s.fills} 次 · 累计 <b style="color:${signColor(
@@ -417,7 +432,7 @@ export function holdingOption(a: RecordAggregate, p: ChartPalette): EChartsCoreO
       formatter: (v: { data: { row: TradeRow } }) => {
         const r = v.data.row
         const s = r.rec.stats
-        return `<div style="margin-bottom:3px;color:${p.dim}">第 ${r.seq} 笔 · ${r.time}</div>${rowLine(
+        return `${rowHead(r, p)}${rowLine(
           r,
           p,
         )}<div style="color:${p.dim}">持仓 ${s.barsHeld} 根 · MFE <b style="color:${p.up}">${pnlText(
