@@ -1,0 +1,82 @@
+{
+  "version": 2,
+  "savedAt": 1792941356,
+  "items": [
+    {
+      "id": "rec-20261025-231353",
+      "name": "CME_MINI:MNQ1! · 空9 手 · +364.50 · 2024-03-08 19:25 → 2024-03-08 19:40",
+      "symbol": "CME_MINI:MNQ1!",
+      "folder": "CME_MINI_MNQ1!",
+      "anchor": "2024-03-08 19:25",
+      "endTime": "2024-03-08 19:40",
+      "instanceId": "ins-5",
+      "stepCount": 8,
+      "audioCount": 1,
+      "eventCount": 6,
+      "bars": 4,
+      "size": 515609,
+      "createdBy": "human",
+      "createdAt": 1792941233,
+      "endedAt": 1792941296,
+      "stats": {
+        "side": "short",
+        "quantity": 9,
+        "maxQuantity": 9,
+        "entryTime": "2024-03-08 19:25",
+        "entryPrice": 21046.5,
+        "exitTime": "2024-03-08 19:40",
+        "exitPrice": 21026.25,
+        "realizedPnl": 364.5,
+        "mfe": 256.5,
+        "mae": -18,
+        "barsHeld": 2,
+        "fills": 2,
+        "steps": 8,
+        "closed": true
+      },
+      "source": "human",
+      "sourceName": "human"
+    },
+    {
+      "id": "rec-20261025-214448",
+      "name": "CME_MINI:MNQ1! · 多8 手 · -12.00 · 2024-03-08 17:20 → 2024-03-08 19:10",
+      "symbol": "CME_MINI:MNQ1!",
+      "folder": "CME_MINI_MNQ1!",
+      "anchor": "2024-03-08 17:20",
+      "endTime": "2024-03-08 19:10",
+      "instanceId": "ins-5",
+      "stepCount": 33,
+      "audioCount": 0,
+      "eventCount": 32,
+      "bars": 23,
+      "size": 174583,
+      "createdBy": "human",
+      "createdAt": 1792935888,
+      "endedAt": 1792936139,
+      "stats": {
+        "side": "long",
+        "quantity": 8,
+        "maxQuantity": 8,
+        "entryTime": "2024-03-08 17:20",
+        "entryPrice": 21072,
+        "exitTime": "2024-03-08 19:10",
+        "exitPrice": 21071.25,
+        "realizedPnl": -12,
+        "mfe": 252,
+        "mae": -360,
+        "barsHeld": 21,
+        "fills": 2,
+        "steps": 33,
+        "closed": true
+      },
+      "source": "human",
+      "sourceName": "human",
+      "tags": [
+        {
+          "name": "双顶没跑",
+          "color": "#ef4444"
+        }
+      ]
+    }
+  ]
+}
