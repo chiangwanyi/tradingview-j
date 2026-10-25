@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
 
 import { DEFAULT_ATR, sanitizeAtr, type AtrSettings } from '@/components/chart/atr'
+import { DEFAULT_BAR_COUNT, sanitizeBarCount, type BarCountSettings } from '@/components/chart/barcount'
 import { DEFAULT_INDICATOR, sanitizeIndicator, type IndicatorSettings } from '@/components/chart/indicators'
 import { ReplaySocket, defaultSocketUrl } from '@/net/socket'
 import { applyInstanceEvent } from '@/stores/instance-reducer'
@@ -69,6 +70,8 @@ const MAX_LOG = 200
 const INDICATOR_KEY = 'tv-replay-doji-zigzag'
 /** ATR 的开关与参数（Length / Smoothing）也记在本机，理由同上 */
 const ATR_KEY = 'tv-replay-atr'
+/** Bar Count 的开关与颜色（纯显示偏好：换机器就该回到默认蓝，所以只记本机） */
+const BAR_COUNT_KEY = 'tv-replay-bar-count'
 
 /**
  * 读回上次的指标设置。
@@ -110,8 +113,27 @@ function readAtr(): AtrSettings {
   return { ...DEFAULT_ATR }
 }
 
-export const useReplayStore = defineStore('replay', () => {
-  const socket = new ReplaySocket(defaultSocketUrl())
+/**
+ * 读回上次的 Bar Count 设置（开关 + 颜色）。
+ *
+ * 和上面两个同一个套路：整份 JSON 存、读回来先 sanitize。
+ * 键不存在（第一次用这个版本）时直接回出厂值 —— 默认是**开着**的，
+ * 因为这个指标几乎不占地方，而它最大的价值恰恰是「不用每次都去打开」。
+ */
+function readBarCount(): BarCountSettings {
+  try {
+    const raw = localStorage.getItem(BAR_COUNT_KEY)
+    if (raw) {
+      const saved = JSON.parse(raw) as Partial<BarCountSettings>
+      return sanitizeBarCount({ ...DEFAULT_BAR_COUNT, ...saved })
+    }
+  } catch {
+    // 隐私模式 / 存的是坏 JSON：回到出厂值，不影响本次使用
+  }
+  return { ...DEFAULT_BAR_COUNT }
+}
+
+export const useReplayStore = defineStore('replay', () => {  const socket = new ReplaySocket(defaultSocketUrl())
 
   const status = ref<'connecting' | 'open' | 'closed'>('closed')
   /**
@@ -226,6 +248,14 @@ export const useReplayStore = defineStore('replay', () => {
    * 它和「Zoom / 平移」属于同一类 —— 各人看各人的，别人不该看到我的指标被关掉。
    */
   const indicator = ref<IndicatorSettings>(readIndicator())
+  /**
+   * Bar Count（K 线下方的「当天第几根」）：开关 + 颜色。
+   *
+   * 编号口径不是「整份数据从 1 数到底」，而是**每张 CSV（每个交易日）重新从 1 数**、
+   * 而且只标单数 —— 它是用来两根一组读节奏的（见 chart/barcount.ts）。
+   * 和上面两个一样是纯显示状态：不进存档、不广播，别人看不到你的颜色。
+   */
+  const barCount = ref<BarCountSettings>(readBarCount())
   /**
    * 下单数量（手）。**只能是正整数**：期货没有「0.4 手」这种报单，
    * 允许小数会让持仓、成交、平仓配对全都出现半手。
@@ -574,11 +604,25 @@ export const useReplayStore = defineStore('replay', () => {
     }
   }
 
+  /**
+   * 改 Bar Count 设置：开关 / 颜色。
+   *
+   * 和 `setAtr` 同一套写法：整份换新对象（画布 watch 的是 `store.barCount`）+
+   * `sanitizeBarCount` 夹值（颜色只认 #rgb / #rrggbb）+ 落 localStorage。
+   */
+  function setBarCount(patch: Partial<BarCountSettings>): void {
+    barCount.value = sanitizeBarCount({ ...barCount.value, ...patch })
+    try {
+      localStorage.setItem(BAR_COUNT_KEY, JSON.stringify(barCount.value))
+    } catch {
+      // 记不住就算了，不影响本次使用
+    }
+  }
+
   function refresh(): void {
     send({ type: 'list_symbols' })
     send({ type: 'list_instances' })
   }
-
   /**
    * 新建实例。
    *
@@ -923,6 +967,8 @@ export const useReplayStore = defineStore('replay', () => {
     setAtr,
     indicator,
     setIndicator,
+    barCount,
+    setBarCount,
     orderQuantity,
     tick,
     priceDecimals,

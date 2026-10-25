@@ -1,6 +1,7 @@
 import type { Order, Position, Trade } from '@/types/protocol'
 
 import { atrLegend, type AtrSettings } from './atr'
+import { barCountMarks, type BarCountSettings } from './barcount'
 import { indicatorSeries, type IndicatorSettings } from './indicators'
 import { snapAtCursor, type OHLCItem } from './snap'
 import type { ClosedTrade } from './trades'
@@ -19,7 +20,7 @@ import {
 
 /**
  * Canvas 上画的东西：网格、坐标轴、K 线、EMA20、ATR 副图、Doji X + Blue ZigZag、
- * 挂单价线、十字光标。
+ * Bar Count（K 线下方的当天第几根）、挂单价线、十字光标。
  *
  * 标注不在这里画 —— 标注是 SVG 图层（便于命中测试与拖动），见 ChartPanel.vue。
  * 两层的坐标换算都来自同一个 ChartScale，不会出现「图形和 K 线对不上」。
@@ -171,6 +172,8 @@ export interface DrawInput {
   atr: AtrSettings
   /** Doji X + Blue ZigZag 的开关与参数（纯显示设置，值在 chart/indicators.ts 里算） */
   indicator: IndicatorSettings
+  /** Bar Count（K 线下方的「当天第几根」）：开关 + 颜色，编号口径在 chart/barcount.ts 里 */
+  barCount: BarCountSettings
   /** 最小跳动，来自 _symbols.json（0.25 / 0.1 / 0.01…） */
   tick: number
   /**
@@ -209,6 +212,7 @@ export function drawChart(input: DrawInput): void {
     showEma,
     atr,
     indicator,
+    barCount,
     tick,
     activeOrderId = null,
     activeClosed = null,
@@ -240,6 +244,8 @@ export function drawChart(input: DrawInput): void {
   drawCandles(ctx, scale, theme, showEma)
   // 指标压在 K 线之上、成交标记之下：蓝点要落在影线尖端上，不能被后面的三角盖住
   drawIndicator(ctx, scale, theme, indicator)
+  // Bar Count：数字吊在每根 K 线下方，只是标注，不和任何价格元素抢位置
+  drawBarCount(ctx, scale, barCount, indicator)
   // 成交标记压在 K 线上面：复盘时要一眼看到「哪里开、哪里平」
   drawTradeMarks(ctx, scale, theme, trades, closed, activeClosed)
   drawOrders(ctx, scale, theme, orders, activeOrderId, decimals)
@@ -558,6 +564,69 @@ function drawIndicator(
     ctx.lineWidth = 1
     ctx.strokeStyle = theme.bg
     ctx.stroke()
+  }
+
+  ctx.restore()
+}
+
+/**
+ * Bar Count：在这根 K 线的**最低价下方**写「当天第几根」。
+ *
+ * 编号本身由 chart/barcount.ts 算（每张 CSV 从 #1 起、只出单数），这里只管排版：
+ *
+ *   - 文字**居中对齐到 K 线**，基线是 top，所以它挂在最低价的下面而不是压住影线；
+ *   - 和 Doji 的 ✖ 撞位置：十字星的 ✖ 也吊在最低价下方（`above === false`），
+ *     同一根上两样都在时编号往下让一行 —— 11px 的字和 ✖ 叠在一起两边都读不出来；
+ *   - **挨太近就跳过**：缩得很小时相邻编号会糊成一团。这里按「量出来的宽度」判重叠，
+ *     宁可少标几个也要保证每个都在，而不是画一片看不清的墨点；
+ *   - 整块 clip 在价格区里：贴边的编号被裁掉，不会画到时间轴上去。
+ */
+function drawBarCount(
+  ctx: CanvasRenderingContext2D,
+  scale: ChartScale,
+  settings: BarCountSettings,
+  indicator: IndicatorSettings,
+): void {
+  if (!settings.show) return
+  const marks = barCountMarks(scale.bars)
+  if (marks.length === 0) return
+
+  const { plot } = scale.layout
+  const { from, to } = scale.visibleRange()
+
+  // 哪些 K 线的下方有 ✖（Doji 关掉时不必算）
+  const dojiBelow = new Set<number>()
+  if (indicator.show) {
+    for (const d of indicatorSeries(scale.bars, indicator.lookback, indicator.dojiSize).doji) {
+      if (!d.above) dojiBelow.add(d.index)
+    }
+  }
+
+  ctx.save()
+  ctx.beginPath()
+  ctx.rect(plot.left, plot.top, plot.width, plot.height)
+  ctx.clip()
+  ctx.font = '11px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace'
+  ctx.textAlign = 'center'
+  ctx.textBaseline = 'top'
+  ctx.fillStyle = settings.color
+
+  /** 上一个真正画出去的编号的右边缘：靠它挡掉重叠的邻居 */
+  let lastRight = Number.NEGATIVE_INFINITY
+  for (const m of marks) {
+    if (m.index < from) continue
+    if (m.index > to) break
+    const bar = scale.bars[m.index]
+    if (!bar) continue
+    const y = scale.yOf(bar.low) + (dojiBelow.has(m.index) ? 18 : 4)
+    // 这根的最低价已经在屏幕底边附近了：写下去只会被裁成半个字
+    if (y + 11 > plot.bottom) continue
+    const text = String(m.count)
+    const w = ctx.measureText(text).width
+    const x = Math.round(scale.xOf(m.index)) + 0.5
+    if (x - w / 2 < lastRight + 2) continue
+    ctx.fillText(text, x, y)
+    lastRight = x + w / 2
   }
 
   ctx.restore()

@@ -253,6 +253,7 @@ function draw(): void {
     showEma: store.showEma,
     atr: store.atr,
     indicator: store.indicator,
+    barCount: store.barCount,
     tick: store.tick,
     activeOrderId: activeOrderId.value,
     activeClosed: activeClosed.value,
@@ -414,6 +415,8 @@ watch(
 )
 // 指标设置：开关和两个参数都会整份换新对象，watch 一次就够（见 store.setIndicator）
 watch(() => store.indicator, () => requestDraw())
+// Bar Count：开关 / 颜色同样是整份换新对象，改了就重画（编号按数组本身缓存，不重算）
+watch(() => store.barCount, () => requestDraw())
 
 /**
  * 指针是不是落在 ATR 副图里。

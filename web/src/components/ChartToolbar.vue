@@ -92,6 +92,17 @@ function onDojiSize(e: Event): void {
 }
 
 /**
+ * Bar Count 的颜色。
+ *
+ * 用 `input`（拖动取色器时实时生效）而不是 `change`：调颜色本来就是个「拖到满意为止」
+ * 的动作，每次松手才变一次的话根本没法调。颜色本身是 #rrggbb，取色器给不出非法值，
+ * 不需要写回；`sanitizeBarCount` 仍然兜一道（手改过 localStorage 的情况）。
+ */
+function onBarCountColor(e: Event): void {
+  store.setBarCount({ color: (e.target as HTMLInputElement).value })
+}
+
+/**
  * ATR 的三个参数（v0.23.0）：开关 / Length / Smoothing。
  *
  * 和 Doji 那两个输入框同一套手感：`change` 才生效（输到一半的「1」不该立刻被夹成 1），
@@ -126,7 +137,11 @@ const indicatorBox = ref<HTMLElement | null>(null)
  * ATR 也算一个：它占的是价格区下方的地盘，收起状态下更看不出来。
  */
 const activeIndicators = computed(
-  () => (store.showEma ? 1 : 0) + (store.atr.show ? 1 : 0) + (store.indicator.show ? 1 : 0),
+  () =>
+    (store.showEma ? 1 : 0) +
+    (store.atr.show ? 1 : 0) +
+    (store.indicator.show ? 1 : 0) +
+    (store.barCount.show ? 1 : 0),
 )
 
 /** 点下拉框外面就收起：面板是浮在画布上的，不收起会一直挡住 K 线 */
@@ -211,7 +226,7 @@ onBeforeUnmount(() => {
       <button
         type="button"
         :class="[btn, indicatorOpen ? btnActive : btnIdle]"
-        title="指标：EMA20 / ATR / Doji X + Blue ZigZag（点开设置开关与参数）"
+        title="指标：EMA20 / ATR / Doji X + Blue ZigZag / Bar Count（点开设置开关与参数）"
         @click="indicatorOpen = !indicatorOpen"
       >
         指标
@@ -326,6 +341,43 @@ onBeforeUnmount(() => {
           />
           <span class="text-[11px] text-faint">0.01 – 1</span>
         </label>
+
+        <div class="my-1 h-px bg-line" />
+
+        <!--
+          Bar Count（K 线下方的「当天第几根」）：
+          编号按**每张 CSV（每个交易日）从 #1 重来**、只标单数，口径全部在
+          chart/barcount.ts 里；这里只有开关和颜色两件事。
+        -->
+        <label
+          class="flex items-center gap-2 py-1"
+          title="Bar Count：在每根 K 线下方标出「这是当天的第几根」"
+        >
+          <input
+            type="checkbox"
+            class="h-3.5 w-3.5 accent-sky-600"
+            :checked="store.barCount.show"
+            @change="store.setBarCount({ show: ($event.target as HTMLInputElement).checked })"
+          />
+          <span class="text-ink">Bar Count</span>
+          <span class="ml-auto text-[11px] text-faint">K 线下方</span>
+        </label>
+        <label
+          class="flex items-center gap-2 py-1"
+          title="Bar Count 的数字颜色（只影响你自己的屏幕，不进存档）"
+        >
+          <span class="w-14 shrink-0 text-dim">颜色</span>
+          <input
+            type="color"
+            class="h-6 w-10 cursor-pointer rounded border border-line bg-panel p-0.5"
+            :value="store.barCount.color"
+            @input="onBarCountColor"
+          />
+          <span class="font-mono text-[11px] text-faint">{{ store.barCount.color }}</span>
+        </label>
+        <div class="mb-1 pl-5 text-[11px] leading-4 text-faint">
+          每张表（每个交易日）从 #1 重新数，只标单数 1、3、5…
+        </div>
 
         <div class="mt-1 border-t border-line pt-1 text-[11px] text-faint">
           指标只影响显示，不进存档，也不广播给别人
