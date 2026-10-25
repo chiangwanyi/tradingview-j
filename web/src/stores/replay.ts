@@ -1,9 +1,10 @@
 import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
 
-import { DEFAULT_ATR, sanitizeAtr, type AtrSettings } from '@/components/chart/atr'
+import { atrSeries, DEFAULT_ATR, sanitizeAtr, type AtrSettings } from '@/components/chart/atr'
 import { DEFAULT_BAR_COUNT, sanitizeBarCount, type BarCountSettings } from '@/components/chart/barcount'
 import { DEFAULT_INDICATOR, sanitizeIndicator, type IndicatorSettings } from '@/components/chart/indicators'
+import { DEFAULT_NATR, planNatr, sanitizeNatr, type NatrSettings } from '@/lib/natr'
 import { ReplaySocket, defaultSocketUrl } from '@/net/socket'
 import { applyInstanceEvent } from '@/stores/instance-reducer'
 import { ACTION } from '@/types/protocol'
@@ -72,6 +73,8 @@ const INDICATOR_KEY = 'tv-replay-doji-zigzag'
 const ATR_KEY = 'tv-replay-atr'
 /** Bar Count 的开关与颜色（纯显示偏好：换机器就该回到默认蓝，所以只记本机） */
 const BAR_COUNT_KEY = 'tv-replay-bar-count'
+/** nATR 定手数的两个数（n、最大亏损）：做完一次设置很久不会动，值得记在本机 */
+const NATR_KEY = 'tv-replay-natr'
 
 /**
  * 读回上次的指标设置。
@@ -131,6 +134,25 @@ function readBarCount(): BarCountSettings {
     // 隐私模式 / 存的是坏 JSON：回到出厂值，不影响本次使用
   }
   return { ...DEFAULT_BAR_COUNT }
+}
+
+/**
+ * 读回上次的 nATR 设置（n 与最大亏损）。
+ *
+ * 和上面三个同一个套路：整份 JSON 存、读回来先 sanitize。
+ * 第一次运行没有这个键，回出厂值（1 倍 ATR / $200）—— 面板上立刻有数可算。
+ */
+function readNatr(): NatrSettings {
+  try {
+    const raw = localStorage.getItem(NATR_KEY)
+    if (raw) {
+      const saved = JSON.parse(raw) as Partial<NatrSettings>
+      return sanitizeNatr({ ...DEFAULT_NATR, ...saved })
+    }
+  } catch {
+    // 隐私模式 / 存的是坏 JSON：回到出厂值，不影响本次使用
+  }
+  return { ...DEFAULT_NATR }
 }
 
 export const useReplayStore = defineStore('replay', () => {  const socket = new ReplaySocket(defaultSocketUrl())
@@ -257,6 +279,14 @@ export const useReplayStore = defineStore('replay', () => {  const socket = new 
    */
   const barCount = ref<BarCountSettings>(readBarCount())
   /**
+   * nATR 定手数的两个数：几倍 ATR 当止损距离、最多亏多少美元。
+   *
+   * 它不是「显示参数」，但同样只存在本机：止损口径是每个人的交易习惯，
+   * 进存档/广播出去就意味着「换个人接管，手数计算也跟着被改」，那是惊吓不是功能。
+   * 真正下单仍然是 `placeOrder` / `marketOrder` 那两条消息，这里只决定填几手。
+   */
+  const natr = ref<NatrSettings>(readNatr())
+  /**
    * 下单数量（手）。**只能是正整数**：期货没有「0.4 手」这种报单，
    * 允许小数会让持仓、成交、平仓配对全都出现半手。
    *
@@ -335,6 +365,45 @@ export const useReplayStore = defineStore('replay', () => {  const socket = new 
     const t = tick.value
     if (!(t > 0)) return 2
     return Math.min(6, Math.max(2, Math.ceil(-Math.log10(t) - 1e-9)))
+  })
+  /**
+   * 每点值多少美元 = `tickValue / tick`（MNQ: 0.5 / 0.25 = 2）。
+   *
+   * 和后端 `pointValueOf` 同一口径：用户只在 `_symbols.json` 里填一跳值多少美元，
+   * 「每点」是除出来的。查不到（老存档 / 没配 tickValue）时按每点 $1 兜底 ——
+   * 后端结算也是这么兜的，两边不能有一处兜得不一样。
+   */
+  const pointValue = computed(() => {
+    const t = tick.value
+    const tv = instance.value?.tickValue ?? 0
+    if (t > 0 && tv > 0) return tv / t
+    return 1
+  })
+  /**
+   * 当前这根 K 线的 ATR（nATR 定手数要用）。
+   *
+   * 用的是**同一个** `store.atr` 的 Length / Smoothing —— 用户在图上看的是哪条 ATR，
+   * 算手数用的就是哪条；副图没开也照样算（开关只管画不画，不管参数）。
+   * 序列还没算出第一个值时返回 null：ATR 要到第 `length` 根才出值，
+   * 这时候面板上应该写「ATR 还没出来」，而不是拿 0 去除。
+   */
+  const atrValue = computed<number | null>(() => {
+    const list = bars.value
+    if (list.length === 0) return null
+    const series = atrSeries(list, atr.value.length, atr.value.smoothing)
+    const v = series[series.length - 1]
+    return Number.isFinite(v) ? v : null
+  })
+  /**
+   * 一次 nATR 定手数的完整结果（止损距离 / 每手亏损 / 手数 / 实际亏损）。
+   *
+   * 算在 store 里而不是组件里：它是**盘面 + 本机设置**的派生物，将来右键菜单、
+   * 机器人参数页想用同一个数，不该各自再乘一遍。ATR 没出来时是 null。
+   */
+  const natrPlan = computed(() => {
+    const a = atrValue.value
+    if (a === null) return null
+    return planNatr(a, natr.value, pointValue.value)
   })
 
   function noteError(message: string): void {
@@ -614,6 +683,21 @@ export const useReplayStore = defineStore('replay', () => {  const socket = new 
     barCount.value = sanitizeBarCount({ ...barCount.value, ...patch })
     try {
       localStorage.setItem(BAR_COUNT_KEY, JSON.stringify(barCount.value))
+    } catch {
+      // 记不住就算了，不影响本次使用
+    }
+  }
+
+  /**
+   * 改 nATR 的两个数（n / 最大亏损）。
+   *
+   * 和上面几个同一个写法：整份换新对象（computed `natrPlan` 才会重算）、
+   * 夹值走 `sanitizeNatr`、落 localStorage。
+   */
+  function setNatr(patch: Partial<NatrSettings>): void {
+    natr.value = sanitizeNatr({ ...natr.value, ...patch })
+    try {
+      localStorage.setItem(NATR_KEY, JSON.stringify(natr.value))
     } catch {
       // 记不住就算了，不影响本次使用
     }
@@ -969,13 +1053,18 @@ export const useReplayStore = defineStore('replay', () => {  const socket = new 
     setIndicator,
     barCount,
     setBarCount,
+    natr,
+    setNatr,
     orderQuantity,
     tick,
     priceDecimals,
+    pointValue,
     // 派生
     bars,
     cursor,
     currentBar,
+    atrValue,
+    natrPlan,
     isOperator,
     botRunning,
     botStrategyLabel,

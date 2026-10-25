@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 
+import { atrLegend } from '@/components/chart/atr'
 import { useReplayStore } from '@/stores/replay'
 import type { OrderKind, Side } from '@/types/protocol'
 
@@ -22,8 +23,9 @@ import type { OrderKind, Side } from '@/types/protocol'
  *  3. **永远留在视口里**：每次移动/展开/窗口缩放都夹一次位置。半截露在屏幕外的浮窗
  *     是找不回来的（尤其是缩到最小、只剩一个图标的时候）。
  *
- * 和底部面板的分工：这里只有「下单」（手填价格的限价/止损 + 两个市价按钮 + 一键退仓），
- * 持仓、挂单列表、成交流水还在底部 Tab 里 —— 那些是「看」的，不需要随时点。
+ * 和底部面板的分工：这里只有「下单」（手填价格的限价/止损 + 两个市价按钮 +
+ * nATR 以损定仓 + 一键退仓），持仓、挂单列表、成交流水还在底部 Tab 里 ——
+ * 那些是「看」的，不需要随时点。
  * 一键退仓（v0.20.0）放在这里而不是底部的挂单列表里：它是「现在就收摊」的动作，
  * 和下单是同一件事的两头，手边要够得着。
  *
@@ -39,7 +41,7 @@ const PANEL_W = 276
 /** 折叠态图标边长 */
 const ICON = 44
 /** 量不到实际高度时的估算值（首帧还没渲染，`offsetHeight` 是 0） */
-const EST_H = 306
+const EST_H = 440
 const MARGIN = 8
 
 const POS_KEY = 'tv-trade-float-pos'
@@ -112,6 +114,85 @@ function submitMarket(dir: Side): void {
   if (!(currentPrice.value > 0) || !(store.orderQuantity > 0)) return
   store.marketOrder(dir, store.orderQuantity)
 }
+
+// ---------------- nATR 定手数（以损定仓） ----------------
+
+/**
+ * 【nATR 定手数】：先定「最多亏多少」，再倒推「下几手」。
+ *
+ *     nATR 距离 = n × ATR        （例：10 × 19.24 = 192.4 点）
+ *     每手亏     = 距离 × 每点价值（MNQ 每点 $2 → $384.80）
+ *     手数       = 四舍五入(最大亏损 / 每手亏)（$2000 → 5.197 → 5 手）
+ *
+ * 算式只有一份，在 `lib/natr.ts`；这里只负责显示和发两条市价单。
+ * 用**当前这根 K 线的 ATR**（和【指标 ▾】里那套 Length / Smoothing 同一份），
+ * 所以盘中 ATR 变了，手数会跟着变 —— 这正好是「以损定仓」的意思。
+ *
+ * 为什么是四舍五入而不是向下取整：用户定的是「最多亏这么多」，不是「尽量少亏」。
+ * 最接近上限的整数手就是让实际亏损最贴近上限的那个；允许略微超出（需求里
+ * 5 手亏 2100 优于 4 手亏 1800 就是这个口径）。只有「1 手都亏不起」时才会出现
+ * 实际亏损超过上限，那时数字标红，让用户自己判断要不要做。
+ */
+const plan = computed(() => store.natrPlan)
+const natrLots = computed(() => plan.value?.lots ?? 0)
+const atrText = computed(() =>
+  store.atrValue === null ? '—' : store.atrValue.toFixed(store.priceDecimals),
+)
+
+/** 美元金额：千分位 + 两位小数（$1,924.00）。手数换算出来的钱经常上四位数，不加分隔符读不动。 */
+function fmtUsd(v: number): string {
+  return `$${v.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+}
+
+/** 点数：跟着标的的小数位走（MNQ 两位、CL 两位），不四舍五入到整数档。 */
+function fmtPoints(v: number): string {
+  return v.toFixed(Math.max(2, store.priceDecimals))
+}
+
+/**
+ * 两个输入框用 `change` 而不是 `input`：输到一半的「1」不该立刻被夹成 1，
+ * 等回车 / 失焦再一次性生效（和【指标 ▾】里那几个参数同一个手感）。
+ * 生效后把夹过的真实值写回 DOM —— 否则框里会留着用户敲的那个越界值。
+ */
+function onNatrN(e: Event): void {
+  const el = e.target as HTMLInputElement
+  store.setNatr({ n: Number(el.value) })
+  el.value = String(store.natr.n)
+}
+
+function onNatrMaxLoss(e: Event): void {
+  const el = e.target as HTMLInputElement
+  store.setNatr({ maxLoss: Number(el.value) })
+  el.value = String(store.natr.maxLoss)
+}
+
+/**
+ * 按算出来的手数市价成交。**方向是参数**、手数只来自 `plan` ——
+ * 不读也不写上面的「数量」输入框：那一格是手填挂单用的，两个数混在一起
+ * 就会出现「点了 nATR 买入，手数和输入框对不上」的困惑。
+ */
+function submitNatrMarket(dir: Side): void {
+  if (!store.canOperate || !plan.value) return
+  if (!(currentPrice.value > 0)) return
+  store.marketOrder(dir, plan.value.lots)
+}
+
+const natrDisabled = computed(
+  () => !store.canOperate || !inst.value || !plan.value || !(currentPrice.value > 0),
+)
+
+/** 一句话说清这次是怎么算出来的（鼠标停在按钮上就能核对，不用回翻文档）。 */
+const natrCalc = computed(() => {
+  const p = plan.value
+  if (!p) return ''
+  return `${store.natr.n}×ATR ${fmtPoints(p.stopDistance)} 点 · 每手亏 ${fmtUsd(p.riskPerLot)} · 理论 ${p.exact.toFixed(2)} 手 → ${p.lots} 手（实际 ${fmtUsd(p.actualLoss)}）`
+})
+
+const natrButtonTitle = computed(() => {
+  const p = plan.value
+  if (!p) return 'ATR 还没算出来：K 线不足 Length 根，先往前多揭示几根'
+  return `${natrCalc.value}；下单价按现价 ${priceText.value}，止损要你自己挂在 ${store.natr.n}×ATR 之外`
+})
 
 // ---------------- 市价退仓并取消所有挂单（v0.20.0） ----------------
 
@@ -376,6 +457,90 @@ const inputClass =
           >
             市价卖出 {{ store.orderQuantity }} 手
           </button>
+        </div>
+
+        <!--
+          【nATR 定手数】＝ 以损定仓：先填「最多亏多少」，手数由 n × ATR 推出来。
+          算式只有一份（lib/natr.ts），这里显示它算的三件事：止损距离、每手亏多少、几手。
+          两个按钮用**描边**而不是实心 —— 和上面那对实心的普通市价按钮区分开：
+          它们的区别只在「手数从哪来」（手填 vs 按 ATR 算出来），长得一样会点错。
+        -->
+        <div class="rounded border border-line bg-elev p-1.5">
+          <div class="flex items-baseline justify-between gap-1">
+            <span class="text-[12px] font-semibold text-ink">nATR 定手数</span>
+            <span class="tnum truncate text-[11px] text-faint" title="用的是【指标 ▾】里这套 ATR 参数">
+              {{ atrLegend(store.atr) }}
+            </span>
+          </div>
+
+          <div class="mt-1 grid grid-cols-2 gap-1.5">
+            <label class="block">
+              <span class="text-[11px] text-faint">n（倍 ATR）</span>
+              <input
+                type="number"
+                min="0.1"
+                max="100"
+                step="0.1"
+                :class="inputClass"
+                :value="store.natr.n"
+                title="止损距离 = n × ATR。可以带小数：1.5 倍 ATR 就是 1.5"
+                @change="onNatrN"
+              />
+            </label>
+            <label class="block">
+              <span class="text-[11px] text-faint">最大亏损（$）</span>
+              <input
+                type="number"
+                min="1"
+                step="10"
+                :class="inputClass"
+                :value="store.natr.maxLoss"
+                title="这笔交易最多亏多少美元（按 nATR 距离被止损时的金额）"
+                @change="onNatrMaxLoss"
+              />
+            </label>
+          </div>
+
+          <div class="tnum mt-1 text-[11px] leading-4" :title="natrCalc">
+            <template v-if="plan">
+              <div class="text-dim">
+                ATR {{ atrText }} · {{ store.natr.n }}×ATR = {{ fmtPoints(plan.stopDistance) }} 点
+              </div>
+              <div>
+                <span class="text-faint">每手亏 {{ fmtUsd(plan.riskPerLot) }} →</span>
+                <b class="ml-1 text-[12px] text-ink">{{ plan.lots }} 手</b>
+              </div>
+              <!-- 取整后略超上限是正常结果（用户定的口径），淡淡提一句；1 手都亏不起才标红 -->
+              <div v-if="plan.overRisk" class="text-down">
+                1 手就亏 {{ fmtUsd(plan.actualLoss) }}，超上限
+              </div>
+              <div v-else-if="plan.over" class="text-faint">
+                实际 {{ fmtUsd(plan.actualLoss) }}（略超上限）
+              </div>
+            </template>
+            <div v-else class="text-faint">ATR 还没算出来：K 线不足 {{ store.atr.length }} 根</div>
+          </div>
+
+          <div class="mt-1 grid grid-cols-2 gap-1.5">
+            <button
+              type="button"
+              class="rounded border border-up bg-up/10 px-2 py-1 text-[13px] font-medium whitespace-nowrap text-up transition hover:bg-up/20 disabled:cursor-not-allowed disabled:opacity-40"
+              :disabled="natrDisabled"
+              :title="natrButtonTitle"
+              @click="submitNatrMarket('buy')"
+            >
+              市价买入 {{ natrLots }} 手
+            </button>
+            <button
+              type="button"
+              class="rounded border border-down bg-down/10 px-2 py-1 text-[13px] font-medium whitespace-nowrap text-down transition hover:bg-down/20 disabled:cursor-not-allowed disabled:opacity-40"
+              :disabled="natrDisabled"
+              :title="natrButtonTitle"
+              @click="submitNatrMarket('sell')"
+            >
+              市价卖出 {{ natrLots }} 手
+            </button>
+          </div>
         </div>
 
         <!--
