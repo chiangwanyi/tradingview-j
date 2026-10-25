@@ -70,16 +70,19 @@ const ctrlDown = ref(false)
 const shiftDown = ref(false)
 
 /**
- * 右键小菜单：位置（画布内的本地像素）+ **已经吸附到最小跳动**的价格。
+ * 右键小菜单：位置（画布内的本地像素）+ **已经吸附到最小跳动**的价格 + **右键落点那根 K 线的时间**。
  *
- * 菜单的前三项都作用在这个价格上（买入 / 卖出 / 复制价格），所以价格必须在打开那一刻就定死，
- * 不能等点击时再从鼠标位置算一遍 —— 手一抖价格就变了。（第四项「移除 N 个绘图」不看价格。）
+ * 菜单里的动作都基于打开那一刻定死的这两个值：
+ *   - 价格 → 买入 / 卖出 / 复制价格（手一抖价格就变了，所以不能等点击时再算一遍）；
+ *   - 时间 → 复制时间（格式就是数据里的 `time` 字段，`2026-10-16 09:35` 这一种，
+ *     直接贴进 CSV / 表格 / 别处的过滤条件都能用）。
+ * 「移除 N 个绘图」不看价格也不看时间，按的是整个画布的绘图总数。
  *
  * 单型（限价/止损）也不让用户选：由**这个价格相对现价的方向**算出来
  * （见 `chart/orders.ts` 的 `orderKindFor`）。现有价才有方向，所以菜单里先把现价写出来，
  * 用户一眼就能看出「我这一下是在现价上方还是下方、买到的是哪种单」。
  */
-const menu = ref<{ x: number; y: number; price: number } | null>(null)
+const menu = ref<{ x: number; y: number; price: number; time: string } | null>(null)
 /**
  * 「移除 N 个绘图」按下一次之后的上膛状态：**第二次单击才真的删**。
  *
@@ -254,6 +257,7 @@ function draw(): void {
     closed: closed.value,
     position: inst?.position ?? { quantity: 0, side: 'flat', averagePrice: 0 },
     unrealizedPnl: inst?.unrealizedPnl ?? 0,
+    pointValue: store.pointValue,
     showEma: store.showEma,
     atr: store.atr,
     indicator: store.indicator,
@@ -1290,16 +1294,25 @@ const sellKind = computed<OrderKind>(() =>
   menu.value ? orderKindFor('sell', menu.value.price, lastPrice.value) : 'limit',
 )
 
-/** 靠边右键时把菜单挪回画布内，别一半露在窗口外面 */
+/**
+ * 靠边右键时把菜单挪回画布内，别一半露在窗口外面。
+ *
+ * 画布矮的时候（底边抽屉展开、窗口很窄）菜单会比画布还高 —— 宿主是 `overflow-hidden`，
+ * 超出去的那几项就点不到了（「移除绘图」正好在最下面）。所以这里同时给一个
+ * **max-height** 让菜单自己滚，而不是硬塞。
+ */
 const menuStyle = computed(() => {
   const m = menu.value
   if (!m) return {}
-  const w = 264
-  const h = 206
+  const w = 276
+  /** 菜单整块大约多高（只用来算「能不能整个塞下」，不是精确排版值） */
+  const h = 300
+  const top = Math.max(4, Math.min(m.y, size.value.height - h - 4))
   return {
     left: `${Math.max(4, Math.min(m.x, size.value.width - w - 4))}px`,
-    top: `${Math.max(4, Math.min(m.y, size.value.height - h - 4))}px`,
+    top: `${top}px`,
     width: `${w}px`,
+    maxHeight: `${Math.max(120, size.value.height - top - 4)}px`,
   }
 })
 
@@ -1319,7 +1332,11 @@ function onContextMenu(ev: MouseEvent): void {
   if (inAtrPane(p.y)) return
   // 每次打开都从「没上膛」开始：上一次按了一半就走开，不该让下一次一点就删
   clearArmed.value = false
-  menu.value = { x: p.x, y: p.y, price: snapToTick(scale.priceAtY(p.y), store.tick) }
+  // 时间取**右键落点那一根**（横向就近取整，和十字光标/吸附同一把尺子）。
+  // 落到右侧空白区时 nearestIndex 会夹到最后一根 —— 那里没有 K 线，只能给最后一根的时间。
+  const idx = scale.bars.length > 0 ? scale.nearestIndex(p.x) : -1
+  const time = (idx >= 0 ? scale.bars[idx]?.time : '') || store.currentBar?.time || ''
+  menu.value = { x: p.x, y: p.y, price: snapToTick(scale.priceAtY(p.y), store.tick), time }
 }
 
 /** 当前画布上有几个绘图 —— 菜单里那个 n，也是「一次会删掉几个」 */
@@ -1368,7 +1385,18 @@ function showToast(text: string): void {
  * 下单。单型**在这里再算一次**（不是从模板传进来）：按钮文案和执行必须是同一个判定，
  * 否则将来改文案时很容易出现「写着限价、发出去是止损」。
  */
-function menuOrder(side: Side): void {
+/**
+ * 菜单里那一对手数的「另一种口径」：nATR 定手数（见 `lib/natr.ts` 与 store 的 `natrPlan`）。
+ *
+ * 菜单上并排放两组挂单按钮，不是让用户二选一，而是「两个手数来源各自都要能一键下单」：
+ *   - 上一对 = 下单框里手填的 `orderQuantity`（老动作，一直是这个数）；
+ *   - 下一对 = 按 `n × ATR` 止损距离和最大亏损倒推出来的手数。
+ * 后者算不出来（ATR 还没到 length 根 / 没配 tickValue）时给 0，按钮置灰，
+ * 而不是拿 1 手冒充 —— 那样用户会以为「nATR 算出来就是 1 手」。
+ */
+const natrLots = computed(() => store.natrPlan?.lots ?? 0)
+
+function menuOrder(side: Side, quantity = store.orderQuantity): void {
   const m = menu.value
   if (!m) return
   if (!store.canOperate) {
@@ -1377,10 +1405,10 @@ function menuOrder(side: Side): void {
     return
   }
   const kind = orderKindFor(side, m.price, lastPrice.value)
-  store.placeOrder(side, kind, m.price, store.orderQuantity)
+  store.placeOrder(side, kind, m.price, quantity)
   closeMenu()
   showToast(
-    `已挂 ${side === 'buy' ? '买入' : '卖出'}${orderKindLabel(kind)} ${formatPrice(m.price, store.priceDecimals)}`,
+    `已挂 ${side === 'buy' ? '买入' : '卖出'}${orderKindLabel(kind)} ${quantity} 手 ${formatPrice(m.price, store.priceDecimals)}`,
   )
 }
 
@@ -1388,6 +1416,22 @@ async function menuCopy(): Promise<void> {
   const m = menu.value
   if (!m) return
   const text = formatPrice(m.price, store.priceDecimals)
+  const ok = await copyText(text)
+  closeMenu()
+  showToast(ok ? `已复制 ${text}` : '复制失败：浏览器不允许访问剪贴板')
+}
+
+/**
+ * 复制当前（右键落点那根）K 线的时间。
+ *
+ * 原样复制协议 / CSV 里的 `time` 字段，**不加星期、不换格式**：
+ * 这个字符串的用途是贴进表格、过滤条件、脚本里按时间对齐，
+ * 而 `formatAxisTime` 那种「周五 2026-10-16 09:35」是给人看的，贴过去就对不上了。
+ */
+async function menuCopyTime(): Promise<void> {
+  const m = menu.value
+  if (!m || !m.time) return
+  const text = m.time
   const ok = await copyText(text)
   closeMenu()
   showToast(ok ? `已复制 ${text}` : '复制失败：浏览器不允许访问剪贴板')
@@ -1911,15 +1955,17 @@ defineExpose({ requestDraw })
     </div>
 
     <!--
-      右键小菜单：价格在打开那一刻就算好（吸附到最小跳动），前三项动作都基于这个价格；
-      第四项「移除 N 个绘图」与价格无关，按的是整个画布的绘图总数。
+      右键小菜单：价格和时间在打开那一刻就算好（价格吸附到最小跳动、时间取落点那一根），
+      前四项动作都基于这个价格（两组买入/卖出），后两项复制这个价格 / 这根 K 线的时间；
+      最后一项「移除 N 个绘图」与价格无关，按的是整个画布的绘图总数。
       菜单自身要 stop 掉 pointerdown —— 否则画布的 pointerdown 会先把菜单关掉，
       click 就永远到不了按钮上。
       单型跟着「价格在现价的哪一侧」走：下方 = 买限价 / 卖止损，上方 = 买止损 / 卖限价。
+      两组挂单只差手数：上一对是手填的 orderQuantity，下一对是 nATR 倒推出来的手数。
     -->
     <div
       v-if="menu"
-      class="absolute z-40 overflow-hidden rounded border border-line bg-panel py-1 text-[13px] text-ink shadow-2xl"
+      class="absolute z-40 overflow-y-auto overflow-x-hidden rounded border border-line bg-panel py-1 text-[13px] text-ink shadow-2xl"
       :style="menuStyle"
       @pointerdown.stop
       @contextmenu.stop.prevent
@@ -1956,6 +2002,45 @@ defineExpose({ requestDraw })
         <span class="h-0 w-0 border-x-[4px] border-t-[6px] border-x-transparent border-t-down" />
         卖出 {{ store.orderQuantity }} 手 {{ menuPriceText }} {{ orderKindLabel(sellKind) }}
       </button>
+
+      <!--
+        nATR 手数那一对：手数按「n × ATR 止损距离 / 最大亏损」倒推（同一份 natrPlan），
+        和上面那对的区别**只在手数**，价格、单型、下单动作完全一样。
+        nATR 是每个人自己的习惯参数，所以文案把 n 和 ATR 一起写出来，避免
+        「同一个价位点两次买，手数怎么不一样」的困惑。
+      -->
+      <button
+        type="button"
+        class="flex w-full items-center gap-2 px-3 py-1.5 text-left hover:bg-elev disabled:cursor-not-allowed disabled:opacity-40"
+        :disabled="!store.canOperate || natrLots <= 0"
+        :title="
+          natrLots <= 0
+            ? '算不出 nATR 手数：ATR 还没出值（Length 根之后才有），或标的没配 tickValue'
+            : `按 nATR 定手数（${store.natr.n} × ATR → 最多亏 $${store.natr.maxLoss}）得出的 ${natrLots} 手`
+        "
+        @click="menuOrder('buy', natrLots)"
+      >
+        <span class="h-0 w-0 border-x-[4px] border-b-[6px] border-x-transparent border-b-up" />
+        买入 {{ natrLots > 0 ? natrLots : '—' }} 手
+        <span class="text-[11px] text-faint">nATR</span>
+        {{ menuPriceText }} {{ orderKindLabel(buyKind) }}
+      </button>
+      <button
+        type="button"
+        class="flex w-full items-center gap-2 px-3 py-1.5 text-left hover:bg-elev disabled:cursor-not-allowed disabled:opacity-40"
+        :disabled="!store.canOperate || natrLots <= 0"
+        :title="
+          natrLots <= 0
+            ? '算不出 nATR 手数：ATR 还没出值（Length 根之后才有），或标的没配 tickValue'
+            : `按 nATR 定手数（${store.natr.n} × ATR → 最多亏 $${store.natr.maxLoss}）得出的 ${natrLots} 手`
+        "
+        @click="menuOrder('sell', natrLots)"
+      >
+        <span class="h-0 w-0 border-x-[4px] border-t-[6px] border-x-transparent border-t-down" />
+        卖出 {{ natrLots > 0 ? natrLots : '—' }} 手
+        <span class="text-[11px] text-faint">nATR</span>
+        {{ menuPriceText }} {{ orderKindLabel(sellKind) }}
+      </button>
       <div class="my-1 h-px bg-line" />
       <button
         type="button"
@@ -1964,6 +2049,17 @@ defineExpose({ requestDraw })
       >
         <span class="h-2 w-2 shrink-0 rounded-[2px] border border-current opacity-60" />
         复制价格 {{ menuPriceText }}
+      </button>
+      <!-- 时间用等宽字：这一项要拿去和表格/日志逐字对齐，字体跳来跳去很难核对 -->
+      <button
+        type="button"
+        class="flex w-full items-center gap-2 px-3 py-1.5 text-left hover:bg-elev disabled:cursor-not-allowed disabled:opacity-40"
+        :disabled="!menu.time"
+        :title="menu.time ? '复制这根 K 线的时间（和数据里的 time 字段一模一样）' : '这个位置没有 K 线'"
+        @click="menuCopyTime"
+      >
+        <span class="h-2 w-2 shrink-0 rounded-[2px] border border-current opacity-60" />
+        复制时间 <span class="tnum text-dim">{{ menu.time || '—' }}</span>
       </button>
 
       <!--

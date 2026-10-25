@@ -80,6 +80,14 @@ export interface ChartTheme {
   posLongBox: string
   posShortBox: string
   posText: string
+  /**
+   * 白底上的「涨 / 跌」文字色（K 线数据栏的涨跌、挂单处的预估盈亏）。
+   *
+   * 不能直接拿 `up.stroke` / `down.stroke` 当文字色：K 线那两项是**黑白**的
+   * （阳线黑边空心的画法决定的），拿来写字就跟正文一个颜色了。
+   */
+  textUp: string
+  textDown: string
   /** 成交标记：买入三角 / 卖出三角 / 「开仓→平仓」连线 */
   tradeBuy: string
   tradeSell: string
@@ -130,6 +138,10 @@ export const CHART_THEME: ChartTheme = {
   posLongBox: '#15803d',
   posShortBox: '#b91c1c',
   posText: '#ffffff',
+  // 涨跌语义色：和页面 `--c-up` / `--c-down`、持仓线、成交三角是同一组绿/红。
+  // 全程序只有这两个方向色，画布上写数字也必须用它，否则会出现「两种绿」。
+  textUp: '#15803d',
+  textDown: '#b91c1c',
   tradeBuy: '#15803d',
   tradeSell: '#b91c1c',
   selection: '#334155',
@@ -167,6 +179,13 @@ export interface DrawInput {
   position: Position
   /** 浮动盈亏（后端按当前 K 线收盘价算好，美元） */
   unrealizedPnl: number
+  /**
+   * 每点值多少美元（= tickValue / tick）。
+   *
+   * 挂单旁边那句「这笔成交后能赚/亏多少」要用它换算 —— 画布只排版，不自己再推一遍
+   * 「一跳值多少」，那一份口径在 store 里（和后端 `pointValueOf` 对齐）。
+   */
+  pointValue: number
   showEma: boolean
   /** ATR 副图的开关与参数（纯显示设置，值在 chart/atr.ts 里算；序列由 ChartPanel 灌进 scale） */
   atr: AtrSettings
@@ -209,6 +228,7 @@ export function drawChart(input: DrawInput): void {
     closed,
     position,
     unrealizedPnl,
+    pointValue,
     showEma,
     atr,
     indicator,
@@ -248,7 +268,7 @@ export function drawChart(input: DrawInput): void {
   drawBarCount(ctx, scale, barCount, indicator)
   // 成交标记压在 K 线上面：复盘时要一眼看到「哪里开、哪里平」
   drawTradeMarks(ctx, scale, theme, trades, closed, activeClosed)
-  drawOrders(ctx, scale, theme, orders, activeOrderId, decimals)
+  drawOrders(ctx, scale, theme, orders, position, pointValue, activeOrderId, decimals)
   drawPositionLine(ctx, scale, theme, position, unrealizedPnl, decimals)
   drawLastPrice(ctx, scale, theme, decimals)
   drawAxes(ctx, scale, theme, priceTicks, decimals, tick)
@@ -633,17 +653,57 @@ function drawBarCount(
 }
 
 /**
+ * 一张挂单「如果现在成交」能平掉多少手、赚亏多少钱。
+ *
+ * 只管**对手单**（对着现有仓位方向的那些）：多头仓位下卖出才是减仓，卖多少手
+ * 也只能减到 0 —— 手上 2 手多，挂一张卖 3 手，这 3 手里只有 2 手是平仓，
+ * 剩下 1 手会反手开空，那 1 手的盈亏现在还没法说，所以**以仓位为准**按 2 手算。
+ * 顺方向的挂单（多头下的买入）是加仓，加仓的盈亏取决于将来在哪儿平，
+ * 这里不猜，也就不显示。
+ *
+ * 口径和后端 `closedLots` / `pointValueOf` 一致：(平 - 开) × 手数 × 每点价值，
+ * 每点价值 = tickValue / tick。于是「画布上预告的数字」和「真成交后记录里的数字」
+ * 是同一把尺子算出来的。
+ */
+function hedgePnl(order: Order, position: Position, pointValue: number): number | null {
+  if (!position || position.side === 'flat' || !(position.averagePrice > 0)) return null
+  if (!(pointValue > 0) || !(order.quantity > 0)) return null
+  const closing = position.side === 'long' ? order.side === 'sell' : order.side === 'buy'
+  if (!closing) return null
+  const lots = Math.min(order.quantity, Math.abs(position.quantity))
+  if (!(lots > 0)) return null
+  const diff =
+    position.side === 'long'
+      ? order.price - position.averagePrice
+      : position.averagePrice - order.price
+  return diff * lots * pointValue
+}
+
+/** 美元金额：带千分位、最多两位小数、不给整数加 `.00`（+1,240$ / -86.5$），画布上够短才看得清 */
+export function formatUsdShort(v: number): string {
+  const body = Math.abs(v).toLocaleString('en-US', {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 2,
+  })
+  return `${v > 0 ? '+' : v < 0 ? '-' : ''}${body}$`
+}
+
+/**
  * 挂单：一条贯穿价格区的横线 + 右端一个标签（买/卖 + 单型 + 手数）。
  *
  * 右边的 `ORDER_RESERVE_RIGHT` 是给「撤单 ×」留的位置 —— 那个按钮是 HTML 叠在画布上的
  * （见 ChartPanel.vue），不占画布绘制，但标签必须让开，否则会顶到按钮底下。
  * 当前被拖动/悬停的那一张会加粗、并在标签里带上价格。
+ *
+ * 有仓位时，**对手单**的标签左边还会多一块「成交后大概赚亏多少」（见 `hedgePnl`）。
  */
 function drawOrders(
   ctx: CanvasRenderingContext2D,
   scale: ChartScale,
   theme: ChartTheme,
   orders: Order[],
+  position: Position,
+  pointValue: number,
   activeId: string | null,
   decimals: number,
 ): void {
@@ -680,6 +740,26 @@ function drawOrders(
     ctx.fillRect(boxX - 4, y - 9, textWidth + 8, AXIS_LABEL_H)
     ctx.fillStyle = theme.orderText
     ctx.fillText(label, boxX, y + 0.5)
+
+    /*
+     * 有仓位时，对手单旁边再挂一块「成交后大概赚亏多少」。
+     *
+     * 贴在挂单标签**左边**、同一行，读起来是「卖限价 2 [-86.5$]」——
+     * 一块小色块比在标签里塞一句彩色文字清楚：标签的底色是单方向色，
+     * 里面再写绿/红数字会和底色互相打架。
+     */
+    const hedge = hedgePnl(o, position, pointValue)
+    if (hedge === null) continue
+    const money = formatUsdShort(hedge)
+    ctx.font = MONO
+    const mw = ctx.measureText(money).width + 8
+    const mx = boxX - 8 - mw
+    // 价格区左边已经写不下时就不画（宁可少一句，也不要盖住持仓线/绘图）
+    if (mx < plot.left) continue
+    ctx.fillStyle = hedge >= 0 ? theme.textUp : theme.textDown
+    ctx.fillRect(mx, y - 9, mw, AXIS_LABEL_H)
+    ctx.fillStyle = theme.orderText
+    ctx.fillText(money, mx + 4, y + 0.5)
   }
   ctx.font = MONO
 }
@@ -1012,5 +1092,33 @@ function drawCrosshair(
     lx += ctx.measureText('EMA20').width + 4
     ctx.fillStyle = theme.ema
     ctx.fillText(formatPrice(bar.ema20, decimals), lx, plot.top + 3)
+    lx += ctx.measureText(formatPrice(bar.ema20, decimals)).width + 12
+  }
+
+  // 这一根的 ATR：参数就是【指标 ▾】里那套 Length / Smoothing（`scale` 里的序列
+  // 由 ChartPanel 用同一组参数灌进来），所以栏里的数和副图那条线永远是同一个值。
+  // 副图关掉也照常显示 —— 关的只是画不画折线，不是「这条指标不存在」。
+  const atrValue = scale.atrAt(hit ? hit.index : hover.index)
+  ctx.fillStyle = theme.textDim
+  ctx.fillText('ATR', lx, plot.top + 3)
+  lx += ctx.measureText('ATR').width + 4
+  ctx.fillStyle = theme.atr
+  const atrText = atrValue === null ? '—' : formatPrice(atrValue, decimals)
+  ctx.fillText(atrText, lx, plot.top + 3)
+  lx += ctx.measureText(atrText).width + 12
+
+  // 涨跌 = 这一根收盘 - 前一根收盘（价差，不是涨跌幅）。正绿负红，和页面同一套语义色。
+  // 第一根没有前收，写「—」而不是 0：0 会被读成「平」，那是另一件事。
+  const prev = scale.bars[(hit ? hit.index : hover.index) - 1]
+  ctx.fillStyle = theme.textDim
+  ctx.fillText('涨跌', lx, plot.top + 3)
+  lx += ctx.measureText('涨跌').width + 4
+  if (!prev) {
+    ctx.fillStyle = theme.textDim
+    ctx.fillText('—', lx, plot.top + 3)
+  } else {
+    const diff = bar.close - prev.close
+    ctx.fillStyle = diff > 0 ? theme.textUp : diff < 0 ? theme.textDown : theme.textDim
+    ctx.fillText(formatSigned(diff, decimals), lx, plot.top + 3)
   }
 }
