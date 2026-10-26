@@ -3,6 +3,7 @@ package webreport
 // HTTP 层：接口能取到、取到的数字和 store.Scan 一致、取完之后磁盘**没被动过**。
 
 import (
+	"compress/gzip"
 	"encoding/json"
 	"io"
 	"net"
@@ -205,6 +206,109 @@ func TestStaticAssetsAreServed(t *testing.T) {
 	// 不认识的路径要 404，而不是把首页塞回去（否则前端路由会看到一堆 HTML 当 JSON 解）
 	if code, _ := get(t, srv.URL+"/不存在的路径"); code != 404 {
 		t.Fatalf("未知路径状态码 = %d，期望 404", code)
+	}
+}
+
+// 缓存是这一版为了「打开页面要等三四秒」加的东西，所以它必须被钉住两件事：
+// 磁盘没变就不该再扫一遍（这是它存在的全部理由），
+// 磁盘变了就必须立刻重扫（否则页面上会是过期数字，那比慢难查得多）。
+func TestAnalysisCachesUntilDiskChanges(t *testing.T) {
+	root := fakeData(t)
+	h := newSnapshotter(Options{Root: root, Step: 300, Location: cst, Version: "test"})
+	srv := httptest.NewServer(h.handler())
+	defer srv.Close()
+
+	decode := func(url string) Report {
+		t.Helper()
+		code, body := get(t, url)
+		if code != 200 {
+			t.Fatalf("状态码 = %d：%s", code, body)
+		}
+		var rep Report
+		if err := json.Unmarshal([]byte(body), &rep); err != nil {
+			t.Fatalf("返回的不是 JSON：%v", err)
+		}
+		return rep
+	}
+
+	first := decode(srv.URL + "/api/analysis")
+	if h.scans != 1 {
+		t.Fatalf("第一次请求应当扫一遍盘，实际扫了 %d 遍", h.scans)
+	}
+
+	// 磁盘没动：第二、第三次请求都该直接发缓存
+	for i := 0; i < 2; i++ {
+		again := decode(srv.URL + "/api/analysis")
+		if h.scans != 1 {
+			t.Fatalf("磁盘没变却又扫了一遍（第 %d 次请求后 scans=%d）", i+2, h.scans)
+		}
+		if again.Meta.GeneratedAt != first.Meta.GeneratedAt {
+			t.Fatal("缓存命中时「快照时刻」变了 —— 那页面上的时间就不是这份数据的时刻了")
+		}
+		if again.Totals != first.Totals {
+			t.Fatalf("同一份缓存两次的合计不一致：%+v vs %+v", first.Totals, again.Totals)
+		}
+	}
+
+	// refresh=1 是「我现在就要看磁盘实况」，必须无条件重扫
+	_ = decode(srv.URL + "/api/analysis?refresh=1")
+	if h.scans != 2 {
+		t.Fatalf("refresh=1 没有强制重扫（scans=%d）", h.scans)
+	}
+
+	// 抓回来新数据：指纹一变就得重扫，而且数字要跟着变
+	day := filepath.Join(root, "CME_MINI_MES1!", "2026-10-16.csv")
+	f, err := os.OpenFile(day, os.O_APPEND|os.O_WRONLY, 0o644)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.WriteString("2026-10-16 00:20,2.5,3,2.4,2.8,13\n"); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.Close(); err != nil {
+		t.Fatal(err)
+	}
+	changed := decode(srv.URL + "/api/analysis")
+	if h.scans != 3 {
+		t.Fatalf("磁盘变了却没重扫（scans=%d）", h.scans)
+	}
+	if changed.Totals.Bars != first.Totals.Bars+1 {
+		t.Fatalf("新加的一根没进统计：%d -> %d", first.Totals.Bars, changed.Totals.Bars)
+	}
+}
+
+// 压缩是可选的（只在浏览器说 Accept-Encoding: gzip 时才用），
+// 但「同一个报告，压不压缩解出来必须一模一样」这件事值得钉一次：
+// 页面上的数字只该有一个来源，压缩只是传输层的包装。
+func TestAnalysisGzipMatchesPlain(t *testing.T) {
+	root := fakeData(t)
+	srv := httptest.NewServer(New(Options{Root: root, Step: 300, Location: cst, Version: "test"}))
+	defer srv.Close()
+
+	req, err := http.NewRequest("GET", srv.URL+"/api/analysis", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("Accept-Encoding", "gzip")
+	resp, err := http.DefaultTransport.RoundTrip(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if enc := resp.Header.Get("Content-Encoding"); enc != "gzip" {
+		t.Fatalf("说了支持 gzip，响应却不是 gzip（%q）", enc)
+	}
+	zr, err := gzip.NewReader(resp.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	zipped, err := io.ReadAll(zr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, plain := get(t, srv.URL+"/api/analysis")
+	if string(zipped) != plain {
+		t.Fatal("压缩前后不是同一份报告")
 	}
 }
 

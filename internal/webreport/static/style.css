@@ -52,6 +52,20 @@ body {
 #app { opacity: 0; }
 #app.ready { opacity: 1; transition: opacity .12s ease; }
 
+/* ── 首屏等待层 ──────────────────────────────────────────────────────
+   统计要先把 3300 份 CSV 扫一遍，这段时间 #app 还藏着，页面本来是**一片空白**。
+   白屏和「卡住了」长得一模一样，所以这里给一行字（由 app.js 在淡入正文时移除）。
+   只用 CSS 变量 + 一行 flex：它必须在那三个脚本加载完之前就能显示出来。 */
+#boot {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  color: var(--muted);
+}
+
 [v-cloak] { display: none; }
 
 input[type="checkbox"] { accent-color: var(--accent); }

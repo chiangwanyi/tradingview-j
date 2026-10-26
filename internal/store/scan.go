@@ -13,8 +13,11 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -131,11 +134,62 @@ func Scan(root string, loc *time.Location, step int64) *ScanResult {
 		res.Notes = append(res.Notes, fmt.Sprintf("读 %s 失败（%v），下面标的显示为文件夹名", indexFile, err))
 	}
 
+	// 先把「要扫哪些文件」列出来（只有目录读失败才会在这里出错），
+	// 再一次性并发扫完 —— 逐文件夹串行扫的时候，几乎全部时间都停在 syscall 上，
+	// 一个核在等，另外几个核空转。
+	type folderPlan struct {
+		dir   string
+		name  string
+		start int // 在 jobs 里的起点
+		n     int // 这份文件个数
+		err   error
+	}
+	plans := make([]folderPlan, 0, len(entries))
+	jobs := make([]dayJob, 0, 1024)
 	for _, e := range entries {
 		if !e.IsDir() || strings.HasPrefix(e.Name(), "_") {
 			continue
 		}
-		fs := scanFolder(filepath.Join(root, e.Name()), e.Name(), loc, step)
+		p := folderPlan{dir: filepath.Join(root, e.Name()), name: e.Name(), start: len(jobs)}
+		names, sizes, err := listDayFiles(p.dir)
+		if err != nil {
+			p.err = err
+			plans = append(plans, p)
+			continue
+		}
+		p.n = len(names)
+		for i, name := range names {
+			jobs = append(jobs, dayJob{path: filepath.Join(p.dir, name), size: sizes[i]})
+		}
+		plans = append(plans, p)
+	}
+
+	stats := scanDays(jobs, loc, step)
+
+	for _, p := range plans {
+		fs := FolderStat{Folder: p.name}
+		if p.err != nil {
+			fs.Days = []DayStat{{Date: "(目录)", Path: p.dir, Err: fmt.Sprintf("读不了目录：%v", p.err)}}
+			res.Folders = append(res.Folders, fs)
+			continue
+		}
+		for i := p.start; i < p.start+p.n; i++ {
+			d := stats[i]
+			fs.Days = append(fs.Days, d)
+			fs.Bars += d.Bars
+			fs.Bytes += d.Bytes
+			fs.Skipped += d.Skipped
+			fs.Dupes += d.Dupes
+			if d.Bars > 0 {
+				if !fs.HasTime || d.FirstT < fs.FirstT {
+					fs.FirstT = d.FirstT
+				}
+				if !fs.HasTime || d.LastT > fs.LastT {
+					fs.LastT = d.LastT
+				}
+				fs.HasTime = true
+			}
+		}
 		if sym, ok := symbolOf[fs.Folder]; ok {
 			fs.Symbol, fs.Known = sym, true
 		} else {
@@ -200,14 +254,28 @@ func markMismatch(folders []FolderStat) int {
 	return days
 }
 
-func scanFolder(dir, folder string, loc *time.Location, step int64) FolderStat {
-	fs := FolderStat{Folder: folder}
+// dayJob 是「扫一份日文件」这件事：路径，加上从目录项里顺手捡到的大小。
+//
+// 大小从目录项来而不是再 os.Stat 一次：os.ReadDir 在 Windows 上本来就把
+// WIN32_FIND_DATA 读回来了，Info() 是白拿的 —— 817 天 × 4 标的实测，
+// 省掉这 3300 次 stat 就是省掉整次扫描里相当可观的一段 syscall。
+type dayJob struct {
+	path string
+	size int64
+}
+
+// listDayFiles 列出一个标的目录下的日文件（文件名 + 大小）。
+// 目录读不了时返回错误，由调用方决定怎么如实报出来。
+func listDayFiles(dir string) ([]string, []int64, error) {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
-		fs.Days = []DayStat{{Date: "(目录)", Path: dir, Err: fmt.Sprintf("读不了目录：%v", err)}}
-		return fs
+		return nil, nil, err
 	}
-	var names []string
+	type named struct {
+		name string
+		size int64
+	}
+	list := make([]named, 0, len(entries))
 	for _, e := range entries {
 		if e.IsDir() {
 			continue
@@ -215,36 +283,79 @@ func scanFolder(dir, folder string, loc *time.Location, step int64) FolderStat {
 		if !strings.HasSuffix(strings.ToLower(e.Name()), ".csv") {
 			continue // .tmp 之类的中间产物不算数据
 		}
-		names = append(names, e.Name())
-	}
-	sort.Strings(names) // 文件名就是日期，字符串序 = 时间序
-
-	for _, name := range names {
-		d := scanDay(filepath.Join(dir, name), loc, step)
-		fs.Days = append(fs.Days, d)
-		fs.Bars += d.Bars
-		fs.Bytes += d.Bytes
-		fs.Skipped += d.Skipped
-		fs.Dupes += d.Dupes
-		if d.Bars > 0 {
-			if !fs.HasTime || d.FirstT < fs.FirstT {
-				fs.FirstT = d.FirstT
-			}
-			if !fs.HasTime || d.LastT > fs.LastT {
-				fs.LastT = d.LastT
-			}
-			fs.HasTime = true
+		var size int64
+		if fi, err := e.Info(); err == nil {
+			size = fi.Size()
 		}
+		list = append(list, named{name: e.Name(), size: size})
 	}
-	return fs
+	sort.Slice(list, func(i, j int) bool { return list[i].name < list[j].name }) // 文件名就是日期，字符串序 = 时间序
+	names := make([]string, len(list))
+	sizes := make([]int64, len(list))
+	for i, it := range list {
+		names[i], sizes[i] = it.name, it.size
+	}
+	return names, sizes, nil
 }
 
-func scanDay(path string, loc *time.Location, step int64) DayStat {
-	d := DayStat{Date: strings.TrimSuffix(filepath.Base(path), filepath.Ext(path)), Path: path}
-	if fi, err := os.Stat(path); err == nil {
-		d.Bytes = fi.Size()
+// scanDays 并发把一批日文件扫成 DayStat，结果按 job 的下标落位，所以顺序是稳定的
+// （Folders 里的日文件永远是日期升序，跟串行扫出来的完全一样）。
+func scanDays(jobs []dayJob, loc *time.Location, step int64) []DayStat {
+	out := make([]DayStat, len(jobs))
+	if len(jobs) == 0 {
+		return out
 	}
-	bars, rs, err := readDayFile(path, loc)
+	workers := scanWorkers(len(jobs))
+	var next int64
+	var wg sync.WaitGroup
+	wg.Add(workers)
+	for w := 0; w < workers; w++ {
+		go func() {
+			defer wg.Done()
+			for {
+				// 原子取号而不是开一条 channel：任务只有几千个，
+				// 竞争一把 64 位计数器比 3300 次 channel 收发便宜。
+				i := int(atomic.AddInt64(&next, 1)) - 1
+				if i >= len(jobs) {
+					return
+				}
+				out[i] = scanDay(jobs[i].path, jobs[i].size, loc, step)
+			}
+		}()
+	}
+	wg.Wait()
+	return out
+}
+
+// scanWorkers 决定开几个 goroutine。
+//
+// 这一层是 I/O 密集（每份文件一次 open + 若干次 read），单核等 syscall 的时间里
+// 别的核能干别的活，所以比核数多一点是划算的；但也不是越多越好 ——
+// 冷盘上并发几十个读会让磁头来回跳，反而更慢。16 是实测的折中值。
+func scanWorkers(files int) int {
+	n := runtime.NumCPU() * 2
+	if n < 4 {
+		n = 4
+	}
+	if n > 16 {
+		n = 16
+	}
+	if n > files {
+		n = files
+	}
+	return n
+}
+
+func scanDay(path string, size int64, loc *time.Location, step int64) DayStat {
+	d := DayStat{Date: strings.TrimSuffix(filepath.Base(path), filepath.Ext(path)), Path: path}
+	d.Bytes = size
+	if d.Bytes == 0 {
+		// 目录项里没拿到大小（极少见）才退回去 stat 一次
+		if fi, err := os.Stat(path); err == nil {
+			d.Bytes = fi.Size()
+		}
+	}
+	bars, rs, err := readDayTimes(path, loc)
 	d.Rows, d.Skipped = rs.Rows, rs.Bad
 	d.Bars = len(bars)
 	d.Dupes = rs.Good() - len(bars)

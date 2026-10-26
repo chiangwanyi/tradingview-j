@@ -210,6 +210,24 @@ function sumOf(files) {
   return out;
 }
 
+// dayIndexOf 给一个标的建「日期 -> 日文件」的索引。
+//
+// 索引挂在模块级的 WeakMap 上，不挂到 f 上：f 是 Vue 的响应式对象，
+// 往上加一个 800 条的 Map 会让它连内容一起变成代理对象，
+// 而这份索引是纯缓存，没有任何「变了要重绘」的语义。
+// 快照换掉后旧的 folder 对象没人引用，WeakMap 跟着回收，不会留垃圾。
+const DAY_INDEX = new WeakMap();
+
+function dayIndexOf(f) {
+  let map = DAY_INDEX.get(f);
+  if (map) return map;
+  map = new Map();
+  const files = (f && f.files) || [];
+  for (let i = 0; i < files.length; i++) map.set(files[i].date, files[i]);
+  DAY_INDEX.set(f, map);
+  return map;
+}
+
 // alertsOf 把「值得单独提醒一句」的情况收成一列。
 // 数据目录不存在、读不了某份文件这类事实由 Go 侧的 store.Scan 记在 notes 里，原样透传；
 // 后面几句只是把 Go 已经算好的几个合计数念一遍（前端不做任何统计）。
@@ -455,9 +473,10 @@ const app = createApp({
     // 格子的描述对象由这里拼好：日期、根数、一行小字、是否标红/变淡/选中。
     // 数字全部来自 Go 送的字段，这里只挑「显示哪一个」。
     dayOf(f, date) {
-      const list = f.files || [];
-      for (let i = 0; i < list.length; i++) if (list[i].date === date) return list[i];
-      return null;
+      // 走索引而不是每个格子都把 800 多个日文件过一遍：
+      // 4 个标的 × 31 个格子 × 800 次比较 = 十万次，每次重绘都要重来一遍。
+      const map = dayIndexOf(f);
+      return map.get(date) || null;
     },
     cellsOf(f) {
       const self = this;
@@ -542,33 +561,34 @@ const app = createApp({
     symbolsOnDate(date) {
       const out = [];
       this.folders.forEach(function (f) {
-        const list = f.files || [];
-        for (let i = 0; i < list.length; i++) {
-          if (list[i].date !== date) continue;
-          const d = list[i];
-          out.push({
-            folder: f.folder, symbol: f.symbol,
-            date: d.date, bars: d.bars, rows: d.rows, skipped: d.skipped, dupes: d.dupes,
-            firstT: d.firstT, lastT: d.lastT, bytes: d.bytes, err: d.err || '',
-            gaps: d.gaps || [], expect: d.expect || [],
-            barsOff: !!d.barsOff, mismatch: !!d.mismatch, anomaly: !!d.anomaly,
-          });
-          break;
-        }
+        const d = dayIndexOf(f).get(date);
+        if (!d) return;
+        out.push({
+          folder: f.folder, symbol: f.symbol,
+          date: d.date, bars: d.bars, rows: d.rows, skipped: d.skipped, dupes: d.dupes,
+          firstT: d.firstT, lastT: d.lastT, bytes: d.bytes, err: d.err || '',
+          gaps: d.gaps || [], expect: d.expect || [],
+          barsOff: !!d.barsOff, mismatch: !!d.mismatch, anomaly: !!d.anomaly,
+        });
       });
       return sortFiles(out, 'bars', -1);
     },
 
     // ---- 数据 ----
-    load() {
+    // force=true 才真的重新要一次数据（「重新扫描」按钮）：普通刷新走服务端的快照缓存，
+    // 磁盘没变就直接用上一份，不变的东西不该重算一遍。
+    load(force) {
       const self = this;
       self.loading = true;
-      fetch('/api/analysis', { cache: 'no-store' })
+      // 首屏那次请求在 index.html 的 <head> 里就发出去了（见那段注释），这里直接接上，
+      // 不再重复发一次 —— 扫描是秒级的活，发两次等于白等两遍。
+      const preload = !force && window.__tvjAnalysis;
+      const p = preload || fetch('/api/analysis' + (force ? '?refresh=1' : ''), { cache: 'no-store' })
         .then(function (r) {
           if (!r.ok) throw new Error('HTTP ' + r.status);
           return r.json();
-        })
-        .then(function (j) {
+        });
+      p.then(function (j) {
           self.rep = j;
           self.err = '';
           // 快照换了，选中的那天/那个标的可能已经不存在了，一律清掉重选，
@@ -600,6 +620,9 @@ const app = createApp({
     const reveal = function () {
       const el = document.getElementById('app');
       if (el) el.classList.add('ready');
+      // 等待层用完就撤掉：留着它会一直盖在正文上（它是 fixed inset:0）
+      const boot = document.getElementById('boot');
+      if (boot) boot.parentNode.removeChild(boot);
     };
     requestAnimationFrame(function () {
       requestAnimationFrame(function () { setTimeout(reveal, 60); });

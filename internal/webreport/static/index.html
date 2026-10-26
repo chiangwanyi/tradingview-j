@@ -9,6 +9,15 @@
 // 样式起来之前先把主题类挂上，否则深色模式下会闪一下白底
 try { if (localStorage.getItem('tvj-theme') === 'dark') document.documentElement.classList.add('dark'); } catch (e) {}
 </script>
+<script>
+// 数据请求在解析 HTML 的最开头就发出去：扫一遍数据目录是一秒级的活，
+// 而浏览器还要先下载/解析 vue、tailwind、app.js 才发得出请求 ——
+// 那 300 毫秒本来是空等着，现在它和扫描并行跑。app.js 的 load() 直接复用这个 Promise。
+window.__tvjAnalysis = fetch('/api/analysis', { cache: 'no-store' }).then(function (r) {
+  if (!r.ok) throw new Error('HTTP ' + r.status);
+  return r.json();
+});
+</script>
 <link rel="stylesheet" href="/static/style.css">
 <script src="/static/vendor/tailwind.js"></script>
 <style type="text/tailwindcss">
@@ -32,6 +41,9 @@ try { if (localStorage.getItem('tvj-theme') === 'dark') document.documentElement
 </style>
 </head>
 <body class="bg-bg font-sans text-ink antialiased">
+<!-- 首屏等待层：数据到之前至少让人看见「在干活」，而不是一屏白。
+     正文淡入时由 app.js 移除（见 mounted 里的 reveal）。 -->
+<div id="boot">正在读取数据目录…</div>
 <div id="app" v-cloak>
 
   <!-- ── 顶栏 ─────────────────────────────────────────────────────── -->
@@ -44,7 +56,7 @@ try { if (localStorage.getItem('tvj-theme') === 'dark') document.documentElement
       <div class="ml-auto flex items-center gap-2">
         <span v-if="loading" class="text-[12px] text-muted">扫描中…</span>
         <span v-else-if="snapshot" class="text-[11.5px] text-faint" :title="'这次扫描花了 ' + meta.scanMs + ' 毫秒'">{{ snapshot }}</span>
-        <button class="btn" type="button" @click="load" :disabled="loading">重新扫描</button>
+        <button class="btn" type="button" @click="load(true)" :disabled="loading" title="跳过快照缓存，立刻重读一遍磁盘">重新扫描</button>
         <button class="btn" type="button" @click="toggleDark" :title="dark ? '切到浅色' : '切到深色'">{{ dark ? '浅色' : '深色' }}</button>
       </div>
     </div>
@@ -373,7 +385,7 @@ try { if (localStorage.getItem('tvj-theme') === 'dark') document.documentElement
 
       <footer class="mt-8 text-center text-[11.5px] text-faint">
         <p>tradingview-j v{{ meta.version }} · 只读快照，页面上的任何操作都不会改动数据目录里的文件</p>
-        <p class="mt-1">刷新页面或点「重新扫描」会重新读一遍磁盘</p>
+        <p class="mt-1">刷新页面直接用上一次的快照（磁盘没变就不重扫）；点「重新扫描」强制重读一遍磁盘</p>
       </footer>
     </template>
   </main>
