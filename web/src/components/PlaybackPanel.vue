@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { RouterLink } from 'vue-router'
 
+import { ClipRecorder, toBase64 } from '@/audio/mic'
 import AudioWave from '@/components/AudioWave.vue'
 import { usePlaybackStore } from '@/stores/playback'
 import { stepKindClass, stepKindLabel } from '@/stores/step-kinds'
@@ -47,6 +48,118 @@ function seek(n: number): void {
 
 const btn =
   'rounded border border-line px-2 py-0.5 text-[13px] transition disabled:cursor-not-allowed disabled:opacity-40'
+
+// ---------------- 在延伸出来的 K 线上录音（v0.27.0） ----------------
+//
+// 麦克风和「按一下开始、再按一下结束」那一套完全沿用复盘里的语音浮窗
+// （见 components/VoiceFloat.vue），只是这里不需要浮窗：回放是只读的，
+// 能录的位置只有末尾那一根，所以按钮就摆在播放器上，不占画布。
+//
+// 录音的校验（每根 9 条 / 2MB / WAV）在服务端，和复盘录音是同一份实现 ——
+// 这里不做重复判断，只把「录了几条」显示出来。
+
+/** 每根 K 线上最多几条（和 voice.go 的 maxClipsPerBar 对齐，只用于显示） */
+const MAX_PER_BAR = 9
+const capturing = ref(false)
+const busy = ref(false)
+const hint = ref('')
+/** 「清空本根」的两段式确认 */
+const armedClear = ref(false)
+let recorder: ClipRecorder | null = null
+let hintTimer = 0
+let clearTimer = 0
+
+const tailClips = computed(() => pb.extensionClips)
+const tailTime = computed(() => pb.extensionTail?.time ?? '')
+
+function setHint(text: string, ms = 6000): void {
+  hint.value = text
+  if (hintTimer) window.clearTimeout(hintTimer)
+  hintTimer = 0
+  if (text && ms > 0) {
+    hintTimer = window.setTimeout(() => {
+      hint.value = ''
+    }, ms)
+  }
+}
+
+async function startClip(): Promise<void> {
+  if (capturing.value || busy.value || !pb.onExtensionTail) return
+  setHint('')
+  recorder = new ClipRecorder()
+  try {
+    await recorder.start('')
+    capturing.value = true
+  } catch (e) {
+    recorder = null
+    const msg = String(e)
+    setHint(
+      /NotAllowed|Permission/i.test(msg)
+        ? '麦克风权限被拒绝了：浏览器地址栏左侧的图标里允许麦克风'
+        : `开不了麦克风：${msg}`,
+    )
+  }
+}
+
+async function stopClip(): Promise<void> {
+  if (!capturing.value || !recorder) return
+  capturing.value = false
+  busy.value = true
+  try {
+    const out = await recorder.stop()
+    recorder = null
+    if (!out) {
+      setHint('这段太短了（不到 0.25 秒），没有上传')
+      return
+    }
+    if (!pb.addExtensionVoice(toBase64(out.wav), out.durationMs)) {
+      setHint('这会儿不能录：先停在最后一步，并且连接没断')
+    }
+  } catch (e) {
+    setHint(`录音处理失败：${String(e)}`)
+  } finally {
+    busy.value = false
+  }
+}
+
+function toggleClip(): void {
+  if (capturing.value) void stopClip()
+  else void startClip()
+}
+
+/** 清空本根：点一下变红，再点一下才真删（和语音浮窗一致）。 */
+function clearBar(): void {
+  if (!armedClear.value) {
+    armedClear.value = true
+    if (clearTimer) window.clearTimeout(clearTimer)
+    clearTimer = window.setTimeout(() => {
+      armedClear.value = false
+    }, 3000)
+    return
+  }
+  armedClear.value = false
+  pb.clearExtensionVoice()
+}
+
+// 回放结束 / 换了记录 / 离开末尾那根：麦克风必须松开（录了也没有落点）
+watch(
+  () => `${pb.active}|${pb.recording?.id ?? ''}|${pb.onExtensionTail}`,
+  () => {
+    armedClear.value = false
+    setHint('')
+    if (!capturing.value) return
+    recorder?.cancel()
+    recorder = null
+    capturing.value = false
+  },
+)
+
+onBeforeUnmount(() => {
+  if (hintTimer) window.clearTimeout(hintTimer)
+  if (clearTimer) window.clearTimeout(clearTimer)
+  recorder?.cancel()
+  recorder = null
+})
 </script>
 
 <template>
@@ -140,6 +253,28 @@ const btn =
           单步 ▶|
         </button>
 
+        <!--
+          回放走完之后往后加载一根（v0.27.0）：只在最后一步出现 ——
+          中间插一根会让后面所有步的 K 线时间和游标错位，
+          画在上面的图形、挂在上面的话都会跑到别处去。
+        -->
+        <template v-if="pb.atEnd">
+          <button
+            v-if="pb.extendHasMore"
+            type="button"
+            class="rounded border border-cyan-500 px-2 py-0.5 text-[13px] text-cyan-700 transition hover:bg-cyan-500/10 disabled:cursor-not-allowed disabled:opacity-40"
+            :disabled="!pb.canExtend"
+            title="步数已经走完，往后加载真实行情里的下一根 K 线（会存进这条交易记录）"
+            data-testid="extend-next"
+            @click="pb.extendNext()"
+          >
+            {{ pb.extending ? '加载中…' : '＋ 加载下一根' }}
+          </button>
+          <span v-else class="rounded bg-panel px-1 text-[11px] text-faint">
+            数据已到最后一根
+          </span>
+        </template>
+
         <span class="mx-1 h-3 w-px bg-line" />
         <button
           v-for="s in [1, 2, 4] as const"
@@ -169,6 +304,54 @@ const btn =
         >
           空格逐条
         </button>
+      </div>
+
+      <!--
+        在「延伸出来的最后一根」上录音（v0.27.0）：只在这一步出现。
+        录下来的语音会以**语音步**的形式存进这条交易记录，重新打开回放时照样在。
+      -->
+      <div
+        v-if="pb.onExtensionTail"
+        class="flex flex-wrap items-center gap-1.5 border-t border-cyan-500/40 bg-cyan-500/5 px-2 py-1"
+        data-testid="extend-voice"
+      >
+        <span class="shrink-0 text-[11px] text-cyan-700">
+          延伸的 {{ tailTime }} 这根
+        </span>
+        <button
+          type="button"
+          class="shrink-0 rounded border px-2 py-0.5 text-[12px] transition"
+          :class="
+            capturing
+              ? 'border-red-500 bg-red-500/10 text-red-600'
+              : 'border-line text-dim hover:border-accent hover:text-accent'
+          "
+          :disabled="busy || tailClips.length >= MAX_PER_BAR"
+          :title="
+            tailClips.length >= MAX_PER_BAR
+              ? '这根已经录满 9 条；再往后加载一根就能接着录'
+              : '对着这根 K 线讲一段（再点一下结束）'
+          "
+          @click="toggleClip"
+        >
+          {{ capturing ? '■ 结束录音' : busy ? '编码中…' : '🎙 在这根上录音' }}
+        </button>
+        <span class="tnum shrink-0 text-[11px] text-faint">
+          本根 {{ tailClips.length }}/{{ MAX_PER_BAR }}
+        </span>
+        <button
+          v-if="tailClips.length"
+          type="button"
+          class="shrink-0 rounded px-1 text-[11px]"
+          :class="armedClear ? 'bg-red-600 text-white' : 'text-faint hover:text-red-600'"
+          :title="armedClear ? '再点一下确认清空（只清这根，不可撤销）' : '清空这根上的全部语音'"
+          @click="clearBar"
+        >
+          {{ armedClear ? '确认清空' : '清空本根' }}
+        </button>
+        <span class="text-[11px] text-faint">
+          {{ hint || '录下来的语音会存进这条交易记录，重新打开回放时还在' }}
+        </span>
       </div>
 
       <!-- 本步的语音：波形 + 时长，点一条就播（步进条上那个橙点只是"有语音"的记号，

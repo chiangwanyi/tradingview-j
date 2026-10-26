@@ -78,6 +78,16 @@ const (
 	// 但它们**要求的仍然是在录制中**，语义没有变。
 	ReqVoiceAdd   = "voice_add"   // 一段语音讲解，挂在当前那根 K 线上（限制仍然是每根 9 条）
 	ReqVoiceClear = "voice_clear" // 清空当前这根 K 线上的全部语音
+
+	// 回放延伸（v0.27.0）：步数走完之后，继续把后面真实的行情逐根加载出来。
+	//
+	// 为什么是三条**以记录为中心**的消息，而不是复用 step / voice_add：
+	// 回放里前端根本没有 join 任何实例（`rec:<id>` 是演出来的），所以
+	// `instanceLocked` 那一套全都不成立。这三条请求都只认 recordingId，
+	// 由服务端自己去记录目录里读、改、写 —— 记录是唯一事实，没有第二个状态源。
+	ReqRecordingExtend     = "recording_extend"      // 往后加载 N 根（默认 1 根）新 K 线
+	ReqRecordingVoiceAdd   = "recording_voice_add"   // 在「末尾新加载的那根」上录一段
+	ReqRecordingVoiceClear = "recording_voice_clear" // 清空末尾那根上的全部语音
 )
 
 // Request 是一条上行消息。每种类型只读自己那几个字段。
@@ -151,6 +161,12 @@ type Request struct {
 	// get_recording / delete_recording
 	RecordingID string `json:"recordingId"`
 
+	// recording_extend：一次往后加载几根（0 = 1 根，上限 maxExtendBars）。
+	//
+	// 为什么允许 > 1：前端现在只发 1（「逐根加载」是需求原话），但协议层没必要把
+	// 「一次只能一根」写死 —— 将来想加个「快进 10 根」不必再改协议。
+	Count int `json:"count"`
+
 	// set_recording_tags：这笔交易**之后**应该有的那一组标签（空数组 = 全部清掉）。
 	// 颜色和名字都由用户定，服务端只做清洗（去空白、去重、限长、颜色必须是 #rrggbb）。
 	Tags []RecordTag `json:"tags"`
@@ -174,6 +190,13 @@ const (
 	MsgRecordings    = "recordings"     // 交易记录列表（摘要）
 	MsgRecording     = "recording"      // 一条交易记录的完整内容（回放用）
 	MsgTradeRecorded = "trade_recorded" // 一条交易记录刚刚收尾（列表要刷新 + 给一句提示）
+
+	// 回放延伸（v0.27.0）：只把**增量**发回去，不重发整条记录。
+	//
+	// 一条记录的 recording.json 里是几百根 K 线加几百步，点一下就重传一遍
+	// （几百 KB）既慢又没必要 —— 新增的永远只有末尾那一步和最多一条语音。
+	MsgRecordingExtended = "recording_extended"
+	MsgRecordingVoice    = "recording_voice"
 )
 
 // 广播的动作名（Event.Action）。
@@ -205,6 +228,16 @@ const (
 	// 和有没有一条正在进行的交易记录无关。
 	ActVoiceAdded   = "voice_added"
 	ActVoiceCleared = "voice_cleared"
+
+	// ActBarExtended 是**回放延伸步**的类型名（v0.27.0）。
+	//
+	// 它和 ActBarAdvanced 刻意分成两个名字，而不是复用后者：
+	// bar_advanced 的 payload 里带着「这一刻的订单/成交/持仓/盈亏」全量快照 ——
+	// 那是实时撮合算出来的。回放延伸只是「多显示一根后面的真实 K 线」，
+	// 没有任何成交发生，硬凑一份持仓快照就是在**编造**当时的交易状态
+	// （回放里的持仓会突然被改写）。所以延伸步只带 Bar / Cursor / HasMore，
+	// 前端 reducer 只追加 K 线、不碰交易状态。
+	ActBarExtended = "bar_extended"
 )
 
 // StepBase 是第 1 步的类型：开始录制那一刻的盘面（没有事件，就是 Base 本身）。
@@ -590,6 +623,21 @@ type BarAdvancedPayload struct {
 	Voice VoiceState `json:"voice"`
 }
 
+// BarExtendedPayload 是回放延伸步的负载（v0.27.0，见 ActBarExtended）。
+//
+// 只有「画布上又多了一根 K 线」这一件事，**没有** Orders / Trades / Position：
+// 延伸发生在回放末尾之后，那段时间没有订单、没有成交，交易状态就该保持在
+// 最后一笔成交之后的样子。带一份空的持仓快照过去，等于把回放里的仓位抹掉。
+//
+// HasMore 表示「数据目录里还有没有更晚的 K 线」：前端据此决定【加载下一根】是
+// 还能点，还是该显示「已经到数据末尾」。
+type BarExtendedPayload struct {
+	Bar     Bar    `json:"bar"`
+	Cursor  int    `json:"cursor"`
+	Time    string `json:"time"`
+	HasMore bool   `json:"hasMore"`
+}
+
 type AnnotationPayload struct {
 	Annotation Annotation `json:"annotation"`
 }
@@ -972,4 +1020,39 @@ type RecordingsMsg struct {
 type RecordingMsg struct {
 	Type      string     `json:"type"`
 	Recording *Recording `json:"recording"`
+}
+
+// RecordingExtendedMsg 是「回放末尾又加载了几根 K 线」的回复（v0.27.0）。
+//
+// 只带**新增的**那几步和摘要：前端把它们接到手里的 recording 上就够演了，
+// 不必为一根 K 线重收一份几百 KB 的整条记录。
+//
+// Summary 是保存之后的那一份（步数 / 根数 / 结束时间都变了），
+// 前端顺手用它刷新列表里那一行，免得「刚加了一根、列表上还是旧数字」。
+type RecordingExtendedMsg struct {
+	Type        string            `json:"type"`
+	RecordingID string            `json:"recordingId"`
+	Steps       []RecordingStep   `json:"steps"`
+	Summary     RecordingSummary  `json:"recording"`
+	HasMore     bool              `json:"hasMore"`
+	Warning     string            `json:"warning,omitempty"`
+}
+
+// RecordingVoiceMsg 是在回放末尾那根 K 线上录音 / 清空的结果（v0.27.0）。
+//
+//   - 新增：Audio + Step（两者成对出现，Step.Audio 就是 Audio 的副本）
+//   - 清空：Removed（被删掉的那几条，前端可能正在播其中一条，得停下）
+//
+// 清空之后**步号会重排**（语音自己占一步，删掉它后面的步号要往前挪），
+// 所以这里不回传整份 Steps，而是由前端按同一条规则就地重排 —— 规则只有一条
+// （Step = 下标+1），两边各写一遍也不会分叉，回传几百步反而更容易出现
+// 「收到的步和手里那份对不上」。
+type RecordingVoiceMsg struct {
+	Type        string           `json:"type"`
+	RecordingID string           `json:"recordingId"`
+	Audio       *AudioClip       `json:"audio,omitempty"`
+	Step        *RecordingStep   `json:"step,omitempty"`
+	Removed     []AudioClip      `json:"removed,omitempty"`
+	Summary     RecordingSummary `json:"recording"`
+	Warning     string           `json:"warning,omitempty"`
 }

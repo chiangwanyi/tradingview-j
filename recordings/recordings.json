@@ -1,6 +1,6 @@
 {
   "version": 2,
-  "savedAt": 1793025000,
+  "savedAt": 1793027035,
   "items": [
     {
       "id": "rec-20261026-222103",
@@ -11,10 +11,10 @@
       "endTime": "2024-08-15 14:05",
       "instanceId": "ins-7",
       "stepCount": 29,
-      "audioCount": 7,
+      "audioCount": 11,
       "eventCount": 21,
       "bars": 9,
-      "size": 2140887,
+      "size": 822647,
       "createdBy": "human",
       "createdAt": 1793024463,
       "endedAt": 1793024794,

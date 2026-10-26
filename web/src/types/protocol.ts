@@ -332,6 +332,8 @@ export type ServerMessage =
   | RecordingsMessage
   | RecordingMessage
   | TradeRecordedMessage
+  | RecordingExtendedMessage
+  | RecordingVoiceMessage
 
 // ---------------- 广播负载 ----------------
 
@@ -350,6 +352,20 @@ export interface BarAdvancedPayload {
   fills: Trade[]
   /** 换根之后的语音状态（清单和「本根 x/9」跟着走，v0.16.0） */
   voice: VoiceState
+}
+
+/**
+ * 回放延伸步的负载（v0.27.0）。
+ *
+ * 只有「又多了一根 K 线」这一件事：没有订单、没有成交、**没有持仓**。
+ * 交易状态保持在最后一笔成交之后的样子 —— 那是当时真实发生的事。
+ */
+export interface BarExtendedPayload {
+  bar: Bar
+  cursor: number
+  time: string
+  /** 数据目录里还有没有更晚的 K 线（【加载下一根】能不能再点） */
+  hasMore: boolean
 }
 
 export interface AnnotationPayload {
@@ -500,6 +516,15 @@ export const ACTION = {
   botStopped: 'bot_stopped',
   voiceAdded: 'voice_added',
   voiceCleared: 'voice_cleared',
+  /**
+   * 回放延伸步（v0.27.0）：**不是一条实时广播**，而是「交易记录里的一步」。
+   *
+   * 它和 `barAdvanced` 分开是有原因的：barAdvanced 的 payload 里带着订单/成交/
+   * 持仓/盈亏的全量快照（实时撮合算出来的），而延伸只表示「画布上又多了一根
+   * 后面的真实 K 线」，那段时间根本没有成交。照 barAdvanced 那份更新，
+   * 回放里的仓位会被改写成「还开着」。
+   */
+  barExtended: 'bar_extended',
 } as const
 
 /**
@@ -738,6 +763,41 @@ export interface RecordingsMessage {
 export interface RecordingMessage {
   type: 'recording'
   recording: Recording | null
+}
+
+/**
+ * 「回放末尾又加载了几根 K 线」（v0.27.0）。
+ *
+ * 只带**新增的**那几步和摘要，不重发整条记录：点一下加载一根，没必要把几百根
+ * K 线、几百步再传一遍。前端把它们接到手里的 recording 上，然后跳到新的最后一步。
+ */
+export interface RecordingExtendedMessage {
+  type: 'recording_extended'
+  recordingId: string
+  /** 新增的步（通常 1 步；一次加载多根时就是多步） */
+  steps: RecordingStep[]
+  /** 保存之后的摘要（步数 / 根数 / 结束时间都变了，列表那一行要跟着更新） */
+  recording: RecordingSummary
+  /** 数据目录里还有没有更晚的 K 线 */
+  hasMore: boolean
+  warning?: string
+}
+
+/**
+ * 在「回放末尾新加载的那根」上录音 / 清空的结果（v0.27.0）。
+ *
+ * 新增时 `audio` + `step` 成对出现；清空时只有 `removed`。
+ * 清空会让**步号重排**（语音自己占一步），前端按同一条规则就地重排
+ * （见 stores/playback.ts 的 renumberLocal）—— 规则只有「Step = 下标 + 1」一条。
+ */
+export interface RecordingVoiceMessage {
+  type: 'recording_voice'
+  recordingId: string
+  audio?: AudioClip
+  step?: RecordingStep
+  removed?: AudioClip[]
+  recording: RecordingSummary
+  warning?: string
 }
 
 /**

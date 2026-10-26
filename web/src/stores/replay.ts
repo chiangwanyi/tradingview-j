@@ -22,7 +22,9 @@ import type {
   Point,
   RecordTag,
   Recording,
+  RecordingExtendedMessage,
   RecordingSummary,
+  RecordingVoiceMessage,
   ReplayEvent,
   ServerEvent,
   ServerMessage,
@@ -245,6 +247,27 @@ export const useReplayStore = defineStore('replay', () => {  const socket = new 
   /** 每取回一条就加一：组件用它判断"这是一条新的"，避免同一条被重复打开 */
   const loadedSeq = ref(0)
   /**
+   * 回放延伸的两条回复（v0.27.0）：加载了 K 线 / 在延伸出来的 K 线上录了音。
+   *
+   * 为什么不直接改 `loadedRecording`：那一条的语义是「刚取回一整条记录，
+   * 交给播放器打开」，重发一次会把回放**重置到第 1 步**。延伸只该在播放器
+   * 手里那份 recording 上追加，播放进度要留在原处。
+   *
+   * 所以这里只做转发：播放器（stores/playback.ts）watch `playbackMsgSeq`，
+   * 认 id 之后自己接上。和 `loadedSeq` 是同一套「信号 + 载荷」的写法。
+   */
+  const playbackMsg = ref<RecordingExtendedMessage | RecordingVoiceMessage | null>(null)
+  const playbackMsgSeq = ref(0)
+  /**
+   * 延伸/录音**失败**的那一句（v0.27.0）。
+   *
+   * 必须单独转一次：播放器要据此把手里的「加载中」标记放掉，否则一次失败之后
+   * 【加载下一根】会被永远锁住（按钮看着能点，其实一直转圈）。
+   * 错误本身仍然由 `lastError` 弹出来，这条只负责「这件事结束了、结果是失败」。
+   */
+  const playbackFail = ref<{ request: string; message: string } | null>(null)
+  const playbackFailSeq = ref(0)
+  /**
    * 交易记录页点【回放】预约的那一条（v0.19.0）。
    *
    * 记录页没有画布，回放只能发生在 `/` 上：它把 id 放这儿再跳回去，
@@ -457,6 +480,10 @@ export const useReplayStore = defineStore('replay', () => {  const socket = new 
         break
       case 'error':
         noteError(msg.message)
+        if (msg.request && msg.request.startsWith('recording_')) {
+          playbackFail.value = { request: msg.request, message: msg.message }
+          playbackFailSeq.value += 1
+        }
         // 重连后原来的实例可能已经不在了：别让界面停在假状态上
         if (msg.request === 'join_instance') {
           instance.value = null
@@ -510,6 +537,15 @@ export const useReplayStore = defineStore('replay', () => {  const socket = new 
         loadedRecording.value = msg.recording ?? null
         loadedSeq.value += 1
         break
+      case 'recording_extended':
+      case 'recording_voice': {
+        // 回放延伸的增量（v0.27.0）：列表那一行顺手更新（步数/根数/结束时间都变了），
+        // 然后整条消息转给播放器接上 —— 这里不动 loadedRecording（那会重置回放进度）。
+        applyRecordingSummary(msg.recording)
+        playbackMsg.value = msg
+        playbackMsgSeq.value += 1
+        break
+      }
       case 'strategies':
         strategies.value = msg.strategies ?? []
         break
@@ -524,6 +560,18 @@ export const useReplayStore = defineStore('replay', () => {  const socket = new 
       default:
         break
     }
+  }
+
+  /**
+   * 按 id 就地更新交易记录列表里的一行（延伸 / 录音之后摘要变了）。
+   *
+   * 不整份重发列表：那两个动作本来就是一问一答，重拉一次列表还会让人在记录页
+   * 看到列表闪一下。找不到就什么都不做（比如另一条记录的消息，或列表还没到）。
+   */
+  function applyRecordingSummary(sum: RecordingSummary | undefined): void {
+    if (!sum?.id) return
+    const i = recordings.value.findIndex((r) => r.id === sum.id)
+    if (i >= 0) recordings.value[i] = { ...recordings.value[i], ...sum }
   }
 
   function applyState(msg: InstanceStateMessage): void {
@@ -936,6 +984,26 @@ export const useReplayStore = defineStore('replay', () => {  const socket = new 
   }
 
   /**
+   * 回放走到末尾之后，往后加载一根（或几根）真实 K 线（v0.27.0）。
+   *
+   * 服务端会把它写进记录本身：所以这一步是**修改数据**，不只是「看看」——
+   * 但改的只是「这条记录演到哪儿为止」，任何交易状态、任何原有的步都不动。
+   */
+  function extendRecording(id: string, count = 1): boolean {
+    return send({ type: 'recording_extend', recordingId: id, count })
+  }
+
+  /** 在「回放末尾新加载的那根」上录一段语音（WAV 的 base64）。 */
+  function addRecordingVoice(id: string, audioData: string, durationMs: number): boolean {
+    return send({ type: 'recording_voice_add', recordingId: id, audioData, durationMs })
+  }
+
+  /** 清空「回放末尾新加载的那根」上的全部语音。 */
+  function clearRecordingVoice(id: string): boolean {
+    return send({ type: 'recording_voice_clear', recordingId: id })
+  }
+
+  /**
    * 「在画布上放这一条」—— 交易记录页专用的入口（v0.19.0）。
    *
    * 回放离不开 K 线画布，而记录页没有画布，所以点【回放】只是**预约**：
@@ -1028,6 +1096,10 @@ export const useReplayStore = defineStore('replay', () => {  const socket = new 
     recordingDir,
     loadedRecording,
     loadedSeq,
+    playbackMsg,
+    playbackMsgSeq,
+    playbackFail,
+    playbackFailSeq,
     voice,
     voiceClips,
     voiceAll,
@@ -1114,6 +1186,9 @@ export const useReplayStore = defineStore('replay', () => {  const socket = new 
     clearVoiceBar,
     listRecordings,
     requestRecording,
+    extendRecording,
+    addRecordingVoice,
+    clearRecordingVoice,
     openRecordingAt,
     takePendingPlayback,
     deleteRecording,

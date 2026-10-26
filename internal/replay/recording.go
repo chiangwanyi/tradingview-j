@@ -559,18 +559,11 @@ func (r *tradeRecorder) addAudio(data []byte, durationMs int, by string) (AudioC
 	if n := len(r.clipsOfBar(barTime)); n >= maxAudiosPerBar {
 		return AudioClip{}, fmt.Errorf("一根 K 线最多 %d 段录音，这根已经录满了；点【下一根】可以接着录", maxAudiosPerBar)
 	}
-	if len(data) == 0 {
-		return AudioClip{}, errors.New("录音是空的")
-	}
-	if len(data) > maxAudioBytes {
-		return AudioClip{}, fmt.Errorf("单段录音最多 %d MB", maxAudioBytes>>20)
-	}
-	if len(data) < 44 || string(data[0:4]) != "RIFF" || string(data[8:12]) != "WAVE" {
-		return AudioClip{}, errors.New("录音不是 WAV（RIFF/WAVE）格式")
-	}
-	if durationMs <= 0 {
-		// 采样率 16kHz、16bit、单声道：一秒 32000 字节
-		durationMs = int(float64(len(data)-44) / 32.0)
+	// 长度 / 字节数 / 文件头的校验和盘面语音共用一份（见 voice.go 的 checkAudioClip），
+	// 三处口径必须一样 —— 否则「复盘时能录、回放延伸时不能录」这种差异根本查不出来。
+	durationMs, err := checkAudioClip(data, durationMs)
+	if err != nil {
+		return AudioClip{}, err
 	}
 	r.audioSeq++
 	clip := AudioClip{
@@ -739,7 +732,7 @@ func (rec *Recording) refresh() {
 	recorded, bars := 0, 1
 	for _, st := range rec.Steps {
 		recorded += len(st.Events)
-		if st.Kind == ActBarAdvanced {
+		if st.Kind == ActBarAdvanced || st.Kind == ActBarExtended {
 			bars++
 		}
 	}
@@ -748,6 +741,9 @@ func (rec *Recording) refresh() {
 	rec.EventCount = recorded
 	// Bars 是「推进了几根 K 线」，**不是**步数：一根 K 线可能十几步，
 	// 列表里要让人看得出「这段有多长」。
+	//
+	// v0.27.0 起把回放末尾「延伸加载」的 K 线也算进来：它们本来就是盘面上多走的根数，
+	// 不算的话顶栏会写「第 9/6 根」—— 而步进条上明明有 9 格换根。
 	rec.Bars = bars
 	rec.Stats.Steps = len(rec.Steps)
 	if n := len(rec.Steps); n > 0 {
@@ -982,6 +978,15 @@ func (s *RecordingStore) Save(rec *Recording, audios []pendingAudio) (RecordingS
 	}
 	keep := map[string]bool{}
 	var size int64
+	// 「该留哪些」以 **rec.Audios** 为准，而不是以 audios 参数为准。
+	//
+	// 这个区别很要紧：audios 参数只是「这次要写的字节」，有些调用方手里没有
+	// 全部字节 —— 补抄开仓前语音（backfillPreOpenVoices）只带新增那几条，
+	// 回放延伸（extend.go）一条都不带。按参数算「该留」就会把磁盘上本来好好的
+	// 语音文件当残留删掉，表现是「只是打开了一下记录，语音全没了」。
+	for _, a := range rec.Audios {
+		keep[filepath.Base(a.File)] = true
+	}
 	for _, a := range audios {
 		name := filepath.Base(a.clip.File)
 		keep[name] = true
@@ -1062,6 +1067,81 @@ func (s *RecordingStore) SaveDraft(sum RecordingSummary, data []byte) error {
 	s.upsertLocked(sum)
 	s.writeIndexLocked()
 	s.mu.Unlock()
+	return nil
+}
+
+// UpdateRecording 把**已经落过盘**的一条记录整份重写一遍（recording.json + 索引），
+// 但**不碰音频目录**。
+//
+// 它和 Save 的区别只有一件事，而这件事很要紧：Save 会按 audios 参数清理
+// 「没人引用的 audio-*.wav」。回放延伸（v0.27.0）手里没有音频字节（那些早就写在
+// 记录目录里了），拿 Save 去保存就等于让清理逻辑把所有语音文件全删掉 ——
+// 表现是「只是在回放里加载了一根 K 线，这条记录的语音全没了」。
+//
+// 所以两条路分工：
+//
+//	Save             交易收尾/检查点：写语音字节 + 清多余文件 + 写 JSON
+//	UpdateRecording  事后修改结构（延伸的 K 线、回放里录的语音）：只写 JSON
+//
+// 语音文件由调用方自己写（见 WriteAudio）—— 写入是「多一个文件」，不需要清理。
+func (s *RecordingStore) UpdateRecording(rec *Recording) (RecordingSummary, error) {
+	if s == nil || s.dir == "" {
+		return RecordingSummary{}, errors.New("没有配置交易记录目录（config.json 的 replayRecordingDir）")
+	}
+	if rec == nil || strings.TrimSpace(rec.ID) == "" {
+		return RecordingSummary{}, errors.New("没有记录可保存")
+	}
+	folder := filepath.Join(s.dir, recordingFolder(rec.ID))
+	if err := os.MkdirAll(folder, 0o755); err != nil {
+		return RecordingSummary{}, err
+	}
+	// 标签只存在 tags.json 里（见 recordingTagsName），手里这份记录里没有它们
+	if len(rec.Tags) == 0 {
+		rec.Tags = s.tagsOf(rec.ID)
+	}
+	if err := writeJSONAtomic(filepath.Join(folder, recordingFileName), rec); err != nil {
+		return RecordingSummary{}, fmt.Errorf("写 %s 失败：%w", recordingFileName, err)
+	}
+	sum := rec.RecordingSummary
+	sum.normalizeSource()
+	sum.Size = folderSize(folder)
+
+	s.mu.Lock()
+	s.upsertLocked(sum)
+	s.writeIndexLocked()
+	s.mu.Unlock()
+	return sum, nil
+}
+
+// WriteAudio 往一条**已存在**的记录目录里写一个语音文件（v0.27.0）。
+//
+// 调用方是回放里「在延伸出来的 K 线上录音」那条路：那时没有进行中的 tradeRecorder，
+// 没有 pendingAudio，只有一段刚编码好的 WAV 和一个该放它的文件名。
+//
+// 文件名校验和 AudioFile 完全一致（audio-N.wav、不含路径分隔符）—— 这条目录里的
+// 文件之后会以 audio/wav 发给浏览器，名字必须是这里认得的形状。
+// 名字重复时**覆盖**：编号由调用方按记录里已有的最大编号+1 算，正常不会撞上；
+// 真撞上了（比如两个页面同时录），保留后写的那一份比留下一个谁也听不到的空号强。
+func (s *RecordingStore) WriteAudio(id, name string, data []byte) error {
+	if s == nil || s.dir == "" {
+		return errors.New("没有配置交易记录目录（config.json 的 replayRecordingDir）")
+	}
+	if !s.has(id) {
+		return fmt.Errorf("没有这条记录：%s", id)
+	}
+	if name == "" || name != filepath.Base(name) || strings.ContainsAny(name, `/\`) {
+		return errors.New("录音文件名不合法")
+	}
+	if !strings.HasPrefix(name, "audio-") || !strings.HasSuffix(name, ".wav") {
+		return errors.New("录音文件名不合法")
+	}
+	folder := filepath.Join(s.dir, recordingFolder(id))
+	if err := os.MkdirAll(folder, 0o755); err != nil {
+		return fmt.Errorf("记录目录不可用：%w", err)
+	}
+	if err := os.WriteFile(filepath.Join(folder, name), data, 0o644); err != nil {
+		return fmt.Errorf("写语音 %s 失败：%w", name, err)
+	}
 	return nil
 }
 
@@ -1309,7 +1389,7 @@ func (s *RecordingStore) scan() []RecordingSummary {
 		sum.Bars = 1
 		for _, st := range rec.Steps {
 			sum.EventCount += len(st.Events)
-			if st.Kind == ActBarAdvanced {
+			if st.Kind == ActBarAdvanced || st.Kind == ActBarExtended {
 				sum.Bars++
 			}
 		}

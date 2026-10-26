@@ -20,6 +20,8 @@ export function stepKindLabel(kind: string): string {
       return '入场前'
     case ACTION.barAdvanced:
       return '下一根'
+    case ACTION.barExtended:
+      return '加载K线'
     case ACTION.annotationAdded:
       return '绘制图形'
     case ACTION.annotationMoved:
@@ -54,6 +56,10 @@ export function stepKindClass(kind: string): string {
       return 'border-slate-400/70 bg-slate-400/20'
     case ACTION.barAdvanced:
       return 'border-sky-500/80 bg-sky-500/40'
+    // 延伸出来的 K 线用更淡的青色：它和「当时真的点了下一根」是两回事，
+    // 但都属于「盘面往前走了一格」，不该和画图/下单混成一色。
+    case ACTION.barExtended:
+      return 'border-cyan-400/70 bg-cyan-400/25'
     case ACTION.annotationAdded:
     case ACTION.annotationMoved:
     case ACTION.annotationStyled:
@@ -73,7 +79,12 @@ export function stepKindClass(kind: string): string {
   }
 }
 
-/** 这个类型的步是不是「换了一根 K 线」—— 步进条在它前面画一条分隔，标出每根 K 线的边界。 */
+/**
+ * 这个类型的步是不是「换了一根 K 线」—— 步进条在它前面画一条分隔，标出每根 K 线的边界。
+ *
+ * 延伸步（v0.27.0）也算：它就是「盘面又多了一根」，分隔线不画的话，
+ * 回放末尾那几格会看起来像「还在同一根上做了几次操作」。
+ */
 export function isBarBoundary(kind: string): boolean {
-  return kind === ACTION.barAdvanced
+  return kind === ACTION.barAdvanced || kind === ACTION.barExtended
 }

@@ -7,7 +7,7 @@
   "endTime": "2024-08-15 14:05",
   "instanceId": "ins-7",
   "stepCount": 29,
-  "audioCount": 7,
+  "audioCount": 11,
   "eventCount": 21,
   "bars": 9,
   "size": 0,
@@ -32,6 +32,12 @@
   },
   "source": "human",
   "sourceName": "human",
+  "tags": [
+    {
+      "name": "多空力量",
+      "color": "#ef4444"
+    }
+  ],
   "format": 2,
   "tick": 0.25,
   "tickValue": 0.5,
@@ -8553,6 +8559,46 @@
       "file": "audio-7.wav",
       "size": 197804,
       "createdAt": 1793024787,
+      "by": "human"
+    },
+    {
+      "id": "au8",
+      "step": 0,
+      "time": "2024-08-15 10:35",
+      "durationMs": 9060,
+      "file": "audio-8.wav",
+      "size": 289964,
+      "createdAt": 1793024118,
+      "by": "human"
+    },
+    {
+      "id": "au9",
+      "step": 0,
+      "time": "2024-08-15 13:10",
+      "durationMs": 3480,
+      "file": "audio-9.wav",
+      "size": 111404,
+      "createdAt": 1793024382,
+      "by": "human"
+    },
+    {
+      "id": "au10",
+      "step": 0,
+      "time": "2024-08-15 13:10",
+      "durationMs": 3120,
+      "file": "audio-10.wav",
+      "size": 99884,
+      "createdAt": 1793024397,
+      "by": "human"
+    },
+    {
+      "id": "au11",
+      "step": 0,
+      "time": "2024-08-15 13:20",
+      "durationMs": 3480,
+      "file": "audio-11.wav",
+      "size": 111404,
+      "createdAt": 1793024432,
       "by": "human"
     }
   ]

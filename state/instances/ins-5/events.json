@@ -1,129 +1,5 @@
 [
   {
-    "seq": 12,
-    "at": 1792935734,
-    "by": "human",
-    "action": "annotation_added",
-    "payload": {
-      "annotation": {
-        "createdAt": 1792935734,
-        "createdBy": "human",
-        "end": {
-          "offset": 318,
-          "price": 21091,
-          "time": "2024-03-08 03:50"
-        },
-        "id": "a3",
-        "kind": "ray",
-        "snapped": true,
-        "start": {
-          "price": 21091,
-          "time": "2024-03-08 03:50"
-        },
-        "style": {
-          "color": "#ef4444",
-          "dash": "solid",
-          "width": 2
-        }
-      }
-    }
-  },
-  {
-    "seq": 13,
-    "at": 1792935743,
-    "by": "human",
-    "action": "annotation_added",
-    "payload": {
-      "annotation": {
-        "createdAt": 1792935743,
-        "createdBy": "human",
-        "end": {
-          "offset": 255,
-          "price": 21079.5,
-          "time": "2024-03-08 16:15"
-        },
-        "id": "a4",
-        "kind": "ray",
-        "snapped": true,
-        "start": {
-          "price": 21079.5,
-          "time": "2024-03-08 16:15"
-        },
-        "style": {
-          "color": "#65a30d",
-          "dash": "solid",
-          "width": 2
-        }
-      }
-    }
-  },
-  {
-    "seq": 14,
-    "at": 1792935746,
-    "by": "human",
-    "action": "bar_advanced",
-    "payload": {
-      "bar": {
-        "close": 21065,
-        "ema20": 21058.509889393394,
-        "high": 21081.75,
-        "low": 21064.5,
-        "open": 21080.5,
-        "time": "2024-03-08 16:55",
-        "volume": 2224
-      },
-      "closedLots": null,
-      "cursor": 467,
-      "fills": [],
-      "hasMore": true,
-      "hiddenBars": 1200,
-      "orders": [],
-      "position": {
-        "averagePrice": 0,
-        "quantity": 0,
-        "side": "flat"
-      },
-      "realizedPnl": 0,
-      "trades": [],
-      "unrealizedPnl": 0,
-      "voice": {
-        "barTime": "2024-03-08 16:55",
-        "clips": [],
-        "max": 9,
-        "total": 0
-      }
-    }
-  },
-  {
-    "seq": 15,
-    "at": 1792935813,
-    "by": "human",
-    "action": "annotation_moved",
-    "payload": {
-      "annotation": {
-        "createdAt": 1792935743,
-        "createdBy": "human",
-        "end": {
-          "offset": 247,
-          "price": 21058.79,
-          "time": "2024-03-08 16:55"
-        },
-        "id": "a4",
-        "kind": "ray",
-        "snapped": false,
-        "start": {
-          "price": 21058.79,
-          "time": "2024-03-08 16:15"
-        },
-        "style": {
-          "color": "#65a30d",
-          "dash": "solid",
-          "width": 2
-        }
-      }
-    }
-  },
-  {
     "seq": 16,
     "at": 1792935815,
     "by": "human",
@@ -3456,9 +3332,9 @@
       "members": [
         {
           "clientId": "c1",
+          "connected": true,
           "name": "human",
-          "operator": true,
-          "connected": true
+          "operator": true
         }
       ]
     }
@@ -3470,25 +3346,25 @@
     "action": "annotation_added",
     "payload": {
       "annotation": {
+        "createdAt": 1792941182,
+        "createdBy": "human",
+        "end": {
+          "offset": 165,
+          "price": 21072.25,
+          "time": "2024-03-08 17:50"
+        },
         "id": "a12",
         "kind": "ray",
+        "snapped": true,
         "start": {
-          "time": "2024-03-08 17:50",
-          "price": 21072.25
-        },
-        "end": {
-          "time": "2024-03-08 17:50",
           "price": 21072.25,
-          "offset": 165
+          "time": "2024-03-08 17:50"
         },
         "style": {
           "color": "#ef4444",
-          "width": 2,
-          "dash": "solid"
-        },
-        "snapped": true,
-        "createdBy": "human",
-        "createdAt": 1792941182
+          "dash": "solid",
+          "width": 2
+        }
       }
     }
   },
@@ -3499,124 +3375,124 @@
     "action": "bar_advanced",
     "payload": {
       "bar": {
-        "time": "2024-03-08 19:15",
-        "open": 21067.5,
+        "close": 21064.5,
+        "ema20": 21064.906683584166,
         "high": 21069,
         "low": 21063,
-        "close": 21064.5,
-        "volume": 741,
-        "ema20": 21064.906683584166
+        "open": 21067.5,
+        "time": "2024-03-08 19:15",
+        "volume": 741
       },
-      "cursor": 495,
-      "hiddenBars": 1172,
-      "hasMore": true,
-      "orders": [
-        {
-          "id": "o1",
-          "side": "buy",
-          "kind": "market",
-          "price": 21072,
-          "quantity": 8,
-          "status": "filled",
-          "placedAt": "2024-03-08 17:20",
-          "placedIndex": 472,
-          "filledAt": "2024-03-08 17:20",
-          "filledIndex": 472,
-          "fillPrice": 21072
-        },
-        {
-          "id": "o2",
-          "side": "sell",
-          "kind": "stop",
-          "price": 21044.25,
-          "quantity": 8,
-          "status": "cancelled",
-          "placedAt": "2024-03-08 17:20",
-          "placedIndex": 472,
-          "filledIndex": -1
-        },
-        {
-          "id": "o3",
-          "side": "sell",
-          "kind": "limit",
-          "price": 21071.25,
-          "quantity": 8,
-          "status": "filled",
-          "placedAt": "2024-03-08 17:40",
-          "placedIndex": 476,
-          "filledAt": "2024-03-08 19:10",
-          "filledIndex": 494,
-          "fillPrice": 21071.25
-        },
-        {
-          "id": "o4",
-          "side": "sell",
-          "kind": "limit",
-          "price": 21091,
-          "quantity": 1,
-          "status": "cancelled",
-          "placedAt": "2024-03-08 19:10",
-          "placedIndex": 494,
-          "filledIndex": -1
-        },
-        {
-          "id": "o5",
-          "side": "buy",
-          "kind": "stop",
-          "price": 21082.25,
-          "quantity": 1,
-          "status": "cancelled",
-          "placedAt": "2024-03-08 19:10",
-          "placedIndex": 494,
-          "filledIndex": -1
-        }
-      ],
-      "trades": [
-        {
-          "id": "t1",
-          "orderId": "o1",
-          "time": "2024-03-08 17:20",
-          "side": "buy",
-          "kind": "market",
-          "price": 21072,
-          "quantity": 8,
-          "realizedPnl": 0
-        },
-        {
-          "id": "t2",
-          "orderId": "o3",
-          "time": "2024-03-08 19:10",
-          "side": "sell",
-          "kind": "limit",
-          "price": 21071.25,
-          "quantity": 8,
-          "realizedPnl": -12
-        }
-      ],
       "closedLots": [
         {
-          "openTime": "2024-03-08 17:20",
-          "openPrice": 21072,
-          "closeTime": "2024-03-08 19:10",
           "closePrice": 21071.25,
-          "side": "long",
+          "closeTime": "2024-03-08 19:10",
+          "openPrice": 21072,
+          "openTime": "2024-03-08 17:20",
           "quantity": 8,
-          "realizedPnl": -12
+          "realizedPnl": -12,
+          "side": "long"
+        }
+      ],
+      "cursor": 495,
+      "fills": [],
+      "hasMore": true,
+      "hiddenBars": 1172,
+      "orders": [
+        {
+          "fillPrice": 21072,
+          "filledAt": "2024-03-08 17:20",
+          "filledIndex": 472,
+          "id": "o1",
+          "kind": "market",
+          "placedAt": "2024-03-08 17:20",
+          "placedIndex": 472,
+          "price": 21072,
+          "quantity": 8,
+          "side": "buy",
+          "status": "filled"
+        },
+        {
+          "filledIndex": -1,
+          "id": "o2",
+          "kind": "stop",
+          "placedAt": "2024-03-08 17:20",
+          "placedIndex": 472,
+          "price": 21044.25,
+          "quantity": 8,
+          "side": "sell",
+          "status": "cancelled"
+        },
+        {
+          "fillPrice": 21071.25,
+          "filledAt": "2024-03-08 19:10",
+          "filledIndex": 494,
+          "id": "o3",
+          "kind": "limit",
+          "placedAt": "2024-03-08 17:40",
+          "placedIndex": 476,
+          "price": 21071.25,
+          "quantity": 8,
+          "side": "sell",
+          "status": "filled"
+        },
+        {
+          "filledIndex": -1,
+          "id": "o4",
+          "kind": "limit",
+          "placedAt": "2024-03-08 19:10",
+          "placedIndex": 494,
+          "price": 21091,
+          "quantity": 1,
+          "side": "sell",
+          "status": "cancelled"
+        },
+        {
+          "filledIndex": -1,
+          "id": "o5",
+          "kind": "stop",
+          "placedAt": "2024-03-08 19:10",
+          "placedIndex": 494,
+          "price": 21082.25,
+          "quantity": 1,
+          "side": "buy",
+          "status": "cancelled"
         }
       ],
       "position": {
+        "averagePrice": 0,
         "quantity": 0,
-        "side": "flat",
-        "averagePrice": 0
+        "side": "flat"
       },
       "realizedPnl": -12,
+      "trades": [
+        {
+          "id": "t1",
+          "kind": "market",
+          "orderId": "o1",
+          "price": 21072,
+          "quantity": 8,
+          "realizedPnl": 0,
+          "side": "buy",
+          "time": "2024-03-08 17:20"
+        },
+        {
+          "id": "t2",
+          "kind": "limit",
+          "orderId": "o3",
+          "price": 21071.25,
+          "quantity": 8,
+          "realizedPnl": -12,
+          "side": "sell",
+          "time": "2024-03-08 19:10"
+        }
+      ],
       "unrealizedPnl": 0,
-      "fills": [],
       "voice": {
         "barTime": "2024-03-08 19:15",
         "clips": [],
-        "total": 0,
-        "max": 9
+        "max": 9,
+        "total": 0
       }
     }
   },
@@ -3627,124 +3503,124 @@
     "action": "bar_advanced",
     "payload": {
       "bar": {
-        "time": "2024-03-08 19:20",
-        "open": 21064,
+        "close": 21060,
+        "ema20": 21064.439380385673,
         "high": 21068.5,
         "low": 21060,
-        "close": 21060,
-        "volume": 1146,
-        "ema20": 21064.439380385673
+        "open": 21064,
+        "time": "2024-03-08 19:20",
+        "volume": 1146
       },
-      "cursor": 496,
-      "hiddenBars": 1171,
-      "hasMore": true,
-      "orders": [
-        {
-          "id": "o1",
-          "side": "buy",
-          "kind": "market",
-          "price": 21072,
-          "quantity": 8,
-          "status": "filled",
-          "placedAt": "2024-03-08 17:20",
-          "placedIndex": 472,
-          "filledAt": "2024-03-08 17:20",
-          "filledIndex": 472,
-          "fillPrice": 21072
-        },
-        {
-          "id": "o2",
-          "side": "sell",
-          "kind": "stop",
-          "price": 21044.25,
-          "quantity": 8,
-          "status": "cancelled",
-          "placedAt": "2024-03-08 17:20",
-          "placedIndex": 472,
-          "filledIndex": -1
-        },
-        {
-          "id": "o3",
-          "side": "sell",
-          "kind": "limit",
-          "price": 21071.25,
-          "quantity": 8,
-          "status": "filled",
-          "placedAt": "2024-03-08 17:40",
-          "placedIndex": 476,
-          "filledAt": "2024-03-08 19:10",
-          "filledIndex": 494,
-          "fillPrice": 21071.25
-        },
-        {
-          "id": "o4",
-          "side": "sell",
-          "kind": "limit",
-          "price": 21091,
-          "quantity": 1,
-          "status": "cancelled",
-          "placedAt": "2024-03-08 19:10",
-          "placedIndex": 494,
-          "filledIndex": -1
-        },
-        {
-          "id": "o5",
-          "side": "buy",
-          "kind": "stop",
-          "price": 21082.25,
-          "quantity": 1,
-          "status": "cancelled",
-          "placedAt": "2024-03-08 19:10",
-          "placedIndex": 494,
-          "filledIndex": -1
-        }
-      ],
-      "trades": [
-        {
-          "id": "t1",
-          "orderId": "o1",
-          "time": "2024-03-08 17:20",
-          "side": "buy",
-          "kind": "market",
-          "price": 21072,
-          "quantity": 8,
-          "realizedPnl": 0
-        },
-        {
-          "id": "t2",
-          "orderId": "o3",
-          "time": "2024-03-08 19:10",
-          "side": "sell",
-          "kind": "limit",
-          "price": 21071.25,
-          "quantity": 8,
-          "realizedPnl": -12
-        }
-      ],
       "closedLots": [
         {
-          "openTime": "2024-03-08 17:20",
-          "openPrice": 21072,
-          "closeTime": "2024-03-08 19:10",
           "closePrice": 21071.25,
-          "side": "long",
+          "closeTime": "2024-03-08 19:10",
+          "openPrice": 21072,
+          "openTime": "2024-03-08 17:20",
           "quantity": 8,
-          "realizedPnl": -12
+          "realizedPnl": -12,
+          "side": "long"
+        }
+      ],
+      "cursor": 496,
+      "fills": [],
+      "hasMore": true,
+      "hiddenBars": 1171,
+      "orders": [
+        {
+          "fillPrice": 21072,
+          "filledAt": "2024-03-08 17:20",
+          "filledIndex": 472,
+          "id": "o1",
+          "kind": "market",
+          "placedAt": "2024-03-08 17:20",
+          "placedIndex": 472,
+          "price": 21072,
+          "quantity": 8,
+          "side": "buy",
+          "status": "filled"
+        },
+        {
+          "filledIndex": -1,
+          "id": "o2",
+          "kind": "stop",
+          "placedAt": "2024-03-08 17:20",
+          "placedIndex": 472,
+          "price": 21044.25,
+          "quantity": 8,
+          "side": "sell",
+          "status": "cancelled"
+        },
+        {
+          "fillPrice": 21071.25,
+          "filledAt": "2024-03-08 19:10",
+          "filledIndex": 494,
+          "id": "o3",
+          "kind": "limit",
+          "placedAt": "2024-03-08 17:40",
+          "placedIndex": 476,
+          "price": 21071.25,
+          "quantity": 8,
+          "side": "sell",
+          "status": "filled"
+        },
+        {
+          "filledIndex": -1,
+          "id": "o4",
+          "kind": "limit",
+          "placedAt": "2024-03-08 19:10",
+          "placedIndex": 494,
+          "price": 21091,
+          "quantity": 1,
+          "side": "sell",
+          "status": "cancelled"
+        },
+        {
+          "filledIndex": -1,
+          "id": "o5",
+          "kind": "stop",
+          "placedAt": "2024-03-08 19:10",
+          "placedIndex": 494,
+          "price": 21082.25,
+          "quantity": 1,
+          "side": "buy",
+          "status": "cancelled"
         }
       ],
       "position": {
+        "averagePrice": 0,
         "quantity": 0,
-        "side": "flat",
-        "averagePrice": 0
+        "side": "flat"
       },
       "realizedPnl": -12,
+      "trades": [
+        {
+          "id": "t1",
+          "kind": "market",
+          "orderId": "o1",
+          "price": 21072,
+          "quantity": 8,
+          "realizedPnl": 0,
+          "side": "buy",
+          "time": "2024-03-08 17:20"
+        },
+        {
+          "id": "t2",
+          "kind": "limit",
+          "orderId": "o3",
+          "price": 21071.25,
+          "quantity": 8,
+          "realizedPnl": -12,
+          "side": "sell",
+          "time": "2024-03-08 19:10"
+        }
+      ],
       "unrealizedPnl": 0,
-      "fills": [],
       "voice": {
         "barTime": "2024-03-08 19:20",
         "clips": [],
-        "total": 0,
-        "max": 9
+        "max": 9,
+        "total": 0
       }
     }
   },
@@ -3755,25 +3631,25 @@
     "action": "annotation_added",
     "payload": {
       "annotation": {
+        "createdAt": 1792941194,
+        "createdBy": "human",
+        "end": {
+          "offset": 45,
+          "price": 21050.03,
+          "time": "2024-03-08 19:20"
+        },
         "id": "a13",
         "kind": "trend",
+        "snapped": false,
         "start": {
-          "time": "2024-03-08 16:45",
-          "price": 21096
-        },
-        "end": {
-          "time": "2024-03-08 19:20",
-          "price": 21050.03,
-          "offset": 45
+          "price": 21096,
+          "time": "2024-03-08 16:45"
         },
         "style": {
           "color": "#f59e0b",
-          "width": 1.6,
-          "dash": "solid"
-        },
-        "snapped": false,
-        "createdBy": "human",
-        "createdAt": 1792941194
+          "dash": "solid",
+          "width": 1.6
+        }
       }
     }
   },
@@ -3784,124 +3660,124 @@
     "action": "bar_advanced",
     "payload": {
       "bar": {
-        "time": "2024-03-08 19:25",
-        "open": 21060.25,
+        "close": 21046.5,
+        "ema20": 21062.73086796799,
         "high": 21062.75,
         "low": 21045,
-        "close": 21046.5,
-        "volume": 2686,
-        "ema20": 21062.73086796799
+        "open": 21060.25,
+        "time": "2024-03-08 19:25",
+        "volume": 2686
       },
-      "cursor": 497,
-      "hiddenBars": 1170,
-      "hasMore": true,
-      "orders": [
-        {
-          "id": "o1",
-          "side": "buy",
-          "kind": "market",
-          "price": 21072,
-          "quantity": 8,
-          "status": "filled",
-          "placedAt": "2024-03-08 17:20",
-          "placedIndex": 472,
-          "filledAt": "2024-03-08 17:20",
-          "filledIndex": 472,
-          "fillPrice": 21072
-        },
-        {
-          "id": "o2",
-          "side": "sell",
-          "kind": "stop",
-          "price": 21044.25,
-          "quantity": 8,
-          "status": "cancelled",
-          "placedAt": "2024-03-08 17:20",
-          "placedIndex": 472,
-          "filledIndex": -1
-        },
-        {
-          "id": "o3",
-          "side": "sell",
-          "kind": "limit",
-          "price": 21071.25,
-          "quantity": 8,
-          "status": "filled",
-          "placedAt": "2024-03-08 17:40",
-          "placedIndex": 476,
-          "filledAt": "2024-03-08 19:10",
-          "filledIndex": 494,
-          "fillPrice": 21071.25
-        },
-        {
-          "id": "o4",
-          "side": "sell",
-          "kind": "limit",
-          "price": 21091,
-          "quantity": 1,
-          "status": "cancelled",
-          "placedAt": "2024-03-08 19:10",
-          "placedIndex": 494,
-          "filledIndex": -1
-        },
-        {
-          "id": "o5",
-          "side": "buy",
-          "kind": "stop",
-          "price": 21082.25,
-          "quantity": 1,
-          "status": "cancelled",
-          "placedAt": "2024-03-08 19:10",
-          "placedIndex": 494,
-          "filledIndex": -1
-        }
-      ],
-      "trades": [
-        {
-          "id": "t1",
-          "orderId": "o1",
-          "time": "2024-03-08 17:20",
-          "side": "buy",
-          "kind": "market",
-          "price": 21072,
-          "quantity": 8,
-          "realizedPnl": 0
-        },
-        {
-          "id": "t2",
-          "orderId": "o3",
-          "time": "2024-03-08 19:10",
-          "side": "sell",
-          "kind": "limit",
-          "price": 21071.25,
-          "quantity": 8,
-          "realizedPnl": -12
-        }
-      ],
       "closedLots": [
         {
-          "openTime": "2024-03-08 17:20",
-          "openPrice": 21072,
-          "closeTime": "2024-03-08 19:10",
           "closePrice": 21071.25,
-          "side": "long",
+          "closeTime": "2024-03-08 19:10",
+          "openPrice": 21072,
+          "openTime": "2024-03-08 17:20",
           "quantity": 8,
-          "realizedPnl": -12
+          "realizedPnl": -12,
+          "side": "long"
+        }
+      ],
+      "cursor": 497,
+      "fills": [],
+      "hasMore": true,
+      "hiddenBars": 1170,
+      "orders": [
+        {
+          "fillPrice": 21072,
+          "filledAt": "2024-03-08 17:20",
+          "filledIndex": 472,
+          "id": "o1",
+          "kind": "market",
+          "placedAt": "2024-03-08 17:20",
+          "placedIndex": 472,
+          "price": 21072,
+          "quantity": 8,
+          "side": "buy",
+          "status": "filled"
+        },
+        {
+          "filledIndex": -1,
+          "id": "o2",
+          "kind": "stop",
+          "placedAt": "2024-03-08 17:20",
+          "placedIndex": 472,
+          "price": 21044.25,
+          "quantity": 8,
+          "side": "sell",
+          "status": "cancelled"
+        },
+        {
+          "fillPrice": 21071.25,
+          "filledAt": "2024-03-08 19:10",
+          "filledIndex": 494,
+          "id": "o3",
+          "kind": "limit",
+          "placedAt": "2024-03-08 17:40",
+          "placedIndex": 476,
+          "price": 21071.25,
+          "quantity": 8,
+          "side": "sell",
+          "status": "filled"
+        },
+        {
+          "filledIndex": -1,
+          "id": "o4",
+          "kind": "limit",
+          "placedAt": "2024-03-08 19:10",
+          "placedIndex": 494,
+          "price": 21091,
+          "quantity": 1,
+          "side": "sell",
+          "status": "cancelled"
+        },
+        {
+          "filledIndex": -1,
+          "id": "o5",
+          "kind": "stop",
+          "placedAt": "2024-03-08 19:10",
+          "placedIndex": 494,
+          "price": 21082.25,
+          "quantity": 1,
+          "side": "buy",
+          "status": "cancelled"
         }
       ],
       "position": {
+        "averagePrice": 0,
         "quantity": 0,
-        "side": "flat",
-        "averagePrice": 0
+        "side": "flat"
       },
       "realizedPnl": -12,
+      "trades": [
+        {
+          "id": "t1",
+          "kind": "market",
+          "orderId": "o1",
+          "price": 21072,
+          "quantity": 8,
+          "realizedPnl": 0,
+          "side": "buy",
+          "time": "2024-03-08 17:20"
+        },
+        {
+          "id": "t2",
+          "kind": "limit",
+          "orderId": "o3",
+          "price": 21071.25,
+          "quantity": 8,
+          "realizedPnl": -12,
+          "side": "sell",
+          "time": "2024-03-08 19:10"
+        }
+      ],
       "unrealizedPnl": 0,
-      "fills": [],
       "voice": {
         "barTime": "2024-03-08 19:25",
         "clips": [],
-        "total": 0,
-        "max": 9
+        "max": 9,
+        "total": 0
       }
     }
   },
@@ -3921,25 +3797,25 @@
     "action": "annotation_added",
     "payload": {
       "annotation": {
+        "createdAt": 1792941214,
+        "createdBy": "human",
+        "end": {
+          "offset": 165,
+          "price": 21052.75,
+          "time": "2024-03-08 18:30"
+        },
         "id": "a14",
         "kind": "ray",
+        "snapped": true,
         "start": {
-          "time": "2024-03-08 18:30",
-          "price": 21052.75
-        },
-        "end": {
-          "time": "2024-03-08 18:30",
           "price": 21052.75,
-          "offset": 165
+          "time": "2024-03-08 18:30"
         },
         "style": {
           "color": "#ef4444",
-          "width": 2,
-          "dash": "solid"
-        },
-        "snapped": true,
-        "createdBy": "human",
-        "createdAt": 1792941214
+          "dash": "solid",
+          "width": 2
+        }
       }
     }
   },
@@ -3949,174 +3825,174 @@
     "by": "human",
     "action": "order_filled",
     "payload": {
+      "closedLots": [
+        {
+          "closePrice": 21071.25,
+          "closeTime": "2024-03-08 19:10",
+          "openPrice": 21072,
+          "openTime": "2024-03-08 17:20",
+          "quantity": 8,
+          "realizedPnl": -12,
+          "side": "long"
+        }
+      ],
       "order": {
-        "id": "o7",
-        "side": "sell",
-        "kind": "market",
-        "price": 21046.5,
-        "quantity": 9,
-        "status": "filled",
-        "placedAt": "2024-03-08 19:25",
-        "placedIndex": 497,
+        "fillPrice": 21046.5,
         "filledAt": "2024-03-08 19:25",
         "filledIndex": 497,
-        "fillPrice": 21046.5
-      },
-      "trade": {
-        "id": "t3",
-        "orderId": "o7",
-        "time": "2024-03-08 19:25",
-        "side": "sell",
+        "id": "o7",
         "kind": "market",
-        "price": 21046.5,
-        "quantity": 9,
-        "realizedPnl": 0
-      },
-      "stopOrder": {
-        "id": "o8",
-        "side": "buy",
-        "kind": "stop",
-        "price": 21151.83,
-        "quantity": 9,
-        "status": "open",
         "placedAt": "2024-03-08 19:25",
         "placedIndex": 497,
-        "filledIndex": -1
+        "price": 21046.5,
+        "quantity": 9,
+        "side": "sell",
+        "status": "filled"
       },
       "orders": [
         {
-          "id": "o1",
-          "side": "buy",
-          "kind": "market",
-          "price": 21072,
-          "quantity": 8,
-          "status": "filled",
-          "placedAt": "2024-03-08 17:20",
-          "placedIndex": 472,
+          "fillPrice": 21072,
           "filledAt": "2024-03-08 17:20",
           "filledIndex": 472,
-          "fillPrice": 21072
-        },
-        {
-          "id": "o2",
-          "side": "sell",
-          "kind": "stop",
-          "price": 21044.25,
-          "quantity": 8,
-          "status": "cancelled",
+          "id": "o1",
+          "kind": "market",
           "placedAt": "2024-03-08 17:20",
           "placedIndex": 472,
-          "filledIndex": -1
-        },
-        {
-          "id": "o3",
-          "side": "sell",
-          "kind": "limit",
-          "price": 21071.25,
-          "quantity": 8,
-          "status": "filled",
-          "placedAt": "2024-03-08 17:40",
-          "placedIndex": 476,
-          "filledAt": "2024-03-08 19:10",
-          "filledIndex": 494,
-          "fillPrice": 21071.25
-        },
-        {
-          "id": "o4",
-          "side": "sell",
-          "kind": "limit",
-          "price": 21091,
-          "quantity": 1,
-          "status": "cancelled",
-          "placedAt": "2024-03-08 19:10",
-          "placedIndex": 494,
-          "filledIndex": -1
-        },
-        {
-          "id": "o5",
-          "side": "buy",
-          "kind": "stop",
-          "price": 21082.25,
-          "quantity": 1,
-          "status": "cancelled",
-          "placedAt": "2024-03-08 19:10",
-          "placedIndex": 494,
-          "filledIndex": -1
-        },
-        {
-          "id": "o7",
-          "side": "sell",
-          "kind": "market",
-          "price": 21046.5,
-          "quantity": 9,
-          "status": "filled",
-          "placedAt": "2024-03-08 19:25",
-          "placedIndex": 497,
-          "filledAt": "2024-03-08 19:25",
-          "filledIndex": 497,
-          "fillPrice": 21046.5
-        },
-        {
-          "id": "o8",
-          "side": "buy",
-          "kind": "stop",
-          "price": 21151.83,
-          "quantity": 9,
-          "status": "open",
-          "placedAt": "2024-03-08 19:25",
-          "placedIndex": 497,
-          "filledIndex": -1
-        }
-      ],
-      "trades": [
-        {
-          "id": "t1",
-          "orderId": "o1",
-          "time": "2024-03-08 17:20",
-          "side": "buy",
-          "kind": "market",
           "price": 21072,
           "quantity": 8,
-          "realizedPnl": 0
+          "side": "buy",
+          "status": "filled"
         },
         {
-          "id": "t2",
-          "orderId": "o3",
-          "time": "2024-03-08 19:10",
+          "filledIndex": -1,
+          "id": "o2",
+          "kind": "stop",
+          "placedAt": "2024-03-08 17:20",
+          "placedIndex": 472,
+          "price": 21044.25,
+          "quantity": 8,
           "side": "sell",
+          "status": "cancelled"
+        },
+        {
+          "fillPrice": 21071.25,
+          "filledAt": "2024-03-08 19:10",
+          "filledIndex": 494,
+          "id": "o3",
           "kind": "limit",
+          "placedAt": "2024-03-08 17:40",
+          "placedIndex": 476,
           "price": 21071.25,
           "quantity": 8,
-          "realizedPnl": -12
+          "side": "sell",
+          "status": "filled"
         },
         {
-          "id": "t3",
-          "orderId": "o7",
-          "time": "2024-03-08 19:25",
+          "filledIndex": -1,
+          "id": "o4",
+          "kind": "limit",
+          "placedAt": "2024-03-08 19:10",
+          "placedIndex": 494,
+          "price": 21091,
+          "quantity": 1,
           "side": "sell",
+          "status": "cancelled"
+        },
+        {
+          "filledIndex": -1,
+          "id": "o5",
+          "kind": "stop",
+          "placedAt": "2024-03-08 19:10",
+          "placedIndex": 494,
+          "price": 21082.25,
+          "quantity": 1,
+          "side": "buy",
+          "status": "cancelled"
+        },
+        {
+          "fillPrice": 21046.5,
+          "filledAt": "2024-03-08 19:25",
+          "filledIndex": 497,
+          "id": "o7",
           "kind": "market",
+          "placedAt": "2024-03-08 19:25",
+          "placedIndex": 497,
           "price": 21046.5,
           "quantity": 9,
-          "realizedPnl": 0
-        }
-      ],
-      "closedLots": [
+          "side": "sell",
+          "status": "filled"
+        },
         {
-          "openTime": "2024-03-08 17:20",
-          "openPrice": 21072,
-          "closeTime": "2024-03-08 19:10",
-          "closePrice": 21071.25,
-          "side": "long",
-          "quantity": 8,
-          "realizedPnl": -12
+          "filledIndex": -1,
+          "id": "o8",
+          "kind": "stop",
+          "placedAt": "2024-03-08 19:25",
+          "placedIndex": 497,
+          "price": 21151.83,
+          "quantity": 9,
+          "side": "buy",
+          "status": "open"
         }
       ],
       "position": {
+        "averagePrice": 21046.5,
         "quantity": -9,
-        "side": "short",
-        "averagePrice": 21046.5
+        "side": "short"
       },
       "realizedPnl": -12,
+      "stopOrder": {
+        "filledIndex": -1,
+        "id": "o8",
+        "kind": "stop",
+        "placedAt": "2024-03-08 19:25",
+        "placedIndex": 497,
+        "price": 21151.83,
+        "quantity": 9,
+        "side": "buy",
+        "status": "open"
+      },
+      "trade": {
+        "id": "t3",
+        "kind": "market",
+        "orderId": "o7",
+        "price": 21046.5,
+        "quantity": 9,
+        "realizedPnl": 0,
+        "side": "sell",
+        "time": "2024-03-08 19:25"
+      },
+      "trades": [
+        {
+          "id": "t1",
+          "kind": "market",
+          "orderId": "o1",
+          "price": 21072,
+          "quantity": 8,
+          "realizedPnl": 0,
+          "side": "buy",
+          "time": "2024-03-08 17:20"
+        },
+        {
+          "id": "t2",
+          "kind": "limit",
+          "orderId": "o3",
+          "price": 21071.25,
+          "quantity": 8,
+          "realizedPnl": -12,
+          "side": "sell",
+          "time": "2024-03-08 19:10"
+        },
+        {
+          "id": "t3",
+          "kind": "market",
+          "orderId": "o7",
+          "price": 21046.5,
+          "quantity": 9,
+          "realizedPnl": 0,
+          "side": "sell",
+          "time": "2024-03-08 19:25"
+        }
+      ],
       "unrealizedPnl": -0
     }
   },
@@ -4128,98 +4004,98 @@
     "payload": {
       "orders": [
         {
-          "id": "o1",
-          "side": "buy",
-          "kind": "market",
-          "price": 21072,
-          "quantity": 8,
-          "status": "filled",
-          "placedAt": "2024-03-08 17:20",
-          "placedIndex": 472,
+          "fillPrice": 21072,
           "filledAt": "2024-03-08 17:20",
           "filledIndex": 472,
-          "fillPrice": 21072
-        },
-        {
-          "id": "o2",
-          "side": "sell",
-          "kind": "stop",
-          "price": 21044.25,
-          "quantity": 8,
-          "status": "cancelled",
+          "id": "o1",
+          "kind": "market",
           "placedAt": "2024-03-08 17:20",
           "placedIndex": 472,
-          "filledIndex": -1
+          "price": 21072,
+          "quantity": 8,
+          "side": "buy",
+          "status": "filled"
         },
         {
-          "id": "o3",
-          "side": "sell",
-          "kind": "limit",
-          "price": 21071.25,
+          "filledIndex": -1,
+          "id": "o2",
+          "kind": "stop",
+          "placedAt": "2024-03-08 17:20",
+          "placedIndex": 472,
+          "price": 21044.25,
           "quantity": 8,
-          "status": "filled",
-          "placedAt": "2024-03-08 17:40",
-          "placedIndex": 476,
+          "side": "sell",
+          "status": "cancelled"
+        },
+        {
+          "fillPrice": 21071.25,
           "filledAt": "2024-03-08 19:10",
           "filledIndex": 494,
-          "fillPrice": 21071.25
+          "id": "o3",
+          "kind": "limit",
+          "placedAt": "2024-03-08 17:40",
+          "placedIndex": 476,
+          "price": 21071.25,
+          "quantity": 8,
+          "side": "sell",
+          "status": "filled"
         },
         {
+          "filledIndex": -1,
           "id": "o4",
-          "side": "sell",
           "kind": "limit",
+          "placedAt": "2024-03-08 19:10",
+          "placedIndex": 494,
           "price": 21091,
           "quantity": 1,
-          "status": "cancelled",
-          "placedAt": "2024-03-08 19:10",
-          "placedIndex": 494,
-          "filledIndex": -1
+          "side": "sell",
+          "status": "cancelled"
         },
         {
+          "filledIndex": -1,
           "id": "o5",
-          "side": "buy",
           "kind": "stop",
+          "placedAt": "2024-03-08 19:10",
+          "placedIndex": 494,
           "price": 21082.25,
           "quantity": 1,
-          "status": "cancelled",
-          "placedAt": "2024-03-08 19:10",
-          "placedIndex": 494,
-          "filledIndex": -1
+          "side": "buy",
+          "status": "cancelled"
         },
         {
-          "id": "o7",
-          "side": "sell",
-          "kind": "market",
-          "price": 21046.5,
-          "quantity": 9,
-          "status": "filled",
-          "placedAt": "2024-03-08 19:25",
-          "placedIndex": 497,
+          "fillPrice": 21046.5,
           "filledAt": "2024-03-08 19:25",
           "filledIndex": 497,
-          "fillPrice": 21046.5
+          "id": "o7",
+          "kind": "market",
+          "placedAt": "2024-03-08 19:25",
+          "placedIndex": 497,
+          "price": 21046.5,
+          "quantity": 9,
+          "side": "sell",
+          "status": "filled"
         },
         {
+          "filledIndex": -1,
           "id": "o8",
-          "side": "buy",
           "kind": "stop",
+          "placedAt": "2024-03-08 19:25",
+          "placedIndex": 497,
           "price": 21151.83,
           "quantity": 9,
-          "status": "open",
-          "placedAt": "2024-03-08 19:25",
-          "placedIndex": 497,
-          "filledIndex": -1
+          "side": "buy",
+          "status": "open"
         },
         {
+          "filledIndex": -1,
           "id": "o9",
-          "side": "buy",
           "kind": "limit",
-          "price": 21026.25,
-          "quantity": 9,
-          "status": "open",
           "placedAt": "2024-03-08 19:25",
           "placedIndex": 497,
-          "filledIndex": -1
+          "price": 21026.25,
+          "quantity": 9,
+          "side": "buy",
+          "status": "open"
         }
       ]
     }
@@ -4231,169 +4107,169 @@
     "action": "bar_advanced",
     "payload": {
       "bar": {
-        "time": "2024-03-08 19:30",
-        "open": 21046.75,
+        "close": 21041.25,
+        "ema20": 21060.68507101866,
         "high": 21047.5,
         "low": 21039.5,
-        "close": 21041.25,
-        "volume": 2379,
-        "ema20": 21060.68507101866
+        "open": 21046.75,
+        "time": "2024-03-08 19:30",
+        "volume": 2379
       },
-      "cursor": 498,
-      "hiddenBars": 1169,
-      "hasMore": true,
-      "orders": [
-        {
-          "id": "o1",
-          "side": "buy",
-          "kind": "market",
-          "price": 21072,
-          "quantity": 8,
-          "status": "filled",
-          "placedAt": "2024-03-08 17:20",
-          "placedIndex": 472,
-          "filledAt": "2024-03-08 17:20",
-          "filledIndex": 472,
-          "fillPrice": 21072
-        },
-        {
-          "id": "o2",
-          "side": "sell",
-          "kind": "stop",
-          "price": 21044.25,
-          "quantity": 8,
-          "status": "cancelled",
-          "placedAt": "2024-03-08 17:20",
-          "placedIndex": 472,
-          "filledIndex": -1
-        },
-        {
-          "id": "o3",
-          "side": "sell",
-          "kind": "limit",
-          "price": 21071.25,
-          "quantity": 8,
-          "status": "filled",
-          "placedAt": "2024-03-08 17:40",
-          "placedIndex": 476,
-          "filledAt": "2024-03-08 19:10",
-          "filledIndex": 494,
-          "fillPrice": 21071.25
-        },
-        {
-          "id": "o4",
-          "side": "sell",
-          "kind": "limit",
-          "price": 21091,
-          "quantity": 1,
-          "status": "cancelled",
-          "placedAt": "2024-03-08 19:10",
-          "placedIndex": 494,
-          "filledIndex": -1
-        },
-        {
-          "id": "o5",
-          "side": "buy",
-          "kind": "stop",
-          "price": 21082.25,
-          "quantity": 1,
-          "status": "cancelled",
-          "placedAt": "2024-03-08 19:10",
-          "placedIndex": 494,
-          "filledIndex": -1
-        },
-        {
-          "id": "o7",
-          "side": "sell",
-          "kind": "market",
-          "price": 21046.5,
-          "quantity": 9,
-          "status": "filled",
-          "placedAt": "2024-03-08 19:25",
-          "placedIndex": 497,
-          "filledAt": "2024-03-08 19:25",
-          "filledIndex": 497,
-          "fillPrice": 21046.5
-        },
-        {
-          "id": "o8",
-          "side": "buy",
-          "kind": "stop",
-          "price": 21151.83,
-          "quantity": 9,
-          "status": "open",
-          "placedAt": "2024-03-08 19:25",
-          "placedIndex": 497,
-          "filledIndex": -1
-        },
-        {
-          "id": "o9",
-          "side": "buy",
-          "kind": "limit",
-          "price": 21026.25,
-          "quantity": 9,
-          "status": "open",
-          "placedAt": "2024-03-08 19:25",
-          "placedIndex": 497,
-          "filledIndex": -1
-        }
-      ],
-      "trades": [
-        {
-          "id": "t1",
-          "orderId": "o1",
-          "time": "2024-03-08 17:20",
-          "side": "buy",
-          "kind": "market",
-          "price": 21072,
-          "quantity": 8,
-          "realizedPnl": 0
-        },
-        {
-          "id": "t2",
-          "orderId": "o3",
-          "time": "2024-03-08 19:10",
-          "side": "sell",
-          "kind": "limit",
-          "price": 21071.25,
-          "quantity": 8,
-          "realizedPnl": -12
-        },
-        {
-          "id": "t3",
-          "orderId": "o7",
-          "time": "2024-03-08 19:25",
-          "side": "sell",
-          "kind": "market",
-          "price": 21046.5,
-          "quantity": 9,
-          "realizedPnl": 0
-        }
-      ],
       "closedLots": [
         {
-          "openTime": "2024-03-08 17:20",
-          "openPrice": 21072,
-          "closeTime": "2024-03-08 19:10",
           "closePrice": 21071.25,
-          "side": "long",
+          "closeTime": "2024-03-08 19:10",
+          "openPrice": 21072,
+          "openTime": "2024-03-08 17:20",
           "quantity": 8,
-          "realizedPnl": -12
+          "realizedPnl": -12,
+          "side": "long"
+        }
+      ],
+      "cursor": 498,
+      "fills": [],
+      "hasMore": true,
+      "hiddenBars": 1169,
+      "orders": [
+        {
+          "fillPrice": 21072,
+          "filledAt": "2024-03-08 17:20",
+          "filledIndex": 472,
+          "id": "o1",
+          "kind": "market",
+          "placedAt": "2024-03-08 17:20",
+          "placedIndex": 472,
+          "price": 21072,
+          "quantity": 8,
+          "side": "buy",
+          "status": "filled"
+        },
+        {
+          "filledIndex": -1,
+          "id": "o2",
+          "kind": "stop",
+          "placedAt": "2024-03-08 17:20",
+          "placedIndex": 472,
+          "price": 21044.25,
+          "quantity": 8,
+          "side": "sell",
+          "status": "cancelled"
+        },
+        {
+          "fillPrice": 21071.25,
+          "filledAt": "2024-03-08 19:10",
+          "filledIndex": 494,
+          "id": "o3",
+          "kind": "limit",
+          "placedAt": "2024-03-08 17:40",
+          "placedIndex": 476,
+          "price": 21071.25,
+          "quantity": 8,
+          "side": "sell",
+          "status": "filled"
+        },
+        {
+          "filledIndex": -1,
+          "id": "o4",
+          "kind": "limit",
+          "placedAt": "2024-03-08 19:10",
+          "placedIndex": 494,
+          "price": 21091,
+          "quantity": 1,
+          "side": "sell",
+          "status": "cancelled"
+        },
+        {
+          "filledIndex": -1,
+          "id": "o5",
+          "kind": "stop",
+          "placedAt": "2024-03-08 19:10",
+          "placedIndex": 494,
+          "price": 21082.25,
+          "quantity": 1,
+          "side": "buy",
+          "status": "cancelled"
+        },
+        {
+          "fillPrice": 21046.5,
+          "filledAt": "2024-03-08 19:25",
+          "filledIndex": 497,
+          "id": "o7",
+          "kind": "market",
+          "placedAt": "2024-03-08 19:25",
+          "placedIndex": 497,
+          "price": 21046.5,
+          "quantity": 9,
+          "side": "sell",
+          "status": "filled"
+        },
+        {
+          "filledIndex": -1,
+          "id": "o8",
+          "kind": "stop",
+          "placedAt": "2024-03-08 19:25",
+          "placedIndex": 497,
+          "price": 21151.83,
+          "quantity": 9,
+          "side": "buy",
+          "status": "open"
+        },
+        {
+          "filledIndex": -1,
+          "id": "o9",
+          "kind": "limit",
+          "placedAt": "2024-03-08 19:25",
+          "placedIndex": 497,
+          "price": 21026.25,
+          "quantity": 9,
+          "side": "buy",
+          "status": "open"
         }
       ],
       "position": {
+        "averagePrice": 21046.5,
         "quantity": -9,
-        "side": "short",
-        "averagePrice": 21046.5
+        "side": "short"
       },
       "realizedPnl": -12,
+      "trades": [
+        {
+          "id": "t1",
+          "kind": "market",
+          "orderId": "o1",
+          "price": 21072,
+          "quantity": 8,
+          "realizedPnl": 0,
+          "side": "buy",
+          "time": "2024-03-08 17:20"
+        },
+        {
+          "id": "t2",
+          "kind": "limit",
+          "orderId": "o3",
+          "price": 21071.25,
+          "quantity": 8,
+          "realizedPnl": -12,
+          "side": "sell",
+          "time": "2024-03-08 19:10"
+        },
+        {
+          "id": "t3",
+          "kind": "market",
+          "orderId": "o7",
+          "price": 21046.5,
+          "quantity": 9,
+          "realizedPnl": 0,
+          "side": "sell",
+          "time": "2024-03-08 19:25"
+        }
+      ],
       "unrealizedPnl": 94.5,
-      "fills": [],
       "voice": {
         "barTime": "2024-03-08 19:30",
         "clips": [],
-        "total": 0,
-        "max": 9
+        "max": 9,
+        "total": 0
       }
     }
   },
@@ -4404,42 +4280,42 @@
     "action": "voice_added",
     "payload": {
       "audio": {
-        "id": "v1",
-        "step": 5,
-        "time": "2024-03-08 19:30",
+        "by": "human",
+        "createdAt": 1792941273,
         "durationMs": 11760,
         "file": "voice-1.wav",
+        "id": "v1",
         "size": 376364,
-        "createdAt": 1792941273,
-        "by": "human"
+        "step": 5,
+        "time": "2024-03-08 19:30"
       },
       "voice": {
         "barTime": "2024-03-08 19:30",
         "clips": [
           {
-            "id": "v1",
-            "step": 5,
-            "time": "2024-03-08 19:30",
+            "by": "human",
+            "createdAt": 1792941273,
             "durationMs": 11760,
             "file": "voice-1.wav",
+            "id": "v1",
             "size": 376364,
-            "createdAt": 1792941273,
-            "by": "human"
+            "step": 5,
+            "time": "2024-03-08 19:30"
           }
         ],
-        "total": 1,
-        "max": 9
+        "max": 9,
+        "total": 1
       },
       "voiceAll": [
         {
-          "id": "v1",
-          "step": 5,
-          "time": "2024-03-08 19:30",
+          "by": "human",
+          "createdAt": 1792941273,
           "durationMs": 11760,
           "file": "voice-1.wav",
+          "id": "v1",
           "size": 376364,
-          "createdAt": 1792941273,
-          "by": "human"
+          "step": 5,
+          "time": "2024-03-08 19:30"
         }
       ]
     }
@@ -4451,43 +4327,43 @@
     "action": "annotation_added",
     "payload": {
       "annotation": {
+        "createdAt": 1792941289,
+        "createdBy": "human",
+        "end": {
+          "offset": 28,
+          "price": 21041.31,
+          "time": "2024-03-08 19:30"
+        },
         "id": "a15",
         "kind": "fib",
+        "snapped": false,
         "start": {
-          "time": "2024-03-08 19:20",
-          "price": 21064
-        },
-        "end": {
-          "time": "2024-03-08 19:30",
-          "price": 21041.31,
-          "offset": 28
+          "price": 21064,
+          "time": "2024-03-08 19:20"
         },
         "style": {
           "color": "#f59e0b",
-          "width": 1.2,
           "dash": "solid",
           "levels": [
             {
-              "ratio": -1,
-              "color": "#38bdf8"
+              "color": "#38bdf8",
+              "ratio": -1
             },
             {
-              "ratio": 0,
-              "color": "#f59e0b"
+              "color": "#f59e0b",
+              "ratio": 0
             },
             {
-              "ratio": 1,
-              "color": "#ec4899"
+              "color": "#ec4899",
+              "ratio": 1
             },
             {
-              "ratio": 2,
-              "color": "#22c55e"
+              "color": "#22c55e",
+              "ratio": 2
             }
-          ]
-        },
-        "snapped": false,
-        "createdBy": "human",
-        "createdAt": 1792941289
+          ],
+          "width": 1.2
+        }
       }
     }
   },
@@ -4498,169 +4374,169 @@
     "action": "bar_advanced",
     "payload": {
       "bar": {
-        "time": "2024-03-08 19:35",
-        "open": 21041.25,
+        "close": 21033.5,
+        "ema20": 21058.09601663593,
         "high": 21041.75,
         "low": 21032.25,
-        "close": 21033.5,
-        "volume": 2769,
-        "ema20": 21058.09601663593
+        "open": 21041.25,
+        "time": "2024-03-08 19:35",
+        "volume": 2769
       },
-      "cursor": 499,
-      "hiddenBars": 1168,
-      "hasMore": true,
-      "orders": [
-        {
-          "id": "o1",
-          "side": "buy",
-          "kind": "market",
-          "price": 21072,
-          "quantity": 8,
-          "status": "filled",
-          "placedAt": "2024-03-08 17:20",
-          "placedIndex": 472,
-          "filledAt": "2024-03-08 17:20",
-          "filledIndex": 472,
-          "fillPrice": 21072
-        },
-        {
-          "id": "o2",
-          "side": "sell",
-          "kind": "stop",
-          "price": 21044.25,
-          "quantity": 8,
-          "status": "cancelled",
-          "placedAt": "2024-03-08 17:20",
-          "placedIndex": 472,
-          "filledIndex": -1
-        },
-        {
-          "id": "o3",
-          "side": "sell",
-          "kind": "limit",
-          "price": 21071.25,
-          "quantity": 8,
-          "status": "filled",
-          "placedAt": "2024-03-08 17:40",
-          "placedIndex": 476,
-          "filledAt": "2024-03-08 19:10",
-          "filledIndex": 494,
-          "fillPrice": 21071.25
-        },
-        {
-          "id": "o4",
-          "side": "sell",
-          "kind": "limit",
-          "price": 21091,
-          "quantity": 1,
-          "status": "cancelled",
-          "placedAt": "2024-03-08 19:10",
-          "placedIndex": 494,
-          "filledIndex": -1
-        },
-        {
-          "id": "o5",
-          "side": "buy",
-          "kind": "stop",
-          "price": 21082.25,
-          "quantity": 1,
-          "status": "cancelled",
-          "placedAt": "2024-03-08 19:10",
-          "placedIndex": 494,
-          "filledIndex": -1
-        },
-        {
-          "id": "o7",
-          "side": "sell",
-          "kind": "market",
-          "price": 21046.5,
-          "quantity": 9,
-          "status": "filled",
-          "placedAt": "2024-03-08 19:25",
-          "placedIndex": 497,
-          "filledAt": "2024-03-08 19:25",
-          "filledIndex": 497,
-          "fillPrice": 21046.5
-        },
-        {
-          "id": "o8",
-          "side": "buy",
-          "kind": "stop",
-          "price": 21151.83,
-          "quantity": 9,
-          "status": "open",
-          "placedAt": "2024-03-08 19:25",
-          "placedIndex": 497,
-          "filledIndex": -1
-        },
-        {
-          "id": "o9",
-          "side": "buy",
-          "kind": "limit",
-          "price": 21026.25,
-          "quantity": 9,
-          "status": "open",
-          "placedAt": "2024-03-08 19:25",
-          "placedIndex": 497,
-          "filledIndex": -1
-        }
-      ],
-      "trades": [
-        {
-          "id": "t1",
-          "orderId": "o1",
-          "time": "2024-03-08 17:20",
-          "side": "buy",
-          "kind": "market",
-          "price": 21072,
-          "quantity": 8,
-          "realizedPnl": 0
-        },
-        {
-          "id": "t2",
-          "orderId": "o3",
-          "time": "2024-03-08 19:10",
-          "side": "sell",
-          "kind": "limit",
-          "price": 21071.25,
-          "quantity": 8,
-          "realizedPnl": -12
-        },
-        {
-          "id": "t3",
-          "orderId": "o7",
-          "time": "2024-03-08 19:25",
-          "side": "sell",
-          "kind": "market",
-          "price": 21046.5,
-          "quantity": 9,
-          "realizedPnl": 0
-        }
-      ],
       "closedLots": [
         {
-          "openTime": "2024-03-08 17:20",
-          "openPrice": 21072,
-          "closeTime": "2024-03-08 19:10",
           "closePrice": 21071.25,
-          "side": "long",
+          "closeTime": "2024-03-08 19:10",
+          "openPrice": 21072,
+          "openTime": "2024-03-08 17:20",
           "quantity": 8,
-          "realizedPnl": -12
+          "realizedPnl": -12,
+          "side": "long"
+        }
+      ],
+      "cursor": 499,
+      "fills": [],
+      "hasMore": true,
+      "hiddenBars": 1168,
+      "orders": [
+        {
+          "fillPrice": 21072,
+          "filledAt": "2024-03-08 17:20",
+          "filledIndex": 472,
+          "id": "o1",
+          "kind": "market",
+          "placedAt": "2024-03-08 17:20",
+          "placedIndex": 472,
+          "price": 21072,
+          "quantity": 8,
+          "side": "buy",
+          "status": "filled"
+        },
+        {
+          "filledIndex": -1,
+          "id": "o2",
+          "kind": "stop",
+          "placedAt": "2024-03-08 17:20",
+          "placedIndex": 472,
+          "price": 21044.25,
+          "quantity": 8,
+          "side": "sell",
+          "status": "cancelled"
+        },
+        {
+          "fillPrice": 21071.25,
+          "filledAt": "2024-03-08 19:10",
+          "filledIndex": 494,
+          "id": "o3",
+          "kind": "limit",
+          "placedAt": "2024-03-08 17:40",
+          "placedIndex": 476,
+          "price": 21071.25,
+          "quantity": 8,
+          "side": "sell",
+          "status": "filled"
+        },
+        {
+          "filledIndex": -1,
+          "id": "o4",
+          "kind": "limit",
+          "placedAt": "2024-03-08 19:10",
+          "placedIndex": 494,
+          "price": 21091,
+          "quantity": 1,
+          "side": "sell",
+          "status": "cancelled"
+        },
+        {
+          "filledIndex": -1,
+          "id": "o5",
+          "kind": "stop",
+          "placedAt": "2024-03-08 19:10",
+          "placedIndex": 494,
+          "price": 21082.25,
+          "quantity": 1,
+          "side": "buy",
+          "status": "cancelled"
+        },
+        {
+          "fillPrice": 21046.5,
+          "filledAt": "2024-03-08 19:25",
+          "filledIndex": 497,
+          "id": "o7",
+          "kind": "market",
+          "placedAt": "2024-03-08 19:25",
+          "placedIndex": 497,
+          "price": 21046.5,
+          "quantity": 9,
+          "side": "sell",
+          "status": "filled"
+        },
+        {
+          "filledIndex": -1,
+          "id": "o8",
+          "kind": "stop",
+          "placedAt": "2024-03-08 19:25",
+          "placedIndex": 497,
+          "price": 21151.83,
+          "quantity": 9,
+          "side": "buy",
+          "status": "open"
+        },
+        {
+          "filledIndex": -1,
+          "id": "o9",
+          "kind": "limit",
+          "placedAt": "2024-03-08 19:25",
+          "placedIndex": 497,
+          "price": 21026.25,
+          "quantity": 9,
+          "side": "buy",
+          "status": "open"
         }
       ],
       "position": {
+        "averagePrice": 21046.5,
         "quantity": -9,
-        "side": "short",
-        "averagePrice": 21046.5
+        "side": "short"
       },
       "realizedPnl": -12,
+      "trades": [
+        {
+          "id": "t1",
+          "kind": "market",
+          "orderId": "o1",
+          "price": 21072,
+          "quantity": 8,
+          "realizedPnl": 0,
+          "side": "buy",
+          "time": "2024-03-08 17:20"
+        },
+        {
+          "id": "t2",
+          "kind": "limit",
+          "orderId": "o3",
+          "price": 21071.25,
+          "quantity": 8,
+          "realizedPnl": -12,
+          "side": "sell",
+          "time": "2024-03-08 19:10"
+        },
+        {
+          "id": "t3",
+          "kind": "market",
+          "orderId": "o7",
+          "price": 21046.5,
+          "quantity": 9,
+          "realizedPnl": 0,
+          "side": "sell",
+          "time": "2024-03-08 19:25"
+        }
+      ],
       "unrealizedPnl": 234,
-      "fills": [],
       "voice": {
         "barTime": "2024-03-08 19:35",
         "clips": [],
-        "total": 1,
-        "max": 9
+        "max": 9,
+        "total": 1
       }
     }
   },
@@ -4671,201 +4547,201 @@
     "action": "bar_advanced",
     "payload": {
       "bar": {
-        "time": "2024-03-08 19:40",
-        "open": 21034,
+        "close": 21033.75,
+        "ema20": 21055.77734838489,
         "high": 21037.5,
         "low": 21022.75,
-        "close": 21033.75,
-        "volume": 3590,
-        "ema20": 21055.77734838489
+        "open": 21034,
+        "time": "2024-03-08 19:40",
+        "volume": 3590
       },
-      "cursor": 500,
-      "hiddenBars": 1167,
-      "hasMore": true,
-      "orders": [
-        {
-          "id": "o1",
-          "side": "buy",
-          "kind": "market",
-          "price": 21072,
-          "quantity": 8,
-          "status": "filled",
-          "placedAt": "2024-03-08 17:20",
-          "placedIndex": 472,
-          "filledAt": "2024-03-08 17:20",
-          "filledIndex": 472,
-          "fillPrice": 21072
-        },
-        {
-          "id": "o2",
-          "side": "sell",
-          "kind": "stop",
-          "price": 21044.25,
-          "quantity": 8,
-          "status": "cancelled",
-          "placedAt": "2024-03-08 17:20",
-          "placedIndex": 472,
-          "filledIndex": -1
-        },
-        {
-          "id": "o3",
-          "side": "sell",
-          "kind": "limit",
-          "price": 21071.25,
-          "quantity": 8,
-          "status": "filled",
-          "placedAt": "2024-03-08 17:40",
-          "placedIndex": 476,
-          "filledAt": "2024-03-08 19:10",
-          "filledIndex": 494,
-          "fillPrice": 21071.25
-        },
-        {
-          "id": "o4",
-          "side": "sell",
-          "kind": "limit",
-          "price": 21091,
-          "quantity": 1,
-          "status": "cancelled",
-          "placedAt": "2024-03-08 19:10",
-          "placedIndex": 494,
-          "filledIndex": -1
-        },
-        {
-          "id": "o5",
-          "side": "buy",
-          "kind": "stop",
-          "price": 21082.25,
-          "quantity": 1,
-          "status": "cancelled",
-          "placedAt": "2024-03-08 19:10",
-          "placedIndex": 494,
-          "filledIndex": -1
-        },
-        {
-          "id": "o7",
-          "side": "sell",
-          "kind": "market",
-          "price": 21046.5,
-          "quantity": 9,
-          "status": "filled",
-          "placedAt": "2024-03-08 19:25",
-          "placedIndex": 497,
-          "filledAt": "2024-03-08 19:25",
-          "filledIndex": 497,
-          "fillPrice": 21046.5
-        },
-        {
-          "id": "o8",
-          "side": "buy",
-          "kind": "stop",
-          "price": 21151.83,
-          "quantity": 9,
-          "status": "open",
-          "placedAt": "2024-03-08 19:25",
-          "placedIndex": 497,
-          "filledIndex": -1
-        },
-        {
-          "id": "o9",
-          "side": "buy",
-          "kind": "limit",
-          "price": 21026.25,
-          "quantity": 9,
-          "status": "filled",
-          "placedAt": "2024-03-08 19:25",
-          "placedIndex": 497,
-          "filledAt": "2024-03-08 19:40",
-          "filledIndex": 500,
-          "fillPrice": 21026.25
-        }
-      ],
-      "trades": [
-        {
-          "id": "t1",
-          "orderId": "o1",
-          "time": "2024-03-08 17:20",
-          "side": "buy",
-          "kind": "market",
-          "price": 21072,
-          "quantity": 8,
-          "realizedPnl": 0
-        },
-        {
-          "id": "t2",
-          "orderId": "o3",
-          "time": "2024-03-08 19:10",
-          "side": "sell",
-          "kind": "limit",
-          "price": 21071.25,
-          "quantity": 8,
-          "realizedPnl": -12
-        },
-        {
-          "id": "t3",
-          "orderId": "o7",
-          "time": "2024-03-08 19:25",
-          "side": "sell",
-          "kind": "market",
-          "price": 21046.5,
-          "quantity": 9,
-          "realizedPnl": 0
-        },
-        {
-          "id": "t4",
-          "orderId": "o9",
-          "time": "2024-03-08 19:40",
-          "side": "buy",
-          "kind": "limit",
-          "price": 21026.25,
-          "quantity": 9,
-          "realizedPnl": 364.5
-        }
-      ],
       "closedLots": [
         {
-          "openTime": "2024-03-08 17:20",
-          "openPrice": 21072,
-          "closeTime": "2024-03-08 19:10",
           "closePrice": 21071.25,
-          "side": "long",
+          "closeTime": "2024-03-08 19:10",
+          "openPrice": 21072,
+          "openTime": "2024-03-08 17:20",
           "quantity": 8,
-          "realizedPnl": -12
+          "realizedPnl": -12,
+          "side": "long"
         },
         {
-          "openTime": "2024-03-08 19:25",
-          "openPrice": 21046.5,
-          "closeTime": "2024-03-08 19:40",
           "closePrice": 21026.25,
-          "side": "short",
+          "closeTime": "2024-03-08 19:40",
+          "openPrice": 21046.5,
+          "openTime": "2024-03-08 19:25",
           "quantity": 9,
-          "realizedPnl": 364.5
+          "realizedPnl": 364.5,
+          "side": "short"
         }
       ],
-      "position": {
-        "quantity": 0,
-        "side": "flat",
-        "averagePrice": 0
-      },
-      "realizedPnl": 352.5,
-      "unrealizedPnl": 0,
+      "cursor": 500,
       "fills": [
         {
           "id": "t4",
-          "orderId": "o9",
-          "time": "2024-03-08 19:40",
-          "side": "buy",
           "kind": "limit",
+          "orderId": "o9",
           "price": 21026.25,
           "quantity": 9,
-          "realizedPnl": 364.5
+          "realizedPnl": 364.5,
+          "side": "buy",
+          "time": "2024-03-08 19:40"
         }
       ],
+      "hasMore": true,
+      "hiddenBars": 1167,
+      "orders": [
+        {
+          "fillPrice": 21072,
+          "filledAt": "2024-03-08 17:20",
+          "filledIndex": 472,
+          "id": "o1",
+          "kind": "market",
+          "placedAt": "2024-03-08 17:20",
+          "placedIndex": 472,
+          "price": 21072,
+          "quantity": 8,
+          "side": "buy",
+          "status": "filled"
+        },
+        {
+          "filledIndex": -1,
+          "id": "o2",
+          "kind": "stop",
+          "placedAt": "2024-03-08 17:20",
+          "placedIndex": 472,
+          "price": 21044.25,
+          "quantity": 8,
+          "side": "sell",
+          "status": "cancelled"
+        },
+        {
+          "fillPrice": 21071.25,
+          "filledAt": "2024-03-08 19:10",
+          "filledIndex": 494,
+          "id": "o3",
+          "kind": "limit",
+          "placedAt": "2024-03-08 17:40",
+          "placedIndex": 476,
+          "price": 21071.25,
+          "quantity": 8,
+          "side": "sell",
+          "status": "filled"
+        },
+        {
+          "filledIndex": -1,
+          "id": "o4",
+          "kind": "limit",
+          "placedAt": "2024-03-08 19:10",
+          "placedIndex": 494,
+          "price": 21091,
+          "quantity": 1,
+          "side": "sell",
+          "status": "cancelled"
+        },
+        {
+          "filledIndex": -1,
+          "id": "o5",
+          "kind": "stop",
+          "placedAt": "2024-03-08 19:10",
+          "placedIndex": 494,
+          "price": 21082.25,
+          "quantity": 1,
+          "side": "buy",
+          "status": "cancelled"
+        },
+        {
+          "fillPrice": 21046.5,
+          "filledAt": "2024-03-08 19:25",
+          "filledIndex": 497,
+          "id": "o7",
+          "kind": "market",
+          "placedAt": "2024-03-08 19:25",
+          "placedIndex": 497,
+          "price": 21046.5,
+          "quantity": 9,
+          "side": "sell",
+          "status": "filled"
+        },
+        {
+          "filledIndex": -1,
+          "id": "o8",
+          "kind": "stop",
+          "placedAt": "2024-03-08 19:25",
+          "placedIndex": 497,
+          "price": 21151.83,
+          "quantity": 9,
+          "side": "buy",
+          "status": "open"
+        },
+        {
+          "fillPrice": 21026.25,
+          "filledAt": "2024-03-08 19:40",
+          "filledIndex": 500,
+          "id": "o9",
+          "kind": "limit",
+          "placedAt": "2024-03-08 19:25",
+          "placedIndex": 497,
+          "price": 21026.25,
+          "quantity": 9,
+          "side": "buy",
+          "status": "filled"
+        }
+      ],
+      "position": {
+        "averagePrice": 0,
+        "quantity": 0,
+        "side": "flat"
+      },
+      "realizedPnl": 352.5,
+      "trades": [
+        {
+          "id": "t1",
+          "kind": "market",
+          "orderId": "o1",
+          "price": 21072,
+          "quantity": 8,
+          "realizedPnl": 0,
+          "side": "buy",
+          "time": "2024-03-08 17:20"
+        },
+        {
+          "id": "t2",
+          "kind": "limit",
+          "orderId": "o3",
+          "price": 21071.25,
+          "quantity": 8,
+          "realizedPnl": -12,
+          "side": "sell",
+          "time": "2024-03-08 19:10"
+        },
+        {
+          "id": "t3",
+          "kind": "market",
+          "orderId": "o7",
+          "price": 21046.5,
+          "quantity": 9,
+          "realizedPnl": 0,
+          "side": "sell",
+          "time": "2024-03-08 19:25"
+        },
+        {
+          "id": "t4",
+          "kind": "limit",
+          "orderId": "o9",
+          "price": 21026.25,
+          "quantity": 9,
+          "realizedPnl": 364.5,
+          "side": "buy",
+          "time": "2024-03-08 19:40"
+        }
+      ],
+      "unrealizedPnl": 0,
       "voice": {
         "barTime": "2024-03-08 19:40",
         "clips": [],
-        "total": 1,
-        "max": 9
+        "max": 9,
+        "total": 1
       }
     }
   },
@@ -4876,52 +4752,52 @@
     "action": "voice_added",
     "payload": {
       "audio": {
-        "id": "v2",
-        "step": 0,
-        "time": "2024-03-08 19:40",
+        "by": "human",
+        "createdAt": 1792941309,
         "durationMs": 7620,
         "file": "voice-2.wav",
+        "id": "v2",
         "size": 243884,
-        "createdAt": 1792941309,
-        "by": "human"
+        "step": 0,
+        "time": "2024-03-08 19:40"
       },
       "voice": {
         "barTime": "2024-03-08 19:40",
         "clips": [
           {
-            "id": "v2",
-            "step": 0,
-            "time": "2024-03-08 19:40",
+            "by": "human",
+            "createdAt": 1792941309,
             "durationMs": 7620,
             "file": "voice-2.wav",
+            "id": "v2",
             "size": 243884,
-            "createdAt": 1792941309,
-            "by": "human"
+            "step": 0,
+            "time": "2024-03-08 19:40"
           }
         ],
-        "total": 2,
-        "max": 9
+        "max": 9,
+        "total": 2
       },
       "voiceAll": [
         {
-          "id": "v1",
-          "step": 5,
-          "time": "2024-03-08 19:30",
+          "by": "human",
+          "createdAt": 1792941273,
           "durationMs": 11760,
           "file": "voice-1.wav",
+          "id": "v1",
           "size": 376364,
-          "createdAt": 1792941273,
-          "by": "human"
+          "step": 5,
+          "time": "2024-03-08 19:30"
         },
         {
-          "id": "v2",
-          "step": 0,
-          "time": "2024-03-08 19:40",
+          "by": "human",
+          "createdAt": 1792941309,
           "durationMs": 7620,
           "file": "voice-2.wav",
+          "id": "v2",
           "size": 243884,
-          "createdAt": 1792941309,
-          "by": "human"
+          "step": 0,
+          "time": "2024-03-08 19:40"
         }
       ]
     }
@@ -4934,100 +4810,100 @@
     "payload": {
       "orders": [
         {
-          "id": "o1",
-          "side": "buy",
-          "kind": "market",
-          "price": 21072,
-          "quantity": 8,
-          "status": "filled",
-          "placedAt": "2024-03-08 17:20",
-          "placedIndex": 472,
+          "fillPrice": 21072,
           "filledAt": "2024-03-08 17:20",
           "filledIndex": 472,
-          "fillPrice": 21072
-        },
-        {
-          "id": "o2",
-          "side": "sell",
-          "kind": "stop",
-          "price": 21044.25,
-          "quantity": 8,
-          "status": "cancelled",
+          "id": "o1",
+          "kind": "market",
           "placedAt": "2024-03-08 17:20",
           "placedIndex": 472,
-          "filledIndex": -1
+          "price": 21072,
+          "quantity": 8,
+          "side": "buy",
+          "status": "filled"
         },
         {
-          "id": "o3",
-          "side": "sell",
-          "kind": "limit",
-          "price": 21071.25,
+          "filledIndex": -1,
+          "id": "o2",
+          "kind": "stop",
+          "placedAt": "2024-03-08 17:20",
+          "placedIndex": 472,
+          "price": 21044.25,
           "quantity": 8,
-          "status": "filled",
-          "placedAt": "2024-03-08 17:40",
-          "placedIndex": 476,
+          "side": "sell",
+          "status": "cancelled"
+        },
+        {
+          "fillPrice": 21071.25,
           "filledAt": "2024-03-08 19:10",
           "filledIndex": 494,
-          "fillPrice": 21071.25
+          "id": "o3",
+          "kind": "limit",
+          "placedAt": "2024-03-08 17:40",
+          "placedIndex": 476,
+          "price": 21071.25,
+          "quantity": 8,
+          "side": "sell",
+          "status": "filled"
         },
         {
+          "filledIndex": -1,
           "id": "o4",
-          "side": "sell",
           "kind": "limit",
+          "placedAt": "2024-03-08 19:10",
+          "placedIndex": 494,
           "price": 21091,
           "quantity": 1,
-          "status": "cancelled",
-          "placedAt": "2024-03-08 19:10",
-          "placedIndex": 494,
-          "filledIndex": -1
+          "side": "sell",
+          "status": "cancelled"
         },
         {
+          "filledIndex": -1,
           "id": "o5",
-          "side": "buy",
           "kind": "stop",
+          "placedAt": "2024-03-08 19:10",
+          "placedIndex": 494,
           "price": 21082.25,
           "quantity": 1,
-          "status": "cancelled",
-          "placedAt": "2024-03-08 19:10",
-          "placedIndex": 494,
-          "filledIndex": -1
+          "side": "buy",
+          "status": "cancelled"
         },
         {
-          "id": "o7",
-          "side": "sell",
-          "kind": "market",
-          "price": 21046.5,
-          "quantity": 9,
-          "status": "filled",
-          "placedAt": "2024-03-08 19:25",
-          "placedIndex": 497,
+          "fillPrice": 21046.5,
           "filledAt": "2024-03-08 19:25",
           "filledIndex": 497,
-          "fillPrice": 21046.5
+          "id": "o7",
+          "kind": "market",
+          "placedAt": "2024-03-08 19:25",
+          "placedIndex": 497,
+          "price": 21046.5,
+          "quantity": 9,
+          "side": "sell",
+          "status": "filled"
         },
         {
+          "filledIndex": -1,
           "id": "o8",
-          "side": "buy",
           "kind": "stop",
+          "placedAt": "2024-03-08 19:25",
+          "placedIndex": 497,
           "price": 21151.83,
           "quantity": 9,
-          "status": "cancelled",
-          "placedAt": "2024-03-08 19:25",
-          "placedIndex": 497,
-          "filledIndex": -1
+          "side": "buy",
+          "status": "cancelled"
         },
         {
-          "id": "o9",
-          "side": "buy",
-          "kind": "limit",
-          "price": 21026.25,
-          "quantity": 9,
-          "status": "filled",
-          "placedAt": "2024-03-08 19:25",
-          "placedIndex": 497,
+          "fillPrice": 21026.25,
           "filledAt": "2024-03-08 19:40",
           "filledIndex": 500,
-          "fillPrice": 21026.25
+          "id": "o9",
+          "kind": "limit",
+          "placedAt": "2024-03-08 19:25",
+          "placedIndex": 497,
+          "price": 21026.25,
+          "quantity": 9,
+          "side": "buy",
+          "status": "filled"
         }
       ]
     }
@@ -5041,9 +4917,9 @@
       "members": [
         {
           "clientId": "c1",
+          "connected": true,
           "name": "human",
-          "operator": true,
-          "connected": true
+          "operator": true
         }
       ]
     }
@@ -5073,26 +4949,69 @@
     "action": "annotation_added",
     "payload": {
       "annotation": {
+        "createdAt": 1792941470,
+        "createdBy": "human",
+        "end": {
+          "offset": 148,
+          "price": 21036,
+          "time": "2024-03-08 16:05"
+        },
         "id": "a16",
         "kind": "ray",
+        "snapped": true,
         "start": {
-          "time": "2024-03-08 16:05",
-          "price": 21036
-        },
-        "end": {
-          "time": "2024-03-08 16:05",
           "price": 21036,
-          "offset": 148
+          "time": "2024-03-08 16:05"
         },
         "style": {
           "color": "#ef4444",
-          "width": 2,
-          "dash": "solid"
-        },
-        "snapped": true,
-        "createdBy": "human",
-        "createdAt": 1792941470
+          "dash": "solid",
+          "width": 2
+        }
       }
+    }
+  },
+  {
+    "seq": 123,
+    "at": 1793026058,
+    "by": "human",
+    "action": "control_changed",
+    "payload": {
+      "operator": "human"
+    }
+  },
+  {
+    "seq": 124,
+    "at": 1793026058,
+    "by": "system",
+    "action": "members_changed",
+    "payload": {
+      "members": [
+        {
+          "clientId": "c1",
+          "name": "human",
+          "operator": true,
+          "connected": true
+        }
+      ]
+    }
+  },
+  {
+    "seq": 125,
+    "at": 1793026064,
+    "by": "human",
+    "action": "control_changed",
+    "payload": {
+      "operator": ""
+    }
+  },
+  {
+    "seq": 126,
+    "at": 1793026064,
+    "by": "system",
+    "action": "members_changed",
+    "payload": {
+      "members": []
     }
   }
 ]

@@ -1,11 +1,19 @@
 import { defineStore } from 'pinia'
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 
 import { useReplayStore } from '@/stores/replay'
 import { applyInstanceEvent } from '@/stores/instance-reducer'
 import { STEP_BASE, stepKindLabel } from '@/stores/step-kinds'
 import { ACTION } from '@/types/protocol'
-import type { AudioClip, InstanceDetail, Recording, RecordingStep } from '@/types/protocol'
+import type {
+  AudioClip,
+  InstanceDetail,
+  Recording,
+  RecordingExtendedMessage,
+  RecordingStep,
+  RecordingSummary,
+  RecordingVoiceMessage,
+} from '@/types/protocol'
 
 /**
  * 回放：把一条录像「演」到画布上。
@@ -26,6 +34,17 @@ import type { AudioClip, InstanceDetail, Recording, RecordingStep } from '@/type
  *
  * 每次改步都是「从 Base 重算一遍」而不是增量回退：一条录像最多几百步、几百个事件，
  * 重算的代价可以忽略，但换来的是「任意跳步都不会错位」。
+ *
+ * v0.27.0 加的**回放延伸**：走到最后一步之后还能一根一根把后面的真实行情加载出来
+ * （见 stores/replay.ts 的 extendRecording 和 internal/replay/extend.go）。
+ * 三件事决定了它的形状：
+ *
+ *  1. **加载 = 记录里多一步**（kind = bar_extended），所以「跳到第 N 步」照样能重现，
+ *     重新打开这条记录那几根也还在。它不是一次性的临时视图。
+ *  2. **只在末尾**：中间插一根会让后面所有步的 K 线时间和游标错位，画在上面的
+ *     图形、挂在上面的话全都会跑到别的柱子上。所以按钮只在 `atEnd` 时可用。
+ *  3. **录音走同一条语音步**：在延伸出来的那根上录的话，和复盘期间录的一样
+ *     变成一步（kind = recording_audio），于是「走到那一步就响」这条规则不用改。
  */
 
 const BASE_STEP_MS = 900
@@ -71,6 +90,21 @@ export const usePlaybackStore = defineStore('playback', () => {
   const currentClip = ref<AudioClip | null>(null)
   /** 进入回放之前所在的实例：退出时回到它 */
   const restoreInstanceId = ref('')
+  /**
+   * 正在等「加载下一根」的回复。
+   *
+   * 它只有一个用处：挡住连点。一次点击是一次**磁盘写**（记录里多一步），
+   * 连点五下会变成五次往返，中间那几次的回复顺序还可能和点击顺序不一样。
+   */
+  const extending = ref(false)
+  /**
+   * 数据目录里还有没有更晚的 K 线。
+   *
+   * 默认 true，由每次加载的回复纠正：从没加载过的时候谁也说不准（记录里不含
+   * 「之后还有没有行情」这个信息），所以第一次总是允许点 —— 真有数据就加载一根，
+   * 真没有就由服务端回一句「已经到最后一根」，这里再置灰。
+   */
+  const extendHasMore = ref(true)
 
   let timer = 0
   let audioEl: HTMLAudioElement | null = null
@@ -90,11 +124,17 @@ export const usePlaybackStore = defineStore('playback', () => {
     return cur ? stepKindLabel(cur.kind) : ''
   })
 
-  /** 当前是第几根 K 线（1 起）：数到当前步为止出现过几次 bar_advanced */
+  /**
+   * 当前是第几根 K 线（1 起）：数到当前步为止换过几次根。
+   *
+   * 延伸步也算 —— 不数它的话，走到第 9 步（延伸第 3 根）顶栏会写「第 7/6 根」，
+   * 像数据错乱。
+   */
   const barNo = computed(() => {
     let n = 1
     for (let i = 0; i < step.value && i < steps.value.length; i++) {
-      if (steps.value[i].kind === ACTION.barAdvanced) n++
+      const k = steps.value[i].kind
+      if (k === ACTION.barAdvanced || k === ACTION.barExtended) n++
     }
     return n
   })
@@ -119,6 +159,41 @@ export const usePlaybackStore = defineStore('playback', () => {
     const set = new Set<number>()
     for (const a of recording.value?.audios ?? []) set.add(a.step)
     return set
+  })
+
+  // ---------------- 回放延伸（v0.27.0） ----------------
+
+  /** 能不能再往后加载一根：在末尾、上一根还在路上时不能点、数据到头了也不能点。 */
+  const canExtend = computed(
+    () => recording.value !== null && atEnd.value && extendHasMore.value && !extending.value,
+  )
+
+  /** 这条记录末尾那根「延伸出来」的 K 线（没有 = 这一笔从来没延伸过）。 */
+  const extensionTail = computed<RecordingStep | null>(() => {
+    const list = steps.value
+    for (let i = list.length - 1; i >= 0; i--) {
+      if (list[i].kind === ACTION.barExtended) return list[i]
+    }
+    return null
+  })
+
+  /**
+   * 现在正停在「延伸出来的最后一根」上 —— 录音只在这里可用。
+   *
+   * 判据是**时间**而不是步号：在那根上录过音之后，最后一步变成了语音步
+   * （Time 还是同一根），可录音的位置并没有变。服务端也是按「时间」认的。
+   */
+  const onExtensionTail = computed(() => {
+    const tail = extensionTail.value
+    if (!tail || !atEnd.value) return false
+    return currentStep.value?.time === tail.time
+  })
+
+  /** 已经挂在末尾这根上的语音（面板上显示「本根 x/9」和清空按钮用）。 */
+  const extensionClips = computed<AudioClip[]>(() => {
+    const tail = extensionTail.value
+    if (!tail) return []
+    return (recording.value?.audios ?? []).filter((a) => a.time === tail.time)
   })
 
   /** 每根 K 线的起点步号（步进条上的分隔线用） */
@@ -212,6 +287,9 @@ export const usePlaybackStore = defineStore('playback', () => {
     recording.value = rec
     step.value = 1
     playing.value = false
+    // 每次打开都重新问一次「后面还有没有 K 线」：同一条记录可能刚刚被别的页面加载过
+    extending.value = false
+    extendHasMore.value = true
     replay.playbackActive = true
     // 回放的是一盘历史 K 线：手先放回指针，正在编辑的图形也一起放掉（否则手柄会挂在新盘面上）
     replay.tool = 'select'
@@ -232,6 +310,8 @@ export const usePlaybackStore = defineStore('playback', () => {
     playing.value = false
     recording.value = null
     step.value = 1
+    extending.value = false
+    extendHasMore.value = true
     const back = restoreInstanceId.value
     restoreInstanceId.value = ''
     replay.playbackActive = false
@@ -240,6 +320,174 @@ export const usePlaybackStore = defineStore('playback', () => {
     replay.log = []
     if (restore && back) replay.joinInstance(back)
   }
+
+  // ---------------- 回放延伸 ----------------
+
+  /**
+   * 往后加载一根 K 线（在最后一步点【加载下一根】）。
+   *
+   * 为什么要求「在最后一步」：延伸步是**追加**到记录末尾的。如果人正停在中间，
+   * 追加的那一步在步进条上是最后一格，画面不会动 —— 用户会觉得「点了没反应」。
+   * 更要紧的是服务端的判据是「记录里最后一根 K 线之后」，人在中间时那根可能
+   * 还没走到，加载出来的行情就成「未来的行情提前出现」了。所以先请人走到末尾。
+   */
+  function extendNext(): void {
+    const rec = recording.value
+    if (!rec || extending.value) return
+    pause()
+    if (!atEnd.value) {
+      replay.noteNotice('先走到最后一步，再往后加载 K 线 —— 中间插一根会让后面的图形和语音错位')
+      return
+    }
+    if (!extendHasMore.value) {
+      replay.noteNotice('数据目录里已经到最后一根 K 线了')
+      return
+    }
+    extending.value = true
+    if (!replay.extendRecording(rec.id, 1)) {
+      extending.value = false
+      replay.noteNotice('连接断了，这一根没加载上')
+    }
+  }
+
+  /**
+   * 在末尾那根延伸出来的 K 线上录一段语音。
+   *
+   * 校验（每根 9 条 / 2MB / WAV）全在服务端 —— 和复盘录音是同一份实现，
+   * 前端只负责把字节送上去，不做「我以为还能录」的判断（那会和服务端口径分叉）。
+   */
+  function addExtensionVoice(audioData: string, durationMs: number): boolean {
+    const rec = recording.value
+    if (!rec || !onExtensionTail.value) return false
+    return replay.addRecordingVoice(rec.id, audioData, durationMs)
+  }
+
+  /** 清空末尾那根上的全部语音（和复盘里的【清空本根】同一个语义）。 */
+  function clearExtensionVoice(): boolean {
+    const rec = recording.value
+    if (!rec || !onExtensionTail.value) return false
+    return replay.clearRecordingVoice(rec.id)
+  }
+
+  /**
+   * 把服务端回的摘要贴回手里的记录（步数 / 根数 / 结束时间 / 名字都变了）。
+   *
+   * 只挑这几个字段：`base` / `steps` / `audios` 是本地的正本，
+   * 整份 Object.assign 会把它们换成摘要里没有的 undefined。
+   */
+  function patchSummary(rec: Recording, sum: RecordingSummary | undefined): void {
+    if (!sum) return
+    rec.stepCount = sum.stepCount
+    rec.audioCount = sum.audioCount
+    rec.eventCount = sum.eventCount
+    rec.bars = sum.bars
+    rec.endTime = sum.endTime
+    rec.name = sum.name
+    rec.size = sum.size
+    rec.stats = sum.stats
+  }
+
+  /**
+   * 步号重排（本地版）：和服务端 extend.go 的 renumberRecording 同一条规则。
+   *
+   * 为什么前端也要会：清空语音时服务端把步摘掉了，但**不回传整份 steps**
+   * （几百步没必要重传）。规则只有「Step = 下标 + 1」一条，两边各写一遍不会分叉；
+   * 而 AudioClip.Step 必须跟着改，否则「语音说自己在第 12 步、实际在第 9 步」。
+   */
+  function renumberLocal(rec: Recording): void {
+    const stepOf = new Map<string, number>()
+    rec.steps.forEach((st, i) => {
+      st.step = i + 1
+      if (st.audio) {
+        st.audio.step = st.step
+        stepOf.set(st.audio.id, st.step)
+      }
+    })
+    for (const a of rec.audios) {
+      const n = stepOf.get(a.id)
+      if (n !== undefined) a.step = n
+    }
+  }
+
+  /** 处理「又加载了几根」（replay 转过来的增量）。 */
+  function applyExtended(msg: RecordingExtendedMessage): void {
+    const rec = recording.value
+    if (!rec) return
+    extending.value = false
+    rec.steps = [...rec.steps, ...(msg.steps ?? [])]
+    patchSummary(rec, msg.recording)
+    extendHasMore.value = msg.hasMore
+    // 跳到新的最后一步：加载出来的那根立刻出现在画布上（否则「点了没反应」）
+    goto(rec.steps.length)
+    const last = msg.steps[msg.steps.length - 1]
+    const tail = msg.hasMore ? '' : ' · 数据已到末尾'
+    replay.noteNotice(`${msg.steps.length} 根已加载（到 ${last?.time ?? ''}）${tail}`)
+  }
+
+  /** 处理录音 / 清空的回复。 */
+  function applyVoiceResult(msg: RecordingVoiceMessage): void {
+    const rec = recording.value
+    if (!rec) return
+    if (msg.audio && msg.step) {
+      rec.audios = [...rec.audios, msg.audio]
+      rec.steps = [...rec.steps, msg.step]
+    }
+    if (msg.removed?.length) {
+      const gone = new Set(msg.removed.map((c) => c.id))
+      // 正在放的就是被删掉的那条：先停，否则「清空了还在响」
+      if (currentClip.value && gone.has(currentClip.value.id)) stopAudio()
+      rec.audios = rec.audios.filter((a) => !gone.has(a.id))
+      rec.steps = rec.steps.filter((s) => !(s.audio && gone.has(s.audio.id)))
+      renumberLocal(rec)
+    }
+    patchSummary(rec, msg.recording)
+    if (msg.audio && msg.step) {
+      // 语音自己占一步：跟着走到那一步，面板上就能看到「本步 1 条」并自动放出来
+      goto(msg.step.step)
+    } else {
+      goto(Math.min(step.value, Math.max(1, rec.steps.length)))
+    }
+    if (msg.removed?.length) {
+      replay.noteNotice(`已清除这根 K 线上的 ${msg.removed.length} 条语音`)
+    } else if (msg.audio) {
+      replay.noteNotice(
+        `语音已存进这条交易记录（${msg.audio.time} · ${(msg.audio.durationMs / 1000).toFixed(1)} 秒）`,
+      )
+    }
+  }
+
+  /**
+   * 收到延伸/录音的回复：只在「是同一条记录」时接上。
+   *
+   * 认 id 是必须的：同一个浏览器可能开着记录页和回放页，另一条记录的消息
+   * 不该被当成「我这条又多了几根」。
+   */
+  watch(
+    () => replay.playbackMsgSeq,
+    () => {
+      const msg = replay.playbackMsg
+      if (!msg || !recording.value || msg.recordingId !== recording.value.id) return
+      if (msg.type === 'recording_extended') applyExtended(msg)
+      else applyVoiceResult(msg)
+    },
+  )
+
+  /**
+   * 失败也要收尾：把「加载中」放掉，并在「数据到头」时把按钮置灰。
+   *
+   * 没有这一步的话，第一次加载失败（最常见的就是整份数据已经到末尾）
+   * 之后【加载下一根】会永远停在 loading 态 —— 按钮写着「加载中…」却什么都不发生。
+   */
+  watch(
+    () => replay.playbackFailSeq,
+    () => {
+      const fail = replay.playbackFail
+      if (!fail || !recording.value) return
+      if (fail.request !== 'recording_extend') return
+      extending.value = false
+      if (fail.message.includes('最后一根')) extendHasMore.value = false
+    },
+  )
 
   // ---------------- 播放控制 ----------------
 
@@ -460,6 +708,15 @@ export const usePlaybackStore = defineStore('playback', () => {
     audioSteps,
     barStarts,
     audioUrl,
+    extending,
+    extendHasMore,
+    canExtend,
+    extensionTail,
+    onExtensionTail,
+    extensionClips,
+    extendNext,
+    addExtensionVoice,
+    clearExtensionVoice,
     open,
     close,
     goto,

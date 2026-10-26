@@ -141,11 +141,32 @@ func (v *voiceStore) state(barTime string) VoiceState {
 	return st
 }
 
-// add 把一段 WAV 挂到 barTime 那根 K 线上。
+// checkAudioClip 校验一段刚录好的 WAV，返回（补算过的）时长毫秒。
 //
-// 校验顺序「先便宜后贵」：条数、长度、文件头。文件头必须是 RIFF/WAVE ——
-// 这段音频之后会用 audio/wav 发给浏览器，收一个任意二进制进来等于开了一个
-// 内容不明的本地文件服务。
+// 三处共用：盘面语音（voiceStore.add）、交易记录里的语音步（tradeRecorder.addAudio）、
+// 以及回放末尾那根 K 线上的录音（extend.go）。校验顺序「先便宜后贵」：
+// 长度、字节数、文件头。文件头必须是 RIFF/WAVE —— 这段音频之后会用 audio/wav
+// 发给浏览器，收一个任意二进制进来等于开了一个内容不明的本地文件服务。
+//
+// 错误文案是界面上的原话，改之前先想清楚用户会看到什么。
+func checkAudioClip(data []byte, durationMs int) (int, error) {
+	if len(data) == 0 {
+		return 0, errors.New("录音是空的")
+	}
+	if len(data) > maxAudioBytes {
+		return 0, fmt.Errorf("单段录音最多 %d MB", maxAudioBytes>>20)
+	}
+	if len(data) < 44 || string(data[0:4]) != "RIFF" || string(data[8:12]) != "WAVE" {
+		return 0, errors.New("录音不是 WAV（RIFF/WAVE）格式")
+	}
+	if durationMs <= 0 {
+		// 采样率 16kHz、16bit、单声道：一秒 32000 字节
+		durationMs = int(float64(len(data)-44) / 32.0)
+	}
+	return durationMs, nil
+}
+
+// add 把一段 WAV 挂到 barTime 那根 K 线上。
 //
 // 写盘失败不打断录音：内存里那份还在，界面上照样能看见（只是听不了），
 // 下一次落盘会补（见 persist.go 的 voice.json + 目录一起写）。
@@ -159,18 +180,9 @@ func (v *voiceStore) add(data []byte, durationMs int, barTime, by string) (Audio
 	if n := len(v.clipsOfBar(barTime)); n >= maxClipsPerBar {
 		return AudioClip{}, fmt.Errorf("一根 K 线最多 %d 段录音，这根已经录满了；点【下一根】可以接着录", maxClipsPerBar)
 	}
-	if len(data) == 0 {
-		return AudioClip{}, errors.New("录音是空的")
-	}
-	if len(data) > maxAudioBytes {
-		return AudioClip{}, fmt.Errorf("单段录音最多 %d MB", maxAudioBytes>>20)
-	}
-	if len(data) < 44 || string(data[0:4]) != "RIFF" || string(data[8:12]) != "WAVE" {
-		return AudioClip{}, errors.New("录音不是 WAV（RIFF/WAVE）格式")
-	}
-	if durationMs <= 0 {
-		// 采样率 16kHz、16bit、单声道：一秒 32000 字节
-		durationMs = int(float64(len(data)-44) / 32.0)
+	durationMs, err := checkAudioClip(data, durationMs)
+	if err != nil {
+		return AudioClip{}, err
 	}
 	v.seq++
 	clip := AudioClip{

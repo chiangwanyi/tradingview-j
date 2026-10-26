@@ -20,6 +20,7 @@ import type {
   AnnotationDeletedPayload,
   AnnotationPayload,
   BarAdvancedPayload,
+  BarExtendedPayload,
   BotPayload,
   ControlChangedPayload,
   FlatAllPayload,
@@ -47,6 +48,23 @@ export function applyInstanceEvent(inst: InstanceDetail, action: string, payload
       // 换了一根 K 线：语音的「本根 x/9」和清单整体换成新那根的。
       // 这一条**和有没有在录制无关**（v0.16.0），所以不走录制状态那条线。
       if (p.voice) inst.voice = p.voice
+      break
+    }
+    /**
+     * 回放延伸（v0.27.0）：只**追加一根 K 线**，别的什么都不动。
+     *
+     * 这里刻意不复用 barAdvanced 那段：那段会用 payload 里的 orders / trades /
+     * position 整份替换交易状态。延伸发生在平仓之后，那段时间没有成交，
+     * 而延伸步里根本没有这些字段 —— 按那段走会把回放里的仓位和盈亏抹成默认值。
+     *
+     * hiddenBars 归 0：延伸是「按需一根一根放」，后端手里没有预加载的存货。
+     */
+    case ACTION.barExtended: {
+      const p = payload as BarExtendedPayload
+      inst.bars = [...inst.bars, p.bar]
+      inst.cursor = p.cursor
+      inst.hiddenBars = 0
+      inst.hasMore = p.hasMore
       break
     }
     case ACTION.annotationAdded: {
