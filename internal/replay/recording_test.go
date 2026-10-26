@@ -1225,3 +1225,185 @@ func assertSameState(t *testing.T, live, replayed *Instance) {
 		t.Fatalf("已实现盈亏不一致：重放 %v / 实例 %v", replayed.RealizedPnl, live.RealizedPnl)
 	}
 }
+
+// ---------------------------------------------------------------------------
+// 开仓之前的语音（v0.26.1）
+// ---------------------------------------------------------------------------
+
+// TestTradeRecordingKeepsPreOpenVoice 钉住「开仓前录的讲解也要在记录里」。
+//
+// 用户报过的现象：复盘时在 B116 讲了一段（那时还没开仓），走到 B151 开仓、B158 平仓，
+// 再打开这条记录 —— B116 在轴上、图形也在，**唯独那段讲解没了**。
+//
+// 根因不是数据丢了：语音归实例（voice.go），录的时候 inst.trade 还是 nil，只会写进
+// 实例那一份；而记录的 Base 只抄了当时的图形和挂单。同一时刻盘面上的讲解没跟着进来，
+// 回放就成了「看得见 K 线、看不见讲解」。这里验的是「开仓那一刻把它抄一份进来」。
+func TestTradeRecordingKeepsPreOpenVoice(t *testing.T) {
+	hub, _ := newTestHub(t, 5)
+	// 语音要落到状态目录里才有字节可抄（没配 state 目录时只在内存里）
+	if err := hub.EnablePersistence(t.TempDir()); err != nil {
+		t.Fatalf("启用状态目录失败：%v", err)
+	}
+	recDir := t.TempDir()
+	if err := hub.EnableRecordings(recDir); err != nil {
+		t.Fatalf("启用交易记录目录失败：%v", err)
+	}
+	a := newFakeClient(t, hub)
+	a.waitFor(MsgWelcome)
+	instID := createInstance(t, hub, a, "2026-01-05 10:00")
+	inst := mustInstance(t, hub, instID)
+
+	// ---- 空仓时讲一段 ----
+	preBar := inst.Bars[inst.Cursor].Time
+	preWAV := testWAV(320)
+	if got := audioStep(t, sendAudio(t, hub, a, instID, preWAV)); got != 0 {
+		t.Fatalf("开仓前录的语音不属于任何一步（step=0），实际 %d", got)
+	}
+	// 再往前走一根：让「开仓那一刻」的 Base 里确实含着一根更早的 K 线，
+	// 也就是用户说的 B116 —— 它不是开仓那根，但确实在快照里。
+	a.send(hub, map[string]any{"type": "step", "instanceId": instID})
+	a.waitAction(ActBarAdvanced)
+	if n := inst.TradeRecordCount(); n != 0 {
+		t.Fatalf("空仓时不该开记录，实际记了 %d 笔", n)
+	}
+
+	// ---- 开仓：Base 里应当带上那段语音 ----
+	tradePrice(t, marketOrder(t, hub, a, instID, "buy", 1))
+	rec := inst.trade.rec
+	if len(rec.Audios) != 1 {
+		t.Fatalf("开仓前那段语音应当在记录里，实际 %d 条：%+v", len(rec.Audios), rec.Audios)
+	}
+	pre := rec.Audios[0]
+	if pre.Step != 0 {
+		t.Fatalf("开仓前的语音不占步，Step 应当是 0，实际 %d", pre.Step)
+	}
+	if pre.Time != preBar {
+		t.Fatalf("语音应当挂在那根 K 线 %s 上，实际 %s", preBar, pre.Time)
+	}
+	if pre.Size != int64(len(preWAV)) || pre.DurationMs != 1000 {
+		t.Fatalf("抄进来的语音元数据不对：%+v", pre)
+	}
+	// 文件得真的在记录目录里（记录要能单独拷走，不能指到实例目录去）
+	path := filepath.Join(recDir, recordingFolder(rec.ID), pre.File)
+	got, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("开仓前的语音没有写进记录目录 %s：%v", path, err)
+	}
+	if len(got) != len(preWAV) {
+		t.Fatalf("抄出来的音频长度不对：%d / %d", len(got), len(preWAV))
+	}
+
+	// ---- 持仓中再讲一段：编号接着往下走，不能和抄进来的那条重号 ----
+	if got := audioStep(t, sendAudio(t, hub, a, instID, testWAV(160))); got != 3 {
+		t.Fatalf("第 3 步应当是持仓中录的语音，实际 %d", got)
+	}
+	all := inst.trade.rec.Audios
+	if len(all) != 2 {
+		t.Fatalf("记录里应当有 2 条语音，实际 %d", len(all))
+	}
+	if all[1].File != "audio-2.wav" || all[1].ID != "au2" {
+		t.Fatalf("持仓中那条应当接着编号成 au2 / audio-2.wav，实际 %+v", all[1])
+	}
+
+	// ---- 平仓落盘，读回来的还是这两条 ----
+	tradePrice(t, marketOrder(t, hub, a, instID, "sell", 1))
+	msg := a.waitFor(MsgTradeRecorded)
+	sum, _ := msg["recording"].(map[string]any)
+	id, _ := sum["id"].(string)
+	if id == "" {
+		t.Fatalf("收尾通知里没有记录 id：%v", msg)
+	}
+	loaded, err := hub.records.Load(id)
+	if err != nil {
+		t.Fatalf("读回记录失败：%v", err)
+	}
+	if len(loaded.Audios) != 2 {
+		t.Fatalf("落盘再读回来应当还是 2 条语音，实际 %d", len(loaded.Audios))
+	}
+	if n, _ := sum["audioCount"].(float64); int(n) != 2 {
+		t.Fatalf("列表摘要里的语音数应当是 2，实际 %v", sum["audioCount"])
+	}
+	if loaded.Audios[0].Step != 0 || loaded.Audios[0].Time != preBar {
+		t.Fatalf("读回来的开仓前语音不对：%+v", loaded.Audios[0])
+	}
+}
+
+// TestRecordingBackfillsPreOpenVoice 覆盖**已经录在盘上**的老记录。
+//
+// 修之前生成的记录里根本没有那条语音，文件却还在实例存档里
+// （<stateDir>/instances/<id>/voice/voice-N.wav）。用户在记录页打开它时补一次：
+// 只追加、不动任何一步，补完落盘 —— 再打开就不该重复补。
+func TestRecordingBackfillsPreOpenVoice(t *testing.T) {
+	hub, _ := newTestHub(t, 5)
+	stateDir := t.TempDir()
+	if err := hub.EnablePersistence(stateDir); err != nil {
+		t.Fatalf("启用状态目录失败：%v", err)
+	}
+	recDir := t.TempDir()
+	if err := hub.EnableRecordings(recDir); err != nil {
+		t.Fatalf("启用交易记录目录失败：%v", err)
+	}
+	a := newFakeClient(t, hub)
+	a.waitFor(MsgWelcome)
+	instID := createInstance(t, hub, a, "2026-01-05 10:00")
+	inst := mustInstance(t, hub, instID)
+	preBar := inst.Bars[inst.Cursor].Time
+	sendAudio(t, hub, a, instID, testWAV(320))
+	a.send(hub, map[string]any{"type": "step", "instanceId": instID})
+	a.waitAction(ActBarAdvanced)
+	tradePrice(t, marketOrder(t, hub, a, instID, "buy", 1))
+	tradePrice(t, marketOrder(t, hub, a, instID, "sell", 1))
+	msg := a.waitFor(MsgTradeRecorded)
+	sum, _ := msg["recording"].(map[string]any)
+	id, _ := sum["id"].(string)
+
+	// 把这条记录退回到「修复前」的样子：recording.json 里抹掉开仓前那条，wav 也删掉
+	path := filepath.Join(recDir, recordingFolder(id), recordingFileName)
+	var rec Recording
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("读不到记录文件 %s：%v", path, err)
+	}
+	if err := json.Unmarshal(raw, &rec); err != nil {
+		t.Fatalf("记录文件不是合法 JSON：%v", err)
+	}
+	kept := rec.Audios[:0]
+	for _, c := range rec.Audios {
+		if c.Step == 0 {
+			_ = os.Remove(filepath.Join(recDir, recordingFolder(id), c.File))
+			continue
+		}
+		kept = append(kept, c)
+	}
+	rec.Audios = kept
+	rec.AudioCount = len(kept)
+	if err := writeJSONAtomic(path, &rec); err != nil {
+		t.Fatalf("写回记录文件失败：%v", err)
+	}
+
+	// 打开它：应当从实例存档把开仓前那条补回来
+	a.send(hub, map[string]any{"type": "get_recording", "recordingId": id})
+	got, ok := a.waitFor(MsgRecording)["recording"].(map[string]any)
+	if !ok {
+		t.Fatal("回放消息里没有记录")
+	}
+	audios, _ := got["audios"].([]any)
+	if len(audios) != 1 {
+		t.Fatalf("补齐之后应当有 1 条语音，实际 %d：%v", len(audios), audios)
+	}
+	back, _ := audios[0].(map[string]any)
+	if back["time"] != preBar || numOf(back, "step") != 0 {
+		t.Fatalf("补回来的那条应当挂回 %s 且不占步，实际 %v", preBar, back)
+	}
+	name, _ := back["file"].(string)
+	if _, err := os.Stat(filepath.Join(recDir, recordingFolder(id), name)); err != nil {
+		t.Fatalf("补回来的音频没有写进记录目录：%v", err)
+	}
+
+	// 再打开一次：已经在记录里了，不该再补一条（否则每开一次多一条）
+	a.send(hub, map[string]any{"type": "get_recording", "recordingId": id})
+	again, _ := a.waitFor(MsgRecording)["recording"].(map[string]any)
+	if list, _ := again["audios"].([]any); len(list) != 1 {
+		t.Fatalf("补齐应当只做一次，第二次打开却变成 %d 条", len(list))
+	}
+}

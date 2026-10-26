@@ -54,6 +54,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -214,6 +215,17 @@ func newTradeRecorder(inst *Instance, base RecordingBase, by, id, dir string, lo
 		cur:  StepContext{Time: start, Cursor: base.Cursor},
 		dir:  dir,
 		logf: logf,
+	}
+	// 开仓**之前**录的那些讲解：这一刻盘面上已经有了，就该和 base 里的图形、挂单
+	// 一样出现在回放里。它们不占步（Step = 0）—— 那时候还没有「第几步」这回事。
+	if inst != nil {
+		v := inst.voiceNotes()
+		adopted, pend := adoptPreOpenVoices(v.all(), v.dir, dir, baseBarTimes(base), 0, logf)
+		for _, c := range adopted {
+			rec.Audios = append(rec.Audios, c)
+		}
+		r.audios = append(r.audios, pend...)
+		r.audioSeq = len(adopted) // 之后录的那几条从 au(n+1) 接着编号
 	}
 	r.stats = newStatsTracker(inst.pointValue())
 	r.dirty = true
@@ -434,6 +446,97 @@ func (r *tradeRecorder) clipsOfBar(barTime string) []AudioClip {
 		}
 	}
 	return out
+}
+
+// baseBarTimes 是「Base 那一屏上有哪几根 K 线」的时间集合。
+//
+// 开仓前语音只认这个范围：base 之后那几根上的讲解不在这一屏快照里，
+// 抄进来就会变成「回放里还没走到就先把话说了」。
+func baseBarTimes(base RecordingBase) map[string]bool {
+	out := make(map[string]bool, len(base.Bars))
+	for _, b := range base.Bars {
+		out[b.Time] = true
+	}
+	return out
+}
+
+// adoptPreOpenVoices 把「已经挂在盘面上、还没属于任何一笔交易记录」的语音抄进一条记录。
+//
+// 为什么必须抄：语音归实例（voice.go），录的时候 inst.trade 还是 nil —— 那时候只会写进
+// 实例那一份。而回放的 Base 是**开仓之前那一屏**，里面已经有当时画的图形、挂的单子；
+// 同一时刻盘面上的讲解却没跟着进来，回放里就成了「这根 K 线看得见、图形也在，唯独
+// 讲解没了」。用户看到的正是这个（B116 在轴上、录音条上却没有它）。
+//
+// 三条规则：
+//
+//	只抄 baseTimes 里那几根 —— 之外的不在这一屏快照里（见 baseBarTimes）
+//	Step 固定 0            —— 它们不对应任何一步，回放到某一步不会自动响，
+//	                          只摆在录音条上等着被点
+//	文件另存 audio-N.wav   —— 记录得能单独拷走，不能指到实例目录里去
+//
+// srcDir 是实例的音频目录（空 = 那份录音没落盘，读不到字节，只能跳过并记一行日志）；
+// dstDir 是记录目录（空 = 只留内存，等 Save 时一起写）。
+func adoptPreOpenVoices(clips []AudioClip, srcDir, dstDir string, baseTimes map[string]bool, seq int, logf func(string, ...any)) ([]AudioClip, []pendingAudio) {
+	if len(clips) == 0 {
+		return nil, nil
+	}
+	if logf == nil {
+		logf = func(string, ...any) {}
+	}
+	if srcDir == "" {
+		logf("[replay] 盘面上有 %d 条语音没有落盘，交易记录里抄不到它们（没配 state 目录）", len(clips))
+		return nil, nil
+	}
+	out := make([]AudioClip, 0, len(clips))
+	pend := make([]pendingAudio, 0, len(clips))
+	for _, c := range clips {
+		if !baseTimes[c.Time] {
+			continue
+		}
+		data, err := os.ReadFile(filepath.Join(srcDir, c.File))
+		if err != nil {
+			logf("[replay] 开仓前的语音 %s 读不出来，记录里少了这一条：%v", c.File, err)
+			continue
+		}
+		seq++
+		dur := c.DurationMs
+		if dur <= 0 {
+			dur = int(float64(len(data)-44) / 32.0) // 16kHz / 16bit / 单声道
+		}
+		nc := AudioClip{
+			ID:         fmt.Sprintf("au%d", seq),
+			Step:       0,
+			Time:       c.Time,
+			DurationMs: dur,
+			File:       fmt.Sprintf("audio-%d.wav", seq),
+			Size:       int64(len(data)),
+			CreatedAt:  c.CreatedAt,
+			By:         c.By,
+		}
+		if dstDir != "" {
+			if err := os.WriteFile(filepath.Join(dstDir, nc.File), data, 0o644); err != nil {
+				logf("[replay] 开仓前的语音 %s 写不进记录目录（收尾时会重试）：%v", nc.File, err)
+			}
+		}
+		out = append(out, nc)
+		pend = append(pend, pendingAudio{clip: nc, data: data})
+	}
+	return out, pend
+}
+
+// maxAudioNo 从记录里已有的语音推出「下一个编号从哪儿开始」（id 是 au<N>）。
+//
+// 和 voice.go 的 maxClipSeq 同一个道理：按条数推会重号 —— 中间删过几条之后，
+// 条数小于历史最大编号，两条语音就会抢同一个 audio-N.wav。
+func maxAudioNo(clips []AudioClip) int {
+	max := 0
+	for _, c := range clips {
+		n, err := strconv.Atoi(strings.TrimPrefix(c.ID, "au"))
+		if err == nil && n > max {
+			max = n
+		}
+	}
+	return max
 }
 
 // addAudio 把一段 WAV 挂到**当前这根 K 线**上，并且**为它开一步**。
@@ -1344,7 +1447,75 @@ func (h *Hub) handleGetRecording(c *Client, req Request) {
 		h.fail(c, req, err.Error())
 		return
 	}
+	// 修复旧记录：那时候还没抄开仓前的语音（见 adoptPreOpenVoices），补一次并落盘
+	h.backfillPreOpenVoices(rec)
 	h.reply(c, RecordingMsg{Type: MsgRecording, Recording: rec})
+}
+
+// backfillPreOpenVoices 给**修复前录下的**记录补上开仓前那几根上的语音。
+//
+// 这些语音并没有丢：它们还在实例存档里（<stateDir>/instances/<id>/voice.json 和
+// 同目录的 voice/），只是当时的记录没抄一份。用户在记录页打开这条记录时补一次，
+// 只**追加**、不动任何一步，补完立刻重写 recording.json —— 下次打开不用再补。
+//
+// 两道保险：
+//
+//	只补「这根 K 线上记录里一条都没有」的。有几条的说明那是录制期间正常写进来的，
+//	再抄一遍就会重复（一根 K 线上一鱼两吃，回放时听起来像说了两遍）
+//	实例存档不在（记录被单独拷走、实例删了）就什么都不做 —— 记录本身仍然是完整的
+func (h *Hub) backfillPreOpenVoices(rec *Recording) {
+	if h == nil || h.records == nil || rec == nil || rec.InstanceID == "" || h.instanceDir == "" {
+		return
+	}
+	if len(rec.Base.Bars) == 0 {
+		return
+	}
+	// 语音清单优先问内存里的实例（它就是这份存档的主人）；实例不在内存里
+	// （重启后没恢复、或者记录被拷到了另一台机器）再退回读 voice.json。
+	// 光读盘会漏掉「刚录完、还没到落盘时机」的那几条。
+	var clips []AudioClip
+	srcDir := ""
+	instDir := instanceDirPath(h.instanceDir, rec.InstanceID)
+	if inst, ok := h.instances[rec.InstanceID]; ok && inst.voice != nil {
+		clips = inst.voice.all()
+		srcDir = inst.voice.dir
+	} else {
+		if err := readJSONFile(filepath.Join(instDir, voiceFileName), &clips); err != nil {
+			return
+		}
+		srcDir = filepath.Join(instDir, voiceDirName)
+	}
+	if len(clips) == 0 || srcDir == "" {
+		return
+	}
+	baseTimes := baseBarTimes(rec.Base)
+	have := make(map[string]int, len(rec.Audios))
+	for _, a := range rec.Audios {
+		have[a.Time]++
+	}
+	cand := make([]AudioClip, 0, len(clips))
+	for _, c := range clips {
+		if baseTimes[c.Time] && have[c.Time] == 0 {
+			cand = append(cand, c)
+		}
+	}
+	if len(cand) == 0 {
+		return
+	}
+	folder := filepath.Join(h.records.Dir(), recordingFolder(rec.ID))
+	adopted, pend := adoptPreOpenVoices(cand, srcDir, folder,
+		baseTimes, maxAudioNo(rec.Audios), h.log)
+	if len(adopted) == 0 {
+		return
+	}
+	rec.Audios = append(rec.Audios, adopted...)
+	rec.AudioCount = len(rec.Audios)
+	if _, err := h.records.Save(rec, pend); err != nil {
+		// 补不进磁盘也不该让人打不开这条记录：内存里这一份仍然是补好的
+		h.log("[replay] 记录 %s 补了 %d 条开仓前的语音，但没能落盘：%v", rec.ID, len(adopted), err)
+		return
+	}
+	h.log("[replay] 记录 %s 补进 %d 条开仓前的语音（实例存档里还在）", rec.ID, len(adopted))
 }
 
 func (h *Hub) handleDeleteRecording(c *Client, req Request) {
