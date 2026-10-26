@@ -47,6 +47,10 @@ import type { AudioClip } from '@/types/protocol'
  *
  * 回放时同样在（否则进回放画布会突然长高 40px）：这时清单换成**录像里**的语音，
  * 地址也换成录像那条路由；点标记只出声、不改步 —— 步进是回放自己的事。
+ *
+ * **回放的语音是「慢慢到齐」的**：录像里一段语音挂在「第 6 步」，而画布上的 K 线
+ * 只演到当前这一步，所以刚进回放时一条都摆不上轴（不是数据丢了）。这种情况单独
+ * 用一句话说清，并给一个「跳到第 6 步」的按钮 —— 见 `orphan` / `jumpStep`。
  */
 
 const store = useReplayStore()
@@ -137,6 +141,31 @@ const markers = computed<BarVoice[]>(() => {
 /** 轨道宽度（= 行情区宽度）：标记的 x 是轨道内的坐标，判「在不在视野里」要用它 */
 const trackWidth = computed(() => chartViewport.right - chartViewport.left)
 
+/**
+ * 摆不上轴的语音（`time` 在当前 `bars` 里找不到下标）。
+ *
+ * **两种完全不同的原因，不能共用一句话**：
+ *   - 回放：那根 K 线还没走到。录像里一条语音挂在「第 6 步」，而画布上的 K 线只到
+ *     当前这一步（`buildState` 按步重建），所以刚进回放时**一条都摆不出来** ——
+ *     这不是数据丢了，是还没演到；
+ *   - 实时：语音挂在一根当前盘面没有的 K 线上（换过数据目录的老盘面）。
+ *
+ * 以前两种情况共用「已经不在的 K 线」，于是回放一进去就被判成「存档坏了」。
+ */
+const orphan = computed(() => clips.value.filter((c) => !indexOfTime.value.has(c.time)))
+
+/**
+ * 回放里「语音一条都还没走到」时，最早那个语音步的步号（0 = 没有可跳的）。
+ *
+ * 提示不只是一句话 —— 点一下就跳过去。不然人看到「走到第 6 步」还得自己
+ * 在步进条上数 6 格，而这个条子本来就是为了省掉「自己在图上找」才存在的。
+ */
+const jumpStep = computed(() => {
+  if (!store.playbackActive || markers.value.length > 0) return 0
+  const next = orphan.value.reduce((m, c) => (c.step > 0 && c.step < m ? c.step : m), Infinity)
+  return Number.isFinite(next) ? next : 0
+})
+
 /** 视野外多留 10px：贴边的那半个标记也算「看得见」，不让它突然跳到两侧的数字里去 */
 const EDGE = 10
 const shown = computed(() => markers.value.filter((m) => m.x >= -EDGE && m.x <= trackWidth.value + EDGE))
@@ -209,10 +238,21 @@ const hint = computed(() => {
     return store.playbackActive ? '这条录像里没有语音' : '还没有语音讲解 · 点工具条【🎙 录音】，或按 空格 讲两句'
   }
   if (shown.value.length > 0) return ''
-  // 有语音却一个标记都摆不出来：不是「在视野外」，是**根本没有那根 K 线**
-  // （换过数据集的老存档会这样），别拿「点两侧的箭头」去糊弄人
-  if (markers.value.length === 0) return '这些语音挂在已经不在的 K 线上（数据目录换过？）'
-  return '语音都不在视野内 · 点轨道两端的 ‹n / n› 移过去'
+  // 有语音却一个标记都摆不出来：不是「在视野外」，是**根本没有那根 K 线**。
+  // 回放和实时在这里必须分开说 —— 回放里「没有那根 K 线」只是**还没演到**，
+  // 说成「数据目录换过」会让人以为录像坏了（刚进回放时必然是这个状态：
+  // 语音都在后面的步上，而画布只演到第 1 步）。
+  if (markers.value.length === 0) {
+    if (store.playbackActive) {
+      if (jumpStep.value) return `语音挂在还没走到的 K 线上 · 点这里跳到第 ${jumpStep.value} 步`
+      return '这条录像里的语音都挂不上当前的时间轴'
+    }
+    return '这些语音挂在已经不在的 K 线上（数据目录换过？）'
+  }
+  // 摆上的都在视野外；回放里还可能有几条在后面的步上，一并说清，免得数不上
+  const later =
+    store.playbackActive && orphan.value.length > 0 ? ` · 另有 ${orphan.value.length} 条在后面的步里` : ''
+  return `语音都不在视野内 · 点轨道两端的 ‹n / n› 移过去${later}`
 })
 
 // 换实例 / 进出回放：手上那条语音可能已经不属于眼前这块盘面了，先停下
@@ -244,9 +284,21 @@ onBeforeUnmount(() => voiceStop())
       <!--
         空态/出错时的一句话：让开两端那两个箭头，别被它们压住；
         出错了（取不到音频、浏览器拦自动播放）用琥珀色，和浮窗里的提示同一个颜色。
+        回放里「语音都在后面的步上」时它是个按钮：点一下直接跳到那一步，
+        比让人自己在步进条上数格子强。
       -->
+      <button
+        v-if="hint && jumpStep && !voiceError"
+        type="button"
+        class="absolute inset-y-0 flex items-center truncate pr-2 text-faint hover:text-accent"
+        :class="[offLeft.length ? 'left-7' : 'left-2', offRight.length ? 'right-7' : 'right-2']"
+        :title="`跳到第 ${jumpStep} 步：这条录像里最早的一段语音挂在那一根 K 线上`"
+        @click="pb.goto(jumpStep)"
+      >
+        {{ hint }}
+      </button>
       <div
-        v-if="hint"
+        v-else-if="hint"
         class="pointer-events-none absolute inset-y-0 flex items-center truncate pr-2"
         :class="[
           offLeft.length ? 'left-7' : 'left-2',
