@@ -55,14 +55,25 @@ type Options struct {
 	Step     int64          // 一根 K 线多少秒
 	Location *time.Location // 空则用本机时区
 	Version  string         // 程序版本，显示在页脚
-	Log      func(format string, args ...any)
+	// PollMs 是页面的自动同步间隔（毫秒）。0 用默认值 DefaultPollMs。
+	//
+	// 它必须由服务端告诉页面，而不是写死在前端：这个数字取决于「一次重扫有多贵」，
+	// 而那是服务端才知道的事（增量扫描之后一次重扫只剩几毫秒）。
+	PollMs int
+	Log    func(format string, args ...any)
 }
+
+// DefaultPollMs 是页面自动同步的默认间隔。
+//
+// 为什么是 2 秒：抓取侧每 flushSeconds（默认 1 秒）把内存里的一天重写一遍，
+// 页面这边每 2 秒问一次磁盘，于是「图表上拖出来的那根」最迟两秒多就会出现在日历上。
+// 再快没有意义 —— 一根 5 分钟 K 线本来就不会每秒多一根。
+const DefaultPollMs = 2000
 
 // payload 是一次「可以原样发出去」的响应。
 //
 // 之所以把编码好的字节留起来而不是每次重新 Marshal：报告本身有 3300 个日文件、
-// 0.85MB JSON，一次请求里最贵的其实是扫盘（1 秒级），其次才是编码（10 毫秒级）；
-// 但**重复刷新**时这两件事都不该再做一遍 —— 见 snapshotter 的注释。
+// 0.85MB JSON；**重复刷新**时这两件事都不该再做一遍 —— 见 snapshotter 的注释。
 type payload struct {
 	body []byte
 	gz   []byte
@@ -74,16 +85,21 @@ type payload struct {
 //
 // 这里的原则没变：页面上看到的永远是磁盘这一刻的样子 —— 只是不再为此
 // 每次都把 44MB / 3300 份 CSV 重新读一遍。指纹由每个日文件的名字 + 大小 +
-// 修改时刻拼成（只读元数据，实测 ~30ms，比整次扫描便宜一个量级），
-// 任何一个文件被改写过，指纹就变，下一次请求立刻重扫。
+// 修改时刻拼成（只读元数据，实测 ~30ms），任何一个文件被改写过，指纹就变，
+// 下一次请求立刻重扫。
 //
-// 换句话说：缓存失效的判据是「磁盘变了没有」，不是「过了多少秒」。
+// 缓存失效的判据是「磁盘变了没有」，不是「过了多少秒」：
 // 定时过期那种做法会在这里说谎 —— 用户刚抓完数据，刷新页面却还是十分钟前的快照。
+// 也正因为这条判据是「精确」的，抓取过程中页面才能每两秒问一次而不出错：
+// 变了就重扫（增量只看变过的那几份，见 store.Scanner），没变就发缓存。
 type snapshotter struct {
 	opts Options
+	// scan 带着上一轮的记忆，所以「重扫」只解析变过的日文件。
+	// 它必须在两次请求之间活着 —— 每次请求新建一个就等于每次都是全量扫描。
+	scan *store.Scanner
 
 	// mu 同时兼两件事：保护下面几个字段，以及「同一时刻只让一个人扫盘」。
-	// 并发按两次 F5 不该跑两遍 1.2 秒的扫描 —— 后来的那个等前面扫完，
+	// 并发按两次 F5 不该跑两遍扫描 —— 后来的那个等前面扫完，
 	// 拿到的是同一份结果（指纹一样就是同一份），代价只是等一次。
 	mu   sync.Mutex
 	key  string
@@ -95,6 +111,9 @@ type snapshotter struct {
 	// 「缓存命中」这件事从响应内容上是看不出来的（本来就该一模一样），
 	// 所以只能在这里留一个计数器，否则测试只能靠时间戳去猜。
 	scans int
+	// parsed 同样只给测试看：累计真正解析过的日文件数。
+	// 「增量扫描」的效果也只能这样断言 —— 结果本身必须和全量扫描一模一样。
+	parsed int
 }
 
 // New 组装出 HTTP 路由。
@@ -110,7 +129,10 @@ func newSnapshotter(opts Options) *snapshotter {
 	if opts.Location == nil {
 		opts.Location = time.Local
 	}
-	return &snapshotter{opts: opts}
+	if opts.PollMs <= 0 {
+		opts.PollMs = DefaultPollMs
+	}
+	return &snapshotter{opts: opts, scan: store.NewScanner()}
 }
 
 func (h *snapshotter) handler() http.Handler {
@@ -183,11 +205,18 @@ func (h *snapshotter) snapshot(force bool) payload {
 	}
 
 	start := time.Now()
-	res := store.Scan(h.opts.Root, h.opts.Location, h.opts.Step)
+	res := h.scan.Scan(h.opts.Root, h.opts.Location, h.opts.Step)
 	h.scans++
+	h.parsed = h.scan.ParsedFiles()
 	rep := Build(res, h.opts.Location, h.opts.Version)
-	rep.Meta.GeneratedAt = time.Now().Unix()
+	// GeneratedAt 是给人看的时间（秒级）；Rev 是给页面判断「这份快照是不是新的」用的
+	// 修订号（毫秒级）。抓取过程中一秒内完全可能重扫两次，拿秒级时间戳当判据
+	// 会让页面把一次真实的变化当成「没变」而跳过重绘。
+	rep.Meta.GeneratedAt = start.Unix()
+	rep.Meta.Rev = time.Now().UnixMilli()
 	rep.Meta.ScanMs = time.Since(start).Milliseconds()
+	// 轮询间隔由服务端给：页面据此决定多久问一次，以及「实时」这个词是不是成立。
+	rep.Meta.PollMs = h.opts.PollMs
 
 	var buf bytes.Buffer
 	enc := json.NewEncoder(&buf)
@@ -200,7 +229,7 @@ func (h *snapshotter) snapshot(force bool) payload {
 	}
 	body := buf.Bytes()
 	gz := gzipBytes(body)
-	h.key, h.body, h.gz, h.gen, h.ms = key, body, gz, rep.Meta.GeneratedAt, rep.Meta.ScanMs
+	h.key, h.body, h.gz, h.gen, h.ms = key, body, gz, rep.Meta.Rev, rep.Meta.ScanMs
 	return payload{body: body, gz: gz}
 }
 

@@ -10,7 +10,9 @@ import (
 	"bufio"
 	"fmt"
 	"os"
+	"os/signal"
 	"strings"
+	"syscall"
 )
 
 var stdin = bufio.NewReader(os.Stdin)
@@ -46,4 +48,17 @@ func waitEnter(prompt string) {
 	}
 	fmt.Print(prompt)
 	readLine()
+}
+
+// waitStop 阻塞到用户按 Ctrl+C（复盘服务用它，抓取那边用的是 signal.NotifyContext）。
+//
+// 这里刻意**不用回车**来停：要在等回车的同时响应 Ctrl+C，就得在后台起一个读 stdin 的
+// goroutine，而 Ctrl+C 先到的话那个 goroutine 会一直挂在 stdin 上 —— 菜单读的是同一份
+// 缓冲 reader（见上面那条约定的注释），于是它会把用户回到菜单后敲的第一个字符吃掉，
+// 表现成「选了没反应」。
+func waitStop() {
+	sig := make(chan os.Signal, 1)
+	signal.Notify(sig, os.Interrupt, syscall.SIGTERM)
+	defer signal.Stop(sig)
+	<-sig
 }

@@ -2,8 +2,14 @@ package cli
 
 // 菜单里的「1  启动抓取」。
 //
-// 这里只做编排：读配置 → 开落盘出口 → 起抓取会话 → 等 Ctrl+C → 刷盘 → 报本次写入了什么。
-// 抓取本身（等调试端口、等图表页、挂监听、解帧）在 internal/capture。
+// 这里只做编排：读配置 → 开落盘出口 → **起网页版分析** → 起抓取会话 → 等 Ctrl+C
+// → 刷盘 → 停网页 → 报本次写入了什么。抓取本身（等调试端口、等图表页、挂监听、解帧）
+// 在 internal/capture，网页在 internal/webreport。
+//
+// 网页服务和抓取是同一个生命周期：抓取一起步它就起来（浏览器也自动打开），
+// 抓取一停它就跟着停。中间没有任何「同步状态」的代码 ——
+// 页面靠磁盘指纹发现新数据（见 webreport.snapshotter），
+// 而抓取那边每 flushSeconds 就已经把当天那份 CSV 重写了一遍。
 
 import (
 	"context"
@@ -37,15 +43,21 @@ func (a *App) runCapture() int {
 		return 1
 	}
 
+	// 网页先起：抓取要一直等着 Chrome 和图表页，这段时间页面已经在等着了，
+	// 用户可以在浏览器里先把分析页放到一边，等数据自己长出来。
+	// 起不来不影响抓取（返回 nil），只是少了那个观察窗。
+	web := a.startAnalysis(cfg)
+
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 
 	sess := capture.New(cfg, st, a.Log)
-	a.Log.Info("开始运行。要停止：在这个窗口按 Ctrl+C（会先刷盘，然后回到菜单）")
+	a.Log.Info("开始运行。要停止：在这个窗口按 Ctrl+C（会先刷盘、再关掉网页，然后回到菜单）")
 	a.Log.Rule(72)
 
 	runErr := sess.Run(ctx)
 
-	// 退出前一定要刷盘：用户可能刚拖出来一大段历史
+	// 退出前一定要刷盘：用户可能刚拖出来一大段历史。
+	// 也一定要在关网页**之前**刷：页面最后一次看到的应当是完整的一天，而不是刷了一半的文件。
 	a.Log.Info("正在收尾：把内存里的数据写进 CSV…")
 	if ferr := st.Close(); ferr != nil {
 		a.Log.Error("有文件没写成功：%v", ferr)
@@ -53,6 +65,7 @@ func (a *App) runCapture() int {
 		a.Log.Info("落盘完成")
 	}
 	a.printSummary(st)
+	web.close(a.Log)
 	a.Log.Rule(72)
 
 	// 刷完盘才交还 SIGINT：这样收尾期间再来一次 Ctrl+C 仍是「等它写完」，

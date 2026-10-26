@@ -262,6 +262,11 @@ function alertsOf(rep) {
 
 /* ---------- 应用 ---------- */
 
+// 拿不到服务端 pollMs 时的兜底间隔（毫秒）。只在「快照还没到」时用得上 ——
+// 它的另一个作用更重要：第一次请求要是失败了，这个定时器会继续每两秒重试一次，
+// 而不是让页面停在错误提示上等用户按 F5。
+const FALLBACK_POLL = 2000;
+
 const { createApp } = Vue;
 
 // 类名写成字面量映射表：Tailwind 的浏览器版靠扫描 DOM 发现类名，
@@ -340,6 +345,10 @@ const app = createApp({
       dark: false,
       allOpen: true,
       open: {}, // folder -> 是否展开；没记过的用 allOpen
+      // ---- 自动同步（抓取过程中的「实时」）----
+      auto: true,       // 用户可以在工具条里关掉（想细看某一天时不想被刷新打断）
+      polling: false,   // 定时器是不是在跑（只作内部状态，模板不用）
+      rev: 0,           // 当前这份快照的修订号，用来判断「有没有真的变」
     };
   },
 
@@ -348,9 +357,15 @@ const app = createApp({
     // 一开始我就是这么干的，结果忘了在拿到数据时把标志置上，页面永远停在「正在读取…」，
     // 而接口、单测、DOM 里都能看到数据（只有真跑浏览器才暴露）。少一个可漂移的状态。
     meta() {
-      return (this.rep && this.rep.meta) || { root: '', step: 300, tz: '', version: '' };
+      return (this.rep && this.rep.meta) || { root: '', step: 300, tz: '', version: '', pollMs: 0 };
     },
     totals() { return (this.rep && this.rep.totals) || {}; },
+    // pollMs 由服务端给：页面自己写死一个数字是不行的 —— 多久问一次取决于
+    // 一次重扫有多贵，那是后端的事。只有「还没拿到快照」（服务没起来 / 第一次就失败）
+    // 时才退回 FALLBACK_POLL：那时它要顶住「每两秒重试一次」，否则一次失败就再也不动了。
+    pollMs() { return Number(this.meta.pollMs) || FALLBACK_POLL; },
+    // 「实时」这个词只在真的会自己刷、而且眼下确实有数据的时候才配用
+    live() { return !!(this.auto && this.rep && !this.err); },
     // 判定表原样来自 Go（store.ExpectedBarsRule），这里只是给它一个短名字。
     // 页面上那张表不写死数字，就是为了「改了判定表忘了改页面」不会发生。
     expectRule() { return (this.rep && this.rep.meta && this.rep.meta.expectRule) || []; },
@@ -414,6 +429,15 @@ const app = createApp({
     q(v) {
       const m = monthOf(v);
       if (this.qIsDate && isMonth(m)) this.month = m;
+    },
+    // 关掉「实时刷新」＝停掉定时器（不是只把请求丢掉），打开就先补一次再走定时。
+    auto(v) {
+      if (v) {
+        this.load(false, true);
+        this.startPolling();
+      } else {
+        this.stopPolling();
+      }
     },
   },
 
@@ -577,30 +601,89 @@ const app = createApp({
     // ---- 数据 ----
     // force=true 才真的重新要一次数据（「重新扫描」按钮）：普通刷新走服务端的快照缓存，
     // 磁盘没变就直接用上一份，不变的东西不该重算一遍。
-    load(force) {
+    //
+    // keep=true 是**后台自动同步**用的：换了快照也要保住用户正在看的那一天和那个月份。
+    // 自动同步每两秒跑一次，如果每次都把选中项清空，右侧明细就会一直在闪、
+    // 点了也看不到东西 —— 那样「实时」反而变成了不能用的理由。
+    load(force, keep) {
       const self = this;
+      if (self.loading) return; // 上一次还没回来，别叠着发
       self.loading = true;
       // 首屏那次请求在 index.html 的 <head> 里就发出去了（见那段注释），这里直接接上，
       // 不再重复发一次 —— 扫描是秒级的活，发两次等于白等两遍。
-      const preload = !force && window.__tvjAnalysis;
+      // 它只能用一次：用完就清掉，否则第一次失败之后每次都会拿到同一个失败的 Promise。
+      const preload = !force && !keep && window.__tvjAnalysis;
+      if (preload) window.__tvjAnalysis = null;
       const p = preload || fetch('/api/analysis' + (force ? '?refresh=1' : ''), { cache: 'no-store' })
         .then(function (r) {
           if (!r.ok) throw new Error('HTTP ' + r.status);
           return r.json();
         });
       p.then(function (j) {
+          const rev = Number((j && j.meta && j.meta.rev) || 0);
+          // 后台同步时「内容没变」就别动数据：rep 一换，所有格子都会重绘，
+          // 用户正在看的那个格子会闪一下，而这期间什么都没发生。
+          if (keep && self.rep && rev && rev === self.rev) {
+            self.err = '';
+            return;
+          }
           self.rep = j;
+          self.rev = rev;
           self.err = '';
-          // 快照换了，选中的那天/那个标的可能已经不存在了，一律清掉重选，
-          // 免得右侧明细停在上一份快照的数据上
-          self.picked = {};
-          self.gPicked = '';
+          if (keep) {
+            self.keepPicked();
+          } else {
+            // 快照换了，选中的那天/那个标的可能已经不存在了，一律清掉重选，
+            // 免得右侧明细停在上一份快照的数据上
+            self.picked = {};
+            self.gPicked = '';
+          }
           if (!self.monthTouched) self.month = self.months[0] || todayMonth();
         })
         .catch(function (e) {
           self.err = e && e.message ? e.message : String(e);
         })
-        .then(function () { self.loading = false; });
+        .then(function () {
+          self.loading = false;
+          self.startPolling(); // 快照到了才知道该多久问一次
+        });
+    },
+
+    // ---- 自动同步 ----
+    // 抓取在另一个进程里往磁盘写，页面这边唯一的办法就是「再问一次」。
+    // 间隔取服务端给的 meta.pollMs；标签页切到后台就不问（省电，也不占那个
+    // 扫描锁），切回来立刻补一次。
+    startPolling() {
+      if (this.polling || !this.auto || this.pollMs <= 0) return;
+      this.polling = true;
+      const self = this;
+      const tick = function () {
+        if (!self.polling) return;
+        if (self.auto && !document.hidden && !self.loading) self.load(false, true);
+        self.pollTimer = setTimeout(tick, self.pollMs);
+      };
+      this.pollTimer = setTimeout(tick, this.pollMs);
+    },
+    stopPolling() {
+      this.polling = false;
+      if (this.pollTimer) clearTimeout(this.pollTimer);
+      this.pollTimer = 0;
+    },
+
+    // keepPicked 把「选中的那一天」重新绑到新快照里的 Day 对象上。
+    // 不能直接沿用旧对象：旧对象来自上一份快照（根数是抓取那一刻的），
+    // 而且新快照里那个日期可能已经不存在了（换了月份、文件被删）。
+    keepPicked() {
+      const self = this;
+      const out = {};
+      this.folders.forEach(function (f) {
+        const cur = self.picked[f.folder];
+        if (!cur) return;
+        const d = dayIndexOf(f).get(cur.date);
+        if (d) out[f.folder] = d;
+      });
+      this.picked = out;
+      // gPicked 只是个日期字符串，gRow 会自己从新快照里重新找，不用管。
     },
 
     toggleDark() {
@@ -614,6 +697,13 @@ const app = createApp({
     try { this.dark = localStorage.getItem('tvj-theme') === 'dark'; } catch (e) {}
     this.month = todayMonth(); // 先给个真月份，免得下拉框在首屏是空的
     this.load();
+
+    // 切回前台立刻补一次：标签页在后台时按设计不发请求，回来时看到的不该是
+    // 走之前那个数字。（定时器在后台会被浏览器限流，所以不能指望它自己续上。）
+    const self = this;
+    document.addEventListener('visibilitychange', function () {
+      if (!document.hidden && self.auto) self.load(false, true);
+    });
 
     // Tailwind 的浏览器版要等它扫完 DOM 才注入样式，中间有一段「有内容没样式」的窗口。
     // 等两帧再淡入，避免用户看到一屏裸 HTML（见 style.css 里的 #app 透明度）。

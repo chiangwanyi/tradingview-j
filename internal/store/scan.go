@@ -101,13 +101,74 @@ type ScanResult struct {
 
 // Scan 只读地扫一遍数据目录。任何问题都不返回 error，而是记进 Notes ——
 // 「有一份文件读不了」不该让整次分析失败，用户更想看的是剩下那些能读的。
+//
+// 这一份是**不带记忆**的入口：调用它必然把所有日文件重新解析一遍（44MB / 3300 份
+// 实测 1.2 秒）。要反复扫同一个目录（网页版每两秒自动同步一次）请用 Scanner.Scan ——
+// 它按文件的「大小 + 修改时刻」记住上次算出来的摘要，只重算变过的那几份。
 func Scan(root string, loc *time.Location, step int64) *ScanResult {
+	return NewScanner().Scan(root, loc, step)
+}
+
+// Scanner 是 Scan 的增量版：同一个数据目录可以反复扫，没变过的日文件不再重解析。
+//
+// 为什么需要它：网页版分析在抓取过程中要每隔一两秒跟着磁盘变化刷新一次，
+// 而一次全量扫描是 1.2 秒 —— 直接拿 Scan 去轮询等于把一个核跑满，还会一直占着
+// 快照锁。加上这层记忆之后，一次「几乎没变」的重扫只剩列目录（~30ms）加
+// 解析那一两份正在长大的文件。
+//
+// 它**不改变统计口径**：被复用的摘要是扫描时就地算出来的同一份 DayStat，
+// 判据仍然只在 scanDay 一处。判据或时区/周期变了，记忆整个作废（见 Scan 里的比较）。
+//
+// 记忆键刻意不含目录自己的 mtime（理由和 webreport.fingerprint 一样：Windows 上
+// 目录 mtime 是延迟落定的），只比每个日文件自己的大小与修改时刻。
+type Scanner struct {
+	// runMu 让「同一个 Scanner 上的两次扫描」串行。并发扫同一份目录没有任何收益，
+	// 却会让下面那份「只读快照 + 重建」的记忆更新互相覆盖。
+	runMu sync.Mutex
+
+	// memo 是上一次扫描结束时的记忆。它在扫描期间被当作**只读快照**交给 worker，
+	// 扫描结束后整体换成新的一份 —— 这样既不用给 worker 加锁，也顺手保证了
+	// 「被删掉的文件不会永远留在记忆里」。
+	memo map[string]memoDay
+	loc  *time.Location
+	step int64
+
+	// parsed 是真正解析过的文件数（只给测试看：缓存到底省下了多少活，
+	// 从返回值的任何字段上都看不出来）。
+	parsed int
+}
+
+// memoDay 是一份日文件「什么时候算出来的、当时长什么样」。
+type memoDay struct {
+	size  int64
+	mtime int64
+	stat  DayStat
+}
+
+func NewScanner() *Scanner { return &Scanner{} }
+
+// ParsedFiles 返回这个 Scanner 累计真正解析过的日文件数。
+// 增量行为只能靠它来断言 —— 复用记忆时返回的 DayStat 和重新解析出来的完全一样。
+func (sc *Scanner) ParsedFiles() int { return sc.parsed }
+
+// Scan 扫一遍 root。loc / step 与上次不同时记忆全部作废：
+// 「哪一天」「一根多少秒」都变了，旧摘要里的日期划分和断档不再成立。
+func (sc *Scanner) Scan(root string, loc *time.Location, step int64) *ScanResult {
 	if loc == nil {
 		loc = time.Local
 	}
 	if step <= 0 {
 		step = 300
 	}
+
+	sc.runMu.Lock()
+	defer sc.runMu.Unlock()
+
+	prev := sc.memo
+	if sc.loc != loc || sc.step != step {
+		prev = nil
+	}
+
 	res := &ScanResult{Root: root, Step: step}
 
 	entries, err := os.ReadDir(root)
@@ -151,20 +212,20 @@ func Scan(root string, loc *time.Location, step int64) *ScanResult {
 			continue
 		}
 		p := folderPlan{dir: filepath.Join(root, e.Name()), name: e.Name(), start: len(jobs)}
-		names, sizes, err := listDayFiles(p.dir)
+		list, err := listDayJobs(p.dir)
 		if err != nil {
 			p.err = err
 			plans = append(plans, p)
 			continue
 		}
-		p.n = len(names)
-		for i, name := range names {
-			jobs = append(jobs, dayJob{path: filepath.Join(p.dir, name), size: sizes[i]})
-		}
+		p.n = len(list)
+		jobs = append(jobs, list...)
 		plans = append(plans, p)
 	}
 
-	stats := scanDays(jobs, loc, step)
+	stats, memo, parsed := scanDays(jobs, loc, step, prev)
+	sc.memo, sc.loc, sc.step = memo, loc, step
+	sc.parsed += parsed
 
 	for _, p := range plans {
 		fs := FolderStat{Folder: p.name}
@@ -254,28 +315,25 @@ func markMismatch(folders []FolderStat) int {
 	return days
 }
 
-// dayJob 是「扫一份日文件」这件事：路径，加上从目录项里顺手捡到的大小。
+// dayJob 是「扫一份日文件」这件事：路径，加上从目录项里顺手捡到的大小与修改时刻。
 //
-// 大小从目录项来而不是再 os.Stat 一次：os.ReadDir 在 Windows 上本来就把
+// 大小/修改时刻从目录项来而不是再 os.Stat 一次：os.ReadDir 在 Windows 上本来就把
 // WIN32_FIND_DATA 读回来了，Info() 是白拿的 —— 817 天 × 4 标的实测，
 // 省掉这 3300 次 stat 就是省掉整次扫描里相当可观的一段 syscall。
+// 这两项同时也是增量扫描的判据（见 Scanner），所以更不能只留大小。
 type dayJob struct {
-	path string
-	size int64
+	path  string
+	size  int64
+	mtime int64
 }
 
-// listDayFiles 列出一个标的目录下的日文件（文件名 + 大小）。
-// 目录读不了时返回错误，由调用方决定怎么如实报出来。
-func listDayFiles(dir string) ([]string, []int64, error) {
+// listDayJobs 列出一个标的目录下的日文件。目录读不了时返回错误，由调用方决定怎么如实报出来。
+func listDayJobs(dir string) ([]dayJob, error) {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
-	type named struct {
-		name string
-		size int64
-	}
-	list := make([]named, 0, len(entries))
+	list := make([]dayJob, 0, len(entries))
 	for _, e := range entries {
 		if e.IsDir() {
 			continue
@@ -283,30 +341,36 @@ func listDayFiles(dir string) ([]string, []int64, error) {
 		if !strings.HasSuffix(strings.ToLower(e.Name()), ".csv") {
 			continue // .tmp 之类的中间产物不算数据
 		}
-		var size int64
+		j := dayJob{path: filepath.Join(dir, e.Name())}
 		if fi, err := e.Info(); err == nil {
-			size = fi.Size()
+			j.size = fi.Size()
+			j.mtime = fi.ModTime().UnixNano()
 		}
-		list = append(list, named{name: e.Name(), size: size})
+		list = append(list, j)
 	}
-	sort.Slice(list, func(i, j int) bool { return list[i].name < list[j].name }) // 文件名就是日期，字符串序 = 时间序
-	names := make([]string, len(list))
-	sizes := make([]int64, len(list))
-	for i, it := range list {
-		names[i], sizes[i] = it.name, it.size
-	}
-	return names, sizes, nil
+	// 文件名就是日期，字符串序 = 时间序
+	sort.Slice(list, func(i, j int) bool { return list[i].path < list[j].path })
+	return list, nil
 }
 
 // scanDays 并发把一批日文件扫成 DayStat，结果按 job 的下标落位，所以顺序是稳定的
 // （Folders 里的日文件永远是日期升序，跟串行扫出来的完全一样）。
-func scanDays(jobs []dayJob, loc *time.Location, step int64) []DayStat {
-	out := make([]DayStat, len(jobs))
+//
+// prev 是上一次扫描留下的记忆（可为 nil），返回的 next 是**这一批文件**的新记忆 ——
+// 用本次扫到的文件重建而不是往旧表里塞，等于顺手驱逐了已删除的文件。
+// parsed 是这次真正解析过的份数（命中记忆的不算）。
+func scanDays(jobs []dayJob, loc *time.Location, step int64, prev map[string]memoDay) (out []DayStat, next map[string]memoDay, parsed int) {
+	out = make([]DayStat, len(jobs))
+	next = make(map[string]memoDay, len(jobs))
 	if len(jobs) == 0 {
-		return out
+		return out, next, 0
 	}
+	// 每个 worker 只写自己那个下标，记忆的整理放到 Wait 之后串行做 ——
+	// 否则 3300 次并发 map 写要么加锁，要么用 sync.Map，都比这贵。
+	entries := make([]memoDay, len(jobs))
 	workers := scanWorkers(len(jobs))
-	var next int64
+	var cursor int64
+	var misses int64
 	var wg sync.WaitGroup
 	wg.Add(workers)
 	for w := 0; w < workers; w++ {
@@ -315,16 +379,34 @@ func scanDays(jobs []dayJob, loc *time.Location, step int64) []DayStat {
 			for {
 				// 原子取号而不是开一条 channel：任务只有几千个，
 				// 竞争一把 64 位计数器比 3300 次 channel 收发便宜。
-				i := int(atomic.AddInt64(&next, 1)) - 1
+				i := int(atomic.AddInt64(&cursor, 1)) - 1
 				if i >= len(jobs) {
 					return
 				}
-				out[i] = scanDay(jobs[i].path, jobs[i].size, loc, step)
+				j := jobs[i]
+				if m, ok := prev[j.path]; ok && m.size == j.size && m.mtime == j.mtime {
+					out[i] = m.stat
+					entries[i] = m
+					continue
+				}
+				atomic.AddInt64(&misses, 1)
+				st := scanDay(j.path, j.size, loc, step)
+				out[i] = st
+				entries[i] = memoDay{size: j.size, mtime: j.mtime, stat: st}
 			}
 		}()
 	}
 	wg.Wait()
-	return out
+
+	for i, j := range jobs {
+		e := entries[i]
+		// Mismatch 是「扫完全部标的」之后才回填的（见 markMismatch），
+		// 它只会写在 FolderStat 里那份副本上 —— 记忆里永远存 false，
+		// 否则第二次扫描会把上一次的结论当成事实带进来。
+		e.stat.Mismatch = false
+		next[j.path] = e
+	}
+	return out, next, int(misses)
 }
 
 // scanWorkers 决定开几个 goroutine。

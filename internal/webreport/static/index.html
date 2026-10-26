@@ -54,9 +54,14 @@ window.__tvjAnalysis = fetch('/api/analysis', { cache: 'no-store' }).then(functi
         <p class="truncate font-mono text-[11.5px] leading-tight text-faint" :title="meta.root">{{ meta.root }}</p>
       </div>
       <div class="ml-auto flex items-center gap-2">
-        <span v-if="loading" class="text-[12px] text-muted">扫描中…</span>
-        <span v-else-if="snapshot" class="text-[11.5px] text-faint" :title="'这次扫描花了 ' + meta.scanMs + ' 毫秒'">{{ snapshot }}</span>
-        <button class="btn" type="button" @click="load(true)" :disabled="loading" title="跳过快照缓存，立刻重读一遍磁盘">重新扫描</button>
+        <span v-if="loading" class="text-[12px] text-muted">同步中…</span>
+        <span v-else-if="live" class="live-flag"
+              :title="'每 ' + (pollMs / 1000) + ' 秒自动同步一次：抓取那边一写盘，这里的数字就跟着变'">
+          <i class="live-dot"></i>实时
+        </span>
+        <span v-if="snapshot" class="text-[11.5px] text-faint"
+              :title="'这一份是 ' + snapshot + ' 扫出来的，扫描本身花了 ' + meta.scanMs + ' 毫秒'">{{ snapshot }}</span>
+        <button class="btn" type="button" @click="load(true, true)" :disabled="loading" title="跳过快照缓存，立刻重读一遍磁盘">重新扫描</button>
         <button class="btn" type="button" @click="toggleDark" :title="dark ? '切到浅色' : '切到深色'">{{ dark ? '浅色' : '深色' }}</button>
       </div>
     </div>
@@ -67,7 +72,7 @@ window.__tvjAnalysis = fetch('/api/analysis', { cache: 'no-store' }).then(functi
     <!-- ── 拉取失败 ─────────────────────────────────────────────────── -->
     <section v-if="err" class="alert alert-bad mb-4">
       <p class="text-[13px] font-medium">读不到统计数据：{{ err }}</p>
-      <p class="mt-1 text-[12px] opacity-80">服务可能已经停了。回到程序窗口重新选一次「网页版分析」即可。</p>
+      <p class="mt-1 text-[12px] opacity-80">网页服务是和抓取一起起的，在程序窗口按 Ctrl+C 停止抓取时它会一起停掉。想再看数据，重新选一次「1 启动抓取」即可。</p>
     </section>
 
     <div v-if="!rep" class="py-20 text-center text-[13px] text-muted">正在读取…</div>
@@ -121,6 +126,7 @@ window.__tvjAnalysis = fetch('/api/analysis', { cache: 'no-store' }).then(functi
             <li><b class="text-ink">时间断档</b> = 相邻两根之间大于一个周期的空档。点某一天，明细里会列出每一段断档的<b class="text-ink">缺失开始时刻与缺失结束时刻</b>。期货每日结算休市（1 小时 = 12 根 5 分钟）是正常形态，不算异常，所以只在明细里如实列出，不做任何汇总。</li>
             <li><b class="text-ink">坏行 / 重复行</b> = 解析不了的行数 / 同一时间戳出现多次的行数。正常写入是「整体重写 + 原子改名」，重复行应当恒为 0 —— 一旦不为 0，说明文件被手工改过或被别的工具合并过。</li>
             <li><b class="text-ink">灰格子</b> = 这一天没有数据（周末、还没抓到的日期，或翻到了别的月份）。</li>
+            <li><b class="text-ink">实时更新</b> = 抓取每 <span class="font-mono">flushSeconds</span>（默认 1 秒）把当天那份 CSV 整体重写一遍，这个页面每 <span class="font-mono">{{ pollMs / 1000 }}</span> 秒重读一次磁盘，所以格子中间的根数最迟两秒多就会跟上，上面这些判定也跟着一起重算。磁盘没变时服务端直接给上一份快照（只比文件的大小和修改时刻，不重读内容），所以自动同步本身几乎不占机器。</li>
           </ul>
           <div class="mt-3 border-t border-line pt-2">
             <div class="stat-lbl">应有根数（按本地时间的星期几定，判定在 store.ExpectedBars）</div>
@@ -147,7 +153,8 @@ window.__tvjAnalysis = fetch('/api/analysis', { cache: 'no-store' }).then(functi
       <!-- ── 空数据 ────────────────────────────────────────────────── -->
       <section v-if="!folders.length" class="card px-5 py-14 text-center">
         <p class="text-[14px] font-medium">{{ meta.exists ? '数据目录里还没有任何 K 线。' : '数据目录还不存在。' }}</p>
-        <p class="mt-2 text-[12.5px] text-muted">先回到程序窗口选 1 启动抓取，然后在 TradingView 图表上拖一拖，数据就会落到这个目录里。</p>
+        <p class="mt-2 text-[12.5px] text-muted">抓取已经在跑了：在 TradingView 的图表页上拖一拖，K 线就会落进这个目录。</p>
+        <p class="mt-1 text-[12.5px] text-muted">这个页面每 {{ pollMs / 1000 }} 秒自动同步一次，日历上的根数会自己长出来，不用刷新。</p>
         <p class="mt-1 font-mono text-[12px] text-faint">{{ meta.root }}</p>
       </section>
 
@@ -171,6 +178,11 @@ window.__tvjAnalysis = fetch('/api/analysis', { cache: 'no-store' }).then(functi
           <label class="flex cursor-pointer select-none items-center gap-2 text-[12.5px] text-muted" title="当天各标的根数不完全相同的日子标黄，其余变淡">
             <input type="checkbox" v-model="hlMismatch">
             高亮数量不一致日
+          </label>
+          <label class="flex cursor-pointer select-none items-center gap-2 text-[12.5px] text-muted"
+                 :title="'每 ' + (pollMs / 1000) + ' 秒自动同步一次；想安静地看某一天就把它关掉'">
+            <input type="checkbox" v-model="auto">
+            实时刷新
           </label>
           <span v-if="dayFilterOn" class="text-[12px] text-faint">
             命中的日文件：{{ num(hits.days) }} 天 · {{ num(hits.bars) }} 根
@@ -385,7 +397,7 @@ window.__tvjAnalysis = fetch('/api/analysis', { cache: 'no-store' }).then(functi
 
       <footer class="mt-8 text-center text-[11.5px] text-faint">
         <p>tradingview-j v{{ meta.version }} · 只读快照，页面上的任何操作都不会改动数据目录里的文件</p>
-        <p class="mt-1">刷新页面直接用上一次的快照（磁盘没变就不重扫）；点「重新扫描」强制重读一遍磁盘</p>
+        <p class="mt-1">每 {{ pollMs / 1000 }} 秒自动同步一次（磁盘没变就不重扫）；点「重新扫描」强制重读一遍磁盘</p>
       </footer>
     </template>
   </main>

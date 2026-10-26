@@ -56,7 +56,14 @@ type Meta struct {
 	Exists      bool   `json:"exists"`      // 数据目录是否存在
 	Version     string `json:"version"`     // 程序版本
 	GeneratedAt int64  `json:"generatedAt"` // 本次扫描完成时刻（Unix 秒）
-	ScanMs      int64  `json:"scanMs"`      // 本次扫描耗时（毫秒）
+	// Rev 是这份快照的修订号（生成时刻的 Unix 毫秒）。
+	// 页面靠「修订号有没有变」决定要不要重绘：抓取过程中一秒里完全可能重扫两次，
+	// 拿秒级的 GeneratedAt 当判据会把真实的变化当成「没变」跳过去。
+	Rev int64 `json:"rev"`
+	// PollMs 是页面自动同步的间隔（毫秒）；0 = 不自动同步。
+	// 由服务端给出，因为「多久重扫一次才不亏」是服务端才知道的事（见 Options.PollMs）。
+	PollMs int   `json:"pollMs"`
+	ScanMs int64 `json:"scanMs"` // 本次扫描耗时（毫秒）
 	// ExpectRule 是「这个星期几应当有多少根」的判定表，原样透传。
 	// 网页的「统计口径」直接把它印出来 —— 判据只在 store.ExpectedRule 一处，
 	// HTML 里再抄一遍数字迟早会漏改，表现成「页面上写着 216、程序按 204 判」。

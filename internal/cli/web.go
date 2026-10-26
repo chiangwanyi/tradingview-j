@@ -1,36 +1,40 @@
 package cli
 
-// 菜单里的「2 网页版分析」。
+// 「1 启动抓取」里顺带起的网页版分析。
 //
-// 这一层只做「把 store.Scan 那一次只读扫描的结果搬进浏览器」：数据来自 store.Scan，
-// 区别只在于出口是 JSON 而不是终端表格。所以这里的代码很薄 ——
-// 起服务、开浏览器、等 Ctrl+C、关服务，一行业务逻辑都没有。
+// 这一层只做编排：起服务、报地址、开浏览器、抓取结束时报停。
+// 数据怎么算全在 internal/webreport（再往下是 store.Scan），这里一行业务逻辑都没有。
 //
-// 网页版**同样是只读的**：它不建目录、不写索引、不改文件，也没有任何能改数据的接口。
+// 为什么并进菜单 1 而不是留成独立的菜单项：抓取是常驻的，用户真正想知道的是
+// 「现在抓到多少、缺在哪天」。让页面和抓取同生共死，就不存在「先开哪个」
+// 「页面停在哪份旧数据上」这类问题 —— 而且页面里的数字靠磁盘指纹自动跟着刷新，
+// 不需要任何跨进程的推数据通道（见 webreport.snapshotter 与 store.Scanner）。
+//
+// 网页版**依旧是只读的**：它不建目录、不写索引、不改文件，也没有任何能改数据的接口。
 
 import (
-	"os"
 	"os/exec"
-	"os/signal"
 	"runtime"
-	"syscall"
 	"time"
 
+	"tradingview-j/internal/config"
+	"tradingview-j/internal/logx"
 	"tradingview-j/internal/webreport"
 )
 
-func (a *App) runWeb() int {
-	cfg, ok := a.loadConfig()
-	if !ok {
-		return 1
-	}
+// analysisServer 是「跟着抓取一起跑的那个网页」。nil 表示没起来 ——
+// 网页起不来不影响抓取，抓取是主功能，页面只是观察窗。
+type analysisServer struct {
+	srv *webreport.Server
+}
+
+// startAnalysis 起网页服务并打开浏览器。调用方拿返回值收尾。
+func (a *App) startAnalysis(cfg *config.Config) *analysisServer {
 	root := cfg.OutPath()
 
-	a.Log.Rule(72)
-	a.Log.Plain("  网页版分析 · %s", root)
+	a.Log.Plain("  网页版分析 · %s（和抓取一起起，Ctrl+C 时一起停）", root)
 	a.Log.Plain("  一根 K 线 %d 秒 · 时区 %s · 统计口径在 store.Scan 一处", cfg.IntervalSeconds, time.Local)
 	a.Log.Plain("  只读：页面上的任何操作都不会改动数据目录里的文件")
-	a.Log.Rule(72)
 
 	srv, err := webreport.Start(webreport.Options{
 		Root:     root,
@@ -40,8 +44,10 @@ func (a *App) runWeb() int {
 		Log:      func(format string, args ...any) { a.Log.Info(format, args...) },
 	}, cfg.WebPort)
 	if err != nil {
-		a.Log.Error("%v", err)
-		return 1
+		a.Log.Warn("网页版分析没起来：%v", err)
+		a.Log.Plain("  抓取照常进行，只是没有那个实时页面。")
+		a.Log.Rule(72)
+		return nil
 	}
 	if srv.Moved {
 		// 换了端口必须说出来：用户是拿这个端口号去浏览器里敲地址的
@@ -49,32 +55,24 @@ func (a *App) runWeb() int {
 	}
 	a.Log.Plain("  地址      %s", srv.URL)
 	a.Log.Plain("  已尝试用默认浏览器打开；没打开就手动把上面的地址粘进去。")
+	a.Log.Plain("  页面每 %d 秒自动同步一次，抓到的 K 线会自己出现在日历上（不用刷新）。", webreport.DefaultPollMs/1000)
 	a.Log.Rule(72)
 
 	openBrowser(srv.URL)
-
-	a.Log.Info("服务运行中。停止并回到菜单：在这个窗口按 Ctrl+C")
-	waitStop()
-
-	a.Log.Info("正在停止网页服务…")
-	if err := srv.Close(); err != nil {
-		a.Log.Warn("关闭服务时出错：%v", err)
-	}
-	a.Log.Plain("  网页服务已停止。")
-	return 0
+	return &analysisServer{srv: srv}
 }
 
-// waitStop 阻塞到用户按 Ctrl+C。
-//
-// 这里刻意**不用回车**来停：要在等回车的同时响应 Ctrl+C，就得在后台起一个读 stdin 的
-// goroutine，而 Ctrl+C 先到的话那个 goroutine 会一直挂在 stdin 上 —— 菜单读的是同一份
-// 缓冲 reader（见 prompt.go），于是它会把用户回到菜单后敲的第一个字符吃掉，
-// 表现成「选了没反应」。抓取那条路径也是 Ctrl+C 停，两处行为一致，不用记两套。
-func waitStop() {
-	sig := make(chan os.Signal, 1)
-	signal.Notify(sig, os.Interrupt, syscall.SIGTERM)
-	defer signal.Stop(sig)
-	<-sig
+// close 停掉网页服务。抓取停下来、数据刷完盘之后才调 ——
+// 先关服务再刷盘的话，页面最后一次能看到的就是残缺的一份。
+func (s *analysisServer) close(lg *logx.Logger) {
+	if s == nil {
+		return
+	}
+	lg.Info("正在停止网页服务…")
+	if err := s.srv.Close(); err != nil {
+		lg.Warn("关闭网页服务时出错：%v", err)
+	}
+	lg.Plain("  网页服务已停止（那个页面从现在起读不到数据）。")
 }
 
 // openBrowser 用系统默认浏览器打开地址。
