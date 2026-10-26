@@ -1,7 +1,48 @@
 {
   "version": 2,
-  "savedAt": 1793018818,
+  "savedAt": 1793025000,
   "items": [
+    {
+      "id": "rec-20261026-222103",
+      "name": "CME_MINI:MNQ1! · 空6 手 · +39.00 · 2024-08-15 13:30 → 2024-08-15 14:05",
+      "symbol": "CME_MINI:MNQ1!",
+      "folder": "CME_MINI_MNQ1!",
+      "anchor": "2024-08-15 13:25",
+      "endTime": "2024-08-15 14:05",
+      "instanceId": "ins-7",
+      "stepCount": 29,
+      "audioCount": 7,
+      "eventCount": 21,
+      "bars": 9,
+      "size": 2140887,
+      "createdBy": "human",
+      "createdAt": 1793024463,
+      "endedAt": 1793024794,
+      "stats": {
+        "side": "short",
+        "quantity": 6,
+        "maxQuantity": 12,
+        "entryTime": "2024-08-15 13:30",
+        "entryPrice": 21417.5,
+        "exitTime": "2024-08-15 14:05",
+        "exitPrice": 21414.5,
+        "realizedPnl": 39,
+        "mfe": 243,
+        "mae": -261,
+        "barsHeld": 5,
+        "fills": 3,
+        "steps": 29,
+        "closed": true
+      },
+      "source": "human",
+      "sourceName": "human",
+      "tags": [
+        {
+          "name": "多空力量",
+          "color": "#ef4444"
+        }
+      ]
+    },
     {
       "id": "rec-20261025-231353",
       "name": "CME_MINI:MNQ1! · 空9 手 · +364.50 · 2024-03-08 19:25 → 2024-03-08 19:40",

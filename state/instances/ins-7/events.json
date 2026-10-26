@@ -1,0 +1,5352 @@
+[
+  {
+    "seq": 1,
+    "at": 1793024040,
+    "by": "human",
+    "action": "annotation_added",
+    "payload": {
+      "annotation": {
+        "id": "a1",
+        "kind": "ray",
+        "start": {
+          "time": "2024-08-14 23:45",
+          "price": 21365.25
+        },
+        "end": {
+          "time": "2024-08-14 23:45",
+          "price": 21365.25,
+          "offset": 205
+        },
+        "style": {
+          "color": "#ef4444",
+          "width": 2,
+          "dash": "solid"
+        },
+        "snapped": true,
+        "createdBy": "human",
+        "createdAt": 1793024040
+      }
+    }
+  },
+  {
+    "seq": 2,
+    "at": 1793024051,
+    "by": "human",
+    "action": "annotation_added",
+    "payload": {
+      "annotation": {
+        "id": "a2",
+        "kind": "ray",
+        "start": {
+          "time": "2024-08-14 22:30",
+          "price": 21251.25
+        },
+        "end": {
+          "time": "2024-08-14 22:30",
+          "price": 21251.25,
+          "offset": 205
+        },
+        "style": {
+          "color": "#65a30d",
+          "width": 2,
+          "dash": "solid"
+        },
+        "snapped": true,
+        "createdBy": "human",
+        "createdAt": 1793024051
+      }
+    }
+  },
+  {
+    "seq": 3,
+    "at": 1793024057,
+    "by": "human",
+    "action": "annotation_deleted",
+    "payload": {
+      "annotationId": "a1"
+    }
+  },
+  {
+    "seq": 4,
+    "at": 1793024066,
+    "by": "human",
+    "action": "annotation_added",
+    "payload": {
+      "annotation": {
+        "id": "a3",
+        "kind": "ray",
+        "start": {
+          "time": "2024-08-15 03:10",
+          "price": 21325.75
+        },
+        "end": {
+          "time": "2024-08-15 03:10",
+          "price": 21325.75,
+          "offset": 205
+        },
+        "style": {
+          "color": "#65a30d",
+          "width": 2,
+          "dash": "solid"
+        },
+        "snapped": true,
+        "createdBy": "human",
+        "createdAt": 1793024066
+      }
+    }
+  },
+  {
+    "seq": 5,
+    "at": 1793024078,
+    "by": "human",
+    "action": "annotation_added",
+    "payload": {
+      "annotation": {
+        "id": "a4",
+        "kind": "ray",
+        "start": {
+          "time": "2024-08-15 07:30",
+          "price": 21371.5
+        },
+        "end": {
+          "time": "2024-08-15 07:30",
+          "price": 21371.5,
+          "offset": 205
+        },
+        "style": {
+          "color": "#65a30d",
+          "width": 2,
+          "dash": "solid"
+        },
+        "snapped": true,
+        "createdBy": "human",
+        "createdAt": 1793024078
+      }
+    }
+  },
+  {
+    "seq": 6,
+    "at": 1793024098,
+    "by": "human",
+    "action": "voice_added",
+    "payload": {
+      "audio": {
+        "id": "v1",
+        "step": 0,
+        "time": "2024-08-15 10:35",
+        "durationMs": 9000,
+        "file": "voice-1.wav",
+        "size": 288044,
+        "createdAt": 1793024098,
+        "by": "human"
+      },
+      "voice": {
+        "barTime": "2024-08-15 10:35",
+        "clips": [
+          {
+            "id": "v1",
+            "step": 0,
+            "time": "2024-08-15 10:35",
+            "durationMs": 9000,
+            "file": "voice-1.wav",
+            "size": 288044,
+            "createdAt": 1793024098,
+            "by": "human"
+          }
+        ],
+        "total": 1,
+        "max": 9
+      },
+      "voiceAll": [
+        {
+          "id": "v1",
+          "step": 0,
+          "time": "2024-08-15 10:35",
+          "durationMs": 9000,
+          "file": "voice-1.wav",
+          "size": 288044,
+          "createdAt": 1793024098,
+          "by": "human"
+        }
+      ]
+    }
+  },
+  {
+    "seq": 7,
+    "at": 1793024106,
+    "by": "human",
+    "action": "voice_cleared",
+    "payload": {
+      "removed": [
+        {
+          "id": "v1",
+          "step": 0,
+          "time": "2024-08-15 10:35",
+          "durationMs": 9000,
+          "file": "voice-1.wav",
+          "size": 288044,
+          "createdAt": 1793024098,
+          "by": "human"
+        }
+      ],
+      "voice": {
+        "barTime": "2024-08-15 10:35",
+        "clips": [],
+        "total": 0,
+        "max": 9
+      },
+      "voiceAll": []
+    }
+  },
+  {
+    "seq": 8,
+    "at": 1793024118,
+    "by": "human",
+    "action": "voice_added",
+    "payload": {
+      "audio": {
+        "id": "v2",
+        "step": 0,
+        "time": "2024-08-15 10:35",
+        "durationMs": 9060,
+        "file": "voice-2.wav",
+        "size": 289964,
+        "createdAt": 1793024118,
+        "by": "human"
+      },
+      "voice": {
+        "barTime": "2024-08-15 10:35",
+        "clips": [
+          {
+            "id": "v2",
+            "step": 0,
+            "time": "2024-08-15 10:35",
+            "durationMs": 9060,
+            "file": "voice-2.wav",
+            "size": 289964,
+            "createdAt": 1793024118,
+            "by": "human"
+          }
+        ],
+        "total": 1,
+        "max": 9
+      },
+      "voiceAll": [
+        {
+          "id": "v2",
+          "step": 0,
+          "time": "2024-08-15 10:35",
+          "durationMs": 9060,
+          "file": "voice-2.wav",
+          "size": 289964,
+          "createdAt": 1793024118,
+          "by": "human"
+        }
+      ]
+    }
+  },
+  {
+    "seq": 9,
+    "at": 1793024153,
+    "by": "human",
+    "action": "annotation_added",
+    "payload": {
+      "annotation": {
+        "id": "a5",
+        "kind": "ray",
+        "start": {
+          "time": "2024-08-14 23:55",
+          "price": 21411.75
+        },
+        "end": {
+          "time": "2024-08-14 23:55",
+          "price": 21411.75,
+          "offset": 205
+        },
+        "style": {
+          "color": "#ef4444",
+          "width": 2,
+          "dash": "solid"
+        },
+        "snapped": true,
+        "createdBy": "human",
+        "createdAt": 1793024153
+      }
+    }
+  },
+  {
+    "seq": 10,
+    "at": 1793024162,
+    "by": "human",
+    "action": "annotation_deleted",
+    "payload": {
+      "annotationId": "a5"
+    }
+  },
+  {
+    "seq": 11,
+    "at": 1793024170,
+    "by": "human",
+    "action": "bar_advanced",
+    "payload": {
+      "bar": {
+        "time": "2024-08-15 10:40",
+        "open": 21446.5,
+        "high": 21453,
+        "low": 21442,
+        "close": 21444.75,
+        "volume": 1561,
+        "ema20": 21414.0914590265
+      },
+      "cursor": 668,
+      "hiddenBars": 1263,
+      "hasMore": true,
+      "orders": [],
+      "trades": [],
+      "closedLots": null,
+      "position": {
+        "quantity": 0,
+        "side": "flat",
+        "averagePrice": 0
+      },
+      "realizedPnl": 0,
+      "unrealizedPnl": 0,
+      "fills": [],
+      "voice": {
+        "barTime": "2024-08-15 10:40",
+        "clips": [],
+        "total": 1,
+        "max": 9
+      }
+    }
+  },
+  {
+    "seq": 12,
+    "at": 1793024175,
+    "by": "human",
+    "action": "bar_advanced",
+    "payload": {
+      "bar": {
+        "time": "2024-08-15 10:45",
+        "open": 21444.75,
+        "high": 21445.75,
+        "low": 21442,
+        "close": 21444.25,
+        "volume": 693,
+        "ema20": 21416.963701023975
+      },
+      "cursor": 669,
+      "hiddenBars": 1262,
+      "hasMore": true,
+      "orders": [],
+      "trades": [],
+      "closedLots": null,
+      "position": {
+        "quantity": 0,
+        "side": "flat",
+        "averagePrice": 0
+      },
+      "realizedPnl": 0,
+      "unrealizedPnl": 0,
+      "fills": [],
+      "voice": {
+        "barTime": "2024-08-15 10:45",
+        "clips": [],
+        "total": 1,
+        "max": 9
+      }
+    }
+  },
+  {
+    "seq": 13,
+    "at": 1793024176,
+    "by": "human",
+    "action": "bar_advanced",
+    "payload": {
+      "bar": {
+        "time": "2024-08-15 10:50",
+        "open": 21443.5,
+        "high": 21451.5,
+        "low": 21443.25,
+        "close": 21448.25,
+        "volume": 1290,
+        "ema20": 21419.9433485455
+      },
+      "cursor": 670,
+      "hiddenBars": 1261,
+      "hasMore": true,
+      "orders": [],
+      "trades": [],
+      "closedLots": null,
+      "position": {
+        "quantity": 0,
+        "side": "flat",
+        "averagePrice": 0
+      },
+      "realizedPnl": 0,
+      "unrealizedPnl": 0,
+      "fills": [],
+      "voice": {
+        "barTime": "2024-08-15 10:50",
+        "clips": [],
+        "total": 1,
+        "max": 9
+      }
+    }
+  },
+  {
+    "seq": 14,
+    "at": 1793024193,
+    "by": "human",
+    "action": "annotation_added",
+    "payload": {
+      "annotation": {
+        "id": "a6",
+        "kind": "fib",
+        "start": {
+          "time": "2024-08-15 07:45",
+          "price": 21336.25
+        },
+        "end": {
+          "time": "2024-08-15 10:50",
+          "price": 21412.95,
+          "offset": 12
+        },
+        "style": {
+          "color": "#f59e0b",
+          "width": 1.2,
+          "dash": "solid",
+          "levels": [
+            {
+              "ratio": -1,
+              "color": "#38bdf8"
+            },
+            {
+              "ratio": 0,
+              "color": "#f59e0b"
+            },
+            {
+              "ratio": 1,
+              "color": "#ec4899"
+            },
+            {
+              "ratio": 2,
+              "color": "#22c55e"
+            }
+          ]
+        },
+        "snapped": false,
+        "createdBy": "human",
+        "createdAt": 1793024193
+      }
+    }
+  },
+  {
+    "seq": 15,
+    "at": 1793024204,
+    "by": "human",
+    "action": "bar_advanced",
+    "payload": {
+      "bar": {
+        "time": "2024-08-15 10:55",
+        "open": 21448.5,
+        "high": 21453.25,
+        "low": 21442.5,
+        "close": 21447.75,
+        "volume": 1181,
+        "ema20": 21422.591601064978
+      },
+      "cursor": 671,
+      "hiddenBars": 1260,
+      "hasMore": true,
+      "orders": [],
+      "trades": [],
+      "closedLots": null,
+      "position": {
+        "quantity": 0,
+        "side": "flat",
+        "averagePrice": 0
+      },
+      "realizedPnl": 0,
+      "unrealizedPnl": 0,
+      "fills": [],
+      "voice": {
+        "barTime": "2024-08-15 10:55",
+        "clips": [],
+        "total": 1,
+        "max": 9
+      }
+    }
+  },
+  {
+    "seq": 16,
+    "at": 1793024205,
+    "by": "human",
+    "action": "bar_advanced",
+    "payload": {
+      "bar": {
+        "time": "2024-08-15 11:00",
+        "open": 21448,
+        "high": 21455,
+        "low": 21445.5,
+        "close": 21446.5,
+        "volume": 1044,
+        "ema20": 21424.868591439743
+      },
+      "cursor": 672,
+      "hiddenBars": 1259,
+      "hasMore": true,
+      "orders": [],
+      "trades": [],
+      "closedLots": null,
+      "position": {
+        "quantity": 0,
+        "side": "flat",
+        "averagePrice": 0
+      },
+      "realizedPnl": 0,
+      "unrealizedPnl": 0,
+      "fills": [],
+      "voice": {
+        "barTime": "2024-08-15 11:00",
+        "clips": [],
+        "total": 1,
+        "max": 9
+      }
+    }
+  },
+  {
+    "seq": 17,
+    "at": 1793024206,
+    "by": "human",
+    "action": "bar_advanced",
+    "payload": {
+      "bar": {
+        "time": "2024-08-15 11:05",
+        "open": 21447,
+        "high": 21450.75,
+        "low": 21440.25,
+        "close": 21441.25,
+        "volume": 926,
+        "ema20": 21426.42872558834
+      },
+      "cursor": 673,
+      "hiddenBars": 1258,
+      "hasMore": true,
+      "orders": [],
+      "trades": [],
+      "closedLots": null,
+      "position": {
+        "quantity": 0,
+        "side": "flat",
+        "averagePrice": 0
+      },
+      "realizedPnl": 0,
+      "unrealizedPnl": 0,
+      "fills": [],
+      "voice": {
+        "barTime": "2024-08-15 11:05",
+        "clips": [],
+        "total": 1,
+        "max": 9
+      }
+    }
+  },
+  {
+    "seq": 18,
+    "at": 1793024207,
+    "by": "human",
+    "action": "bar_advanced",
+    "payload": {
+      "bar": {
+        "time": "2024-08-15 11:10",
+        "open": 21441,
+        "high": 21447,
+        "low": 21439,
+        "close": 21446.75,
+        "volume": 798,
+        "ema20": 21428.364085056117
+      },
+      "cursor": 674,
+      "hiddenBars": 1257,
+      "hasMore": true,
+      "orders": [],
+      "trades": [],
+      "closedLots": null,
+      "position": {
+        "quantity": 0,
+        "side": "flat",
+        "averagePrice": 0
+      },
+      "realizedPnl": 0,
+      "unrealizedPnl": 0,
+      "fills": [],
+      "voice": {
+        "barTime": "2024-08-15 11:10",
+        "clips": [],
+        "total": 1,
+        "max": 9
+      }
+    }
+  },
+  {
+    "seq": 19,
+    "at": 1793024208,
+    "by": "human",
+    "action": "bar_advanced",
+    "payload": {
+      "bar": {
+        "time": "2024-08-15 11:15",
+        "open": 21446.75,
+        "high": 21447.5,
+        "low": 21442.5,
+        "close": 21446.25,
+        "volume": 418,
+        "ema20": 21430.067505526964
+      },
+      "cursor": 675,
+      "hiddenBars": 1256,
+      "hasMore": true,
+      "orders": [],
+      "trades": [],
+      "closedLots": null,
+      "position": {
+        "quantity": 0,
+        "side": "flat",
+        "averagePrice": 0
+      },
+      "realizedPnl": 0,
+      "unrealizedPnl": 0,
+      "fills": [],
+      "voice": {
+        "barTime": "2024-08-15 11:15",
+        "clips": [],
+        "total": 1,
+        "max": 9
+      }
+    }
+  },
+  {
+    "seq": 20,
+    "at": 1793024209,
+    "by": "human",
+    "action": "bar_advanced",
+    "payload": {
+      "bar": {
+        "time": "2024-08-15 11:20",
+        "open": 21446,
+        "high": 21446,
+        "low": 21440.5,
+        "close": 21443.5,
+        "volume": 501,
+        "ema20": 21431.346790714873
+      },
+      "cursor": 676,
+      "hiddenBars": 1255,
+      "hasMore": true,
+      "orders": [],
+      "trades": [],
+      "closedLots": null,
+      "position": {
+        "quantity": 0,
+        "side": "flat",
+        "averagePrice": 0
+      },
+      "realizedPnl": 0,
+      "unrealizedPnl": 0,
+      "fills": [],
+      "voice": {
+        "barTime": "2024-08-15 11:20",
+        "clips": [],
+        "total": 1,
+        "max": 9
+      }
+    }
+  },
+  {
+    "seq": 21,
+    "at": 1793024210,
+    "by": "human",
+    "action": "bar_advanced",
+    "payload": {
+      "bar": {
+        "time": "2024-08-15 11:25",
+        "open": 21443,
+        "high": 21444,
+        "low": 21437.5,
+        "close": 21441.25,
+        "volume": 525,
+        "ema20": 21432.289953503932
+      },
+      "cursor": 677,
+      "hiddenBars": 1254,
+      "hasMore": true,
+      "orders": [],
+      "trades": [],
+      "closedLots": null,
+      "position": {
+        "quantity": 0,
+        "side": "flat",
+        "averagePrice": 0
+      },
+      "realizedPnl": 0,
+      "unrealizedPnl": 0,
+      "fills": [],
+      "voice": {
+        "barTime": "2024-08-15 11:25",
+        "clips": [],
+        "total": 1,
+        "max": 9
+      }
+    }
+  },
+  {
+    "seq": 22,
+    "at": 1793024210,
+    "by": "human",
+    "action": "bar_advanced",
+    "payload": {
+      "bar": {
+        "time": "2024-08-15 11:30",
+        "open": 21441.25,
+        "high": 21454,
+        "low": 21441,
+        "close": 21449.5,
+        "volume": 1537,
+        "ema20": 21433.929005551177
+      },
+      "cursor": 678,
+      "hiddenBars": 1253,
+      "hasMore": true,
+      "orders": [],
+      "trades": [],
+      "closedLots": null,
+      "position": {
+        "quantity": 0,
+        "side": "flat",
+        "averagePrice": 0
+      },
+      "realizedPnl": 0,
+      "unrealizedPnl": 0,
+      "fills": [],
+      "voice": {
+        "barTime": "2024-08-15 11:30",
+        "clips": [],
+        "total": 1,
+        "max": 9
+      }
+    }
+  },
+  {
+    "seq": 23,
+    "at": 1793024213,
+    "by": "human",
+    "action": "bar_advanced",
+    "payload": {
+      "bar": {
+        "time": "2024-08-15 11:35",
+        "open": 21449.5,
+        "high": 21459.75,
+        "low": 21447.25,
+        "close": 21457.75,
+        "volume": 1706,
+        "ema20": 21436.19767168916
+      },
+      "cursor": 679,
+      "hiddenBars": 1252,
+      "hasMore": true,
+      "orders": [],
+      "trades": [],
+      "closedLots": null,
+      "position": {
+        "quantity": 0,
+        "side": "flat",
+        "averagePrice": 0
+      },
+      "realizedPnl": 0,
+      "unrealizedPnl": 0,
+      "fills": [],
+      "voice": {
+        "barTime": "2024-08-15 11:35",
+        "clips": [],
+        "total": 1,
+        "max": 9
+      }
+    }
+  },
+  {
+    "seq": 24,
+    "at": 1793024227,
+    "by": "human",
+    "action": "annotation_added",
+    "payload": {
+      "annotation": {
+        "id": "a7",
+        "kind": "ray",
+        "start": {
+          "time": "2024-08-15 11:20",
+          "price": 21446
+        },
+        "end": {
+          "time": "2024-08-15 11:20",
+          "price": 21446,
+          "offset": 133
+        },
+        "style": {
+          "color": "#65a30d",
+          "width": 2,
+          "dash": "solid"
+        },
+        "snapped": true,
+        "createdBy": "human",
+        "createdAt": 1793024227
+      }
+    }
+  },
+  {
+    "seq": 25,
+    "at": 1793024238,
+    "by": "human",
+    "action": "bar_advanced",
+    "payload": {
+      "bar": {
+        "time": "2024-08-15 11:40",
+        "open": 21458,
+        "high": 21459.75,
+        "low": 21451,
+        "close": 21452.75,
+        "volume": 952,
+        "ema20": 21437.774083909237
+      },
+      "cursor": 680,
+      "hiddenBars": 1251,
+      "hasMore": true,
+      "orders": [],
+      "trades": [],
+      "closedLots": null,
+      "position": {
+        "quantity": 0,
+        "side": "flat",
+        "averagePrice": 0
+      },
+      "realizedPnl": 0,
+      "unrealizedPnl": 0,
+      "fills": [],
+      "voice": {
+        "barTime": "2024-08-15 11:40",
+        "clips": [],
+        "total": 1,
+        "max": 9
+      }
+    }
+  },
+  {
+    "seq": 26,
+    "at": 1793024241,
+    "by": "human",
+    "action": "bar_advanced",
+    "payload": {
+      "bar": {
+        "time": "2024-08-15 11:45",
+        "open": 21452.75,
+        "high": 21454,
+        "low": 21448.75,
+        "close": 21452,
+        "volume": 671,
+        "ema20": 21439.128933060736
+      },
+      "cursor": 681,
+      "hiddenBars": 1250,
+      "hasMore": true,
+      "orders": [],
+      "trades": [],
+      "closedLots": null,
+      "position": {
+        "quantity": 0,
+        "side": "flat",
+        "averagePrice": 0
+      },
+      "realizedPnl": 0,
+      "unrealizedPnl": 0,
+      "fills": [],
+      "voice": {
+        "barTime": "2024-08-15 11:45",
+        "clips": [],
+        "total": 1,
+        "max": 9
+      }
+    }
+  },
+  {
+    "seq": 27,
+    "at": 1793024245,
+    "by": "human",
+    "action": "bar_advanced",
+    "payload": {
+      "bar": {
+        "time": "2024-08-15 11:50",
+        "open": 21452.75,
+        "high": 21452.75,
+        "low": 21448,
+        "close": 21449,
+        "volume": 477,
+        "ema20": 21440.069034673998
+      },
+      "cursor": 682,
+      "hiddenBars": 1249,
+      "hasMore": true,
+      "orders": [],
+      "trades": [],
+      "closedLots": null,
+      "position": {
+        "quantity": 0,
+        "side": "flat",
+        "averagePrice": 0
+      },
+      "realizedPnl": 0,
+      "unrealizedPnl": 0,
+      "fills": [],
+      "voice": {
+        "barTime": "2024-08-15 11:50",
+        "clips": [],
+        "total": 1,
+        "max": 9
+      }
+    }
+  },
+  {
+    "seq": 28,
+    "at": 1793024247,
+    "by": "human",
+    "action": "bar_advanced",
+    "payload": {
+      "bar": {
+        "time": "2024-08-15 11:55",
+        "open": 21449,
+        "high": 21453,
+        "low": 21448.75,
+        "close": 21449.75,
+        "volume": 384,
+        "ema20": 21440.991031371712
+      },
+      "cursor": 683,
+      "hiddenBars": 1248,
+      "hasMore": true,
+      "orders": [],
+      "trades": [],
+      "closedLots": null,
+      "position": {
+        "quantity": 0,
+        "side": "flat",
+        "averagePrice": 0
+      },
+      "realizedPnl": 0,
+      "unrealizedPnl": 0,
+      "fills": [],
+      "voice": {
+        "barTime": "2024-08-15 11:55",
+        "clips": [],
+        "total": 1,
+        "max": 9
+      }
+    }
+  },
+  {
+    "seq": 29,
+    "at": 1793024249,
+    "by": "human",
+    "action": "bar_advanced",
+    "payload": {
+      "bar": {
+        "time": "2024-08-15 12:00",
+        "open": 21450,
+        "high": 21453.5,
+        "low": 21448.75,
+        "close": 21451.5,
+        "volume": 543,
+        "ema20": 21441.991885526786
+      },
+      "cursor": 684,
+      "hiddenBars": 1247,
+      "hasMore": true,
+      "orders": [],
+      "trades": [],
+      "closedLots": null,
+      "position": {
+        "quantity": 0,
+        "side": "flat",
+        "averagePrice": 0
+      },
+      "realizedPnl": 0,
+      "unrealizedPnl": 0,
+      "fills": [],
+      "voice": {
+        "barTime": "2024-08-15 12:00",
+        "clips": [],
+        "total": 1,
+        "max": 9
+      }
+    }
+  },
+  {
+    "seq": 30,
+    "at": 1793024253,
+    "by": "human",
+    "action": "bar_advanced",
+    "payload": {
+      "bar": {
+        "time": "2024-08-15 12:05",
+        "open": 21451.5,
+        "high": 21456.25,
+        "low": 21449.75,
+        "close": 21452.25,
+        "volume": 639,
+        "ema20": 21442.96884880995
+      },
+      "cursor": 685,
+      "hiddenBars": 1246,
+      "hasMore": true,
+      "orders": [],
+      "trades": [],
+      "closedLots": null,
+      "position": {
+        "quantity": 0,
+        "side": "flat",
+        "averagePrice": 0
+      },
+      "realizedPnl": 0,
+      "unrealizedPnl": 0,
+      "fills": [],
+      "voice": {
+        "barTime": "2024-08-15 12:05",
+        "clips": [],
+        "total": 1,
+        "max": 9
+      }
+    }
+  },
+  {
+    "seq": 31,
+    "at": 1793024254,
+    "by": "human",
+    "action": "bar_advanced",
+    "payload": {
+      "bar": {
+        "time": "2024-08-15 12:10",
+        "open": 21452.5,
+        "high": 21456.75,
+        "low": 21449.5,
+        "close": 21453,
+        "volume": 556,
+        "ema20": 21443.924196542335
+      },
+      "cursor": 686,
+      "hiddenBars": 1245,
+      "hasMore": true,
+      "orders": [],
+      "trades": [],
+      "closedLots": null,
+      "position": {
+        "quantity": 0,
+        "side": "flat",
+        "averagePrice": 0
+      },
+      "realizedPnl": 0,
+      "unrealizedPnl": 0,
+      "fills": [],
+      "voice": {
+        "barTime": "2024-08-15 12:10",
+        "clips": [],
+        "total": 1,
+        "max": 9
+      }
+    }
+  },
+  {
+    "seq": 32,
+    "at": 1793024255,
+    "by": "human",
+    "action": "bar_advanced",
+    "payload": {
+      "bar": {
+        "time": "2024-08-15 12:15",
+        "open": 21453.75,
+        "high": 21454.75,
+        "low": 21450,
+        "close": 21452.75,
+        "volume": 271,
+        "ema20": 21444.764749252587
+      },
+      "cursor": 687,
+      "hiddenBars": 1244,
+      "hasMore": true,
+      "orders": [],
+      "trades": [],
+      "closedLots": null,
+      "position": {
+        "quantity": 0,
+        "side": "flat",
+        "averagePrice": 0
+      },
+      "realizedPnl": 0,
+      "unrealizedPnl": 0,
+      "fills": [],
+      "voice": {
+        "barTime": "2024-08-15 12:15",
+        "clips": [],
+        "total": 1,
+        "max": 9
+      }
+    }
+  },
+  {
+    "seq": 33,
+    "at": 1793024257,
+    "by": "human",
+    "action": "bar_advanced",
+    "payload": {
+      "bar": {
+        "time": "2024-08-15 12:20",
+        "open": 21452.5,
+        "high": 21456,
+        "low": 21452.25,
+        "close": 21454.25,
+        "volume": 307,
+        "ema20": 21445.668106466626
+      },
+      "cursor": 688,
+      "hiddenBars": 1243,
+      "hasMore": true,
+      "orders": [],
+      "trades": [],
+      "closedLots": null,
+      "position": {
+        "quantity": 0,
+        "side": "flat",
+        "averagePrice": 0
+      },
+      "realizedPnl": 0,
+      "unrealizedPnl": 0,
+      "fills": [],
+      "voice": {
+        "barTime": "2024-08-15 12:20",
+        "clips": [],
+        "total": 1,
+        "max": 9
+      }
+    }
+  },
+  {
+    "seq": 34,
+    "at": 1793024271,
+    "by": "human",
+    "action": "bar_advanced",
+    "payload": {
+      "bar": {
+        "time": "2024-08-15 12:25",
+        "open": 21453.75,
+        "high": 21456.5,
+        "low": 21452,
+        "close": 21454.5,
+        "volume": 478,
+        "ema20": 21446.50923918409
+      },
+      "cursor": 689,
+      "hiddenBars": 1242,
+      "hasMore": true,
+      "orders": [],
+      "trades": [],
+      "closedLots": null,
+      "position": {
+        "quantity": 0,
+        "side": "flat",
+        "averagePrice": 0
+      },
+      "realizedPnl": 0,
+      "unrealizedPnl": 0,
+      "fills": [],
+      "voice": {
+        "barTime": "2024-08-15 12:25",
+        "clips": [],
+        "total": 1,
+        "max": 9
+      }
+    }
+  },
+  {
+    "seq": 35,
+    "at": 1793024272,
+    "by": "human",
+    "action": "bar_advanced",
+    "payload": {
+      "bar": {
+        "time": "2024-08-15 12:30",
+        "open": 21454.75,
+        "high": 21456.25,
+        "low": 21451.5,
+        "close": 21453.25,
+        "volume": 445,
+        "ema20": 21447.151216404654
+      },
+      "cursor": 690,
+      "hiddenBars": 1241,
+      "hasMore": true,
+      "orders": [],
+      "trades": [],
+      "closedLots": null,
+      "position": {
+        "quantity": 0,
+        "side": "flat",
+        "averagePrice": 0
+      },
+      "realizedPnl": 0,
+      "unrealizedPnl": 0,
+      "fills": [],
+      "voice": {
+        "barTime": "2024-08-15 12:30",
+        "clips": [],
+        "total": 1,
+        "max": 9
+      }
+    }
+  },
+  {
+    "seq": 36,
+    "at": 1793024273,
+    "by": "human",
+    "action": "bar_advanced",
+    "payload": {
+      "bar": {
+        "time": "2024-08-15 12:35",
+        "open": 21453.25,
+        "high": 21454,
+        "low": 21443,
+        "close": 21447.75,
+        "volume": 1015,
+        "ema20": 21447.208243413737
+      },
+      "cursor": 691,
+      "hiddenBars": 1240,
+      "hasMore": true,
+      "orders": [],
+      "trades": [],
+      "closedLots": null,
+      "position": {
+        "quantity": 0,
+        "side": "flat",
+        "averagePrice": 0
+      },
+      "realizedPnl": 0,
+      "unrealizedPnl": 0,
+      "fills": [],
+      "voice": {
+        "barTime": "2024-08-15 12:35",
+        "clips": [],
+        "total": 1,
+        "max": 9
+      }
+    }
+  },
+  {
+    "seq": 37,
+    "at": 1793024278,
+    "by": "human",
+    "action": "bar_advanced",
+    "payload": {
+      "bar": {
+        "time": "2024-08-15 12:40",
+        "open": 21448.25,
+        "high": 21449.5,
+        "low": 21444,
+        "close": 21444.75,
+        "volume": 516,
+        "ema20": 21446.97412499338
+      },
+      "cursor": 692,
+      "hiddenBars": 1239,
+      "hasMore": true,
+      "orders": [],
+      "trades": [],
+      "closedLots": null,
+      "position": {
+        "quantity": 0,
+        "side": "flat",
+        "averagePrice": 0
+      },
+      "realizedPnl": 0,
+      "unrealizedPnl": 0,
+      "fills": [],
+      "voice": {
+        "barTime": "2024-08-15 12:40",
+        "clips": [],
+        "total": 1,
+        "max": 9
+      }
+    }
+  },
+  {
+    "seq": 38,
+    "at": 1793024281,
+    "by": "human",
+    "action": "annotation_deleted",
+    "payload": {
+      "annotationId": "a7"
+    }
+  },
+  {
+    "seq": 39,
+    "at": 1793024291,
+    "by": "human",
+    "action": "annotation_added",
+    "payload": {
+      "annotation": {
+        "id": "a8",
+        "kind": "ray",
+        "start": {
+          "time": "2024-08-15 12:20",
+          "price": 21452.25
+        },
+        "end": {
+          "time": "2024-08-15 12:20",
+          "price": 21452.25,
+          "offset": 133
+        },
+        "style": {
+          "color": "#ef4444",
+          "width": 2,
+          "dash": "solid"
+        },
+        "snapped": true,
+        "createdBy": "human",
+        "createdAt": 1793024291
+      }
+    }
+  },
+  {
+    "seq": 40,
+    "at": 1793024293,
+    "by": "human",
+    "action": "bar_advanced",
+    "payload": {
+      "bar": {
+        "time": "2024-08-15 12:45",
+        "open": 21445,
+        "high": 21447,
+        "low": 21441.25,
+        "close": 21443.25,
+        "volume": 586,
+        "ema20": 21446.61944642258
+      },
+      "cursor": 693,
+      "hiddenBars": 1238,
+      "hasMore": true,
+      "orders": [],
+      "trades": [],
+      "closedLots": null,
+      "position": {
+        "quantity": 0,
+        "side": "flat",
+        "averagePrice": 0
+      },
+      "realizedPnl": 0,
+      "unrealizedPnl": 0,
+      "fills": [],
+      "voice": {
+        "barTime": "2024-08-15 12:45",
+        "clips": [],
+        "total": 1,
+        "max": 9
+      }
+    }
+  },
+  {
+    "seq": 41,
+    "at": 1793024299,
+    "by": "human",
+    "action": "annotation_deleted",
+    "payload": {
+      "annotationId": "a6"
+    }
+  },
+  {
+    "seq": 42,
+    "at": 1793024304,
+    "by": "human",
+    "action": "annotation_added",
+    "payload": {
+      "annotation": {
+        "id": "a9",
+        "kind": "ray",
+        "start": {
+          "time": "2024-08-15 09:05",
+          "price": 21413.75
+        },
+        "end": {
+          "time": "2024-08-15 09:05",
+          "price": 21413.75,
+          "offset": 133
+        },
+        "style": {
+          "color": "#65a30d",
+          "width": 2,
+          "dash": "solid"
+        },
+        "snapped": true,
+        "createdBy": "human",
+        "createdAt": 1793024304
+      }
+    }
+  },
+  {
+    "seq": 43,
+    "at": 1793024307,
+    "by": "human",
+    "action": "annotation_added",
+    "payload": {
+      "annotation": {
+        "id": "a10",
+        "kind": "ray",
+        "start": {
+          "time": "2024-08-15 10:30",
+          "price": 21432.75
+        },
+        "end": {
+          "time": "2024-08-15 10:30",
+          "price": 21432.75,
+          "offset": 133
+        },
+        "style": {
+          "color": "#65a30d",
+          "width": 2,
+          "dash": "solid"
+        },
+        "snapped": true,
+        "createdBy": "human",
+        "createdAt": 1793024307
+      }
+    }
+  },
+  {
+    "seq": 44,
+    "at": 1793024310,
+    "by": "human",
+    "action": "bar_advanced",
+    "payload": {
+      "bar": {
+        "time": "2024-08-15 12:50",
+        "open": 21442.75,
+        "high": 21449.75,
+        "low": 21442.75,
+        "close": 21449.75,
+        "volume": 526,
+        "ema20": 21446.917594382336
+      },
+      "cursor": 694,
+      "hiddenBars": 1237,
+      "hasMore": true,
+      "orders": [],
+      "trades": [],
+      "closedLots": null,
+      "position": {
+        "quantity": 0,
+        "side": "flat",
+        "averagePrice": 0
+      },
+      "realizedPnl": 0,
+      "unrealizedPnl": 0,
+      "fills": [],
+      "voice": {
+        "barTime": "2024-08-15 12:50",
+        "clips": [],
+        "total": 1,
+        "max": 9
+      }
+    }
+  },
+  {
+    "seq": 45,
+    "at": 1793024314,
+    "by": "human",
+    "action": "bar_advanced",
+    "payload": {
+      "bar": {
+        "time": "2024-08-15 12:55",
+        "open": 21449.5,
+        "high": 21451.5,
+        "low": 21446.5,
+        "close": 21447,
+        "volume": 483,
+        "ema20": 21446.925442536398
+      },
+      "cursor": 695,
+      "hiddenBars": 1236,
+      "hasMore": true,
+      "orders": [],
+      "trades": [],
+      "closedLots": null,
+      "position": {
+        "quantity": 0,
+        "side": "flat",
+        "averagePrice": 0
+      },
+      "realizedPnl": 0,
+      "unrealizedPnl": 0,
+      "fills": [],
+      "voice": {
+        "barTime": "2024-08-15 12:55",
+        "clips": [],
+        "total": 1,
+        "max": 9
+      }
+    }
+  },
+  {
+    "seq": 46,
+    "at": 1793024321,
+    "by": "human",
+    "action": "bar_advanced",
+    "payload": {
+      "bar": {
+        "time": "2024-08-15 13:00",
+        "open": 21447,
+        "high": 21447.5,
+        "low": 21431.5,
+        "close": 21434.5,
+        "volume": 1498,
+        "ema20": 21445.742067056744
+      },
+      "cursor": 696,
+      "hiddenBars": 1235,
+      "hasMore": true,
+      "orders": [],
+      "trades": [],
+      "closedLots": null,
+      "position": {
+        "quantity": 0,
+        "side": "flat",
+        "averagePrice": 0
+      },
+      "realizedPnl": 0,
+      "unrealizedPnl": 0,
+      "fills": [],
+      "voice": {
+        "barTime": "2024-08-15 13:00",
+        "clips": [],
+        "total": 1,
+        "max": 9
+      }
+    }
+  },
+  {
+    "seq": 47,
+    "at": 1793024328,
+    "by": "human",
+    "action": "annotation_added",
+    "payload": {
+      "annotation": {
+        "id": "a11",
+        "kind": "ray",
+        "start": {
+          "time": "2024-08-15 12:50",
+          "price": 21442.75
+        },
+        "end": {
+          "time": "2024-08-15 12:50",
+          "price": 21442.75,
+          "offset": 148
+        },
+        "style": {
+          "color": "#ef4444",
+          "width": 2,
+          "dash": "solid"
+        },
+        "snapped": true,
+        "createdBy": "human",
+        "createdAt": 1793024328
+      }
+    }
+  },
+  {
+    "seq": 48,
+    "at": 1793024338,
+    "by": "human",
+    "action": "bar_advanced",
+    "payload": {
+      "bar": {
+        "time": "2024-08-15 13:05",
+        "open": 21434.5,
+        "high": 21441.5,
+        "low": 21431,
+        "close": 21437.75,
+        "volume": 996,
+        "ema20": 21444.980917813245
+      },
+      "cursor": 697,
+      "hiddenBars": 1234,
+      "hasMore": true,
+      "orders": [],
+      "trades": [],
+      "closedLots": null,
+      "position": {
+        "quantity": 0,
+        "side": "flat",
+        "averagePrice": 0
+      },
+      "realizedPnl": 0,
+      "unrealizedPnl": 0,
+      "fills": [],
+      "voice": {
+        "barTime": "2024-08-15 13:05",
+        "clips": [],
+        "total": 1,
+        "max": 9
+      }
+    }
+  },
+  {
+    "seq": 49,
+    "at": 1793024341,
+    "by": "human",
+    "action": "annotation_deleted",
+    "payload": {
+      "annotationId": "a10"
+    }
+  },
+  {
+    "seq": 50,
+    "at": 1793024359,
+    "by": "human",
+    "action": "annotation_added",
+    "payload": {
+      "annotation": {
+        "id": "a12",
+        "kind": "fib",
+        "start": {
+          "time": "2024-08-15 07:45",
+          "price": 21336.25
+        },
+        "end": {
+          "time": "2024-08-15 13:05",
+          "price": 21412.61,
+          "offset": 17
+        },
+        "style": {
+          "color": "#f59e0b",
+          "width": 1.2,
+          "dash": "solid",
+          "levels": [
+            {
+              "ratio": -1,
+              "color": "#38bdf8"
+            },
+            {
+              "ratio": 0,
+              "color": "#f59e0b"
+            },
+            {
+              "ratio": 1,
+              "color": "#ec4899"
+            },
+            {
+              "ratio": 2,
+              "color": "#22c55e"
+            }
+          ]
+        },
+        "snapped": false,
+        "createdBy": "human",
+        "createdAt": 1793024359
+      }
+    }
+  },
+  {
+    "seq": 51,
+    "at": 1793024362,
+    "by": "human",
+    "action": "annotation_deleted",
+    "payload": {
+      "annotationId": "a12"
+    }
+  },
+  {
+    "seq": 52,
+    "at": 1793024370,
+    "by": "human",
+    "action": "bar_advanced",
+    "payload": {
+      "bar": {
+        "time": "2024-08-15 13:10",
+        "open": 21438,
+        "high": 21440,
+        "low": 21432.25,
+        "close": 21434.25,
+        "volume": 697,
+        "ema20": 21443.958925640552
+      },
+      "cursor": 698,
+      "hiddenBars": 1233,
+      "hasMore": true,
+      "orders": [],
+      "trades": [],
+      "closedLots": null,
+      "position": {
+        "quantity": 0,
+        "side": "flat",
+        "averagePrice": 0
+      },
+      "realizedPnl": 0,
+      "unrealizedPnl": 0,
+      "fills": [],
+      "voice": {
+        "barTime": "2024-08-15 13:10",
+        "clips": [],
+        "total": 1,
+        "max": 9
+      }
+    }
+  },
+  {
+    "seq": 53,
+    "at": 1793024382,
+    "by": "human",
+    "action": "voice_added",
+    "payload": {
+      "audio": {
+        "id": "v3",
+        "step": 0,
+        "time": "2024-08-15 13:10",
+        "durationMs": 3480,
+        "file": "voice-3.wav",
+        "size": 111404,
+        "createdAt": 1793024382,
+        "by": "human"
+      },
+      "voice": {
+        "barTime": "2024-08-15 13:10",
+        "clips": [
+          {
+            "id": "v3",
+            "step": 0,
+            "time": "2024-08-15 13:10",
+            "durationMs": 3480,
+            "file": "voice-3.wav",
+            "size": 111404,
+            "createdAt": 1793024382,
+            "by": "human"
+          }
+        ],
+        "total": 2,
+        "max": 9
+      },
+      "voiceAll": [
+        {
+          "id": "v2",
+          "step": 0,
+          "time": "2024-08-15 10:35",
+          "durationMs": 9060,
+          "file": "voice-2.wav",
+          "size": 289964,
+          "createdAt": 1793024118,
+          "by": "human"
+        },
+        {
+          "id": "v3",
+          "step": 0,
+          "time": "2024-08-15 13:10",
+          "durationMs": 3480,
+          "file": "voice-3.wav",
+          "size": 111404,
+          "createdAt": 1793024382,
+          "by": "human"
+        }
+      ]
+    }
+  },
+  {
+    "seq": 54,
+    "at": 1793024397,
+    "by": "human",
+    "action": "voice_added",
+    "payload": {
+      "audio": {
+        "id": "v4",
+        "step": 0,
+        "time": "2024-08-15 13:10",
+        "durationMs": 3120,
+        "file": "voice-4.wav",
+        "size": 99884,
+        "createdAt": 1793024397,
+        "by": "human"
+      },
+      "voice": {
+        "barTime": "2024-08-15 13:10",
+        "clips": [
+          {
+            "id": "v3",
+            "step": 0,
+            "time": "2024-08-15 13:10",
+            "durationMs": 3480,
+            "file": "voice-3.wav",
+            "size": 111404,
+            "createdAt": 1793024382,
+            "by": "human"
+          },
+          {
+            "id": "v4",
+            "step": 0,
+            "time": "2024-08-15 13:10",
+            "durationMs": 3120,
+            "file": "voice-4.wav",
+            "size": 99884,
+            "createdAt": 1793024397,
+            "by": "human"
+          }
+        ],
+        "total": 3,
+        "max": 9
+      },
+      "voiceAll": [
+        {
+          "id": "v2",
+          "step": 0,
+          "time": "2024-08-15 10:35",
+          "durationMs": 9060,
+          "file": "voice-2.wav",
+          "size": 289964,
+          "createdAt": 1793024118,
+          "by": "human"
+        },
+        {
+          "id": "v3",
+          "step": 0,
+          "time": "2024-08-15 13:10",
+          "durationMs": 3480,
+          "file": "voice-3.wav",
+          "size": 111404,
+          "createdAt": 1793024382,
+          "by": "human"
+        },
+        {
+          "id": "v4",
+          "step": 0,
+          "time": "2024-08-15 13:10",
+          "durationMs": 3120,
+          "file": "voice-4.wav",
+          "size": 99884,
+          "createdAt": 1793024397,
+          "by": "human"
+        }
+      ]
+    }
+  },
+  {
+    "seq": 55,
+    "at": 1793024399,
+    "by": "human",
+    "action": "bar_advanced",
+    "payload": {
+      "bar": {
+        "time": "2024-08-15 13:15",
+        "open": 21434.5,
+        "high": 21435.25,
+        "low": 21429,
+        "close": 21433,
+        "volume": 922,
+        "ema20": 21442.91521843669
+      },
+      "cursor": 699,
+      "hiddenBars": 1232,
+      "hasMore": true,
+      "orders": [],
+      "trades": [],
+      "closedLots": null,
+      "position": {
+        "quantity": 0,
+        "side": "flat",
+        "averagePrice": 0
+      },
+      "realizedPnl": 0,
+      "unrealizedPnl": 0,
+      "fills": [],
+      "voice": {
+        "barTime": "2024-08-15 13:15",
+        "clips": [],
+        "total": 3,
+        "max": 9
+      }
+    }
+  },
+  {
+    "seq": 56,
+    "at": 1793024401,
+    "by": "human",
+    "action": "bar_advanced",
+    "payload": {
+      "bar": {
+        "time": "2024-08-15 13:20",
+        "open": 21432.5,
+        "high": 21432.5,
+        "low": 21418,
+        "close": 21422.5,
+        "volume": 1384,
+        "ema20": 21440.97091191891
+      },
+      "cursor": 700,
+      "hiddenBars": 1231,
+      "hasMore": true,
+      "orders": [],
+      "trades": [],
+      "closedLots": null,
+      "position": {
+        "quantity": 0,
+        "side": "flat",
+        "averagePrice": 0
+      },
+      "realizedPnl": 0,
+      "unrealizedPnl": 0,
+      "fills": [],
+      "voice": {
+        "barTime": "2024-08-15 13:20",
+        "clips": [],
+        "total": 3,
+        "max": 9
+      }
+    }
+  },
+  {
+    "seq": 57,
+    "at": 1793024412,
+    "by": "human",
+    "action": "annotation_added",
+    "payload": {
+      "annotation": {
+        "id": "a13",
+        "kind": "ray",
+        "start": {
+          "time": "2024-08-15 13:15",
+          "price": 21429
+        },
+        "end": {
+          "time": "2024-08-15 13:15",
+          "price": 21429,
+          "offset": 165
+        },
+        "style": {
+          "color": "#ef4444",
+          "width": 2,
+          "dash": "solid"
+        },
+        "snapped": true,
+        "createdBy": "human",
+        "createdAt": 1793024412
+      }
+    }
+  },
+  {
+    "seq": 58,
+    "at": 1793024416,
+    "by": "human",
+    "action": "annotation_moved",
+    "payload": {
+      "annotation": {
+        "id": "a13",
+        "kind": "ray",
+        "start": {
+          "time": "2024-08-15 13:05",
+          "price": 21431
+        },
+        "end": {
+          "time": "2024-08-15 13:20",
+          "price": 21432.5,
+          "offset": 164
+        },
+        "style": {
+          "color": "#ef4444",
+          "width": 2,
+          "dash": "solid"
+        },
+        "snapped": true,
+        "createdBy": "human",
+        "createdAt": 1793024412
+      }
+    }
+  },
+  {
+    "seq": 59,
+    "at": 1793024432,
+    "by": "human",
+    "action": "voice_added",
+    "payload": {
+      "audio": {
+        "id": "v5",
+        "step": 0,
+        "time": "2024-08-15 13:20",
+        "durationMs": 3480,
+        "file": "voice-5.wav",
+        "size": 111404,
+        "createdAt": 1793024432,
+        "by": "human"
+      },
+      "voice": {
+        "barTime": "2024-08-15 13:20",
+        "clips": [
+          {
+            "id": "v5",
+            "step": 0,
+            "time": "2024-08-15 13:20",
+            "durationMs": 3480,
+            "file": "voice-5.wav",
+            "size": 111404,
+            "createdAt": 1793024432,
+            "by": "human"
+          }
+        ],
+        "total": 4,
+        "max": 9
+      },
+      "voiceAll": [
+        {
+          "id": "v2",
+          "step": 0,
+          "time": "2024-08-15 10:35",
+          "durationMs": 9060,
+          "file": "voice-2.wav",
+          "size": 289964,
+          "createdAt": 1793024118,
+          "by": "human"
+        },
+        {
+          "id": "v3",
+          "step": 0,
+          "time": "2024-08-15 13:10",
+          "durationMs": 3480,
+          "file": "voice-3.wav",
+          "size": 111404,
+          "createdAt": 1793024382,
+          "by": "human"
+        },
+        {
+          "id": "v4",
+          "step": 0,
+          "time": "2024-08-15 13:10",
+          "durationMs": 3120,
+          "file": "voice-4.wav",
+          "size": 99884,
+          "createdAt": 1793024397,
+          "by": "human"
+        },
+        {
+          "id": "v5",
+          "step": 0,
+          "time": "2024-08-15 13:20",
+          "durationMs": 3480,
+          "file": "voice-5.wav",
+          "size": 111404,
+          "createdAt": 1793024432,
+          "by": "human"
+        }
+      ]
+    }
+  },
+  {
+    "seq": 60,
+    "at": 1793024446,
+    "by": "human",
+    "action": "order_placed",
+    "payload": {
+      "orders": [
+        {
+          "id": "o1",
+          "side": "sell",
+          "kind": "stop",
+          "price": 21417.5,
+          "quantity": 12,
+          "status": "open",
+          "placedAt": "2024-08-15 13:20",
+          "placedIndex": 700,
+          "filledIndex": -1
+        }
+      ]
+    }
+  },
+  {
+    "seq": 61,
+    "at": 1793024448,
+    "by": "human",
+    "action": "order_cancelled",
+    "payload": {
+      "orders": [
+        {
+          "id": "o1",
+          "side": "sell",
+          "kind": "stop",
+          "price": 21417.5,
+          "quantity": 12,
+          "status": "cancelled",
+          "placedAt": "2024-08-15 13:20",
+          "placedIndex": 700,
+          "filledIndex": -1
+        }
+      ]
+    }
+  },
+  {
+    "seq": 62,
+    "at": 1793024454,
+    "by": "human",
+    "action": "order_placed",
+    "payload": {
+      "orders": [
+        {
+          "id": "o1",
+          "side": "sell",
+          "kind": "stop",
+          "price": 21417.5,
+          "quantity": 12,
+          "status": "cancelled",
+          "placedAt": "2024-08-15 13:20",
+          "placedIndex": 700,
+          "filledIndex": -1
+        },
+        {
+          "id": "o2",
+          "side": "sell",
+          "kind": "stop",
+          "price": 21417.25,
+          "quantity": 6,
+          "status": "open",
+          "placedAt": "2024-08-15 13:20",
+          "placedIndex": 700,
+          "filledIndex": -1
+        }
+      ]
+    }
+  },
+  {
+    "seq": 63,
+    "at": 1793024458,
+    "by": "human",
+    "action": "order_moved",
+    "payload": {
+      "order": {
+        "id": "o2",
+        "side": "sell",
+        "kind": "stop",
+        "price": 21417.5,
+        "quantity": 6,
+        "status": "open",
+        "placedAt": "2024-08-15 13:20",
+        "placedIndex": 700,
+        "filledIndex": -1
+      },
+      "orders": [
+        {
+          "id": "o1",
+          "side": "sell",
+          "kind": "stop",
+          "price": 21417.5,
+          "quantity": 12,
+          "status": "cancelled",
+          "placedAt": "2024-08-15 13:20",
+          "placedIndex": 700,
+          "filledIndex": -1
+        },
+        {
+          "id": "o2",
+          "side": "sell",
+          "kind": "stop",
+          "price": 21417.5,
+          "quantity": 6,
+          "status": "open",
+          "placedAt": "2024-08-15 13:20",
+          "placedIndex": 700,
+          "filledIndex": -1
+        }
+      ]
+    }
+  },
+  {
+    "seq": 64,
+    "at": 1793024461,
+    "by": "human",
+    "action": "bar_advanced",
+    "payload": {
+      "bar": {
+        "time": "2024-08-15 13:25",
+        "open": 21422.75,
+        "high": 21429,
+        "low": 21419.75,
+        "close": 21421.5,
+        "volume": 851,
+        "ema20": 21439.116539355207
+      },
+      "cursor": 701,
+      "hiddenBars": 1230,
+      "hasMore": true,
+      "orders": [
+        {
+          "id": "o1",
+          "side": "sell",
+          "kind": "stop",
+          "price": 21417.5,
+          "quantity": 12,
+          "status": "cancelled",
+          "placedAt": "2024-08-15 13:20",
+          "placedIndex": 700,
+          "filledIndex": -1
+        },
+        {
+          "id": "o2",
+          "side": "sell",
+          "kind": "stop",
+          "price": 21417.5,
+          "quantity": 6,
+          "status": "open",
+          "placedAt": "2024-08-15 13:20",
+          "placedIndex": 700,
+          "filledIndex": -1
+        }
+      ],
+      "trades": [],
+      "closedLots": null,
+      "position": {
+        "quantity": 0,
+        "side": "flat",
+        "averagePrice": 0
+      },
+      "realizedPnl": 0,
+      "unrealizedPnl": 0,
+      "fills": [],
+      "voice": {
+        "barTime": "2024-08-15 13:25",
+        "clips": [],
+        "total": 4,
+        "max": 9
+      }
+    }
+  },
+  {
+    "seq": 65,
+    "at": 1793024463,
+    "by": "human",
+    "action": "bar_advanced",
+    "payload": {
+      "bar": {
+        "time": "2024-08-15 13:30",
+        "open": 21422.25,
+        "high": 21427.25,
+        "low": 21416.25,
+        "close": 21424,
+        "volume": 1119,
+        "ema20": 21437.676868940427
+      },
+      "cursor": 702,
+      "hiddenBars": 1229,
+      "hasMore": true,
+      "orders": [
+        {
+          "id": "o1",
+          "side": "sell",
+          "kind": "stop",
+          "price": 21417.5,
+          "quantity": 12,
+          "status": "cancelled",
+          "placedAt": "2024-08-15 13:20",
+          "placedIndex": 700,
+          "filledIndex": -1
+        },
+        {
+          "id": "o2",
+          "side": "sell",
+          "kind": "stop",
+          "price": 21417.5,
+          "quantity": 6,
+          "status": "filled",
+          "placedAt": "2024-08-15 13:20",
+          "placedIndex": 700,
+          "filledAt": "2024-08-15 13:30",
+          "filledIndex": 702,
+          "fillPrice": 21417.5
+        }
+      ],
+      "trades": [
+        {
+          "id": "t1",
+          "orderId": "o2",
+          "time": "2024-08-15 13:30",
+          "side": "sell",
+          "kind": "stop",
+          "price": 21417.5,
+          "quantity": 6,
+          "realizedPnl": 0
+        }
+      ],
+      "closedLots": null,
+      "position": {
+        "quantity": -6,
+        "side": "short",
+        "averagePrice": 21417.5
+      },
+      "realizedPnl": 0,
+      "unrealizedPnl": -78,
+      "fills": [
+        {
+          "id": "t1",
+          "orderId": "o2",
+          "time": "2024-08-15 13:30",
+          "side": "sell",
+          "kind": "stop",
+          "price": 21417.5,
+          "quantity": 6,
+          "realizedPnl": 0
+        }
+      ],
+      "voice": {
+        "barTime": "2024-08-15 13:30",
+        "clips": [],
+        "total": 4,
+        "max": 9
+      }
+    }
+  },
+  {
+    "seq": 66,
+    "at": 1793024474,
+    "by": "human",
+    "action": "voice_added",
+    "payload": {
+      "audio": {
+        "id": "v6",
+        "step": 3,
+        "time": "2024-08-15 13:30",
+        "durationMs": 6960,
+        "file": "voice-6.wav",
+        "size": 222764,
+        "createdAt": 1793024474,
+        "by": "human"
+      },
+      "voice": {
+        "barTime": "2024-08-15 13:30",
+        "clips": [
+          {
+            "id": "v6",
+            "step": 3,
+            "time": "2024-08-15 13:30",
+            "durationMs": 6960,
+            "file": "voice-6.wav",
+            "size": 222764,
+            "createdAt": 1793024474,
+            "by": "human"
+          }
+        ],
+        "total": 5,
+        "max": 9
+      },
+      "voiceAll": [
+        {
+          "id": "v2",
+          "step": 0,
+          "time": "2024-08-15 10:35",
+          "durationMs": 9060,
+          "file": "voice-2.wav",
+          "size": 289964,
+          "createdAt": 1793024118,
+          "by": "human"
+        },
+        {
+          "id": "v3",
+          "step": 0,
+          "time": "2024-08-15 13:10",
+          "durationMs": 3480,
+          "file": "voice-3.wav",
+          "size": 111404,
+          "createdAt": 1793024382,
+          "by": "human"
+        },
+        {
+          "id": "v4",
+          "step": 0,
+          "time": "2024-08-15 13:10",
+          "durationMs": 3120,
+          "file": "voice-4.wav",
+          "size": 99884,
+          "createdAt": 1793024397,
+          "by": "human"
+        },
+        {
+          "id": "v5",
+          "step": 0,
+          "time": "2024-08-15 13:20",
+          "durationMs": 3480,
+          "file": "voice-5.wav",
+          "size": 111404,
+          "createdAt": 1793024432,
+          "by": "human"
+        },
+        {
+          "id": "v6",
+          "step": 3,
+          "time": "2024-08-15 13:30",
+          "durationMs": 6960,
+          "file": "voice-6.wav",
+          "size": 222764,
+          "createdAt": 1793024474,
+          "by": "human"
+        }
+      ]
+    }
+  },
+  {
+    "seq": 67,
+    "at": 1793024491,
+    "by": "human",
+    "action": "order_placed",
+    "payload": {
+      "orders": [
+        {
+          "id": "o1",
+          "side": "sell",
+          "kind": "stop",
+          "price": 21417.5,
+          "quantity": 12,
+          "status": "cancelled",
+          "placedAt": "2024-08-15 13:20",
+          "placedIndex": 700,
+          "filledIndex": -1
+        },
+        {
+          "id": "o2",
+          "side": "sell",
+          "kind": "stop",
+          "price": 21417.5,
+          "quantity": 6,
+          "status": "filled",
+          "placedAt": "2024-08-15 13:20",
+          "placedIndex": 700,
+          "filledAt": "2024-08-15 13:30",
+          "filledIndex": 702,
+          "fillPrice": 21417.5
+        },
+        {
+          "id": "o3",
+          "side": "buy",
+          "kind": "stop",
+          "price": 21454,
+          "quantity": 6,
+          "status": "open",
+          "placedAt": "2024-08-15 13:30",
+          "placedIndex": 702,
+          "filledIndex": -1
+        }
+      ]
+    }
+  },
+  {
+    "seq": 68,
+    "at": 1793024494,
+    "by": "human",
+    "action": "bar_advanced",
+    "payload": {
+      "bar": {
+        "time": "2024-08-15 13:35",
+        "open": 21424,
+        "high": 21432.5,
+        "low": 21423,
+        "close": 21431,
+        "volume": 1096,
+        "ema20": 21437.040976660384
+      },
+      "cursor": 703,
+      "hiddenBars": 1228,
+      "hasMore": true,
+      "orders": [
+        {
+          "id": "o1",
+          "side": "sell",
+          "kind": "stop",
+          "price": 21417.5,
+          "quantity": 12,
+          "status": "cancelled",
+          "placedAt": "2024-08-15 13:20",
+          "placedIndex": 700,
+          "filledIndex": -1
+        },
+        {
+          "id": "o2",
+          "side": "sell",
+          "kind": "stop",
+          "price": 21417.5,
+          "quantity": 6,
+          "status": "filled",
+          "placedAt": "2024-08-15 13:20",
+          "placedIndex": 700,
+          "filledAt": "2024-08-15 13:30",
+          "filledIndex": 702,
+          "fillPrice": 21417.5
+        },
+        {
+          "id": "o3",
+          "side": "buy",
+          "kind": "stop",
+          "price": 21454,
+          "quantity": 6,
+          "status": "open",
+          "placedAt": "2024-08-15 13:30",
+          "placedIndex": 702,
+          "filledIndex": -1
+        }
+      ],
+      "trades": [
+        {
+          "id": "t1",
+          "orderId": "o2",
+          "time": "2024-08-15 13:30",
+          "side": "sell",
+          "kind": "stop",
+          "price": 21417.5,
+          "quantity": 6,
+          "realizedPnl": 0
+        }
+      ],
+      "closedLots": null,
+      "position": {
+        "quantity": -6,
+        "side": "short",
+        "averagePrice": 21417.5
+      },
+      "realizedPnl": 0,
+      "unrealizedPnl": -162,
+      "fills": [],
+      "voice": {
+        "barTime": "2024-08-15 13:35",
+        "clips": [],
+        "total": 5,
+        "max": 9
+      }
+    }
+  },
+  {
+    "seq": 69,
+    "at": 1793024522,
+    "by": "human",
+    "action": "voice_added",
+    "payload": {
+      "audio": {
+        "id": "v7",
+        "step": 6,
+        "time": "2024-08-15 13:35",
+        "durationMs": 11580,
+        "file": "voice-7.wav",
+        "size": 370604,
+        "createdAt": 1793024522,
+        "by": "human"
+      },
+      "voice": {
+        "barTime": "2024-08-15 13:35",
+        "clips": [
+          {
+            "id": "v7",
+            "step": 6,
+            "time": "2024-08-15 13:35",
+            "durationMs": 11580,
+            "file": "voice-7.wav",
+            "size": 370604,
+            "createdAt": 1793024522,
+            "by": "human"
+          }
+        ],
+        "total": 6,
+        "max": 9
+      },
+      "voiceAll": [
+        {
+          "id": "v2",
+          "step": 0,
+          "time": "2024-08-15 10:35",
+          "durationMs": 9060,
+          "file": "voice-2.wav",
+          "size": 289964,
+          "createdAt": 1793024118,
+          "by": "human"
+        },
+        {
+          "id": "v3",
+          "step": 0,
+          "time": "2024-08-15 13:10",
+          "durationMs": 3480,
+          "file": "voice-3.wav",
+          "size": 111404,
+          "createdAt": 1793024382,
+          "by": "human"
+        },
+        {
+          "id": "v4",
+          "step": 0,
+          "time": "2024-08-15 13:10",
+          "durationMs": 3120,
+          "file": "voice-4.wav",
+          "size": 99884,
+          "createdAt": 1793024397,
+          "by": "human"
+        },
+        {
+          "id": "v5",
+          "step": 0,
+          "time": "2024-08-15 13:20",
+          "durationMs": 3480,
+          "file": "voice-5.wav",
+          "size": 111404,
+          "createdAt": 1793024432,
+          "by": "human"
+        },
+        {
+          "id": "v6",
+          "step": 3,
+          "time": "2024-08-15 13:30",
+          "durationMs": 6960,
+          "file": "voice-6.wav",
+          "size": 222764,
+          "createdAt": 1793024474,
+          "by": "human"
+        },
+        {
+          "id": "v7",
+          "step": 6,
+          "time": "2024-08-15 13:35",
+          "durationMs": 11580,
+          "file": "voice-7.wav",
+          "size": 370604,
+          "createdAt": 1793024522,
+          "by": "human"
+        }
+      ]
+    }
+  },
+  {
+    "seq": 70,
+    "at": 1793024531,
+    "by": "human",
+    "action": "bar_advanced",
+    "payload": {
+      "bar": {
+        "time": "2024-08-15 13:40",
+        "open": 21431,
+        "high": 21431.75,
+        "low": 21415,
+        "close": 21417.5,
+        "volume": 1345,
+        "ema20": 21435.179931264156
+      },
+      "cursor": 704,
+      "hiddenBars": 1227,
+      "hasMore": true,
+      "orders": [
+        {
+          "id": "o1",
+          "side": "sell",
+          "kind": "stop",
+          "price": 21417.5,
+          "quantity": 12,
+          "status": "cancelled",
+          "placedAt": "2024-08-15 13:20",
+          "placedIndex": 700,
+          "filledIndex": -1
+        },
+        {
+          "id": "o2",
+          "side": "sell",
+          "kind": "stop",
+          "price": 21417.5,
+          "quantity": 6,
+          "status": "filled",
+          "placedAt": "2024-08-15 13:20",
+          "placedIndex": 700,
+          "filledAt": "2024-08-15 13:30",
+          "filledIndex": 702,
+          "fillPrice": 21417.5
+        },
+        {
+          "id": "o3",
+          "side": "buy",
+          "kind": "stop",
+          "price": 21454,
+          "quantity": 6,
+          "status": "open",
+          "placedAt": "2024-08-15 13:30",
+          "placedIndex": 702,
+          "filledIndex": -1
+        }
+      ],
+      "trades": [
+        {
+          "id": "t1",
+          "orderId": "o2",
+          "time": "2024-08-15 13:30",
+          "side": "sell",
+          "kind": "stop",
+          "price": 21417.5,
+          "quantity": 6,
+          "realizedPnl": 0
+        }
+      ],
+      "closedLots": null,
+      "position": {
+        "quantity": -6,
+        "side": "short",
+        "averagePrice": 21417.5
+      },
+      "realizedPnl": 0,
+      "unrealizedPnl": -0,
+      "fills": [],
+      "voice": {
+        "barTime": "2024-08-15 13:40",
+        "clips": [],
+        "total": 6,
+        "max": 9
+      }
+    }
+  },
+  {
+    "seq": 71,
+    "at": 1793024544,
+    "by": "human",
+    "action": "annotation_added",
+    "payload": {
+      "annotation": {
+        "id": "a14",
+        "kind": "ray",
+        "start": {
+          "time": "2024-08-15 13:35",
+          "price": 21423
+        },
+        "end": {
+          "time": "2024-08-15 13:35",
+          "price": 21423,
+          "offset": 165
+        },
+        "style": {
+          "color": "#ef4444",
+          "width": 2,
+          "dash": "solid"
+        },
+        "snapped": true,
+        "createdBy": "human",
+        "createdAt": 1793024544
+      }
+    }
+  },
+  {
+    "seq": 72,
+    "at": 1793024554,
+    "by": "human",
+    "action": "voice_added",
+    "payload": {
+      "audio": {
+        "id": "v8",
+        "step": 9,
+        "time": "2024-08-15 13:40",
+        "durationMs": 4860,
+        "file": "voice-8.wav",
+        "size": 155564,
+        "createdAt": 1793024554,
+        "by": "human"
+      },
+      "voice": {
+        "barTime": "2024-08-15 13:40",
+        "clips": [
+          {
+            "id": "v8",
+            "step": 9,
+            "time": "2024-08-15 13:40",
+            "durationMs": 4860,
+            "file": "voice-8.wav",
+            "size": 155564,
+            "createdAt": 1793024554,
+            "by": "human"
+          }
+        ],
+        "total": 7,
+        "max": 9
+      },
+      "voiceAll": [
+        {
+          "id": "v2",
+          "step": 0,
+          "time": "2024-08-15 10:35",
+          "durationMs": 9060,
+          "file": "voice-2.wav",
+          "size": 289964,
+          "createdAt": 1793024118,
+          "by": "human"
+        },
+        {
+          "id": "v3",
+          "step": 0,
+          "time": "2024-08-15 13:10",
+          "durationMs": 3480,
+          "file": "voice-3.wav",
+          "size": 111404,
+          "createdAt": 1793024382,
+          "by": "human"
+        },
+        {
+          "id": "v4",
+          "step": 0,
+          "time": "2024-08-15 13:10",
+          "durationMs": 3120,
+          "file": "voice-4.wav",
+          "size": 99884,
+          "createdAt": 1793024397,
+          "by": "human"
+        },
+        {
+          "id": "v5",
+          "step": 0,
+          "time": "2024-08-15 13:20",
+          "durationMs": 3480,
+          "file": "voice-5.wav",
+          "size": 111404,
+          "createdAt": 1793024432,
+          "by": "human"
+        },
+        {
+          "id": "v6",
+          "step": 3,
+          "time": "2024-08-15 13:30",
+          "durationMs": 6960,
+          "file": "voice-6.wav",
+          "size": 222764,
+          "createdAt": 1793024474,
+          "by": "human"
+        },
+        {
+          "id": "v7",
+          "step": 6,
+          "time": "2024-08-15 13:35",
+          "durationMs": 11580,
+          "file": "voice-7.wav",
+          "size": 370604,
+          "createdAt": 1793024522,
+          "by": "human"
+        },
+        {
+          "id": "v8",
+          "step": 9,
+          "time": "2024-08-15 13:40",
+          "durationMs": 4860,
+          "file": "voice-8.wav",
+          "size": 155564,
+          "createdAt": 1793024554,
+          "by": "human"
+        }
+      ]
+    }
+  },
+  {
+    "seq": 73,
+    "at": 1793024560,
+    "by": "human",
+    "action": "order_placed",
+    "payload": {
+      "orders": [
+        {
+          "id": "o1",
+          "side": "sell",
+          "kind": "stop",
+          "price": 21417.5,
+          "quantity": 12,
+          "status": "cancelled",
+          "placedAt": "2024-08-15 13:20",
+          "placedIndex": 700,
+          "filledIndex": -1
+        },
+        {
+          "id": "o2",
+          "side": "sell",
+          "kind": "stop",
+          "price": 21417.5,
+          "quantity": 6,
+          "status": "filled",
+          "placedAt": "2024-08-15 13:20",
+          "placedIndex": 700,
+          "filledAt": "2024-08-15 13:30",
+          "filledIndex": 702,
+          "fillPrice": 21417.5
+        },
+        {
+          "id": "o3",
+          "side": "buy",
+          "kind": "stop",
+          "price": 21454,
+          "quantity": 6,
+          "status": "open",
+          "placedAt": "2024-08-15 13:30",
+          "placedIndex": 702,
+          "filledIndex": -1
+        },
+        {
+          "id": "o4",
+          "side": "buy",
+          "kind": "limit",
+          "price": 21396,
+          "quantity": 6,
+          "status": "open",
+          "placedAt": "2024-08-15 13:40",
+          "placedIndex": 704,
+          "filledIndex": -1
+        }
+      ]
+    }
+  },
+  {
+    "seq": 74,
+    "at": 1793024574,
+    "by": "human",
+    "action": "bar_advanced",
+    "payload": {
+      "bar": {
+        "time": "2024-08-15 13:45",
+        "open": 21418,
+        "high": 21422,
+        "low": 21410.5,
+        "close": 21414.75,
+        "volume": 1129,
+        "ema20": 21433.234223524712
+      },
+      "cursor": 705,
+      "hiddenBars": 1226,
+      "hasMore": true,
+      "orders": [
+        {
+          "id": "o1",
+          "side": "sell",
+          "kind": "stop",
+          "price": 21417.5,
+          "quantity": 12,
+          "status": "cancelled",
+          "placedAt": "2024-08-15 13:20",
+          "placedIndex": 700,
+          "filledIndex": -1
+        },
+        {
+          "id": "o2",
+          "side": "sell",
+          "kind": "stop",
+          "price": 21417.5,
+          "quantity": 6,
+          "status": "filled",
+          "placedAt": "2024-08-15 13:20",
+          "placedIndex": 700,
+          "filledAt": "2024-08-15 13:30",
+          "filledIndex": 702,
+          "fillPrice": 21417.5
+        },
+        {
+          "id": "o3",
+          "side": "buy",
+          "kind": "stop",
+          "price": 21454,
+          "quantity": 6,
+          "status": "open",
+          "placedAt": "2024-08-15 13:30",
+          "placedIndex": 702,
+          "filledIndex": -1
+        },
+        {
+          "id": "o4",
+          "side": "buy",
+          "kind": "limit",
+          "price": 21396,
+          "quantity": 6,
+          "status": "open",
+          "placedAt": "2024-08-15 13:40",
+          "placedIndex": 704,
+          "filledIndex": -1
+        }
+      ],
+      "trades": [
+        {
+          "id": "t1",
+          "orderId": "o2",
+          "time": "2024-08-15 13:30",
+          "side": "sell",
+          "kind": "stop",
+          "price": 21417.5,
+          "quantity": 6,
+          "realizedPnl": 0
+        }
+      ],
+      "closedLots": null,
+      "position": {
+        "quantity": -6,
+        "side": "short",
+        "averagePrice": 21417.5
+      },
+      "realizedPnl": 0,
+      "unrealizedPnl": 33,
+      "fills": [],
+      "voice": {
+        "barTime": "2024-08-15 13:45",
+        "clips": [],
+        "total": 7,
+        "max": 9
+      }
+    }
+  },
+  {
+    "seq": 75,
+    "at": 1793024587,
+    "by": "human",
+    "action": "annotation_deleted",
+    "payload": {
+      "annotationId": "a13"
+    }
+  },
+  {
+    "seq": 76,
+    "at": 1793024595,
+    "by": "human",
+    "action": "annotation_added",
+    "payload": {
+      "annotation": {
+        "id": "a15",
+        "kind": "fib",
+        "start": {
+          "time": "2024-08-15 12:55",
+          "price": 21451.5
+        },
+        "end": {
+          "time": "2024-08-15 13:45",
+          "price": 21422.95,
+          "offset": 40
+        },
+        "style": {
+          "color": "#f59e0b",
+          "width": 1.2,
+          "dash": "solid",
+          "levels": [
+            {
+              "ratio": -1,
+              "color": "#38bdf8"
+            },
+            {
+              "ratio": 0,
+              "color": "#f59e0b"
+            },
+            {
+              "ratio": 1,
+              "color": "#ec4899"
+            },
+            {
+              "ratio": 2,
+              "color": "#22c55e"
+            }
+          ]
+        },
+        "snapped": false,
+        "createdBy": "human",
+        "createdAt": 1793024595
+      }
+    }
+  },
+  {
+    "seq": 77,
+    "at": 1793024607,
+    "by": "human",
+    "action": "voice_added",
+    "payload": {
+      "audio": {
+        "id": "v9",
+        "step": 14,
+        "time": "2024-08-15 13:45",
+        "durationMs": 6180,
+        "file": "voice-9.wav",
+        "size": 197804,
+        "createdAt": 1793024607,
+        "by": "human"
+      },
+      "voice": {
+        "barTime": "2024-08-15 13:45",
+        "clips": [
+          {
+            "id": "v9",
+            "step": 14,
+            "time": "2024-08-15 13:45",
+            "durationMs": 6180,
+            "file": "voice-9.wav",
+            "size": 197804,
+            "createdAt": 1793024607,
+            "by": "human"
+          }
+        ],
+        "total": 8,
+        "max": 9
+      },
+      "voiceAll": [
+        {
+          "id": "v2",
+          "step": 0,
+          "time": "2024-08-15 10:35",
+          "durationMs": 9060,
+          "file": "voice-2.wav",
+          "size": 289964,
+          "createdAt": 1793024118,
+          "by": "human"
+        },
+        {
+          "id": "v3",
+          "step": 0,
+          "time": "2024-08-15 13:10",
+          "durationMs": 3480,
+          "file": "voice-3.wav",
+          "size": 111404,
+          "createdAt": 1793024382,
+          "by": "human"
+        },
+        {
+          "id": "v4",
+          "step": 0,
+          "time": "2024-08-15 13:10",
+          "durationMs": 3120,
+          "file": "voice-4.wav",
+          "size": 99884,
+          "createdAt": 1793024397,
+          "by": "human"
+        },
+        {
+          "id": "v5",
+          "step": 0,
+          "time": "2024-08-15 13:20",
+          "durationMs": 3480,
+          "file": "voice-5.wav",
+          "size": 111404,
+          "createdAt": 1793024432,
+          "by": "human"
+        },
+        {
+          "id": "v6",
+          "step": 3,
+          "time": "2024-08-15 13:30",
+          "durationMs": 6960,
+          "file": "voice-6.wav",
+          "size": 222764,
+          "createdAt": 1793024474,
+          "by": "human"
+        },
+        {
+          "id": "v7",
+          "step": 6,
+          "time": "2024-08-15 13:35",
+          "durationMs": 11580,
+          "file": "voice-7.wav",
+          "size": 370604,
+          "createdAt": 1793024522,
+          "by": "human"
+        },
+        {
+          "id": "v8",
+          "step": 9,
+          "time": "2024-08-15 13:40",
+          "durationMs": 4860,
+          "file": "voice-8.wav",
+          "size": 155564,
+          "createdAt": 1793024554,
+          "by": "human"
+        },
+        {
+          "id": "v9",
+          "step": 14,
+          "time": "2024-08-15 13:45",
+          "durationMs": 6180,
+          "file": "voice-9.wav",
+          "size": 197804,
+          "createdAt": 1793024607,
+          "by": "human"
+        }
+      ]
+    }
+  },
+  {
+    "seq": 78,
+    "at": 1793024648,
+    "by": "human",
+    "action": "voice_added",
+    "payload": {
+      "audio": {
+        "id": "v10",
+        "step": 15,
+        "time": "2024-08-15 13:45",
+        "durationMs": 7440,
+        "file": "voice-10.wav",
+        "size": 238124,
+        "createdAt": 1793024648,
+        "by": "human"
+      },
+      "voice": {
+        "barTime": "2024-08-15 13:45",
+        "clips": [
+          {
+            "id": "v9",
+            "step": 14,
+            "time": "2024-08-15 13:45",
+            "durationMs": 6180,
+            "file": "voice-9.wav",
+            "size": 197804,
+            "createdAt": 1793024607,
+            "by": "human"
+          },
+          {
+            "id": "v10",
+            "step": 15,
+            "time": "2024-08-15 13:45",
+            "durationMs": 7440,
+            "file": "voice-10.wav",
+            "size": 238124,
+            "createdAt": 1793024648,
+            "by": "human"
+          }
+        ],
+        "total": 9,
+        "max": 9
+      },
+      "voiceAll": [
+        {
+          "id": "v2",
+          "step": 0,
+          "time": "2024-08-15 10:35",
+          "durationMs": 9060,
+          "file": "voice-2.wav",
+          "size": 289964,
+          "createdAt": 1793024118,
+          "by": "human"
+        },
+        {
+          "id": "v3",
+          "step": 0,
+          "time": "2024-08-15 13:10",
+          "durationMs": 3480,
+          "file": "voice-3.wav",
+          "size": 111404,
+          "createdAt": 1793024382,
+          "by": "human"
+        },
+        {
+          "id": "v4",
+          "step": 0,
+          "time": "2024-08-15 13:10",
+          "durationMs": 3120,
+          "file": "voice-4.wav",
+          "size": 99884,
+          "createdAt": 1793024397,
+          "by": "human"
+        },
+        {
+          "id": "v5",
+          "step": 0,
+          "time": "2024-08-15 13:20",
+          "durationMs": 3480,
+          "file": "voice-5.wav",
+          "size": 111404,
+          "createdAt": 1793024432,
+          "by": "human"
+        },
+        {
+          "id": "v6",
+          "step": 3,
+          "time": "2024-08-15 13:30",
+          "durationMs": 6960,
+          "file": "voice-6.wav",
+          "size": 222764,
+          "createdAt": 1793024474,
+          "by": "human"
+        },
+        {
+          "id": "v7",
+          "step": 6,
+          "time": "2024-08-15 13:35",
+          "durationMs": 11580,
+          "file": "voice-7.wav",
+          "size": 370604,
+          "createdAt": 1793024522,
+          "by": "human"
+        },
+        {
+          "id": "v8",
+          "step": 9,
+          "time": "2024-08-15 13:40",
+          "durationMs": 4860,
+          "file": "voice-8.wav",
+          "size": 155564,
+          "createdAt": 1793024554,
+          "by": "human"
+        },
+        {
+          "id": "v9",
+          "step": 14,
+          "time": "2024-08-15 13:45",
+          "durationMs": 6180,
+          "file": "voice-9.wav",
+          "size": 197804,
+          "createdAt": 1793024607,
+          "by": "human"
+        },
+        {
+          "id": "v10",
+          "step": 15,
+          "time": "2024-08-15 13:45",
+          "durationMs": 7440,
+          "file": "voice-10.wav",
+          "size": 238124,
+          "createdAt": 1793024648,
+          "by": "human"
+        }
+      ]
+    }
+  },
+  {
+    "seq": 79,
+    "at": 1793024660,
+    "by": "human",
+    "action": "order_filled",
+    "payload": {
+      "order": {
+        "id": "o5",
+        "side": "sell",
+        "kind": "market",
+        "price": 21414.75,
+        "quantity": 6,
+        "status": "filled",
+        "placedAt": "2024-08-15 13:45",
+        "placedIndex": 705,
+        "filledAt": "2024-08-15 13:45",
+        "filledIndex": 705,
+        "fillPrice": 21414.75
+      },
+      "trade": {
+        "id": "t2",
+        "orderId": "o5",
+        "time": "2024-08-15 13:45",
+        "side": "sell",
+        "kind": "market",
+        "price": 21414.75,
+        "quantity": 6,
+        "realizedPnl": 0
+      },
+      "orders": [
+        {
+          "id": "o1",
+          "side": "sell",
+          "kind": "stop",
+          "price": 21417.5,
+          "quantity": 12,
+          "status": "cancelled",
+          "placedAt": "2024-08-15 13:20",
+          "placedIndex": 700,
+          "filledIndex": -1
+        },
+        {
+          "id": "o2",
+          "side": "sell",
+          "kind": "stop",
+          "price": 21417.5,
+          "quantity": 6,
+          "status": "filled",
+          "placedAt": "2024-08-15 13:20",
+          "placedIndex": 700,
+          "filledAt": "2024-08-15 13:30",
+          "filledIndex": 702,
+          "fillPrice": 21417.5
+        },
+        {
+          "id": "o3",
+          "side": "buy",
+          "kind": "stop",
+          "price": 21454,
+          "quantity": 6,
+          "status": "open",
+          "placedAt": "2024-08-15 13:30",
+          "placedIndex": 702,
+          "filledIndex": -1
+        },
+        {
+          "id": "o4",
+          "side": "buy",
+          "kind": "limit",
+          "price": 21396,
+          "quantity": 6,
+          "status": "open",
+          "placedAt": "2024-08-15 13:40",
+          "placedIndex": 704,
+          "filledIndex": -1
+        },
+        {
+          "id": "o5",
+          "side": "sell",
+          "kind": "market",
+          "price": 21414.75,
+          "quantity": 6,
+          "status": "filled",
+          "placedAt": "2024-08-15 13:45",
+          "placedIndex": 705,
+          "filledAt": "2024-08-15 13:45",
+          "filledIndex": 705,
+          "fillPrice": 21414.75
+        }
+      ],
+      "trades": [
+        {
+          "id": "t1",
+          "orderId": "o2",
+          "time": "2024-08-15 13:30",
+          "side": "sell",
+          "kind": "stop",
+          "price": 21417.5,
+          "quantity": 6,
+          "realizedPnl": 0
+        },
+        {
+          "id": "t2",
+          "orderId": "o5",
+          "time": "2024-08-15 13:45",
+          "side": "sell",
+          "kind": "market",
+          "price": 21414.75,
+          "quantity": 6,
+          "realizedPnl": 0
+        }
+      ],
+      "closedLots": null,
+      "position": {
+        "quantity": -12,
+        "side": "short",
+        "averagePrice": 21416.125
+      },
+      "realizedPnl": 0,
+      "unrealizedPnl": 33
+    }
+  },
+  {
+    "seq": 80,
+    "at": 1793024666,
+    "by": "human",
+    "action": "order_cancelled",
+    "payload": {
+      "orders": [
+        {
+          "id": "o1",
+          "side": "sell",
+          "kind": "stop",
+          "price": 21417.5,
+          "quantity": 12,
+          "status": "cancelled",
+          "placedAt": "2024-08-15 13:20",
+          "placedIndex": 700,
+          "filledIndex": -1
+        },
+        {
+          "id": "o2",
+          "side": "sell",
+          "kind": "stop",
+          "price": 21417.5,
+          "quantity": 6,
+          "status": "filled",
+          "placedAt": "2024-08-15 13:20",
+          "placedIndex": 700,
+          "filledAt": "2024-08-15 13:30",
+          "filledIndex": 702,
+          "fillPrice": 21417.5
+        },
+        {
+          "id": "o3",
+          "side": "buy",
+          "kind": "stop",
+          "price": 21454,
+          "quantity": 6,
+          "status": "open",
+          "placedAt": "2024-08-15 13:30",
+          "placedIndex": 702,
+          "filledIndex": -1
+        },
+        {
+          "id": "o4",
+          "side": "buy",
+          "kind": "limit",
+          "price": 21396,
+          "quantity": 6,
+          "status": "cancelled",
+          "placedAt": "2024-08-15 13:40",
+          "placedIndex": 704,
+          "filledIndex": -1
+        },
+        {
+          "id": "o5",
+          "side": "sell",
+          "kind": "market",
+          "price": 21414.75,
+          "quantity": 6,
+          "status": "filled",
+          "placedAt": "2024-08-15 13:45",
+          "placedIndex": 705,
+          "filledAt": "2024-08-15 13:45",
+          "filledIndex": 705,
+          "fillPrice": 21414.75
+        }
+      ]
+    }
+  },
+  {
+    "seq": 81,
+    "at": 1793024683,
+    "by": "human",
+    "action": "order_placed",
+    "payload": {
+      "orders": [
+        {
+          "id": "o1",
+          "side": "sell",
+          "kind": "stop",
+          "price": 21417.5,
+          "quantity": 12,
+          "status": "cancelled",
+          "placedAt": "2024-08-15 13:20",
+          "placedIndex": 700,
+          "filledIndex": -1
+        },
+        {
+          "id": "o2",
+          "side": "sell",
+          "kind": "stop",
+          "price": 21417.5,
+          "quantity": 6,
+          "status": "filled",
+          "placedAt": "2024-08-15 13:20",
+          "placedIndex": 700,
+          "filledAt": "2024-08-15 13:30",
+          "filledIndex": 702,
+          "fillPrice": 21417.5
+        },
+        {
+          "id": "o3",
+          "side": "buy",
+          "kind": "stop",
+          "price": 21454,
+          "quantity": 6,
+          "status": "open",
+          "placedAt": "2024-08-15 13:30",
+          "placedIndex": 702,
+          "filledIndex": -1
+        },
+        {
+          "id": "o4",
+          "side": "buy",
+          "kind": "limit",
+          "price": 21396,
+          "quantity": 6,
+          "status": "cancelled",
+          "placedAt": "2024-08-15 13:40",
+          "placedIndex": 704,
+          "filledIndex": -1
+        },
+        {
+          "id": "o5",
+          "side": "sell",
+          "kind": "market",
+          "price": 21414.75,
+          "quantity": 6,
+          "status": "filled",
+          "placedAt": "2024-08-15 13:45",
+          "placedIndex": 705,
+          "filledAt": "2024-08-15 13:45",
+          "filledIndex": 705,
+          "fillPrice": 21414.75
+        },
+        {
+          "id": "o6",
+          "side": "buy",
+          "kind": "limit",
+          "price": 21395.25,
+          "quantity": 12,
+          "status": "open",
+          "placedAt": "2024-08-15 13:45",
+          "placedIndex": 705,
+          "filledIndex": -1
+        }
+      ]
+    }
+  },
+  {
+    "seq": 82,
+    "at": 1793024685,
+    "by": "human",
+    "action": "bar_advanced",
+    "payload": {
+      "bar": {
+        "time": "2024-08-15 13:50",
+        "open": 21414.5,
+        "high": 21422.25,
+        "low": 21406,
+        "close": 21417.75,
+        "volume": 1518,
+        "ema20": 21431.759535569978
+      },
+      "cursor": 706,
+      "hiddenBars": 1225,
+      "hasMore": true,
+      "orders": [
+        {
+          "id": "o1",
+          "side": "sell",
+          "kind": "stop",
+          "price": 21417.5,
+          "quantity": 12,
+          "status": "cancelled",
+          "placedAt": "2024-08-15 13:20",
+          "placedIndex": 700,
+          "filledIndex": -1
+        },
+        {
+          "id": "o2",
+          "side": "sell",
+          "kind": "stop",
+          "price": 21417.5,
+          "quantity": 6,
+          "status": "filled",
+          "placedAt": "2024-08-15 13:20",
+          "placedIndex": 700,
+          "filledAt": "2024-08-15 13:30",
+          "filledIndex": 702,
+          "fillPrice": 21417.5
+        },
+        {
+          "id": "o3",
+          "side": "buy",
+          "kind": "stop",
+          "price": 21454,
+          "quantity": 6,
+          "status": "open",
+          "placedAt": "2024-08-15 13:30",
+          "placedIndex": 702,
+          "filledIndex": -1
+        },
+        {
+          "id": "o4",
+          "side": "buy",
+          "kind": "limit",
+          "price": 21396,
+          "quantity": 6,
+          "status": "cancelled",
+          "placedAt": "2024-08-15 13:40",
+          "placedIndex": 704,
+          "filledIndex": -1
+        },
+        {
+          "id": "o5",
+          "side": "sell",
+          "kind": "market",
+          "price": 21414.75,
+          "quantity": 6,
+          "status": "filled",
+          "placedAt": "2024-08-15 13:45",
+          "placedIndex": 705,
+          "filledAt": "2024-08-15 13:45",
+          "filledIndex": 705,
+          "fillPrice": 21414.75
+        },
+        {
+          "id": "o6",
+          "side": "buy",
+          "kind": "limit",
+          "price": 21395.25,
+          "quantity": 12,
+          "status": "open",
+          "placedAt": "2024-08-15 13:45",
+          "placedIndex": 705,
+          "filledIndex": -1
+        }
+      ],
+      "trades": [
+        {
+          "id": "t1",
+          "orderId": "o2",
+          "time": "2024-08-15 13:30",
+          "side": "sell",
+          "kind": "stop",
+          "price": 21417.5,
+          "quantity": 6,
+          "realizedPnl": 0
+        },
+        {
+          "id": "t2",
+          "orderId": "o5",
+          "time": "2024-08-15 13:45",
+          "side": "sell",
+          "kind": "market",
+          "price": 21414.75,
+          "quantity": 6,
+          "realizedPnl": 0
+        }
+      ],
+      "closedLots": null,
+      "position": {
+        "quantity": -12,
+        "side": "short",
+        "averagePrice": 21416.125
+      },
+      "realizedPnl": 0,
+      "unrealizedPnl": -39,
+      "fills": [],
+      "voice": {
+        "barTime": "2024-08-15 13:50",
+        "clips": [],
+        "total": 9,
+        "max": 9
+      }
+    }
+  },
+  {
+    "seq": 83,
+    "at": 1793024707,
+    "by": "human",
+    "action": "voice_added",
+    "payload": {
+      "audio": {
+        "id": "v11",
+        "step": 20,
+        "time": "2024-08-15 13:50",
+        "durationMs": 17160,
+        "file": "voice-11.wav",
+        "size": 549164,
+        "createdAt": 1793024707,
+        "by": "human"
+      },
+      "voice": {
+        "barTime": "2024-08-15 13:50",
+        "clips": [
+          {
+            "id": "v11",
+            "step": 20,
+            "time": "2024-08-15 13:50",
+            "durationMs": 17160,
+            "file": "voice-11.wav",
+            "size": 549164,
+            "createdAt": 1793024707,
+            "by": "human"
+          }
+        ],
+        "total": 10,
+        "max": 9
+      },
+      "voiceAll": [
+        {
+          "id": "v2",
+          "step": 0,
+          "time": "2024-08-15 10:35",
+          "durationMs": 9060,
+          "file": "voice-2.wav",
+          "size": 289964,
+          "createdAt": 1793024118,
+          "by": "human"
+        },
+        {
+          "id": "v3",
+          "step": 0,
+          "time": "2024-08-15 13:10",
+          "durationMs": 3480,
+          "file": "voice-3.wav",
+          "size": 111404,
+          "createdAt": 1793024382,
+          "by": "human"
+        },
+        {
+          "id": "v4",
+          "step": 0,
+          "time": "2024-08-15 13:10",
+          "durationMs": 3120,
+          "file": "voice-4.wav",
+          "size": 99884,
+          "createdAt": 1793024397,
+          "by": "human"
+        },
+        {
+          "id": "v5",
+          "step": 0,
+          "time": "2024-08-15 13:20",
+          "durationMs": 3480,
+          "file": "voice-5.wav",
+          "size": 111404,
+          "createdAt": 1793024432,
+          "by": "human"
+        },
+        {
+          "id": "v6",
+          "step": 3,
+          "time": "2024-08-15 13:30",
+          "durationMs": 6960,
+          "file": "voice-6.wav",
+          "size": 222764,
+          "createdAt": 1793024474,
+          "by": "human"
+        },
+        {
+          "id": "v7",
+          "step": 6,
+          "time": "2024-08-15 13:35",
+          "durationMs": 11580,
+          "file": "voice-7.wav",
+          "size": 370604,
+          "createdAt": 1793024522,
+          "by": "human"
+        },
+        {
+          "id": "v8",
+          "step": 9,
+          "time": "2024-08-15 13:40",
+          "durationMs": 4860,
+          "file": "voice-8.wav",
+          "size": 155564,
+          "createdAt": 1793024554,
+          "by": "human"
+        },
+        {
+          "id": "v9",
+          "step": 14,
+          "time": "2024-08-15 13:45",
+          "durationMs": 6180,
+          "file": "voice-9.wav",
+          "size": 197804,
+          "createdAt": 1793024607,
+          "by": "human"
+        },
+        {
+          "id": "v10",
+          "step": 15,
+          "time": "2024-08-15 13:45",
+          "durationMs": 7440,
+          "file": "voice-10.wav",
+          "size": 238124,
+          "createdAt": 1793024648,
+          "by": "human"
+        },
+        {
+          "id": "v11",
+          "step": 20,
+          "time": "2024-08-15 13:50",
+          "durationMs": 17160,
+          "file": "voice-11.wav",
+          "size": 549164,
+          "createdAt": 1793024707,
+          "by": "human"
+        }
+      ]
+    }
+  },
+  {
+    "seq": 84,
+    "at": 1793024713,
+    "by": "human",
+    "action": "annotation_added",
+    "payload": {
+      "annotation": {
+        "id": "a16",
+        "kind": "ray",
+        "start": {
+          "time": "2024-08-15 10:00",
+          "price": 21406.5
+        },
+        "end": {
+          "time": "2024-08-15 10:00",
+          "price": 21406.5,
+          "offset": 148
+        },
+        "style": {
+          "color": "#65a30d",
+          "width": 2,
+          "dash": "solid"
+        },
+        "snapped": true,
+        "createdBy": "human",
+        "createdAt": 1793024713
+      }
+    }
+  },
+  {
+    "seq": 85,
+    "at": 1793024720,
+    "by": "human",
+    "action": "annotation_deleted",
+    "payload": {
+      "annotationId": "a9"
+    }
+  },
+  {
+    "seq": 86,
+    "at": 1793024725,
+    "by": "human",
+    "action": "annotation_deleted",
+    "payload": {
+      "annotationId": "a15"
+    }
+  },
+  {
+    "seq": 87,
+    "at": 1793024728,
+    "by": "human",
+    "action": "bar_advanced",
+    "payload": {
+      "bar": {
+        "time": "2024-08-15 13:55",
+        "open": 21418.5,
+        "high": 21427,
+        "low": 21416.5,
+        "close": 21422,
+        "volume": 799,
+        "ema20": 21430.830055991886
+      },
+      "cursor": 707,
+      "hiddenBars": 1224,
+      "hasMore": true,
+      "orders": [
+        {
+          "id": "o1",
+          "side": "sell",
+          "kind": "stop",
+          "price": 21417.5,
+          "quantity": 12,
+          "status": "cancelled",
+          "placedAt": "2024-08-15 13:20",
+          "placedIndex": 700,
+          "filledIndex": -1
+        },
+        {
+          "id": "o2",
+          "side": "sell",
+          "kind": "stop",
+          "price": 21417.5,
+          "quantity": 6,
+          "status": "filled",
+          "placedAt": "2024-08-15 13:20",
+          "placedIndex": 700,
+          "filledAt": "2024-08-15 13:30",
+          "filledIndex": 702,
+          "fillPrice": 21417.5
+        },
+        {
+          "id": "o3",
+          "side": "buy",
+          "kind": "stop",
+          "price": 21454,
+          "quantity": 6,
+          "status": "open",
+          "placedAt": "2024-08-15 13:30",
+          "placedIndex": 702,
+          "filledIndex": -1
+        },
+        {
+          "id": "o4",
+          "side": "buy",
+          "kind": "limit",
+          "price": 21396,
+          "quantity": 6,
+          "status": "cancelled",
+          "placedAt": "2024-08-15 13:40",
+          "placedIndex": 704,
+          "filledIndex": -1
+        },
+        {
+          "id": "o5",
+          "side": "sell",
+          "kind": "market",
+          "price": 21414.75,
+          "quantity": 6,
+          "status": "filled",
+          "placedAt": "2024-08-15 13:45",
+          "placedIndex": 705,
+          "filledAt": "2024-08-15 13:45",
+          "filledIndex": 705,
+          "fillPrice": 21414.75
+        },
+        {
+          "id": "o6",
+          "side": "buy",
+          "kind": "limit",
+          "price": 21395.25,
+          "quantity": 12,
+          "status": "open",
+          "placedAt": "2024-08-15 13:45",
+          "placedIndex": 705,
+          "filledIndex": -1
+        }
+      ],
+      "trades": [
+        {
+          "id": "t1",
+          "orderId": "o2",
+          "time": "2024-08-15 13:30",
+          "side": "sell",
+          "kind": "stop",
+          "price": 21417.5,
+          "quantity": 6,
+          "realizedPnl": 0
+        },
+        {
+          "id": "t2",
+          "orderId": "o5",
+          "time": "2024-08-15 13:45",
+          "side": "sell",
+          "kind": "market",
+          "price": 21414.75,
+          "quantity": 6,
+          "realizedPnl": 0
+        }
+      ],
+      "closedLots": null,
+      "position": {
+        "quantity": -12,
+        "side": "short",
+        "averagePrice": 21416.125
+      },
+      "realizedPnl": 0,
+      "unrealizedPnl": -141,
+      "fills": [],
+      "voice": {
+        "barTime": "2024-08-15 13:55",
+        "clips": [],
+        "total": 10,
+        "max": 9
+      }
+    }
+  },
+  {
+    "seq": 88,
+    "at": 1793024746,
+    "by": "human",
+    "action": "annotation_added",
+    "payload": {
+      "annotation": {
+        "id": "a17",
+        "kind": "fib",
+        "start": {
+          "time": "2024-08-15 13:40",
+          "price": 21431
+        },
+        "end": {
+          "time": "2024-08-15 13:55",
+          "price": 21417.68,
+          "offset": 20
+        },
+        "style": {
+          "color": "#f59e0b",
+          "width": 1.2,
+          "dash": "solid",
+          "levels": [
+            {
+              "ratio": -1,
+              "color": "#38bdf8"
+            },
+            {
+              "ratio": 0,
+              "color": "#f59e0b"
+            },
+            {
+              "ratio": 1,
+              "color": "#ec4899"
+            },
+            {
+              "ratio": 2,
+              "color": "#22c55e"
+            }
+          ]
+        },
+        "snapped": false,
+        "createdBy": "human",
+        "createdAt": 1793024746
+      }
+    }
+  },
+  {
+    "seq": 89,
+    "at": 1793024750,
+    "by": "human",
+    "action": "bar_advanced",
+    "payload": {
+      "bar": {
+        "time": "2024-08-15 14:00",
+        "open": 21423,
+        "high": 21424.5,
+        "low": 21411.5,
+        "close": 21415.25,
+        "volume": 1192,
+        "ema20": 21429.346241135514
+      },
+      "cursor": 708,
+      "hiddenBars": 1223,
+      "hasMore": true,
+      "orders": [
+        {
+          "id": "o1",
+          "side": "sell",
+          "kind": "stop",
+          "price": 21417.5,
+          "quantity": 12,
+          "status": "cancelled",
+          "placedAt": "2024-08-15 13:20",
+          "placedIndex": 700,
+          "filledIndex": -1
+        },
+        {
+          "id": "o2",
+          "side": "sell",
+          "kind": "stop",
+          "price": 21417.5,
+          "quantity": 6,
+          "status": "filled",
+          "placedAt": "2024-08-15 13:20",
+          "placedIndex": 700,
+          "filledAt": "2024-08-15 13:30",
+          "filledIndex": 702,
+          "fillPrice": 21417.5
+        },
+        {
+          "id": "o3",
+          "side": "buy",
+          "kind": "stop",
+          "price": 21454,
+          "quantity": 6,
+          "status": "open",
+          "placedAt": "2024-08-15 13:30",
+          "placedIndex": 702,
+          "filledIndex": -1
+        },
+        {
+          "id": "o4",
+          "side": "buy",
+          "kind": "limit",
+          "price": 21396,
+          "quantity": 6,
+          "status": "cancelled",
+          "placedAt": "2024-08-15 13:40",
+          "placedIndex": 704,
+          "filledIndex": -1
+        },
+        {
+          "id": "o5",
+          "side": "sell",
+          "kind": "market",
+          "price": 21414.75,
+          "quantity": 6,
+          "status": "filled",
+          "placedAt": "2024-08-15 13:45",
+          "placedIndex": 705,
+          "filledAt": "2024-08-15 13:45",
+          "filledIndex": 705,
+          "fillPrice": 21414.75
+        },
+        {
+          "id": "o6",
+          "side": "buy",
+          "kind": "limit",
+          "price": 21395.25,
+          "quantity": 12,
+          "status": "open",
+          "placedAt": "2024-08-15 13:45",
+          "placedIndex": 705,
+          "filledIndex": -1
+        }
+      ],
+      "trades": [
+        {
+          "id": "t1",
+          "orderId": "o2",
+          "time": "2024-08-15 13:30",
+          "side": "sell",
+          "kind": "stop",
+          "price": 21417.5,
+          "quantity": 6,
+          "realizedPnl": 0
+        },
+        {
+          "id": "t2",
+          "orderId": "o5",
+          "time": "2024-08-15 13:45",
+          "side": "sell",
+          "kind": "market",
+          "price": 21414.75,
+          "quantity": 6,
+          "realizedPnl": 0
+        }
+      ],
+      "closedLots": null,
+      "position": {
+        "quantity": -12,
+        "side": "short",
+        "averagePrice": 21416.125
+      },
+      "realizedPnl": 0,
+      "unrealizedPnl": 21,
+      "fills": [],
+      "voice": {
+        "barTime": "2024-08-15 14:00",
+        "clips": [],
+        "total": 10,
+        "max": 9
+      }
+    }
+  },
+  {
+    "seq": 90,
+    "at": 1793024761,
+    "by": "human",
+    "action": "bar_advanced",
+    "payload": {
+      "bar": {
+        "time": "2024-08-15 14:05",
+        "open": 21415.75,
+        "high": 21422.75,
+        "low": 21414,
+        "close": 21414.5,
+        "volume": 617,
+        "ema20": 21427.932313408324
+      },
+      "cursor": 709,
+      "hiddenBars": 1222,
+      "hasMore": true,
+      "orders": [
+        {
+          "id": "o1",
+          "side": "sell",
+          "kind": "stop",
+          "price": 21417.5,
+          "quantity": 12,
+          "status": "cancelled",
+          "placedAt": "2024-08-15 13:20",
+          "placedIndex": 700,
+          "filledIndex": -1
+        },
+        {
+          "id": "o2",
+          "side": "sell",
+          "kind": "stop",
+          "price": 21417.5,
+          "quantity": 6,
+          "status": "filled",
+          "placedAt": "2024-08-15 13:20",
+          "placedIndex": 700,
+          "filledAt": "2024-08-15 13:30",
+          "filledIndex": 702,
+          "fillPrice": 21417.5
+        },
+        {
+          "id": "o3",
+          "side": "buy",
+          "kind": "stop",
+          "price": 21454,
+          "quantity": 6,
+          "status": "open",
+          "placedAt": "2024-08-15 13:30",
+          "placedIndex": 702,
+          "filledIndex": -1
+        },
+        {
+          "id": "o4",
+          "side": "buy",
+          "kind": "limit",
+          "price": 21396,
+          "quantity": 6,
+          "status": "cancelled",
+          "placedAt": "2024-08-15 13:40",
+          "placedIndex": 704,
+          "filledIndex": -1
+        },
+        {
+          "id": "o5",
+          "side": "sell",
+          "kind": "market",
+          "price": 21414.75,
+          "quantity": 6,
+          "status": "filled",
+          "placedAt": "2024-08-15 13:45",
+          "placedIndex": 705,
+          "filledAt": "2024-08-15 13:45",
+          "filledIndex": 705,
+          "fillPrice": 21414.75
+        },
+        {
+          "id": "o6",
+          "side": "buy",
+          "kind": "limit",
+          "price": 21395.25,
+          "quantity": 12,
+          "status": "open",
+          "placedAt": "2024-08-15 13:45",
+          "placedIndex": 705,
+          "filledIndex": -1
+        }
+      ],
+      "trades": [
+        {
+          "id": "t1",
+          "orderId": "o2",
+          "time": "2024-08-15 13:30",
+          "side": "sell",
+          "kind": "stop",
+          "price": 21417.5,
+          "quantity": 6,
+          "realizedPnl": 0
+        },
+        {
+          "id": "t2",
+          "orderId": "o5",
+          "time": "2024-08-15 13:45",
+          "side": "sell",
+          "kind": "market",
+          "price": 21414.75,
+          "quantity": 6,
+          "realizedPnl": 0
+        }
+      ],
+      "closedLots": null,
+      "position": {
+        "quantity": -12,
+        "side": "short",
+        "averagePrice": 21416.125
+      },
+      "realizedPnl": 0,
+      "unrealizedPnl": 39,
+      "fills": [],
+      "voice": {
+        "barTime": "2024-08-15 14:05",
+        "clips": [],
+        "total": 10,
+        "max": 9
+      }
+    }
+  },
+  {
+    "seq": 91,
+    "at": 1793024787,
+    "by": "human",
+    "action": "voice_added",
+    "payload": {
+      "audio": {
+        "id": "v12",
+        "step": 28,
+        "time": "2024-08-15 14:05",
+        "durationMs": 6180,
+        "file": "voice-12.wav",
+        "size": 197804,
+        "createdAt": 1793024787,
+        "by": "human"
+      },
+      "voice": {
+        "barTime": "2024-08-15 14:05",
+        "clips": [
+          {
+            "id": "v12",
+            "step": 28,
+            "time": "2024-08-15 14:05",
+            "durationMs": 6180,
+            "file": "voice-12.wav",
+            "size": 197804,
+            "createdAt": 1793024787,
+            "by": "human"
+          }
+        ],
+        "total": 11,
+        "max": 9
+      },
+      "voiceAll": [
+        {
+          "id": "v2",
+          "step": 0,
+          "time": "2024-08-15 10:35",
+          "durationMs": 9060,
+          "file": "voice-2.wav",
+          "size": 289964,
+          "createdAt": 1793024118,
+          "by": "human"
+        },
+        {
+          "id": "v3",
+          "step": 0,
+          "time": "2024-08-15 13:10",
+          "durationMs": 3480,
+          "file": "voice-3.wav",
+          "size": 111404,
+          "createdAt": 1793024382,
+          "by": "human"
+        },
+        {
+          "id": "v4",
+          "step": 0,
+          "time": "2024-08-15 13:10",
+          "durationMs": 3120,
+          "file": "voice-4.wav",
+          "size": 99884,
+          "createdAt": 1793024397,
+          "by": "human"
+        },
+        {
+          "id": "v5",
+          "step": 0,
+          "time": "2024-08-15 13:20",
+          "durationMs": 3480,
+          "file": "voice-5.wav",
+          "size": 111404,
+          "createdAt": 1793024432,
+          "by": "human"
+        },
+        {
+          "id": "v6",
+          "step": 3,
+          "time": "2024-08-15 13:30",
+          "durationMs": 6960,
+          "file": "voice-6.wav",
+          "size": 222764,
+          "createdAt": 1793024474,
+          "by": "human"
+        },
+        {
+          "id": "v7",
+          "step": 6,
+          "time": "2024-08-15 13:35",
+          "durationMs": 11580,
+          "file": "voice-7.wav",
+          "size": 370604,
+          "createdAt": 1793024522,
+          "by": "human"
+        },
+        {
+          "id": "v8",
+          "step": 9,
+          "time": "2024-08-15 13:40",
+          "durationMs": 4860,
+          "file": "voice-8.wav",
+          "size": 155564,
+          "createdAt": 1793024554,
+          "by": "human"
+        },
+        {
+          "id": "v9",
+          "step": 14,
+          "time": "2024-08-15 13:45",
+          "durationMs": 6180,
+          "file": "voice-9.wav",
+          "size": 197804,
+          "createdAt": 1793024607,
+          "by": "human"
+        },
+        {
+          "id": "v10",
+          "step": 15,
+          "time": "2024-08-15 13:45",
+          "durationMs": 7440,
+          "file": "voice-10.wav",
+          "size": 238124,
+          "createdAt": 1793024648,
+          "by": "human"
+        },
+        {
+          "id": "v11",
+          "step": 20,
+          "time": "2024-08-15 13:50",
+          "durationMs": 17160,
+          "file": "voice-11.wav",
+          "size": 549164,
+          "createdAt": 1793024707,
+          "by": "human"
+        },
+        {
+          "id": "v12",
+          "step": 28,
+          "time": "2024-08-15 14:05",
+          "durationMs": 6180,
+          "file": "voice-12.wav",
+          "size": 197804,
+          "createdAt": 1793024787,
+          "by": "human"
+        }
+      ]
+    }
+  },
+  {
+    "seq": 92,
+    "at": 1793024794,
+    "by": "human",
+    "action": "flat_all",
+    "payload": {
+      "order": {
+        "id": "o7",
+        "side": "buy",
+        "kind": "market",
+        "price": 21414.5,
+        "quantity": 12,
+        "status": "filled",
+        "placedAt": "2024-08-15 14:05",
+        "placedIndex": 709,
+        "filledAt": "2024-08-15 14:05",
+        "filledIndex": 709,
+        "fillPrice": 21414.5
+      },
+      "trade": {
+        "id": "t3",
+        "orderId": "o7",
+        "time": "2024-08-15 14:05",
+        "side": "buy",
+        "kind": "market",
+        "price": 21414.5,
+        "quantity": 12,
+        "realizedPnl": 39
+      },
+      "cancelled": 2,
+      "orders": [
+        {
+          "id": "o1",
+          "side": "sell",
+          "kind": "stop",
+          "price": 21417.5,
+          "quantity": 12,
+          "status": "cancelled",
+          "placedAt": "2024-08-15 13:20",
+          "placedIndex": 700,
+          "filledIndex": -1
+        },
+        {
+          "id": "o2",
+          "side": "sell",
+          "kind": "stop",
+          "price": 21417.5,
+          "quantity": 6,
+          "status": "filled",
+          "placedAt": "2024-08-15 13:20",
+          "placedIndex": 700,
+          "filledAt": "2024-08-15 13:30",
+          "filledIndex": 702,
+          "fillPrice": 21417.5
+        },
+        {
+          "id": "o3",
+          "side": "buy",
+          "kind": "stop",
+          "price": 21454,
+          "quantity": 6,
+          "status": "cancelled",
+          "placedAt": "2024-08-15 13:30",
+          "placedIndex": 702,
+          "filledIndex": -1
+        },
+        {
+          "id": "o4",
+          "side": "buy",
+          "kind": "limit",
+          "price": 21396,
+          "quantity": 6,
+          "status": "cancelled",
+          "placedAt": "2024-08-15 13:40",
+          "placedIndex": 704,
+          "filledIndex": -1
+        },
+        {
+          "id": "o5",
+          "side": "sell",
+          "kind": "market",
+          "price": 21414.75,
+          "quantity": 6,
+          "status": "filled",
+          "placedAt": "2024-08-15 13:45",
+          "placedIndex": 705,
+          "filledAt": "2024-08-15 13:45",
+          "filledIndex": 705,
+          "fillPrice": 21414.75
+        },
+        {
+          "id": "o6",
+          "side": "buy",
+          "kind": "limit",
+          "price": 21395.25,
+          "quantity": 12,
+          "status": "cancelled",
+          "placedAt": "2024-08-15 13:45",
+          "placedIndex": 705,
+          "filledIndex": -1
+        },
+        {
+          "id": "o7",
+          "side": "buy",
+          "kind": "market",
+          "price": 21414.5,
+          "quantity": 12,
+          "status": "filled",
+          "placedAt": "2024-08-15 14:05",
+          "placedIndex": 709,
+          "filledAt": "2024-08-15 14:05",
+          "filledIndex": 709,
+          "fillPrice": 21414.5
+        }
+      ],
+      "trades": [
+        {
+          "id": "t1",
+          "orderId": "o2",
+          "time": "2024-08-15 13:30",
+          "side": "sell",
+          "kind": "stop",
+          "price": 21417.5,
+          "quantity": 6,
+          "realizedPnl": 0
+        },
+        {
+          "id": "t2",
+          "orderId": "o5",
+          "time": "2024-08-15 13:45",
+          "side": "sell",
+          "kind": "market",
+          "price": 21414.75,
+          "quantity": 6,
+          "realizedPnl": 0
+        },
+        {
+          "id": "t3",
+          "orderId": "o7",
+          "time": "2024-08-15 14:05",
+          "side": "buy",
+          "kind": "market",
+          "price": 21414.5,
+          "quantity": 12,
+          "realizedPnl": 39
+        }
+      ],
+      "closedLots": [
+        {
+          "openTime": "2024-08-15 13:30",
+          "openPrice": 21417.5,
+          "closeTime": "2024-08-15 14:05",
+          "closePrice": 21414.5,
+          "side": "short",
+          "quantity": 6,
+          "realizedPnl": 36
+        },
+        {
+          "openTime": "2024-08-15 13:45",
+          "openPrice": 21414.75,
+          "closeTime": "2024-08-15 14:05",
+          "closePrice": 21414.5,
+          "side": "short",
+          "quantity": 6,
+          "realizedPnl": 3
+        }
+      ],
+      "position": {
+        "quantity": 0,
+        "side": "flat",
+        "averagePrice": 0
+      },
+      "realizedPnl": 39,
+      "unrealizedPnl": 0
+    }
+  },
+  {
+    "seq": 93,
+    "at": 1793024804,
+    "by": "human",
+    "action": "bar_advanced",
+    "payload": {
+      "bar": {
+        "time": "2024-08-15 14:10",
+        "open": 21414,
+        "high": 21421.5,
+        "low": 21409.5,
+        "close": 21419,
+        "volume": 913,
+        "ema20": 21427.081616893247
+      },
+      "cursor": 710,
+      "hiddenBars": 1221,
+      "hasMore": true,
+      "orders": [
+        {
+          "id": "o1",
+          "side": "sell",
+          "kind": "stop",
+          "price": 21417.5,
+          "quantity": 12,
+          "status": "cancelled",
+          "placedAt": "2024-08-15 13:20",
+          "placedIndex": 700,
+          "filledIndex": -1
+        },
+        {
+          "id": "o2",
+          "side": "sell",
+          "kind": "stop",
+          "price": 21417.5,
+          "quantity": 6,
+          "status": "filled",
+          "placedAt": "2024-08-15 13:20",
+          "placedIndex": 700,
+          "filledAt": "2024-08-15 13:30",
+          "filledIndex": 702,
+          "fillPrice": 21417.5
+        },
+        {
+          "id": "o3",
+          "side": "buy",
+          "kind": "stop",
+          "price": 21454,
+          "quantity": 6,
+          "status": "cancelled",
+          "placedAt": "2024-08-15 13:30",
+          "placedIndex": 702,
+          "filledIndex": -1
+        },
+        {
+          "id": "o4",
+          "side": "buy",
+          "kind": "limit",
+          "price": 21396,
+          "quantity": 6,
+          "status": "cancelled",
+          "placedAt": "2024-08-15 13:40",
+          "placedIndex": 704,
+          "filledIndex": -1
+        },
+        {
+          "id": "o5",
+          "side": "sell",
+          "kind": "market",
+          "price": 21414.75,
+          "quantity": 6,
+          "status": "filled",
+          "placedAt": "2024-08-15 13:45",
+          "placedIndex": 705,
+          "filledAt": "2024-08-15 13:45",
+          "filledIndex": 705,
+          "fillPrice": 21414.75
+        },
+        {
+          "id": "o6",
+          "side": "buy",
+          "kind": "limit",
+          "price": 21395.25,
+          "quantity": 12,
+          "status": "cancelled",
+          "placedAt": "2024-08-15 13:45",
+          "placedIndex": 705,
+          "filledIndex": -1
+        },
+        {
+          "id": "o7",
+          "side": "buy",
+          "kind": "market",
+          "price": 21414.5,
+          "quantity": 12,
+          "status": "filled",
+          "placedAt": "2024-08-15 14:05",
+          "placedIndex": 709,
+          "filledAt": "2024-08-15 14:05",
+          "filledIndex": 709,
+          "fillPrice": 21414.5
+        }
+      ],
+      "trades": [
+        {
+          "id": "t1",
+          "orderId": "o2",
+          "time": "2024-08-15 13:30",
+          "side": "sell",
+          "kind": "stop",
+          "price": 21417.5,
+          "quantity": 6,
+          "realizedPnl": 0
+        },
+        {
+          "id": "t2",
+          "orderId": "o5",
+          "time": "2024-08-15 13:45",
+          "side": "sell",
+          "kind": "market",
+          "price": 21414.75,
+          "quantity": 6,
+          "realizedPnl": 0
+        },
+        {
+          "id": "t3",
+          "orderId": "o7",
+          "time": "2024-08-15 14:05",
+          "side": "buy",
+          "kind": "market",
+          "price": 21414.5,
+          "quantity": 12,
+          "realizedPnl": 39
+        }
+      ],
+      "closedLots": [
+        {
+          "openTime": "2024-08-15 13:30",
+          "openPrice": 21417.5,
+          "closeTime": "2024-08-15 14:05",
+          "closePrice": 21414.5,
+          "side": "short",
+          "quantity": 6,
+          "realizedPnl": 36
+        },
+        {
+          "openTime": "2024-08-15 13:45",
+          "openPrice": 21414.75,
+          "closeTime": "2024-08-15 14:05",
+          "closePrice": 21414.5,
+          "side": "short",
+          "quantity": 6,
+          "realizedPnl": 3
+        }
+      ],
+      "position": {
+        "quantity": 0,
+        "side": "flat",
+        "averagePrice": 0
+      },
+      "realizedPnl": 39,
+      "unrealizedPnl": 0,
+      "fills": [],
+      "voice": {
+        "barTime": "2024-08-15 14:10",
+        "clips": [],
+        "total": 11,
+        "max": 9
+      }
+    }
+  },
+  {
+    "seq": 94,
+    "at": 1793024806,
+    "by": "human",
+    "action": "bar_advanced",
+    "payload": {
+      "bar": {
+        "time": "2024-08-15 14:15",
+        "open": 21419,
+        "high": 21419.75,
+        "low": 21410,
+        "close": 21410.75,
+        "volume": 676,
+        "ema20": 21425.526224808174
+      },
+      "cursor": 711,
+      "hiddenBars": 1220,
+      "hasMore": true,
+      "orders": [
+        {
+          "id": "o1",
+          "side": "sell",
+          "kind": "stop",
+          "price": 21417.5,
+          "quantity": 12,
+          "status": "cancelled",
+          "placedAt": "2024-08-15 13:20",
+          "placedIndex": 700,
+          "filledIndex": -1
+        },
+        {
+          "id": "o2",
+          "side": "sell",
+          "kind": "stop",
+          "price": 21417.5,
+          "quantity": 6,
+          "status": "filled",
+          "placedAt": "2024-08-15 13:20",
+          "placedIndex": 700,
+          "filledAt": "2024-08-15 13:30",
+          "filledIndex": 702,
+          "fillPrice": 21417.5
+        },
+        {
+          "id": "o3",
+          "side": "buy",
+          "kind": "stop",
+          "price": 21454,
+          "quantity": 6,
+          "status": "cancelled",
+          "placedAt": "2024-08-15 13:30",
+          "placedIndex": 702,
+          "filledIndex": -1
+        },
+        {
+          "id": "o4",
+          "side": "buy",
+          "kind": "limit",
+          "price": 21396,
+          "quantity": 6,
+          "status": "cancelled",
+          "placedAt": "2024-08-15 13:40",
+          "placedIndex": 704,
+          "filledIndex": -1
+        },
+        {
+          "id": "o5",
+          "side": "sell",
+          "kind": "market",
+          "price": 21414.75,
+          "quantity": 6,
+          "status": "filled",
+          "placedAt": "2024-08-15 13:45",
+          "placedIndex": 705,
+          "filledAt": "2024-08-15 13:45",
+          "filledIndex": 705,
+          "fillPrice": 21414.75
+        },
+        {
+          "id": "o6",
+          "side": "buy",
+          "kind": "limit",
+          "price": 21395.25,
+          "quantity": 12,
+          "status": "cancelled",
+          "placedAt": "2024-08-15 13:45",
+          "placedIndex": 705,
+          "filledIndex": -1
+        },
+        {
+          "id": "o7",
+          "side": "buy",
+          "kind": "market",
+          "price": 21414.5,
+          "quantity": 12,
+          "status": "filled",
+          "placedAt": "2024-08-15 14:05",
+          "placedIndex": 709,
+          "filledAt": "2024-08-15 14:05",
+          "filledIndex": 709,
+          "fillPrice": 21414.5
+        }
+      ],
+      "trades": [
+        {
+          "id": "t1",
+          "orderId": "o2",
+          "time": "2024-08-15 13:30",
+          "side": "sell",
+          "kind": "stop",
+          "price": 21417.5,
+          "quantity": 6,
+          "realizedPnl": 0
+        },
+        {
+          "id": "t2",
+          "orderId": "o5",
+          "time": "2024-08-15 13:45",
+          "side": "sell",
+          "kind": "market",
+          "price": 21414.75,
+          "quantity": 6,
+          "realizedPnl": 0
+        },
+        {
+          "id": "t3",
+          "orderId": "o7",
+          "time": "2024-08-15 14:05",
+          "side": "buy",
+          "kind": "market",
+          "price": 21414.5,
+          "quantity": 12,
+          "realizedPnl": 39
+        }
+      ],
+      "closedLots": [
+        {
+          "openTime": "2024-08-15 13:30",
+          "openPrice": 21417.5,
+          "closeTime": "2024-08-15 14:05",
+          "closePrice": 21414.5,
+          "side": "short",
+          "quantity": 6,
+          "realizedPnl": 36
+        },
+        {
+          "openTime": "2024-08-15 13:45",
+          "openPrice": 21414.75,
+          "closeTime": "2024-08-15 14:05",
+          "closePrice": 21414.5,
+          "side": "short",
+          "quantity": 6,
+          "realizedPnl": 3
+        }
+      ],
+      "position": {
+        "quantity": 0,
+        "side": "flat",
+        "averagePrice": 0
+      },
+      "realizedPnl": 39,
+      "unrealizedPnl": 0,
+      "fills": [],
+      "voice": {
+        "barTime": "2024-08-15 14:15",
+        "clips": [],
+        "total": 11,
+        "max": 9
+      }
+    }
+  },
+  {
+    "seq": 95,
+    "at": 1793024809,
+    "by": "human",
+    "action": "bar_advanced",
+    "payload": {
+      "bar": {
+        "time": "2024-08-15 14:20",
+        "open": 21410.75,
+        "high": 21410.75,
+        "low": 21382,
+        "close": 21385.75,
+        "volume": 4287,
+        "ema20": 21421.738012921684
+      },
+      "cursor": 712,
+      "hiddenBars": 1219,
+      "hasMore": true,
+      "orders": [
+        {
+          "id": "o1",
+          "side": "sell",
+          "kind": "stop",
+          "price": 21417.5,
+          "quantity": 12,
+          "status": "cancelled",
+          "placedAt": "2024-08-15 13:20",
+          "placedIndex": 700,
+          "filledIndex": -1
+        },
+        {
+          "id": "o2",
+          "side": "sell",
+          "kind": "stop",
+          "price": 21417.5,
+          "quantity": 6,
+          "status": "filled",
+          "placedAt": "2024-08-15 13:20",
+          "placedIndex": 700,
+          "filledAt": "2024-08-15 13:30",
+          "filledIndex": 702,
+          "fillPrice": 21417.5
+        },
+        {
+          "id": "o3",
+          "side": "buy",
+          "kind": "stop",
+          "price": 21454,
+          "quantity": 6,
+          "status": "cancelled",
+          "placedAt": "2024-08-15 13:30",
+          "placedIndex": 702,
+          "filledIndex": -1
+        },
+        {
+          "id": "o4",
+          "side": "buy",
+          "kind": "limit",
+          "price": 21396,
+          "quantity": 6,
+          "status": "cancelled",
+          "placedAt": "2024-08-15 13:40",
+          "placedIndex": 704,
+          "filledIndex": -1
+        },
+        {
+          "id": "o5",
+          "side": "sell",
+          "kind": "market",
+          "price": 21414.75,
+          "quantity": 6,
+          "status": "filled",
+          "placedAt": "2024-08-15 13:45",
+          "placedIndex": 705,
+          "filledAt": "2024-08-15 13:45",
+          "filledIndex": 705,
+          "fillPrice": 21414.75
+        },
+        {
+          "id": "o6",
+          "side": "buy",
+          "kind": "limit",
+          "price": 21395.25,
+          "quantity": 12,
+          "status": "cancelled",
+          "placedAt": "2024-08-15 13:45",
+          "placedIndex": 705,
+          "filledIndex": -1
+        },
+        {
+          "id": "o7",
+          "side": "buy",
+          "kind": "market",
+          "price": 21414.5,
+          "quantity": 12,
+          "status": "filled",
+          "placedAt": "2024-08-15 14:05",
+          "placedIndex": 709,
+          "filledAt": "2024-08-15 14:05",
+          "filledIndex": 709,
+          "fillPrice": 21414.5
+        }
+      ],
+      "trades": [
+        {
+          "id": "t1",
+          "orderId": "o2",
+          "time": "2024-08-15 13:30",
+          "side": "sell",
+          "kind": "stop",
+          "price": 21417.5,
+          "quantity": 6,
+          "realizedPnl": 0
+        },
+        {
+          "id": "t2",
+          "orderId": "o5",
+          "time": "2024-08-15 13:45",
+          "side": "sell",
+          "kind": "market",
+          "price": 21414.75,
+          "quantity": 6,
+          "realizedPnl": 0
+        },
+        {
+          "id": "t3",
+          "orderId": "o7",
+          "time": "2024-08-15 14:05",
+          "side": "buy",
+          "kind": "market",
+          "price": 21414.5,
+          "quantity": 12,
+          "realizedPnl": 39
+        }
+      ],
+      "closedLots": [
+        {
+          "openTime": "2024-08-15 13:30",
+          "openPrice": 21417.5,
+          "closeTime": "2024-08-15 14:05",
+          "closePrice": 21414.5,
+          "side": "short",
+          "quantity": 6,
+          "realizedPnl": 36
+        },
+        {
+          "openTime": "2024-08-15 13:45",
+          "openPrice": 21414.75,
+          "closeTime": "2024-08-15 14:05",
+          "closePrice": 21414.5,
+          "side": "short",
+          "quantity": 6,
+          "realizedPnl": 3
+        }
+      ],
+      "position": {
+        "quantity": 0,
+        "side": "flat",
+        "averagePrice": 0
+      },
+      "realizedPnl": 39,
+      "unrealizedPnl": 0,
+      "fills": [],
+      "voice": {
+        "barTime": "2024-08-15 14:20",
+        "clips": [],
+        "total": 11,
+        "max": 9
+      }
+    }
+  },
+  {
+    "seq": 96,
+    "at": 1793024843,
+    "by": "human",
+    "action": "voice_added",
+    "payload": {
+      "audio": {
+        "id": "v13",
+        "step": 0,
+        "time": "2024-08-15 14:20",
+        "durationMs": 6600,
+        "file": "voice-13.wav",
+        "size": 211244,
+        "createdAt": 1793024843,
+        "by": "human"
+      },
+      "voice": {
+        "barTime": "2024-08-15 14:20",
+        "clips": [
+          {
+            "id": "v13",
+            "step": 0,
+            "time": "2024-08-15 14:20",
+            "durationMs": 6600,
+            "file": "voice-13.wav",
+            "size": 211244,
+            "createdAt": 1793024843,
+            "by": "human"
+          }
+        ],
+        "total": 12,
+        "max": 9
+      },
+      "voiceAll": [
+        {
+          "id": "v2",
+          "step": 0,
+          "time": "2024-08-15 10:35",
+          "durationMs": 9060,
+          "file": "voice-2.wav",
+          "size": 289964,
+          "createdAt": 1793024118,
+          "by": "human"
+        },
+        {
+          "id": "v3",
+          "step": 0,
+          "time": "2024-08-15 13:10",
+          "durationMs": 3480,
+          "file": "voice-3.wav",
+          "size": 111404,
+          "createdAt": 1793024382,
+          "by": "human"
+        },
+        {
+          "id": "v4",
+          "step": 0,
+          "time": "2024-08-15 13:10",
+          "durationMs": 3120,
+          "file": "voice-4.wav",
+          "size": 99884,
+          "createdAt": 1793024397,
+          "by": "human"
+        },
+        {
+          "id": "v5",
+          "step": 0,
+          "time": "2024-08-15 13:20",
+          "durationMs": 3480,
+          "file": "voice-5.wav",
+          "size": 111404,
+          "createdAt": 1793024432,
+          "by": "human"
+        },
+        {
+          "id": "v6",
+          "step": 3,
+          "time": "2024-08-15 13:30",
+          "durationMs": 6960,
+          "file": "voice-6.wav",
+          "size": 222764,
+          "createdAt": 1793024474,
+          "by": "human"
+        },
+        {
+          "id": "v7",
+          "step": 6,
+          "time": "2024-08-15 13:35",
+          "durationMs": 11580,
+          "file": "voice-7.wav",
+          "size": 370604,
+          "createdAt": 1793024522,
+          "by": "human"
+        },
+        {
+          "id": "v8",
+          "step": 9,
+          "time": "2024-08-15 13:40",
+          "durationMs": 4860,
+          "file": "voice-8.wav",
+          "size": 155564,
+          "createdAt": 1793024554,
+          "by": "human"
+        },
+        {
+          "id": "v9",
+          "step": 14,
+          "time": "2024-08-15 13:45",
+          "durationMs": 6180,
+          "file": "voice-9.wav",
+          "size": 197804,
+          "createdAt": 1793024607,
+          "by": "human"
+        },
+        {
+          "id": "v10",
+          "step": 15,
+          "time": "2024-08-15 13:45",
+          "durationMs": 7440,
+          "file": "voice-10.wav",
+          "size": 238124,
+          "createdAt": 1793024648,
+          "by": "human"
+        },
+        {
+          "id": "v11",
+          "step": 20,
+          "time": "2024-08-15 13:50",
+          "durationMs": 17160,
+          "file": "voice-11.wav",
+          "size": 549164,
+          "createdAt": 1793024707,
+          "by": "human"
+        },
+        {
+          "id": "v12",
+          "step": 28,
+          "time": "2024-08-15 14:05",
+          "durationMs": 6180,
+          "file": "voice-12.wav",
+          "size": 197804,
+          "createdAt": 1793024787,
+          "by": "human"
+        },
+        {
+          "id": "v13",
+          "step": 0,
+          "time": "2024-08-15 14:20",
+          "durationMs": 6600,
+          "file": "voice-13.wav",
+          "size": 211244,
+          "createdAt": 1793024843,
+          "by": "human"
+        }
+      ]
+    }
+  },
+  {
+    "seq": 97,
+    "at": 1793024938,
+    "by": "system",
+    "action": "members_changed",
+    "payload": {
+      "members": [
+        {
+          "clientId": "c1",
+          "name": "human",
+          "operator": true,
+          "connected": true
+        }
+      ]
+    }
+  },
+  {
+    "seq": 98,
+    "at": 1793024951,
+    "by": "human",
+    "action": "annotation_cleared",
+    "payload": {
+      "count": 8,
+      "annotationIds": [
+        "a2",
+        "a3",
+        "a4",
+        "a8",
+        "a11",
+        "a14",
+        "a16",
+        "a17"
+      ]
+    }
+  }
+]
