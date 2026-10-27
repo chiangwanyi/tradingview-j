@@ -1,0 +1,122 @@
+[
+  {
+    "id": "t1",
+    "orderId": "o1",
+    "time": "2025-08-23 03:05",
+    "side": "sell",
+    "kind": "market",
+    "price": 24867,
+    "quantity": 6,
+    "realizedPnl": 0
+  },
+  {
+    "id": "t2",
+    "orderId": "o3",
+    "time": "2025-08-23 03:35",
+    "side": "buy",
+    "kind": "limit",
+    "price": 24841.5,
+    "quantity": 6,
+    "realizedPnl": 306
+  },
+  {
+    "id": "t3",
+    "orderId": "o4",
+    "time": "2025-08-25 07:50",
+    "side": "sell",
+    "kind": "stop",
+    "price": 24855.25,
+    "quantity": 1,
+    "realizedPnl": 0
+  },
+  {
+    "id": "t4",
+    "orderId": "o6",
+    "time": "2025-08-25 08:00",
+    "side": "buy",
+    "kind": "market",
+    "price": 24881,
+    "quantity": 1,
+    "realizedPnl": -51.5
+  },
+  {
+    "id": "t5",
+    "orderId": "o7",
+    "time": "2025-08-25 09:10",
+    "side": "sell",
+    "kind": "market",
+    "price": 24832.75,
+    "quantity": 9,
+    "realizedPnl": 0
+  },
+  {
+    "id": "t6",
+    "orderId": "o10",
+    "time": "2025-08-25 10:10",
+    "side": "buy",
+    "kind": "market",
+    "price": 24829.25,
+    "quantity": 9,
+    "realizedPnl": 63
+  },
+  {
+    "id": "t7",
+    "orderId": "o11",
+    "time": "2025-08-25 13:05",
+    "side": "buy",
+    "kind": "market",
+    "price": 24849.75,
+    "quantity": 17,
+    "realizedPnl": 0
+  },
+  {
+    "id": "t8",
+    "orderId": "o13",
+    "time": "2025-08-25 13:20",
+    "side": "sell",
+    "kind": "limit",
+    "price": 24856,
+    "quantity": 17,
+    "realizedPnl": 212.5
+  },
+  {
+    "id": "t9",
+    "orderId": "o14",
+    "time": "2025-08-25 13:40",
+    "side": "buy",
+    "kind": "market",
+    "price": 24849.75,
+    "quantity": 16,
+    "realizedPnl": 0
+  },
+  {
+    "id": "t10",
+    "orderId": "o17",
+    "time": "2025-08-25 13:50",
+    "side": "sell",
+    "kind": "market",
+    "price": 24852.5,
+    "quantity": 16,
+    "realizedPnl": 88
+  },
+  {
+    "id": "t11",
+    "orderId": "o18",
+    "time": "2025-08-25 14:20",
+    "side": "sell",
+    "kind": "market",
+    "price": 24845.25,
+    "quantity": 17,
+    "realizedPnl": 0
+  },
+  {
+    "id": "t12",
+    "orderId": "o20",
+    "time": "2025-08-25 14:55",
+    "side": "buy",
+    "kind": "limit",
+    "price": 24825.5,
+    "quantity": 17,
+    "realizedPnl": 671.5
+  }
+]

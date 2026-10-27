@@ -1,0 +1,146 @@
+[
+  {
+    "id": "a1",
+    "kind": "fib",
+    "start": {
+      "time": "2025-08-22 22:00",
+      "price": 24558.75
+    },
+    "end": {
+      "time": "2025-08-23 00:10",
+      "price": 24774.63,
+      "offset": 15
+    },
+    "style": {
+      "color": "#f59e0b",
+      "width": 1.2,
+      "dash": "solid",
+      "levels": [
+        {
+          "ratio": -1,
+          "color": "#38bdf8"
+        },
+        {
+          "ratio": 0,
+          "color": "#f59e0b"
+        },
+        {
+          "ratio": 1,
+          "color": "#ec4899"
+        },
+        {
+          "ratio": 2,
+          "color": "#22c55e"
+        }
+      ]
+    },
+    "snapped": false,
+    "createdBy": "human",
+    "createdAt": 1793074559
+  },
+  {
+    "id": "a2",
+    "kind": "ray",
+    "start": {
+      "time": "2025-08-22 23:30",
+      "price": 24909.25
+    },
+    "end": {
+      "time": "2025-08-22 23:30",
+      "price": 24909.25,
+      "offset": 184
+    },
+    "style": {
+      "color": "#ef4444",
+      "width": 2,
+      "dash": "solid"
+    },
+    "snapped": true,
+    "createdBy": "human",
+    "createdAt": 1793074571
+  },
+  {
+    "id": "a4",
+    "kind": "ray",
+    "start": {
+      "time": "2025-08-22 21:50",
+      "price": 24632.25
+    },
+    "end": {
+      "time": "2025-08-22 21:50",
+      "price": 24632.25,
+      "offset": 184
+    },
+    "style": {
+      "color": "#65a30d",
+      "width": 2,
+      "dash": "solid"
+    },
+    "snapped": true,
+    "createdBy": "human",
+    "createdAt": 1793074582
+  },
+  {
+    "id": "a15",
+    "kind": "ray",
+    "start": {
+      "time": "2025-08-25 08:15",
+      "price": 24856.25
+    },
+    "end": {
+      "time": "2025-08-25 08:15",
+      "price": 24856.25,
+      "offset": 165
+    },
+    "style": {
+      "color": "#ef4444",
+      "width": 2,
+      "dash": "solid"
+    },
+    "snapped": true,
+    "createdBy": "human",
+    "createdAt": 1793075232
+  },
+  {
+    "id": "a21",
+    "kind": "ray",
+    "start": {
+      "time": "2025-08-25 11:15",
+      "price": 24824.75
+    },
+    "end": {
+      "time": "2025-08-25 11:15",
+      "price": 24824.75,
+      "offset": 205
+    },
+    "style": {
+      "color": "#65a30d",
+      "width": 2,
+      "dash": "solid"
+    },
+    "snapped": true,
+    "createdBy": "human",
+    "createdAt": 1793075571
+  },
+  {
+    "id": "a23",
+    "kind": "ray",
+    "start": {
+      "time": "2025-08-25 12:00",
+      "price": 24837.75
+    },
+    "end": {
+      "time": "2025-08-25 12:00",
+      "price": 24837.75,
+      "offset": 165
+    },
+    "style": {
+      "color": "#65a30d",
+      "width": 2,
+      "dash": "solid"
+    },
+    "snapped": true,
+    "createdBy": "human",
+    "createdAt": 1793075628
+  }
+]
