@@ -36,6 +36,17 @@ const latestHint = computed(() => {
   return `「最新」不用填时间：取数据目录里最近的一根 K 线作为起点${where}，之后没有更多行情可揭示。`
 })
 
+/**
+ * 【新增实例（开盘）】下面那行说明。
+ *
+ * 说的是「随机一个交易日」而不是「最近那个交易日」：同一天反复练没有意义，
+ * 而最后一天之后已经没有行情可推演（那就等于【最新】）。
+ * 「按开盘时间、不是按 0 点」也值得写出来：日盘按美国时间开，北京时间是 6 点或 7 点。
+ */
+const sessionHint = computed(
+  () => '「开盘」也不用填时间：随机挑一个交易日，从那天第 1 根 K 线开始，之后逐根往后推演。',
+)
+
 onMounted(() => {
   store.refresh()
 })
@@ -77,11 +88,21 @@ function createLatest(): void {
   submit('', true)
 }
 
-function submit(time: string, latest: boolean): void {
+/**
+ * 【新增实例（开盘）】：同样不读时间输入框，让后端**随机挑一个交易日**、把锚点定在
+ * 那天的开盘首根上。挑哪一天是随机的（每天都能换个日子练），但开盘那一根在几点只有
+ * 读 CSV 才知道（夏令时 6 点、冬令时 7 点），而且「哪一天算交易日」也要看缺口 ——
+ * 前端猜不出来。
+ */
+function createSession(): void {
+  submit('', false, true)
+}
+
+function submit(time: string, latest: boolean, session = false): void {
   if (!symbol.value) return
   leavePlayback()
   busy.value = true
-  store.createInstance(symbol.value, time, latest)
+  store.createInstance(symbol.value, time, latest, session)
   window.setTimeout(() => {
     busy.value = false
   }, 600)
@@ -176,6 +197,18 @@ function statusOf(inst: { operator: string; bot: boolean; botStrategy?: string }
           新增实例（最新）
         </button>
         <div class="text-[12px] text-faint">{{ latestHint }}</div>
+
+        <!-- 第三个入口：随机挑一天，锚点定在那天的开盘首根（后端按停盘缺口认的） -->
+        <button
+          type="button"
+          class="w-full rounded border border-accent px-2 py-1.5 text-[14px] font-medium text-accent hover:bg-accent-soft disabled:opacity-50"
+          :disabled="busy || store.symbols.length === 0 || store.status !== 'open'"
+          title="不用输时间：随机挑一个交易日，以那天开盘的第 1 根 K 线为起点（按开盘时间，不是 0 点）"
+          @click="createSession"
+        >
+          新增实例（开盘）
+        </button>
+        <div class="text-[12px] text-faint">{{ sessionHint }}</div>
       </div>
 
       <div

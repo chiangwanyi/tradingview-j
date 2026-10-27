@@ -16,9 +16,10 @@ package replay
 // 随机锚点会避开首尾各一天（首日没有历史、尾日没有未来），这样「随机加载某个时间点
 // 及之前的 K 线」才真的能步进起来。
 //
-// 锚点有三种来源：指定时刻（time）、随机（time 留空）、以及「最新」——
-// 最后一种对应界面上的【新增实例（最新）】：锚点就是数据目录里最新的那一根（见 OpenLatest），
-// 因此它之后没有可揭示的行情。三种来源共用同一条加载路径，只有「挑哪一根」不同。
+// 锚点有四种来源：指定时刻（time）、随机（time 留空）、「最新」（OpenLatest）——
+// 对应界面上的【新增实例（最新）】，锚点就是数据目录里最新的那一根；以及「开盘」（OpenSession）——
+// 对应【新增实例（开盘）】，锚点是**随机一个交易日**的开盘首根（判据见 session.go）。
+// 后两种都在这里先算出一个时间，再和指定时刻走同一条加载路径，只有「挑哪一根」不同。
 
 import (
 	"errors"
@@ -131,6 +132,75 @@ func (ds *DataSource) Open(symbol, anchorTime string, history, forwardDays int, 
 // 不是用来往前后推演的 —— 要推演就选一个更早的时间点。
 func (ds *DataSource) OpenLatest(symbol string, history, forwardDays int) (*Instance, error) {
 	return ds.open(symbol, "", true, history, forwardDays, nil)
+}
+
+// OpenSession 以「随机一个交易日的开盘首根」为锚点准备一个实例（界面上的【新增实例（开盘）】）。
+//
+// 为什么是随机的一天：锚在最后一天就等于【新增实例（最新）】—— 之后没有行情可揭示，
+// 练一次就白建一个实例；锚在历史里随机一天，左边天然有一屏历史、右边天然有行情能逐根推演，
+// 而且每点一次都不一样（同一个日子反复练没有意义）。
+//
+// rnd 只决定「挑哪一天」，传 nil 就用当前时间做种子。
+func (ds *DataSource) OpenSession(symbol string, history, forwardDays int, rnd *rand.Rand) (*Instance, error) {
+	if rnd == nil {
+		rnd = rand.New(rand.NewSource(time.Now().UnixNano()))
+	}
+	info, err := ds.resolveFolder(symbol)
+	if err != nil {
+		return nil, err
+	}
+	dir := filepath.Join(ds.Root, info.Folder)
+	files, err := store.DayFiles(dir)
+	if err != nil {
+		return nil, fmt.Errorf("读不了 %s 的目录：%w", info.Folder, err)
+	}
+	if len(files) == 0 {
+		return nil, fmt.Errorf("%s 目录里没有 CSV", info.Folder)
+	}
+	anchor, err := ds.randomSessionOpen(dir, files, rnd)
+	if err != nil {
+		return nil, err
+	}
+	return ds.Open(symbol, anchor, history, forwardDays, nil)
+}
+
+// randomSessionOpen 随机挑一天，返回那天的开盘首根。
+//
+// 首尾各一天排除：首日没有历史可看，尾日之后没有行情（等于【最新】）。
+// 只有尾巴、没有开盘的日子（周六文件：00:00~04:55 是上一个交易日的延续）跳过 —— 判据见 session.go。
+func (ds *DataSource) randomSessionOpen(dir string, files []string, rnd *rand.Rand) (string, error) {
+	lo, hi := 1, len(files)-2
+	if hi < lo {
+		lo, hi = 0, len(files)-1 // 只有一两天数据：没有可挑的余地
+	}
+	span := hi - lo + 1
+	start := lo + rnd.Intn(span)
+	for k := 0; k < span; k++ {
+		d := lo + (start-lo+k)%span
+		rows, _, err := store.ReadDayRows(filepath.Join(dir, files[d]), ds.Loc)
+		if err != nil || len(rows) == 0 {
+			continue
+		}
+		times := make([]string, len(rows))
+		for i, r := range rows {
+			times[i] = r.Time
+		}
+		// 缺口可能落在接缝上（周一开盘那根就是这个文件的第一根），要上一份数据的最后一根
+		if i := sessionOpenIdx(times, ds.prevLastTime(dir, files, d)); i >= 0 {
+			return times[i], nil
+		}
+	}
+	return "", errors.New("数据目录里找不到任何一个交易日的开盘（全是空文件或坏文件）")
+}
+
+// prevLastTime 取 d 之前最近一份有数据的日文件的最后一根时间（接缝上的缺口要拿它比）。
+func (ds *DataSource) prevLastTime(dir string, files []string, d int) string {
+	for p := d - 1; p >= 0; p-- {
+		if pr, _, err := store.ReadDayRows(filepath.Join(dir, files[p]), ds.Loc); err == nil && len(pr) > 0 {
+			return pr[len(pr)-1].Time
+		}
+	}
+	return ""
 }
 
 // open 是 Open / OpenLatest 共用的那一条路径。

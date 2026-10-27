@@ -29,6 +29,9 @@ const (
 	ReqTakeControl    = "take_control"
 	ReqRelease        = "release_control"
 	ReqStep           = "step"
+	// ReqNextOpen 把游标推到下一个交易日的开盘首根（【跳转到下一天开盘】）。
+	// 和 step 分开而不是给它加个开关：它一次会走几百根，日志里也该一眼看出来。
+	ReqNextOpen       = "next_day_open"
 	ReqAnnAdd         = "annotation_add"
 	ReqAnnMove        = "annotation_move"
 	ReqAnnStyle       = "annotation_style" // 改已画好的图形的样式（换模板）：不动端点
@@ -106,6 +109,10 @@ type Request struct {
 	// 为什么不在前端算好时间传过来：最新一根的时刻只存在于 CSV 内容里，文件名只到「哪一天」。
 	// 让前端拼一个 "最后一天 + 某个钟点" 出来，遇到那天提前收市就会指向一根不存在的 K 线。
 	Latest      bool  `json:"latest"`
+	// Session = true 表示锚点取「随机一个交易日的开盘首根」（【新增实例（开盘）】）。
+	// 不看 Time：开盘那根在几点只有读 CSV 才知道（夏令时 6 点、冬令时 7 点）；
+	// 但 Seed 认 —— 它挑哪一天是随机的，得能复现。
+	Session     bool  `json:"session"`
 	Bars        int   `json:"bars"`        // 画布上初始显示多少根（含锚点之前的历史），0 = 默认
 	ForwardDays int   `json:"forwardDays"` // 锚点之后预加载几天，0 = 默认
 	Seed        int64 `json:"seed"`        // 非 0 时随机锚点可复现（测试/复现问题用）

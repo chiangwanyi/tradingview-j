@@ -831,11 +831,13 @@ export const useReplayStore = defineStore('replay', () => {  const socket = new 
    * 新建实例。
    *
    * `latest = true` 走【新增实例（最新）】那条路：锚点由后端取「数据目录里最新的那一根」，
-   * `time` 会被忽略。**不在前端算这个时间** —— 文件名只到「哪一天」，最后一根在几点
-   * （那天可能提前收市）只有读 CSV 才知道，拼一个猜的时刻只会得到「这个时间点不在 CSV 里」。
+   * `session = true` 走【新增实例（开盘）】：锚点取「随机一个交易日的开盘首根」。
+   * 两种模式下 `time` 都会被忽略。**不在前端算这个时间** —— 文件名只到「哪一天」，
+   * 最后一根在几点（那天可能提前收市）、开盘是 6 点还是 7 点（美国夏令时）都只有
+   * 读 CSV 才知道，拼一个猜的时刻只会得到「这个时间点不在 CSV 里」。
    */
-  function createInstance(symbol: string, time: string, latest = false): void {
-    send({ type: 'create_instance', symbol, time, latest, bars: 400, forwardDays: 5 })
+  function createInstance(symbol: string, time: string, latest = false, session = false): void {
+    send({ type: 'create_instance', symbol, time, latest, session, bars: 400, forwardDays: 5 })
   }
 
   function joinInstance(id: string): void {
@@ -854,6 +856,17 @@ export const useReplayStore = defineStore('replay', () => {  const socket = new 
   function step(): void {
     if (!instance.value) return
     send({ type: 'step', instanceId: instance.value.id })
+  }
+
+  /**
+   * 【跳转到下一天开盘】：让后端一路走到下一个交易日的开盘首根。
+   *
+   * 不是前端连点 step：一整天两百多根，来回两百次网络往返既慢又会刷屏。
+   * 后端走完会补一份完整状态下来（那一夜多出来的 K 线跟着一起来），所以这里只管发请求。
+   */
+  function nextDayOpen(): void {
+    if (!instance.value) return
+    send({ type: 'next_day_open', instanceId: instance.value.id })
   }
 
   function takeControl(): void {
@@ -1234,6 +1247,7 @@ export const useReplayStore = defineStore('replay', () => {  const socket = new 
     leaveInstance,
     deleteInstance,
     step,
+    nextDayOpen,
     takeControl,
     releaseControl,
     templatesFor,

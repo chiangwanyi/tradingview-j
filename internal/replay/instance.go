@@ -678,6 +678,29 @@ func finitePositive(v float64) bool {
 	return !math.IsNaN(v) && !math.IsInf(v, 0) && v > 0 && v < 1e12
 }
 
+// jumpToNextOpen 把游标一路推到下一个交易日的开盘首根（界面上的【跳转到下一天开盘】）。
+//
+// 中间那几百根**逐根 advance**，不是直接把游标挪过去：一整夜里挂单照样会成交、
+// 止损照样会触发，跳过去等于把这些成交悄悄抹掉（而回放里的盈亏还是照算的）。
+// 走完之后由 hub 广播一次，界面上只看到「到了下一天开盘」这一步。
+//
+// 判据和【新增实例（开盘）】同一个（isSessionOpen）：和前一根隔着停盘缺口的那根。
+func (inst *Instance) jumpToNextOpen(ds *DataSource) (Bar, []Trade, error) {
+	var fills []Trade
+	// 数据里要是根本没有缺口（不该发生），走到 3000 根就停：一次请求不该读完整份数据。
+	for guard := 0; guard < 3000; guard++ {
+		_, f, err := inst.advance(ds)
+		if err != nil {
+			return Bar{}, nil, err
+		}
+		fills = append(fills, f...)
+		if inst.Cursor > 0 && isSessionOpen(inst.Bars[inst.Cursor-1].Time, inst.Bars[inst.Cursor].Time) {
+			return inst.currentBar(), fills, nil
+		}
+	}
+	return Bar{}, nil, errors.New("往后 3000 根里都没有停盘缺口，找不到下一天的开盘")
+}
+
 // advance 揭示下一根 K 线，并按这根 K 线的最高/最低价撮合挂单。
 //
 // 撮合方式（刻意做得很朴素，都写在文档里）：

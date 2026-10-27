@@ -487,6 +487,20 @@ onBeforeUnmount(() => {
     </button>
 
     <!--
+      【下一天开盘】：一步走到下一个交易日的第 1 根（按开盘时间认，见后端 session.go）。
+      中间那一夜也是逐根撮合过去的 —— 夜里挂单会成交、止损会触发，跳过就把这些成交抹了。
+    -->
+    <button
+      type="button"
+      :class="[btn, btnIdle]"
+      :disabled="!canEdit || !store.instance || (store.instance?.bars.length ?? 0) === 0"
+      title="跳到下一个交易日的第 1 根 K 线（按开盘时间，不是 0 点；中间那一夜会逐根撮合挂单）"
+      @click="store.nextDayOpen()"
+    >
+      下一天开盘
+    </button>
+
+    <!--
       这里**没有【录制】按钮**（v0.18.0 删掉了）：交易记录是自动的 ——
       仓位从空仓变成有仓的那一刻开始记，回到空仓的那一刻收尾。
     -->

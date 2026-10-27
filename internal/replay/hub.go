@@ -204,6 +204,8 @@ func (h *Hub) Handle(c *Client, raw []byte) {
 		h.handleRelease(c, req)
 	case ReqStep:
 		h.handleStep(c, req)
+	case ReqNextOpen:
+		h.handleNextOpen(c, req)
 	case ReqAnnAdd:
 		h.handleAnnotationAdd(c, req)
 	case ReqAnnMove:
@@ -308,11 +310,15 @@ func (h *Hub) handleCreate(c *Client, req Request) {
 	}
 	// Latest（【新增实例（最新）】）时锚点由数据决定，Time / Seed 一律不看：
 	// 让这两个字段还生效会出现「填了时间却被忽略」的歧义，不如在协议层就定死优先级。
+	// Session（【新增实例（开盘）】）照旧不看 Time，但 **Seed 要认**：它挑哪一天是随机的。
 	var inst *Instance
 	var err error
-	if req.Latest {
+	switch {
+	case req.Session:
+		inst, err = h.ds.OpenSession(req.Symbol, req.Bars, req.ForwardDays, rnd)
+	case req.Latest:
 		inst, err = h.ds.OpenLatest(req.Symbol, req.Bars, req.ForwardDays)
-	} else {
+	default:
 		inst, err = h.ds.Open(req.Symbol, strings.TrimSpace(req.Time), req.Bars, req.ForwardDays, rnd)
 	}
 	if err != nil {
@@ -430,6 +436,20 @@ func (h *Hub) handleStep(c *Client, req Request) {
 		return
 	}
 	if err := h.doStepLocked(inst, c.Name); err != nil {
+		h.fail(c, req, err.Error())
+	}
+}
+
+// handleNextOpen 处理【跳转到下一天开盘】：把游标推到下一个交易日的开盘首根。
+func (h *Hub) handleNextOpen(c *Client, req Request) {
+	inst, ok := h.instanceLocked(c, req)
+	if !ok {
+		return
+	}
+	if !h.requireOperatorLocked(c, req, inst) {
+		return
+	}
+	if err := h.doNextOpenLocked(inst, c.Name); err != nil {
 		h.fail(c, req, err.Error())
 	}
 }
@@ -608,15 +628,33 @@ func (h *Hub) handleOrderFlatAll(c *Client, req Request) {
 // ---------------- 操作实现（真人 / 机器人共用） ----------------
 
 // doStepLocked 推进一根 K 线。
+func (h *Hub) doStepLocked(inst *Instance, by string) error {
+	return h.moveLocked(inst, by, func() (Bar, []Trade, error) { return inst.advance(h.ds) })
+}
+
+// doNextOpenLocked 跳到下一个交易日的开盘首根（【跳转到下一天开盘】）。
 //
-// 抓快照（captureTradeBaseLocked）必须在 advance **之前**：这一根可能撮合挂单、
+// 广播之后还要给这个实例里的每个人重发一份完整状态：bar_advanced 只带**一根** K 线
+// （前端是 append），而这里一口气越过了一整夜 —— 不补一份完整状态，画布上那一夜是空的。
+func (h *Hub) doNextOpenLocked(inst *Instance, by string) error {
+	if err := h.moveLocked(inst, by, func() (Bar, []Trade, error) { return inst.jumpToNextOpen(h.ds) }); err != nil {
+		return err
+	}
+	h.broadcastStateLocked(inst)
+	return nil
+}
+
+// moveLocked 是「游标往前走」这一类动作的唯一出口：抓开仓前快照 -> 推进 -> 一条广播。
+// 一次走一根（【下一根】）和一次走一夜（【跳转到下一天开盘】）只差推进那一步。
+//
+// 抓快照（captureTradeBaseLocked）必须在推进**之前**：这一段里可能撮合挂单、
 // 把空仓变成有仓，而交易记录的第 1 步要的是「开仓成交之前的那一屏」。
 // 只有真的挂着单才抓 —— 没有挂单就不可能有成交，省下一次几百根 K 线的拷贝。
-func (h *Hub) doStepLocked(inst *Instance, by string) error {
+func (h *Hub) moveLocked(inst *Instance, by string, move func() (Bar, []Trade, error)) error {
 	if openOrderCount(inst) > 0 {
 		h.captureTradeBaseLocked(inst)
 	}
-	bar, fills, err := inst.advance(h.ds)
+	bar, fills, err := move()
 	if err != nil {
 		inst.pendingBase = nil
 		return err
@@ -980,6 +1018,24 @@ func (h *Hub) broadcastInstanceLocked(inst *Instance, action string, payload any
 
 func (h *Hub) broadcastMembersLocked(inst *Instance) {
 	h.broadcastInstanceLocked(inst, ActMembersChanged, MembersChangedPayload{Members: h.membersLocked(inst)}, "system")
+}
+
+// broadcastStateLocked 给这个实例里的每个人重发一份完整状态。
+//
+// 只给「一次走了很多根」的动作用（跳转到下一天开盘）：正常步进的增量广播
+// （bar_advanced 一根）就够，重发整份状态（几百根 K 线）是白花带宽。
+func (h *Hub) broadcastStateLocked(inst *Instance) {
+	snap := inst.snapshot(h.membersLocked(inst))
+	for _, c := range h.clients {
+		if c.InstanceID != inst.ID {
+			continue
+		}
+		h.reply(c, InstanceStateMsg{
+			Type:     MsgInstanceState,
+			You:      You{ClientID: c.ID, Name: c.Name, Operator: inst.Operator == c.Name},
+			Instance: snap,
+		})
+	}
 }
 
 func (h *Hub) broadcastInstancesLocked() {

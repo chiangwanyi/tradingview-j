@@ -589,3 +589,60 @@ func TestMoveOrderOverProtocol(t *testing.T) {
 		t.Fatalf("全量列表里也应当是 97.5：%v", list)
 	}
 }
+
+// 【新增实例（开盘）】走 create_instance 的 session 开关：锚点是**随机一天**的第一根，
+// 而不是最新那一根 —— 所以它后面还有行情可以揭示，而且每次点都可能换一天。
+func TestCreateSessionInstanceAnchorsAtDayOpen(t *testing.T) {
+	hub, _ := newTestHub(t, 5) // 01-05 ~ 01-09，每天 09:00 ~ 11:00
+	a := newFakeClient(t, hub)
+	a.waitFor(MsgWelcome)
+
+	anchors := map[string]bool{}
+	for seed := 1; seed <= 5; seed++ {
+		a.send(hub, map[string]any{
+			"type": "create_instance", "symbol": testSymbol, "seed": seed,
+			"session": true, "time": "2026-01-06 10:00", "bars": 40, "forwardDays": 1,
+		})
+		inst := a.waitFor(MsgInstanceState)["instance"].(map[string]any)
+		anchor, _ := inst["anchor"].(string)
+		// 首尾两天不参选（01-05 没历史、01-09 是尾日），且必须是当天的第 1 根
+		if anchor != "2026-01-06 09:00" && anchor != "2026-01-07 09:00" && anchor != "2026-01-08 09:00" {
+			t.Fatalf("开盘模式的锚点应当是中间某天的 09:00，实际 %q", anchor)
+		}
+		if inst["hiddenBars"].(float64) == 0 {
+			t.Fatalf("开盘模式之后应当还有行情可揭示：%v", inst)
+		}
+		anchors[anchor] = true
+	}
+	if len(anchors) < 2 {
+		t.Fatalf("5 个种子都落在同一天（%v），随机没有生效", anchors)
+	}
+}
+
+// 【跳转到下一天开盘】走 next_day_open：一步到下一个交易日的第一根，
+// 然后补一份完整状态下来（前端就是靠它把那一夜的 K 线补齐的）。
+func TestNextDayOpenJumpsAndResendsState(t *testing.T) {
+	hub, _ := newTestHub(t, 5)
+	a := newFakeClient(t, hub)
+	a.waitFor(MsgWelcome)
+
+	id := createInstance(t, hub, a, "2026-01-06 10:00")
+	a.drain()
+	a.send(hub, map[string]any{"type": "next_day_open", "instanceId": id})
+
+	ev := a.waitAction(ActBarAdvanced)
+	p := ev["payload"].(map[string]any)
+	if want := "2026-01-07 09:00"; p["bar"].(map[string]any)["time"] != want {
+		t.Fatalf("应当跳到 %s，实际 %v", want, p["bar"].(map[string]any)["time"])
+	}
+
+	st := a.waitFor(MsgInstanceState)
+	inst := st["instance"].(map[string]any)
+	bars := inst["bars"].([]any)
+	if want := int(p["cursor"].(float64)) + 1; len(bars) != want {
+		t.Fatalf("补齐后的快照应当有 %d 根（游标 + 1），实际 %d", want, len(bars))
+	}
+	if last := bars[len(bars)-1].(map[string]any)["time"]; last != "2026-01-07 09:00" {
+		t.Fatalf("快照最后一根应当是开盘那根，实际 %v", last)
+	}
+}
