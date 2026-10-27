@@ -813,6 +813,9 @@ type RecordingStore struct {
 	mu    sync.Mutex
 	dir   string
 	items []RecordingSummary
+	// ds 是数据目录，只用来在 Load 时把「只有时间」的盘面 K 线补成完整 OHLC
+	// （见 hydrateBase）。没有它记录照样能读写，只是读不回 K 线 —— 那时 Load 会直说。
+	ds *DataSource
 	// live 是「已经开始、还没提交」的记录 id。
 	//
 	// 进行中语音已经写进磁盘了（预览播放走 HTTP，HTTP 只认磁盘），
@@ -850,6 +853,14 @@ func OpenRecordingStore(dir string, logf func(format string, args ...any)) (*Rec
 
 // Enabled 表示记录会不会落盘。
 func (s *RecordingStore) Enabled() bool { return s != nil && s.dir != "" }
+
+// SetDataSource 交给她数据目录（Load 时按时间补全盘面 K 线用）。可以传 nil。
+func (s *RecordingStore) SetDataSource(ds *DataSource) {
+	if s == nil {
+		return
+	}
+	s.ds = ds
+}
 
 // Dir 是记录目录（空 = 没配置）。
 func (s *RecordingStore) Dir() string {
@@ -1015,7 +1026,7 @@ func (s *RecordingStore) Save(rec *Recording, audios []pendingAudio) (RecordingS
 			}
 		}
 	}
-	if err := writeJSONAtomic(filepath.Join(folder, recordingFileName), rec); err != nil {
+	if err := writeJSONAtomic(filepath.Join(folder, recordingFileName), recordingForDisk(rec)); err != nil {
 		return RecordingSummary{}, fmt.Errorf("写 %s 失败：%w", recordingFileName, err)
 	}
 	if fi, err := os.Stat(filepath.Join(folder, recordingFileName)); err == nil {
@@ -1099,7 +1110,7 @@ func (s *RecordingStore) UpdateRecording(rec *Recording) (RecordingSummary, erro
 	if len(rec.Tags) == 0 {
 		rec.Tags = s.tagsOf(rec.ID)
 	}
-	if err := writeJSONAtomic(filepath.Join(folder, recordingFileName), rec); err != nil {
+	if err := writeJSONAtomic(filepath.Join(folder, recordingFileName), recordingForDisk(rec)); err != nil {
 		return RecordingSummary{}, fmt.Errorf("写 %s 失败：%w", recordingFileName, err)
 	}
 	sum := rec.RecordingSummary
@@ -1164,6 +1175,63 @@ func (s *RecordingStore) upsertLocked(sum RecordingSummary) {
 	sortSummaries(s.items)
 }
 
+// ---------------------------------------------------------------------------
+// recording.json 的磁盘形状：盘面 K 线只存时间
+// ---------------------------------------------------------------------------
+
+// recordingForDisk 返回「落盘用的那一份」：盘面的 K 线换成时间索引，其余原样。
+//
+// 为什么不直接写 Bars：那几百根 K 线的 OHLC 在数据目录的日文件里本来就有，
+// 一份数据存两遍的代价是实打实的（实测一条记录 300KB 里 90KB 是它）。
+// 换成一串时间（700 根 ≈ 14KB）之后，读取时按时间补齐（hydrateBase），
+// **依赖 base.bars 的代码一行都不用改** —— 回放、延伸、前端看到的仍是完整 K 线。
+//
+// 代价要说清楚：记录不再自带行情，打开时必须能读到对应标的的数据目录。
+// 数据被清理了就不会「悄悄画一张空图」，而是 Load 直接报一句人话（见 hydrateBase）。
+func recordingForDisk(rec *Recording) *Recording {
+	cp := *rec // 只拷结构：Base 是值字段，改它不会动到调用方手里那份
+	if len(rec.Base.Bars) == 0 {
+		return &cp
+	}
+	cp.Base.Bars = nil
+	cp.Base.BarTimes = make([]string, 0, len(rec.Base.Bars))
+	for _, b := range rec.Base.Bars {
+		cp.Base.BarTimes = append(cp.Base.BarTimes, b.Time)
+	}
+	return &cp
+}
+
+// hydrateBase 把「只有时间」的盘面 K 线补成完整 OHLC（recordingForDisk 的逆运算）。
+//
+// 旧文件（bars 直接在文件里）什么都不做 —— 于是「旧记录能读」不需要迁移脚本：
+// 它下一次落盘（收尾、延伸、录音）就会自动写成时间索引。
+func (s *RecordingStore) hydrateBase(rec *Recording) error {
+	if rec == nil || len(rec.Base.BarTimes) == 0 {
+		return nil
+	}
+	times := rec.Base.BarTimes
+	rec.Base.BarTimes = nil
+	if len(rec.Base.Bars) > 0 {
+		return nil // 两种都在（理论上不会）：文件里那份更直接，不动它
+	}
+	if s.ds == nil {
+		return errors.New("这条记录的盘面 K 线存在数据目录里，但当前没有数据目录（config.json 的 dataDir）")
+	}
+	bars, missing := s.ds.BarsAtTimes(rec.Folder, times)
+	if len(bars) == 0 {
+		return fmt.Errorf("记录 %s 的 %d 根盘面 K 线在数据目录里一根都找不到（%s 这个标的的数据被清理过？）",
+			rec.ID, len(times), rec.Folder)
+	}
+	if missing > 0 {
+		s.logf("[replay] 记录 %s 的盘面少了 %d 根（数据目录里找不到），游标之后的图形可能对不上", rec.ID, missing)
+	}
+	rec.Base.Bars = bars
+	// Base 的 K 线永远是「已揭示的前缀」（trade.go: tradeBase 拷到 cursor 为止），
+	// 所以游标就是最后一根 —— 缺了几根时按实际长度重新落位，不会指到外面去。
+	rec.Base.Cursor = len(bars) - 1
+	return nil
+}
+
 // Load 读一条记录的全部内容。
 //
 // 旧格式（format<2）明确报错而不是「尽力读」：它的 Steps 是「一根 K 线一段」，
@@ -1191,6 +1259,10 @@ func (s *RecordingStore) Load(id string) (*Recording, error) {
 	if rec.Format != RecordingFormat {
 		return nil, fmt.Errorf("记录 %s 是旧格式（按 K 线分步），当前版本不再兼容；删掉 %s 下对应目录即可",
 			id, s.dir)
+	}
+	// 盘面 K 线只存了时间：从数据目录补回来（旧文件里本来就带着，这里什么都不做）
+	if err := s.hydrateBase(&rec); err != nil {
+		return nil, err
 	}
 	// v0.18.0 之前落盘的文件没有 stats：按事件流反推一份，
 	// 否则列表/详情里那一笔交易的盈亏会是 0 —— 看起来像算错了。
@@ -1472,6 +1544,8 @@ func folderSize(dir string) int64 {
 // 不影响服务起来 —— 目录不可写不该让整个复盘服务罢工。
 func (h *Hub) EnableRecordings(dir string) error {
 	st, err := OpenRecordingStore(dir, h.log)
+	// 记录里的盘面只存时间，读的时候要能从数据目录补回 OHLC（见 hydrateBase）
+	st.SetDataSource(h.ds)
 	h.mu.Lock()
 	h.records = st
 	h.mu.Unlock()

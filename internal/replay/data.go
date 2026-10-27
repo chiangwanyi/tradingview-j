@@ -390,6 +390,57 @@ func toBar(r store.TimeBar) Bar {
 	}
 }
 
+// BarsAtTimes 按 times 的顺序把 K 线从数据目录取回来，同时报告有几根找不到。
+//
+// 交易记录的 recording.json 只存时间、不存 OHLC（见 recording.go 的 recordingForDisk）：
+// 那几百根 K 线本来就在日文件里，打开记录时从这里补齐。按日期分组、一天只读一次，
+// 700 多根通常只落在三四个日文件里，代价和打开一个实例差不多。
+//
+// 找不到的根数要如实返回：数据目录被清理过时，调用方得知道盘面是残缺的。
+func (ds *DataSource) BarsAtTimes(folder string, times []string) ([]Bar, int) {
+	out := make([]Bar, 0, len(times))
+	if ds == nil || len(times) == 0 {
+		return out, len(times)
+	}
+	info, err := ds.resolveFolder(folder)
+	if err != nil {
+		return out, len(times)
+	}
+	dir := filepath.Join(ds.Root, info.Folder)
+	days := map[string]map[string]Bar{}
+	missing := 0
+	for _, t := range times {
+		date, ok := anchorDate(t)
+		if !ok {
+			missing++
+			continue
+		}
+		day, seen := days[date]
+		if !seen {
+			day = map[string]Bar{}
+			// 日文件不存在 / 读不了都不报错：查不到就是「这根缺失」，由下面的计数说话
+			if rows, _, rerr := store.ReadDayRows(filepath.Join(dir, date+".csv"), ds.Loc); rerr == nil {
+				for _, r := range rows {
+					day[r.Time] = toBar(r)
+				}
+			}
+			days[date] = day
+		}
+		b, ok := day[t]
+		if !ok {
+			missing++
+			continue
+		}
+		out = append(out, b)
+	}
+	// EMA20 重算一遍就够了：记录里的 base.bars 一直是「已揭示的前缀」，序列一模一样，
+	// 而 EMA 只依赖前面的收盘价，所以算出来的值和当时存下来的逐根相同。
+	if len(out) > 0 {
+		computeIndicators(out)
+	}
+	return out, missing
+}
+
 func rowsToBars(rows []store.TimeBar) []Bar {
 	out := make([]Bar, 0, len(rows))
 	for _, r := range rows {

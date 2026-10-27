@@ -458,7 +458,7 @@ func (h *Hub) checkpointTrades() {
 		}
 		inst.trade.dirty = false
 		sum, cp := inst.trade.draft()
-		buf, err := json.Marshal(cp)
+		buf, err := json.Marshal(recordingForDisk(cp))
 		if err != nil {
 			h.log("[replay] 交易记录 %s 的检查点序列化失败：%v", sum.ID, err)
 			continue

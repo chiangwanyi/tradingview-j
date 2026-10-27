@@ -29,8 +29,10 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
+	"time"
 )
 
 // ---------------------------------------------------------------------------
@@ -742,6 +744,7 @@ func TestTradeRecordingSurvivesInstanceDeletion(t *testing.T) {
 	if err != nil {
 		t.Fatalf("打开记录目录失败：%v", err)
 	}
+	st.SetDataSource(hub.ds) // 盘面 K 线只存时间，读回来要数据目录补 OHLC
 	items := st.List()
 	if len(items) != 1 {
 		t.Fatalf("重新扫描后应当还有 1 条记录，实际 %d", len(items))
@@ -1405,5 +1408,93 @@ func TestRecordingBackfillsPreOpenVoice(t *testing.T) {
 	again, _ := a.waitFor(MsgRecording)["recording"].(map[string]any)
 	if list, _ := again["audios"].([]any); len(list) != 1 {
 		t.Fatalf("补齐应当只做一次，第二次打开却变成 %d 条", len(list))
+	}
+}
+
+// TestRecordingBarsStoredAsTimeIndex 钉住 v0.28.0 的落盘形状：盘面 K 线只存时间。
+//
+// 三件事一起验，因为它们是同一件事的三个面：
+//
+//  1. recording.json 的 base 里没有 bars，只有 barTimes（文件小了三成）
+//  2. Load 出来的 bars 和当时盘面**逐根相同**（回放/延伸/前端一行都不用改）
+//  3. 数据目录不见了就直说「一根都找不到」，而不是悄悄给一张空盘面
+func TestRecordingBarsStoredAsTimeIndex(t *testing.T) {
+	hub, root := newTestHub(t, 3)
+	recDir := t.TempDir()
+	if err := hub.EnableRecordings(recDir); err != nil {
+		t.Fatalf("启用交易记录目录失败：%v", err)
+	}
+	a := newFakeClient(t, hub)
+	a.waitFor(MsgWelcome)
+	instID := createInstance(t, hub, a, "2026-01-05 10:00")
+	inst := mustInstance(t, hub, instID)
+	marketOrder(t, hub, a, instID, "buy", 1)
+	want := append([]Bar(nil), inst.Bars[:inst.Cursor+1]...)
+
+	// 删实例 = 这一笔被收尾落盘（和「程序退出」走同一条 Save）
+	a.send(hub, map[string]any{"type": "delete_instance", "instanceId": instID})
+	recID, _ := a.waitFor(MsgTradeRecorded)["recording"].(map[string]any)["id"].(string)
+	if recID == "" {
+		t.Fatal("没有拿到记录 id")
+	}
+
+	path := filepath.Join(recDir, recordingFolder(recID), recordingFileName)
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("记录没有落盘：%v", err)
+	}
+	var onDisk struct {
+		Base struct {
+			Bars     []json.RawMessage `json:"bars"`
+			BarTimes []string          `json:"barTimes"`
+		} `json:"base"`
+	}
+	if err := json.Unmarshal(raw, &onDisk); err != nil {
+		t.Fatalf("落盘的不是合法 JSON：%v", err)
+	}
+	if len(onDisk.Base.Bars) != 0 {
+		t.Fatalf("recording.json 里不该再存整份 bars（实际 %d 条）", len(onDisk.Base.Bars))
+	}
+	if len(onDisk.Base.BarTimes) != len(want) {
+		t.Fatalf("barTimes 应当有 %d 个时间，实际 %d", len(want), len(onDisk.Base.BarTimes))
+	}
+	for i, b := range want {
+		if onDisk.Base.BarTimes[i] != b.Time {
+			t.Fatalf("第 %d 个时间不对：%s != %s", i, onDisk.Base.BarTimes[i], b.Time)
+		}
+	}
+	// 时间清单占的字节远小于整份 K 线：这条是「改造真的省了地方」的用量尺
+	if size := len(raw); size > 60*1024 {
+		t.Fatalf("记录应当明显变小（盘面只存时间），实际 %d 字节", size)
+	}
+
+	// ---- 读回来：按时间从数据目录补全，和当时盘面逐根相同 ----
+	st, err := OpenRecordingStore(recDir, t.Logf)
+	if err != nil {
+		t.Fatalf("重开记录目录失败：%v", err)
+	}
+	st.SetDataSource(NewDataSource(root, time.Local))
+	rec, err := st.Load(recID)
+	if err != nil {
+		t.Fatalf("读回记录失败：%v", err)
+	}
+	if rec.Base.Cursor != inst.Cursor {
+		t.Fatalf("游标应当还是 %d，实际 %d", inst.Cursor, rec.Base.Cursor)
+	}
+	if !reflect.DeepEqual(rec.Base.Bars, want) {
+		t.Fatalf("补回来的盘面和她当时看到的不一样：前 3 根 %+v vs %+v", rec.Base.Bars[:3], want[:3])
+	}
+
+	// ---- 数据目录没了：直说找不到，不画空盘面 ----
+	if err := os.RemoveAll(root); err != nil {
+		t.Fatalf("删测试数据目录失败：%v", err)
+	}
+	st2, err := OpenRecordingStore(recDir, t.Logf)
+	if err != nil {
+		t.Fatalf("重开记录目录失败：%v", err)
+	}
+	st2.SetDataSource(NewDataSource(root, time.Local))
+	if _, err := st2.Load(recID); err == nil || !strings.Contains(err.Error(), "一根都找不到") {
+		t.Fatalf("数据目录没了应当直说，实际 %v", err)
 	}
 }

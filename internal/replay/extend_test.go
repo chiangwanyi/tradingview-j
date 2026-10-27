@@ -137,6 +137,7 @@ func TestRecordingExtendPersists(t *testing.T) {
 	if err != nil {
 		t.Fatalf("重开记录目录失败：%v", err)
 	}
+	reopened.SetDataSource(hub.ds) // 盘面 K 线只存时间，读回来要数据目录补 OHLC
 	rec, err := reopened.Load(recID)
 	if err != nil {
 		t.Fatalf("读不回来：%v", err)
@@ -265,6 +266,7 @@ func TestRecordingExtendVoice(t *testing.T) {
 	if err != nil {
 		t.Fatalf("重开记录目录失败：%v", err)
 	}
+	reopened.SetDataSource(hub.ds) // 盘面 K 线只存时间，读回来要数据目录补 OHLC
 	rec, err := reopened.Load(recID)
 	if err != nil {
 		t.Fatalf("读不回来：%v", err)

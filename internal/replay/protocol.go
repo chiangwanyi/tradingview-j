@@ -901,8 +901,18 @@ type Recording struct {
 // 才有可能看清楚。如果 Base 取成开仓之后，回放的第一帧就已经带着仓位，
 // 入场那一下永远不会出现。
 type RecordingBase struct {
-	Cursor        int          `json:"cursor"`
-	Bars          []Bar        `json:"bars"`
+	Cursor int `json:"cursor"`
+	// Bars 是**内存里**的完整盘面（回放、延伸、前端 buildState 全都只认它）。
+	//
+	// 落盘时它会被换成 BarTimes（见 recording.go 的 recordingForDisk）：OHLC 本来就在
+	// 数据目录的日文件里，一份数据不必存两遍。所以「文件里没有 bars」是正常形态，
+	// 不是记录坏了 —— 读回来时按时间补齐。
+	Bars []Bar `json:"bars,omitempty"`
+	// BarTimes 只在 recording.json 里出现：盘面上那几根 K 线的时间，按顺序排。
+	//
+	// 它是**内容清单**而不只是首尾范围：数据目录被清理过时能看出缺了哪几根，
+	// 而不是悄悄把中间的缺口抹掉（那样游标、图形、语音会集体错位）。
+	BarTimes      []string     `json:"barTimes,omitempty"`
 	Annotations   []Annotation `json:"annotations"`
 	Orders        []Order      `json:"orders"`
 	Trades        []Trade      `json:"trades"`
