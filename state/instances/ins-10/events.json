@@ -1,186 +1,38 @@
 [
   {
-    "seq": 17,
-    "at": 1793110074,
-    "by": "human",
-    "action": "bar_advanced",
-    "payload": {
-      "bar": {
-        "time": "2025-07-31 03:25",
-        "open": 24676,
-        "high": 24695,
-        "low": 24665.75,
-        "close": 24684,
-        "volume": 12745,
-        "ema20": 24759.26823641961
-      },
-      "cursor": 593,
-      "hiddenBars": 1338,
-      "hasMore": true,
-      "orders": [],
-      "trades": [],
-      "closedLots": null,
-      "position": {
-        "quantity": 0,
-        "side": "flat",
-        "averagePrice": 0
-      },
-      "realizedPnl": 0,
-      "unrealizedPnl": 0,
-      "fills": [],
-      "voice": {
-        "barTime": "2025-07-31 03:25",
-        "clips": [],
-        "total": 0,
-        "max": 9
-      }
-    }
-  },
-  {
-    "seq": 18,
-    "at": 1793110074,
-    "by": "human",
-    "action": "bar_advanced",
-    "payload": {
-      "bar": {
-        "time": "2025-07-31 03:30",
-        "open": 24683.5,
-        "high": 24715,
-        "low": 24681.5,
-        "close": 24702,
-        "volume": 13013,
-        "ema20": 24753.814118665363
-      },
-      "cursor": 594,
-      "hiddenBars": 1337,
-      "hasMore": true,
-      "orders": [],
-      "trades": [],
-      "closedLots": null,
-      "position": {
-        "quantity": 0,
-        "side": "flat",
-        "averagePrice": 0
-      },
-      "realizedPnl": 0,
-      "unrealizedPnl": 0,
-      "fills": [],
-      "voice": {
-        "barTime": "2025-07-31 03:30",
-        "clips": [],
-        "total": 0,
-        "max": 9
-      }
-    }
-  },
-  {
-    "seq": 19,
-    "at": 1793110075,
-    "by": "human",
-    "action": "bar_advanced",
-    "payload": {
-      "bar": {
-        "time": "2025-07-31 03:35",
-        "open": 24701.75,
-        "high": 24712.75,
-        "low": 24679.5,
-        "close": 24681.5,
-        "volume": 9543,
-        "ema20": 24746.927059744856
-      },
-      "cursor": 595,
-      "hiddenBars": 1336,
-      "hasMore": true,
-      "orders": [],
-      "trades": [],
-      "closedLots": null,
-      "position": {
-        "quantity": 0,
-        "side": "flat",
-        "averagePrice": 0
-      },
-      "realizedPnl": 0,
-      "unrealizedPnl": 0,
-      "fills": [],
-      "voice": {
-        "barTime": "2025-07-31 03:35",
-        "clips": [],
-        "total": 0,
-        "max": 9
-      }
-    }
-  },
-  {
-    "seq": 20,
-    "at": 1793110075,
-    "by": "human",
-    "action": "bar_advanced",
-    "payload": {
-      "bar": {
-        "time": "2025-07-31 03:40",
-        "open": 24681.25,
-        "high": 24710,
-        "low": 24672,
-        "close": 24682.5,
-        "volume": 12113,
-        "ema20": 24740.791149292967
-      },
-      "cursor": 596,
-      "hiddenBars": 1335,
-      "hasMore": true,
-      "orders": [],
-      "trades": [],
-      "closedLots": null,
-      "position": {
-        "quantity": 0,
-        "side": "flat",
-        "averagePrice": 0
-      },
-      "realizedPnl": 0,
-      "unrealizedPnl": 0,
-      "fills": [],
-      "voice": {
-        "barTime": "2025-07-31 03:40",
-        "clips": [],
-        "total": 0,
-        "max": 9
-      }
-    }
-  },
-  {
     "seq": 21,
     "at": 1793110075,
     "by": "human",
     "action": "bar_advanced",
     "payload": {
       "bar": {
-        "time": "2025-07-31 03:45",
-        "open": 24682.25,
+        "close": 24712.25,
+        "ema20": 24738.0729445984,
         "high": 24724.25,
         "low": 24682,
-        "close": 24712.25,
-        "volume": 13966,
-        "ema20": 24738.0729445984
+        "open": 24682.25,
+        "time": "2025-07-31 03:45",
+        "volume": 13966
       },
-      "cursor": 597,
-      "hiddenBars": 1334,
-      "hasMore": true,
-      "orders": [],
-      "trades": [],
       "closedLots": null,
+      "cursor": 597,
+      "fills": [],
+      "hasMore": true,
+      "hiddenBars": 1334,
+      "orders": [],
       "position": {
+        "averagePrice": 0,
         "quantity": 0,
-        "side": "flat",
-        "averagePrice": 0
+        "side": "flat"
       },
       "realizedPnl": 0,
+      "trades": [],
       "unrealizedPnl": 0,
-      "fills": [],
       "voice": {
         "barTime": "2025-07-31 03:45",
         "clips": [],
-        "total": 0,
-        "max": 9
+        "max": 9,
+        "total": 0
       }
     }
   },
@@ -191,33 +43,33 @@
     "action": "bar_advanced",
     "payload": {
       "bar": {
-        "time": "2025-07-31 03:50",
-        "open": 24712.5,
+        "close": 24742.75,
+        "ema20": 24738.518378446173,
         "high": 24755.75,
         "low": 24712.25,
-        "close": 24742.75,
-        "volume": 18976,
-        "ema20": 24738.518378446173
+        "open": 24712.5,
+        "time": "2025-07-31 03:50",
+        "volume": 18976
       },
-      "cursor": 598,
-      "hiddenBars": 1333,
-      "hasMore": true,
-      "orders": [],
-      "trades": [],
       "closedLots": null,
+      "cursor": 598,
+      "fills": [],
+      "hasMore": true,
+      "hiddenBars": 1333,
+      "orders": [],
       "position": {
+        "averagePrice": 0,
         "quantity": 0,
-        "side": "flat",
-        "averagePrice": 0
+        "side": "flat"
       },
       "realizedPnl": 0,
+      "trades": [],
       "unrealizedPnl": 0,
-      "fills": [],
       "voice": {
         "barTime": "2025-07-31 03:50",
         "clips": [],
-        "total": 0,
-        "max": 9
+        "max": 9,
+        "total": 0
       }
     }
   },
@@ -228,33 +80,33 @@
     "action": "bar_advanced",
     "payload": {
       "bar": {
-        "time": "2025-07-31 03:55",
-        "open": 24742.75,
+        "close": 24773.5,
+        "ema20": 24741.8499614513,
         "high": 24779.75,
         "low": 24721.25,
-        "close": 24773.5,
-        "volume": 20169,
-        "ema20": 24741.8499614513
+        "open": 24742.75,
+        "time": "2025-07-31 03:55",
+        "volume": 20169
       },
-      "cursor": 599,
-      "hiddenBars": 1332,
-      "hasMore": true,
-      "orders": [],
-      "trades": [],
       "closedLots": null,
+      "cursor": 599,
+      "fills": [],
+      "hasMore": true,
+      "hiddenBars": 1332,
+      "orders": [],
       "position": {
+        "averagePrice": 0,
         "quantity": 0,
-        "side": "flat",
-        "averagePrice": 0
+        "side": "flat"
       },
       "realizedPnl": 0,
+      "trades": [],
       "unrealizedPnl": 0,
-      "fills": [],
       "voice": {
         "barTime": "2025-07-31 03:55",
         "clips": [],
-        "total": 0,
-        "max": 9
+        "max": 9,
+        "total": 0
       }
     }
   },
@@ -265,33 +117,33 @@
     "action": "bar_advanced",
     "payload": {
       "bar": {
-        "time": "2025-07-31 04:00",
-        "open": 24772.75,
+        "close": 24859.25,
+        "ema20": 24753.030917503555,
         "high": 24899.25,
         "low": 24761,
-        "close": 24859.25,
-        "volume": 26341,
-        "ema20": 24753.030917503555
+        "open": 24772.75,
+        "time": "2025-07-31 04:00",
+        "volume": 26341
       },
-      "cursor": 600,
-      "hiddenBars": 1331,
-      "hasMore": true,
-      "orders": [],
-      "trades": [],
       "closedLots": null,
+      "cursor": 600,
+      "fills": [],
+      "hasMore": true,
+      "hiddenBars": 1331,
+      "orders": [],
       "position": {
+        "averagePrice": 0,
         "quantity": 0,
-        "side": "flat",
-        "averagePrice": 0
+        "side": "flat"
       },
       "realizedPnl": 0,
+      "trades": [],
       "unrealizedPnl": 0,
-      "fills": [],
       "voice": {
         "barTime": "2025-07-31 04:00",
         "clips": [],
-        "total": 0,
-        "max": 9
+        "max": 9,
+        "total": 0
       }
     }
   },
@@ -302,33 +154,33 @@
     "action": "bar_advanced",
     "payload": {
       "bar": {
-        "time": "2025-07-31 04:05",
-        "open": 24860,
+        "close": 24939.75,
+        "ema20": 24770.813687265123,
         "high": 24948,
         "low": 24856,
-        "close": 24939.75,
-        "volume": 27648,
-        "ema20": 24770.813687265123
+        "open": 24860,
+        "time": "2025-07-31 04:05",
+        "volume": 27648
       },
-      "cursor": 601,
-      "hiddenBars": 1330,
-      "hasMore": true,
-      "orders": [],
-      "trades": [],
       "closedLots": null,
+      "cursor": 601,
+      "fills": [],
+      "hasMore": true,
+      "hiddenBars": 1330,
+      "orders": [],
       "position": {
+        "averagePrice": 0,
         "quantity": 0,
-        "side": "flat",
-        "averagePrice": 0
+        "side": "flat"
       },
       "realizedPnl": 0,
+      "trades": [],
       "unrealizedPnl": 0,
-      "fills": [],
       "voice": {
         "barTime": "2025-07-31 04:05",
         "clips": [],
-        "total": 0,
-        "max": 9
+        "max": 9,
+        "total": 0
       }
     }
   },
@@ -339,33 +191,33 @@
     "action": "bar_advanced",
     "payload": {
       "bar": {
-        "time": "2025-07-31 04:10",
-        "open": 24939.75,
+        "close": 24957,
+        "ema20": 24788.545717049397,
         "high": 24977.25,
         "low": 24933,
-        "close": 24957,
-        "volume": 18225,
-        "ema20": 24788.545717049397
+        "open": 24939.75,
+        "time": "2025-07-31 04:10",
+        "volume": 18225
       },
-      "cursor": 602,
-      "hiddenBars": 1329,
-      "hasMore": true,
-      "orders": [],
-      "trades": [],
       "closedLots": null,
+      "cursor": 602,
+      "fills": [],
+      "hasMore": true,
+      "hiddenBars": 1329,
+      "orders": [],
       "position": {
+        "averagePrice": 0,
         "quantity": 0,
-        "side": "flat",
-        "averagePrice": 0
+        "side": "flat"
       },
       "realizedPnl": 0,
+      "trades": [],
       "unrealizedPnl": 0,
-      "fills": [],
       "voice": {
         "barTime": "2025-07-31 04:10",
         "clips": [],
-        "total": 0,
-        "max": 9
+        "max": 9,
+        "total": 0
       }
     }
   },
@@ -376,33 +228,33 @@
     "action": "bar_advanced",
     "payload": {
       "bar": {
-        "time": "2025-07-31 04:15",
-        "open": 24957,
+        "close": 24938.25,
+        "ema20": 24802.803267806597,
         "high": 24968.75,
         "low": 24928.5,
-        "close": 24938.25,
-        "volume": 11162,
-        "ema20": 24802.803267806597
+        "open": 24957,
+        "time": "2025-07-31 04:15",
+        "volume": 11162
       },
-      "cursor": 603,
-      "hiddenBars": 1328,
-      "hasMore": true,
-      "orders": [],
-      "trades": [],
       "closedLots": null,
+      "cursor": 603,
+      "fills": [],
+      "hasMore": true,
+      "hiddenBars": 1328,
+      "orders": [],
       "position": {
+        "averagePrice": 0,
         "quantity": 0,
-        "side": "flat",
-        "averagePrice": 0
+        "side": "flat"
       },
       "realizedPnl": 0,
+      "trades": [],
       "unrealizedPnl": 0,
-      "fills": [],
       "voice": {
         "barTime": "2025-07-31 04:15",
         "clips": [],
-        "total": 0,
-        "max": 9
+        "max": 9,
+        "total": 0
       }
     }
   },
@@ -413,33 +265,33 @@
     "action": "bar_advanced",
     "payload": {
       "bar": {
-        "time": "2025-07-31 04:20",
-        "open": 24938.75,
+        "close": 24975,
+        "ema20": 24819.20295658692,
         "high": 24976.75,
         "low": 24938.75,
-        "close": 24975,
-        "volume": 8095,
-        "ema20": 24819.20295658692
+        "open": 24938.75,
+        "time": "2025-07-31 04:20",
+        "volume": 8095
       },
-      "cursor": 604,
-      "hiddenBars": 1327,
-      "hasMore": true,
-      "orders": [],
-      "trades": [],
       "closedLots": null,
+      "cursor": 604,
+      "fills": [],
+      "hasMore": true,
+      "hiddenBars": 1327,
+      "orders": [],
       "position": {
+        "averagePrice": 0,
         "quantity": 0,
-        "side": "flat",
-        "averagePrice": 0
+        "side": "flat"
       },
       "realizedPnl": 0,
+      "trades": [],
       "unrealizedPnl": 0,
-      "fills": [],
       "voice": {
         "barTime": "2025-07-31 04:20",
         "clips": [],
-        "total": 0,
-        "max": 9
+        "max": 9,
+        "total": 0
       }
     }
   },
@@ -450,33 +302,33 @@
     "action": "bar_advanced",
     "payload": {
       "bar": {
-        "time": "2025-07-31 04:25",
-        "open": 24975.25,
+        "close": 24950.75,
+        "ema20": 24831.731246435786,
         "high": 24976.75,
         "low": 24944.75,
-        "close": 24950.75,
-        "volume": 5535,
-        "ema20": 24831.731246435786
+        "open": 24975.25,
+        "time": "2025-07-31 04:25",
+        "volume": 5535
       },
-      "cursor": 605,
-      "hiddenBars": 1326,
-      "hasMore": true,
-      "orders": [],
-      "trades": [],
       "closedLots": null,
+      "cursor": 605,
+      "fills": [],
+      "hasMore": true,
+      "hiddenBars": 1326,
+      "orders": [],
       "position": {
+        "averagePrice": 0,
         "quantity": 0,
-        "side": "flat",
-        "averagePrice": 0
+        "side": "flat"
       },
       "realizedPnl": 0,
+      "trades": [],
       "unrealizedPnl": 0,
-      "fills": [],
       "voice": {
         "barTime": "2025-07-31 04:25",
         "clips": [],
-        "total": 0,
-        "max": 9
+        "max": 9,
+        "total": 0
       }
     }
   },
@@ -487,33 +339,33 @@
     "action": "bar_advanced",
     "payload": {
       "bar": {
-        "time": "2025-07-31 04:30",
-        "open": 24950.5,
+        "close": 24954.75,
+        "ema20": 24843.447318203805,
         "high": 24959.75,
         "low": 24944.5,
-        "close": 24954.75,
-        "volume": 3814,
-        "ema20": 24843.447318203805
+        "open": 24950.5,
+        "time": "2025-07-31 04:30",
+        "volume": 3814
       },
-      "cursor": 606,
-      "hiddenBars": 1325,
-      "hasMore": true,
-      "orders": [],
-      "trades": [],
       "closedLots": null,
+      "cursor": 606,
+      "fills": [],
+      "hasMore": true,
+      "hiddenBars": 1325,
+      "orders": [],
       "position": {
+        "averagePrice": 0,
         "quantity": 0,
-        "side": "flat",
-        "averagePrice": 0
+        "side": "flat"
       },
       "realizedPnl": 0,
+      "trades": [],
       "unrealizedPnl": 0,
-      "fills": [],
       "voice": {
         "barTime": "2025-07-31 04:30",
         "clips": [],
-        "total": 0,
-        "max": 9
+        "max": 9,
+        "total": 0
       }
     }
   },
@@ -524,33 +376,33 @@
     "action": "bar_advanced",
     "payload": {
       "bar": {
-        "time": "2025-07-31 04:35",
-        "open": 24954.25,
+        "close": 24947.25,
+        "ema20": 24853.333287898684,
         "high": 24955,
         "low": 24942.5,
-        "close": 24947.25,
-        "volume": 2505,
-        "ema20": 24853.333287898684
+        "open": 24954.25,
+        "time": "2025-07-31 04:35",
+        "volume": 2505
       },
-      "cursor": 607,
-      "hiddenBars": 1324,
-      "hasMore": true,
-      "orders": [],
-      "trades": [],
       "closedLots": null,
+      "cursor": 607,
+      "fills": [],
+      "hasMore": true,
+      "hiddenBars": 1324,
+      "orders": [],
       "position": {
+        "averagePrice": 0,
         "quantity": 0,
-        "side": "flat",
-        "averagePrice": 0
+        "side": "flat"
       },
       "realizedPnl": 0,
+      "trades": [],
       "unrealizedPnl": 0,
-      "fills": [],
       "voice": {
         "barTime": "2025-07-31 04:35",
         "clips": [],
-        "total": 0,
-        "max": 9
+        "max": 9,
+        "total": 0
       }
     }
   },
@@ -561,33 +413,33 @@
     "action": "bar_advanced",
     "payload": {
       "bar": {
-        "time": "2025-07-31 04:40",
-        "open": 24947.25,
+        "close": 24950.75,
+        "ema20": 24862.61107000357,
         "high": 24956,
         "low": 24944,
-        "close": 24950.75,
-        "volume": 2507,
-        "ema20": 24862.61107000357
+        "open": 24947.25,
+        "time": "2025-07-31 04:40",
+        "volume": 2507
       },
-      "cursor": 608,
-      "hiddenBars": 1323,
-      "hasMore": true,
-      "orders": [],
-      "trades": [],
       "closedLots": null,
+      "cursor": 608,
+      "fills": [],
+      "hasMore": true,
+      "hiddenBars": 1323,
+      "orders": [],
       "position": {
+        "averagePrice": 0,
         "quantity": 0,
-        "side": "flat",
-        "averagePrice": 0
+        "side": "flat"
       },
       "realizedPnl": 0,
+      "trades": [],
       "unrealizedPnl": 0,
-      "fills": [],
       "voice": {
         "barTime": "2025-07-31 04:40",
         "clips": [],
-        "total": 0,
-        "max": 9
+        "max": 9,
+        "total": 0
       }
     }
   },
@@ -598,33 +450,33 @@
     "action": "bar_advanced",
     "payload": {
       "bar": {
-        "time": "2025-07-31 04:45",
-        "open": 24950.25,
+        "close": 24959.75,
+        "ema20": 24871.8623966699,
         "high": 24961.5,
         "low": 24948,
-        "close": 24959.75,
-        "volume": 2183,
-        "ema20": 24871.8623966699
+        "open": 24950.25,
+        "time": "2025-07-31 04:45",
+        "volume": 2183
       },
-      "cursor": 609,
-      "hiddenBars": 1322,
-      "hasMore": true,
-      "orders": [],
-      "trades": [],
       "closedLots": null,
+      "cursor": 609,
+      "fills": [],
+      "hasMore": true,
+      "hiddenBars": 1322,
+      "orders": [],
       "position": {
+        "averagePrice": 0,
         "quantity": 0,
-        "side": "flat",
-        "averagePrice": 0
+        "side": "flat"
       },
       "realizedPnl": 0,
+      "trades": [],
       "unrealizedPnl": 0,
-      "fills": [],
       "voice": {
         "barTime": "2025-07-31 04:45",
         "clips": [],
-        "total": 0,
-        "max": 9
+        "max": 9,
+        "total": 0
       }
     }
   },
@@ -635,33 +487,33 @@
     "action": "bar_advanced",
     "payload": {
       "bar": {
-        "time": "2025-07-31 04:50",
-        "open": 24959.75,
+        "close": 24952.25,
+        "ema20": 24879.51835889182,
         "high": 24960.75,
         "low": 24949.75,
-        "close": 24952.25,
-        "volume": 1617,
-        "ema20": 24879.51835889182
+        "open": 24959.75,
+        "time": "2025-07-31 04:50",
+        "volume": 1617
       },
-      "cursor": 610,
-      "hiddenBars": 1321,
-      "hasMore": true,
-      "orders": [],
-      "trades": [],
       "closedLots": null,
+      "cursor": 610,
+      "fills": [],
+      "hasMore": true,
+      "hiddenBars": 1321,
+      "orders": [],
       "position": {
+        "averagePrice": 0,
         "quantity": 0,
-        "side": "flat",
-        "averagePrice": 0
+        "side": "flat"
       },
       "realizedPnl": 0,
+      "trades": [],
       "unrealizedPnl": 0,
-      "fills": [],
       "voice": {
         "barTime": "2025-07-31 04:50",
         "clips": [],
-        "total": 0,
-        "max": 9
+        "max": 9,
+        "total": 0
       }
     }
   },
@@ -672,33 +524,33 @@
     "action": "bar_advanced",
     "payload": {
       "bar": {
-        "time": "2025-07-31 04:55",
-        "open": 24952.5,
+        "close": 24951.5,
+        "ema20": 24886.373753283075,
         "high": 24954.5,
         "low": 24943.5,
-        "close": 24951.5,
-        "volume": 1754,
-        "ema20": 24886.373753283075
+        "open": 24952.5,
+        "time": "2025-07-31 04:55",
+        "volume": 1754
       },
-      "cursor": 611,
-      "hiddenBars": 1320,
-      "hasMore": true,
-      "orders": [],
-      "trades": [],
       "closedLots": null,
+      "cursor": 611,
+      "fills": [],
+      "hasMore": true,
+      "hiddenBars": 1320,
+      "orders": [],
       "position": {
+        "averagePrice": 0,
         "quantity": 0,
-        "side": "flat",
-        "averagePrice": 0
+        "side": "flat"
       },
       "realizedPnl": 0,
+      "trades": [],
       "unrealizedPnl": 0,
-      "fills": [],
       "voice": {
         "barTime": "2025-07-31 04:55",
         "clips": [],
-        "total": 0,
-        "max": 9
+        "max": 9,
+        "total": 0
       }
     }
   },
@@ -709,33 +561,33 @@
     "action": "bar_advanced",
     "payload": {
       "bar": {
-        "time": "2025-07-31 06:00",
-        "open": 24987.25,
+        "close": 24999.75,
+        "ema20": 24897.17149106564,
         "high": 25026.5,
         "low": 24977.5,
-        "close": 24999.75,
-        "volume": 6658,
-        "ema20": 24897.17149106564
+        "open": 24987.25,
+        "time": "2025-07-31 06:00",
+        "volume": 6658
       },
-      "cursor": 612,
-      "hiddenBars": 1319,
-      "hasMore": true,
-      "orders": [],
-      "trades": [],
       "closedLots": null,
+      "cursor": 612,
+      "fills": [],
+      "hasMore": true,
+      "hiddenBars": 1319,
+      "orders": [],
       "position": {
+        "averagePrice": 0,
         "quantity": 0,
-        "side": "flat",
-        "averagePrice": 0
+        "side": "flat"
       },
       "realizedPnl": 0,
+      "trades": [],
       "unrealizedPnl": 0,
-      "fills": [],
       "voice": {
         "barTime": "2025-07-31 06:00",
         "clips": [],
-        "total": 0,
-        "max": 9
+        "max": 9,
+        "total": 0
       }
     }
   },
@@ -764,25 +616,25 @@
     "action": "annotation_added",
     "payload": {
       "annotation": {
+        "createdAt": 1793110107,
+        "createdBy": "human",
+        "end": {
+          "offset": 165,
+          "price": 24867.5,
+          "time": "2025-07-31 02:30"
+        },
         "id": "a3",
         "kind": "ray",
+        "snapped": true,
         "start": {
-          "time": "2025-07-31 02:30",
-          "price": 24867.5
-        },
-        "end": {
-          "time": "2025-07-31 02:30",
           "price": 24867.5,
-          "offset": 165
+          "time": "2025-07-31 02:30"
         },
         "style": {
           "color": "#65a30d",
-          "width": 2,
-          "dash": "solid"
-        },
-        "snapped": true,
-        "createdBy": "human",
-        "createdAt": 1793110107
+          "dash": "solid",
+          "width": 2
+        }
       }
     }
   },
@@ -793,26 +645,26 @@
     "action": "annotation_moved",
     "payload": {
       "annotation": {
+        "createdAt": 1793110107,
+        "createdBy": "human",
+        "end": {
+          "offset": 176,
+          "price": 24866.71,
+          "time": "2025-07-31 06:00"
+        },
         "id": "a3",
         "kind": "ray",
+        "snapped": false,
         "start": {
-          "time": "2025-07-31 06:00",
+          "offset": 11,
           "price": 24866.71,
-          "offset": 11
-        },
-        "end": {
-          "time": "2025-07-31 06:00",
-          "price": 24866.71,
-          "offset": 176
+          "time": "2025-07-31 06:00"
         },
         "style": {
           "color": "#65a30d",
-          "width": 2,
-          "dash": "solid"
-        },
-        "snapped": false,
-        "createdBy": "human",
-        "createdAt": 1793110107
+          "dash": "solid",
+          "width": 2
+        }
       }
     }
   },
@@ -823,26 +675,26 @@
     "action": "annotation_moved",
     "payload": {
       "annotation": {
+        "createdAt": 1793110107,
+        "createdBy": "human",
+        "end": {
+          "offset": 176,
+          "price": 24866.71,
+          "time": "2025-07-31 06:00"
+        },
         "id": "a3",
         "kind": "ray",
+        "snapped": false,
         "start": {
-          "time": "2025-07-31 06:00",
+          "offset": 7,
           "price": 24864.34,
-          "offset": 7
-        },
-        "end": {
-          "time": "2025-07-31 06:00",
-          "price": 24866.71,
-          "offset": 176
+          "time": "2025-07-31 06:00"
         },
         "style": {
           "color": "#65a30d",
-          "width": 2,
-          "dash": "solid"
-        },
-        "snapped": false,
-        "createdBy": "human",
-        "createdAt": 1793110107
+          "dash": "solid",
+          "width": 2
+        }
       }
     }
   },
@@ -862,25 +714,25 @@
     "action": "annotation_added",
     "payload": {
       "annotation": {
+        "createdAt": 1793110118,
+        "createdBy": "human",
+        "end": {
+          "offset": 165,
+          "price": 24867.5,
+          "time": "2025-07-31 02:30"
+        },
         "id": "a4",
         "kind": "ray",
+        "snapped": true,
         "start": {
-          "time": "2025-07-31 02:30",
-          "price": 24867.5
-        },
-        "end": {
-          "time": "2025-07-31 02:30",
           "price": 24867.5,
-          "offset": 165
+          "time": "2025-07-31 02:30"
         },
         "style": {
           "color": "#65a30d",
-          "width": 2,
-          "dash": "solid"
-        },
-        "snapped": true,
-        "createdBy": "human",
-        "createdAt": 1793110118
+          "dash": "solid",
+          "width": 2
+        }
       }
     }
   },
@@ -891,25 +743,25 @@
     "action": "annotation_moved",
     "payload": {
       "annotation": {
+        "createdAt": 1793110118,
+        "createdBy": "human",
+        "end": {
+          "offset": 137,
+          "price": 24873.82,
+          "time": "2025-07-31 06:00"
+        },
         "id": "a4",
         "kind": "ray",
+        "snapped": false,
         "start": {
-          "time": "2025-07-31 02:40",
-          "price": 24873.82
-        },
-        "end": {
-          "time": "2025-07-31 06:00",
           "price": 24873.82,
-          "offset": 137
+          "time": "2025-07-31 02:40"
         },
         "style": {
           "color": "#65a30d",
-          "width": 2,
-          "dash": "solid"
-        },
-        "snapped": false,
-        "createdBy": "human",
-        "createdAt": 1793110118
+          "dash": "solid",
+          "width": 2
+        }
       }
     }
   },
@@ -920,25 +772,25 @@
     "action": "annotation_moved",
     "payload": {
       "annotation": {
+        "createdAt": 1793110118,
+        "createdBy": "human",
+        "end": {
+          "offset": 137,
+          "price": 24977.5,
+          "time": "2025-07-31 06:00"
+        },
         "id": "a4",
         "kind": "ray",
+        "snapped": true,
         "start": {
-          "time": "2025-07-31 02:35",
-          "price": 24879
-        },
-        "end": {
-          "time": "2025-07-31 06:00",
-          "price": 24977.5,
-          "offset": 137
+          "price": 24879,
+          "time": "2025-07-31 02:35"
         },
         "style": {
           "color": "#65a30d",
-          "width": 2,
-          "dash": "solid"
-        },
-        "snapped": true,
-        "createdBy": "human",
-        "createdAt": 1793110118
+          "dash": "solid",
+          "width": 2
+        }
       }
     }
   },
@@ -949,25 +801,25 @@
     "action": "annotation_moved",
     "payload": {
       "annotation": {
+        "createdAt": 1793110118,
+        "createdBy": "human",
+        "end": {
+          "offset": 140,
+          "price": 24975.13,
+          "time": "2025-07-31 06:00"
+        },
         "id": "a4",
         "kind": "ray",
+        "snapped": false,
         "start": {
-          "time": "2025-07-31 02:50",
-          "price": 24876.63
-        },
-        "end": {
-          "time": "2025-07-31 06:00",
-          "price": 24975.13,
-          "offset": 140
+          "price": 24876.63,
+          "time": "2025-07-31 02:50"
         },
         "style": {
           "color": "#65a30d",
-          "width": 2,
-          "dash": "solid"
-        },
-        "snapped": false,
-        "createdBy": "human",
-        "createdAt": 1793110118
+          "dash": "solid",
+          "width": 2
+        }
       }
     }
   },
@@ -978,25 +830,25 @@
     "action": "annotation_moved",
     "payload": {
       "annotation": {
+        "createdAt": 1793110118,
+        "createdBy": "human",
+        "end": {
+          "offset": 108,
+          "price": 24896.09,
+          "time": "2025-07-31 06:00"
+        },
         "id": "a4",
         "kind": "ray",
+        "snapped": false,
         "start": {
-          "time": "2025-07-31 02:50",
-          "price": 24876.63
-        },
-        "end": {
-          "time": "2025-07-31 06:00",
-          "price": 24896.09,
-          "offset": 108
+          "price": 24876.63,
+          "time": "2025-07-31 02:50"
         },
         "style": {
           "color": "#65a30d",
-          "width": 2,
-          "dash": "solid"
-        },
-        "snapped": false,
-        "createdBy": "human",
-        "createdAt": 1793110118
+          "dash": "solid",
+          "width": 2
+        }
       }
     }
   },
@@ -1016,25 +868,25 @@
     "action": "annotation_added",
     "payload": {
       "annotation": {
+        "createdAt": 1793110143,
+        "createdBy": "human",
+        "end": {
+          "offset": 229,
+          "price": 24879,
+          "time": "2025-07-31 02:35"
+        },
         "id": "a5",
         "kind": "ray",
+        "snapped": true,
         "start": {
-          "time": "2025-07-31 02:35",
-          "price": 24879
-        },
-        "end": {
-          "time": "2025-07-31 02:35",
           "price": 24879,
-          "offset": 229
+          "time": "2025-07-31 02:35"
         },
         "style": {
           "color": "#65a30d",
-          "width": 2,
-          "dash": "solid"
-        },
-        "snapped": true,
-        "createdBy": "human",
-        "createdAt": 1793110143
+          "dash": "solid",
+          "width": 2
+        }
       }
     }
   },
@@ -1045,33 +897,33 @@
     "action": "bar_advanced",
     "payload": {
       "bar": {
-        "time": "2025-07-31 06:05",
-        "open": 25000.25,
+        "close": 24985.75,
+        "ema20": 24905.60753953558,
         "high": 25004.25,
         "low": 24982.5,
-        "close": 24985.75,
-        "volume": 2857,
-        "ema20": 24905.60753953558
+        "open": 25000.25,
+        "time": "2025-07-31 06:05",
+        "volume": 2857
       },
-      "cursor": 613,
-      "hiddenBars": 1318,
-      "hasMore": true,
-      "orders": [],
-      "trades": [],
       "closedLots": null,
+      "cursor": 613,
+      "fills": [],
+      "hasMore": true,
+      "hiddenBars": 1318,
+      "orders": [],
       "position": {
+        "averagePrice": 0,
         "quantity": 0,
-        "side": "flat",
-        "averagePrice": 0
+        "side": "flat"
       },
       "realizedPnl": 0,
+      "trades": [],
       "unrealizedPnl": 0,
-      "fills": [],
       "voice": {
         "barTime": "2025-07-31 06:05",
         "clips": [],
-        "total": 0,
-        "max": 9
+        "max": 9,
+        "total": 0
       }
     }
   },
@@ -1082,25 +934,25 @@
     "action": "annotation_added",
     "payload": {
       "annotation": {
+        "createdAt": 1793110273,
+        "createdBy": "human",
+        "end": {
+          "offset": 175,
+          "price": 24976.75,
+          "time": "2025-07-31 04:25"
+        },
         "id": "a6",
         "kind": "ray",
+        "snapped": true,
         "start": {
-          "time": "2025-07-31 04:25",
-          "price": 24976.75
-        },
-        "end": {
-          "time": "2025-07-31 04:25",
           "price": 24976.75,
-          "offset": 175
+          "time": "2025-07-31 04:25"
         },
         "style": {
           "color": "#65a30d",
-          "width": 2,
-          "dash": "solid"
-        },
-        "snapped": true,
-        "createdBy": "human",
-        "createdAt": 1793110273
+          "dash": "solid",
+          "width": 2
+        }
       }
     }
   },
@@ -1111,33 +963,33 @@
     "action": "bar_advanced",
     "payload": {
       "bar": {
-        "time": "2025-07-31 06:10",
-        "open": 24986,
+        "close": 24984.75,
+        "ema20": 24913.144916722667,
         "high": 24990,
         "low": 24978.75,
-        "close": 24984.75,
-        "volume": 2007,
-        "ema20": 24913.144916722667
+        "open": 24986,
+        "time": "2025-07-31 06:10",
+        "volume": 2007
       },
-      "cursor": 614,
-      "hiddenBars": 1317,
-      "hasMore": true,
-      "orders": [],
-      "trades": [],
       "closedLots": null,
+      "cursor": 614,
+      "fills": [],
+      "hasMore": true,
+      "hiddenBars": 1317,
+      "orders": [],
       "position": {
+        "averagePrice": 0,
         "quantity": 0,
-        "side": "flat",
-        "averagePrice": 0
+        "side": "flat"
       },
       "realizedPnl": 0,
+      "trades": [],
       "unrealizedPnl": 0,
-      "fills": [],
       "voice": {
         "barTime": "2025-07-31 06:10",
         "clips": [],
-        "total": 0,
-        "max": 9
+        "max": 9,
+        "total": 0
       }
     }
   },
@@ -1148,33 +1000,33 @@
     "action": "bar_advanced",
     "payload": {
       "bar": {
-        "time": "2025-07-31 06:15",
-        "open": 24985,
+        "close": 24993.25,
+        "ema20": 24920.773972272887,
         "high": 24998.5,
         "low": 24979.25,
-        "close": 24993.25,
-        "volume": 2054,
-        "ema20": 24920.773972272887
+        "open": 24985,
+        "time": "2025-07-31 06:15",
+        "volume": 2054
       },
-      "cursor": 615,
-      "hiddenBars": 1316,
-      "hasMore": true,
-      "orders": [],
-      "trades": [],
       "closedLots": null,
+      "cursor": 615,
+      "fills": [],
+      "hasMore": true,
+      "hiddenBars": 1316,
+      "orders": [],
       "position": {
+        "averagePrice": 0,
         "quantity": 0,
-        "side": "flat",
-        "averagePrice": 0
+        "side": "flat"
       },
       "realizedPnl": 0,
+      "trades": [],
       "unrealizedPnl": 0,
-      "fills": [],
       "voice": {
         "barTime": "2025-07-31 06:15",
         "clips": [],
-        "total": 0,
-        "max": 9
+        "max": 9,
+        "total": 0
       }
     }
   },
@@ -1185,33 +1037,33 @@
     "action": "bar_advanced",
     "payload": {
       "bar": {
-        "time": "2025-07-31 06:20",
-        "open": 24993.75,
+        "close": 24990.25,
+        "ema20": 24927.390736818328,
         "high": 24994.25,
         "low": 24986.5,
-        "close": 24990.25,
-        "volume": 1100,
-        "ema20": 24927.390736818328
+        "open": 24993.75,
+        "time": "2025-07-31 06:20",
+        "volume": 1100
       },
-      "cursor": 616,
-      "hiddenBars": 1315,
-      "hasMore": true,
-      "orders": [],
-      "trades": [],
       "closedLots": null,
+      "cursor": 616,
+      "fills": [],
+      "hasMore": true,
+      "hiddenBars": 1315,
+      "orders": [],
       "position": {
+        "averagePrice": 0,
         "quantity": 0,
-        "side": "flat",
-        "averagePrice": 0
+        "side": "flat"
       },
       "realizedPnl": 0,
+      "trades": [],
       "unrealizedPnl": 0,
-      "fills": [],
       "voice": {
         "barTime": "2025-07-31 06:20",
         "clips": [],
-        "total": 0,
-        "max": 9
+        "max": 9,
+        "total": 0
       }
     }
   },
@@ -1222,33 +1074,33 @@
     "action": "bar_advanced",
     "payload": {
       "bar": {
-        "time": "2025-07-31 06:25",
-        "open": 24990,
+        "close": 24990.75,
+        "ema20": 24933.424952359437,
         "high": 24991.75,
         "low": 24987,
-        "close": 24990.75,
-        "volume": 624,
-        "ema20": 24933.424952359437
+        "open": 24990,
+        "time": "2025-07-31 06:25",
+        "volume": 624
       },
-      "cursor": 617,
-      "hiddenBars": 1314,
-      "hasMore": true,
-      "orders": [],
-      "trades": [],
       "closedLots": null,
+      "cursor": 617,
+      "fills": [],
+      "hasMore": true,
+      "hiddenBars": 1314,
+      "orders": [],
       "position": {
+        "averagePrice": 0,
         "quantity": 0,
-        "side": "flat",
-        "averagePrice": 0
+        "side": "flat"
       },
       "realizedPnl": 0,
+      "trades": [],
       "unrealizedPnl": 0,
-      "fills": [],
       "voice": {
         "barTime": "2025-07-31 06:25",
         "clips": [],
-        "total": 0,
-        "max": 9
+        "max": 9,
+        "total": 0
       }
     }
   },
@@ -1259,33 +1111,33 @@
     "action": "bar_advanced",
     "payload": {
       "bar": {
-        "time": "2025-07-31 06:30",
-        "open": 24991.5,
+        "close": 25003.5,
+        "ema20": 24940.098766420444,
         "high": 25007.75,
         "low": 24990.75,
-        "close": 25003.5,
-        "volume": 2196,
-        "ema20": 24940.098766420444
+        "open": 24991.5,
+        "time": "2025-07-31 06:30",
+        "volume": 2196
       },
-      "cursor": 618,
-      "hiddenBars": 1313,
-      "hasMore": true,
-      "orders": [],
-      "trades": [],
       "closedLots": null,
+      "cursor": 618,
+      "fills": [],
+      "hasMore": true,
+      "hiddenBars": 1313,
+      "orders": [],
       "position": {
+        "averagePrice": 0,
         "quantity": 0,
-        "side": "flat",
-        "averagePrice": 0
+        "side": "flat"
       },
       "realizedPnl": 0,
+      "trades": [],
       "unrealizedPnl": 0,
-      "fills": [],
       "voice": {
         "barTime": "2025-07-31 06:30",
         "clips": [],
-        "total": 0,
-        "max": 9
+        "max": 9,
+        "total": 0
       }
     }
   },
@@ -1296,25 +1148,25 @@
     "action": "annotation_added",
     "payload": {
       "annotation": {
+        "createdAt": 1793110307,
+        "createdBy": "human",
+        "end": {
+          "offset": 175,
+          "price": 24998.5,
+          "time": "2025-07-31 06:15"
+        },
         "id": "a7",
         "kind": "ray",
+        "snapped": true,
         "start": {
-          "time": "2025-07-31 06:15",
-          "price": 24998.5
-        },
-        "end": {
-          "time": "2025-07-31 06:15",
           "price": 24998.5,
-          "offset": 175
+          "time": "2025-07-31 06:15"
         },
         "style": {
           "color": "#65a30d",
-          "width": 2,
-          "dash": "solid"
-        },
-        "snapped": true,
-        "createdBy": "human",
-        "createdAt": 1793110307
+          "dash": "solid",
+          "width": 2
+        }
       }
     }
   },
@@ -1325,33 +1177,33 @@
     "action": "bar_advanced",
     "payload": {
       "bar": {
-        "time": "2025-07-31 06:35",
-        "open": 25004,
+        "close": 25010.25,
+        "ema20": 24946.779836285164,
         "high": 25013.25,
         "low": 25004,
-        "close": 25010.25,
-        "volume": 1829,
-        "ema20": 24946.779836285164
+        "open": 25004,
+        "time": "2025-07-31 06:35",
+        "volume": 1829
       },
-      "cursor": 619,
-      "hiddenBars": 1312,
-      "hasMore": true,
-      "orders": [],
-      "trades": [],
       "closedLots": null,
+      "cursor": 619,
+      "fills": [],
+      "hasMore": true,
+      "hiddenBars": 1312,
+      "orders": [],
       "position": {
+        "averagePrice": 0,
         "quantity": 0,
-        "side": "flat",
-        "averagePrice": 0
+        "side": "flat"
       },
       "realizedPnl": 0,
+      "trades": [],
       "unrealizedPnl": 0,
-      "fills": [],
       "voice": {
         "barTime": "2025-07-31 06:35",
         "clips": [],
-        "total": 0,
-        "max": 9
+        "max": 9,
+        "total": 0
       }
     }
   },
@@ -1362,33 +1214,33 @@
     "action": "bar_advanced",
     "payload": {
       "bar": {
-        "time": "2025-07-31 06:40",
-        "open": 25010.25,
+        "close": 25020.75,
+        "ema20": 24953.824613781817,
         "high": 25022,
         "low": 25008.25,
-        "close": 25020.75,
-        "volume": 2109,
-        "ema20": 24953.824613781817
+        "open": 25010.25,
+        "time": "2025-07-31 06:40",
+        "volume": 2109
       },
-      "cursor": 620,
-      "hiddenBars": 1311,
-      "hasMore": true,
-      "orders": [],
-      "trades": [],
       "closedLots": null,
+      "cursor": 620,
+      "fills": [],
+      "hasMore": true,
+      "hiddenBars": 1311,
+      "orders": [],
       "position": {
+        "averagePrice": 0,
         "quantity": 0,
-        "side": "flat",
-        "averagePrice": 0
+        "side": "flat"
       },
       "realizedPnl": 0,
+      "trades": [],
       "unrealizedPnl": 0,
-      "fills": [],
       "voice": {
         "barTime": "2025-07-31 06:40",
         "clips": [],
-        "total": 0,
-        "max": 9
+        "max": 9,
+        "total": 0
       }
     }
   },
@@ -1399,33 +1251,33 @@
     "action": "bar_advanced",
     "payload": {
       "bar": {
-        "time": "2025-07-31 06:45",
-        "open": 25020.25,
+        "close": 25015.75,
+        "ema20": 24959.72226961212,
         "high": 25020.5,
         "low": 25011.75,
-        "close": 25015.75,
-        "volume": 1403,
-        "ema20": 24959.72226961212
+        "open": 25020.25,
+        "time": "2025-07-31 06:45",
+        "volume": 1403
       },
-      "cursor": 621,
-      "hiddenBars": 1310,
-      "hasMore": true,
-      "orders": [],
-      "trades": [],
       "closedLots": null,
+      "cursor": 621,
+      "fills": [],
+      "hasMore": true,
+      "hiddenBars": 1310,
+      "orders": [],
       "position": {
+        "averagePrice": 0,
         "quantity": 0,
-        "side": "flat",
-        "averagePrice": 0
+        "side": "flat"
       },
       "realizedPnl": 0,
+      "trades": [],
       "unrealizedPnl": 0,
-      "fills": [],
       "voice": {
         "barTime": "2025-07-31 06:45",
         "clips": [],
-        "total": 0,
-        "max": 9
+        "max": 9,
+        "total": 0
       }
     }
   },
@@ -1436,33 +1288,33 @@
     "action": "bar_advanced",
     "payload": {
       "bar": {
-        "time": "2025-07-31 06:50",
-        "open": 25015.75,
+        "close": 25014,
+        "ema20": 24964.89157726811,
         "high": 25018.5,
         "low": 25010,
-        "close": 25014,
-        "volume": 1220,
-        "ema20": 24964.89157726811
+        "open": 25015.75,
+        "time": "2025-07-31 06:50",
+        "volume": 1220
       },
-      "cursor": 622,
-      "hiddenBars": 1309,
-      "hasMore": true,
-      "orders": [],
-      "trades": [],
       "closedLots": null,
+      "cursor": 622,
+      "fills": [],
+      "hasMore": true,
+      "hiddenBars": 1309,
+      "orders": [],
       "position": {
+        "averagePrice": 0,
         "quantity": 0,
-        "side": "flat",
-        "averagePrice": 0
+        "side": "flat"
       },
       "realizedPnl": 0,
+      "trades": [],
       "unrealizedPnl": 0,
-      "fills": [],
       "voice": {
         "barTime": "2025-07-31 06:50",
         "clips": [],
-        "total": 0,
-        "max": 9
+        "max": 9,
+        "total": 0
       }
     }
   },
@@ -1473,33 +1325,33 @@
     "action": "bar_advanced",
     "payload": {
       "bar": {
-        "time": "2025-07-31 06:55",
-        "open": 25013.5,
+        "close": 25018,
+        "ema20": 24969.949522290197,
         "high": 25019.75,
         "low": 25012.5,
-        "close": 25018,
-        "volume": 679,
-        "ema20": 24969.949522290197
+        "open": 25013.5,
+        "time": "2025-07-31 06:55",
+        "volume": 679
       },
-      "cursor": 623,
-      "hiddenBars": 1308,
-      "hasMore": true,
-      "orders": [],
-      "trades": [],
       "closedLots": null,
+      "cursor": 623,
+      "fills": [],
+      "hasMore": true,
+      "hiddenBars": 1308,
+      "orders": [],
       "position": {
+        "averagePrice": 0,
         "quantity": 0,
-        "side": "flat",
-        "averagePrice": 0
+        "side": "flat"
       },
       "realizedPnl": 0,
+      "trades": [],
       "unrealizedPnl": 0,
-      "fills": [],
       "voice": {
         "barTime": "2025-07-31 06:55",
         "clips": [],
-        "total": 0,
-        "max": 9
+        "max": 9,
+        "total": 0
       }
     }
   },
@@ -1510,33 +1362,33 @@
     "action": "bar_advanced",
     "payload": {
       "bar": {
-        "time": "2025-07-31 07:00",
-        "open": 25017.25,
+        "close": 25016.5,
+        "ema20": 24974.3829011197,
         "high": 25022.75,
         "low": 25012,
-        "close": 25016.5,
-        "volume": 1412,
-        "ema20": 24974.3829011197
+        "open": 25017.25,
+        "time": "2025-07-31 07:00",
+        "volume": 1412
       },
-      "cursor": 624,
-      "hiddenBars": 1307,
-      "hasMore": true,
-      "orders": [],
-      "trades": [],
       "closedLots": null,
+      "cursor": 624,
+      "fills": [],
+      "hasMore": true,
+      "hiddenBars": 1307,
+      "orders": [],
       "position": {
+        "averagePrice": 0,
         "quantity": 0,
-        "side": "flat",
-        "averagePrice": 0
+        "side": "flat"
       },
       "realizedPnl": 0,
+      "trades": [],
       "unrealizedPnl": 0,
-      "fills": [],
       "voice": {
         "barTime": "2025-07-31 07:00",
         "clips": [],
-        "total": 0,
-        "max": 9
+        "max": 9,
+        "total": 0
       }
     }
   },
@@ -1547,33 +1399,33 @@
     "action": "bar_advanced",
     "payload": {
       "bar": {
-        "time": "2025-07-31 07:05",
-        "open": 25016.25,
+        "close": 25019.75,
+        "ema20": 24978.703577203538,
         "high": 25020,
         "low": 25015,
-        "close": 25019.75,
-        "volume": 773,
-        "ema20": 24978.703577203538
+        "open": 25016.25,
+        "time": "2025-07-31 07:05",
+        "volume": 773
       },
-      "cursor": 625,
-      "hiddenBars": 1306,
-      "hasMore": true,
-      "orders": [],
-      "trades": [],
       "closedLots": null,
+      "cursor": 625,
+      "fills": [],
+      "hasMore": true,
+      "hiddenBars": 1306,
+      "orders": [],
       "position": {
+        "averagePrice": 0,
         "quantity": 0,
-        "side": "flat",
-        "averagePrice": 0
+        "side": "flat"
       },
       "realizedPnl": 0,
+      "trades": [],
       "unrealizedPnl": 0,
-      "fills": [],
       "voice": {
         "barTime": "2025-07-31 07:05",
         "clips": [],
-        "total": 0,
-        "max": 9
+        "max": 9,
+        "total": 0
       }
     }
   },
@@ -1584,33 +1436,33 @@
     "action": "bar_advanced",
     "payload": {
       "bar": {
-        "time": "2025-07-31 07:10",
-        "open": 25019.5,
+        "close": 25028.75,
+        "ema20": 24983.469903184156,
         "high": 25029.25,
         "low": 25017.25,
-        "close": 25028.75,
-        "volume": 2607,
-        "ema20": 24983.469903184156
+        "open": 25019.5,
+        "time": "2025-07-31 07:10",
+        "volume": 2607
       },
-      "cursor": 626,
-      "hiddenBars": 1305,
-      "hasMore": true,
-      "orders": [],
-      "trades": [],
       "closedLots": null,
+      "cursor": 626,
+      "fills": [],
+      "hasMore": true,
+      "hiddenBars": 1305,
+      "orders": [],
       "position": {
+        "averagePrice": 0,
         "quantity": 0,
-        "side": "flat",
-        "averagePrice": 0
+        "side": "flat"
       },
       "realizedPnl": 0,
+      "trades": [],
       "unrealizedPnl": 0,
-      "fills": [],
       "voice": {
         "barTime": "2025-07-31 07:10",
         "clips": [],
-        "total": 0,
-        "max": 9
+        "max": 9,
+        "total": 0
       }
     }
   },
@@ -1621,25 +1473,25 @@
     "action": "annotation_added",
     "payload": {
       "annotation": {
+        "createdAt": 1793110391,
+        "createdBy": "human",
+        "end": {
+          "offset": 175,
+          "price": 25020.5,
+          "time": "2025-07-31 06:45"
+        },
         "id": "a8",
         "kind": "ray",
+        "snapped": true,
         "start": {
-          "time": "2025-07-31 06:45",
-          "price": 25020.5
-        },
-        "end": {
-          "time": "2025-07-31 06:45",
           "price": 25020.5,
-          "offset": 175
+          "time": "2025-07-31 06:45"
         },
         "style": {
           "color": "#65a30d",
-          "width": 2,
-          "dash": "solid"
-        },
-        "snapped": true,
-        "createdBy": "human",
-        "createdAt": 1793110391
+          "dash": "solid",
+          "width": 2
+        }
       }
     }
   },
@@ -1650,33 +1502,33 @@
     "action": "bar_advanced",
     "payload": {
       "bar": {
-        "time": "2025-07-31 07:15",
-        "open": 25028.5,
+        "close": 25024.5,
+        "ema20": 24987.37753145233,
         "high": 25030,
         "low": 25020,
-        "close": 25024.5,
-        "volume": 1618,
-        "ema20": 24987.37753145233
+        "open": 25028.5,
+        "time": "2025-07-31 07:15",
+        "volume": 1618
       },
-      "cursor": 627,
-      "hiddenBars": 1304,
-      "hasMore": true,
-      "orders": [],
-      "trades": [],
       "closedLots": null,
+      "cursor": 627,
+      "fills": [],
+      "hasMore": true,
+      "hiddenBars": 1304,
+      "orders": [],
       "position": {
+        "averagePrice": 0,
         "quantity": 0,
-        "side": "flat",
-        "averagePrice": 0
+        "side": "flat"
       },
       "realizedPnl": 0,
+      "trades": [],
       "unrealizedPnl": 0,
-      "fills": [],
       "voice": {
         "barTime": "2025-07-31 07:15",
         "clips": [],
-        "total": 0,
-        "max": 9
+        "max": 9,
+        "total": 0
       }
     }
   },
@@ -1687,33 +1539,33 @@
     "action": "bar_advanced",
     "payload": {
       "bar": {
-        "time": "2025-07-31 07:20",
-        "open": 25025,
+        "close": 25017,
+        "ema20": 24990.19871893306,
         "high": 25025.5,
         "low": 25014.25,
-        "close": 25017,
-        "volume": 1501,
-        "ema20": 24990.19871893306
+        "open": 25025,
+        "time": "2025-07-31 07:20",
+        "volume": 1501
       },
-      "cursor": 628,
-      "hiddenBars": 1303,
-      "hasMore": true,
-      "orders": [],
-      "trades": [],
       "closedLots": null,
+      "cursor": 628,
+      "fills": [],
+      "hasMore": true,
+      "hiddenBars": 1303,
+      "orders": [],
       "position": {
+        "averagePrice": 0,
         "quantity": 0,
-        "side": "flat",
-        "averagePrice": 0
+        "side": "flat"
       },
       "realizedPnl": 0,
+      "trades": [],
       "unrealizedPnl": 0,
-      "fills": [],
       "voice": {
         "barTime": "2025-07-31 07:20",
         "clips": [],
-        "total": 0,
-        "max": 9
+        "max": 9,
+        "total": 0
       }
     }
   },
@@ -1733,25 +1585,25 @@
     "action": "annotation_added",
     "payload": {
       "annotation": {
+        "createdAt": 1793110529,
+        "createdBy": "human",
+        "end": {
+          "offset": 127,
+          "price": 25017.25,
+          "time": "2025-07-31 07:10"
+        },
         "id": "a9",
         "kind": "ray",
+        "snapped": true,
         "start": {
-          "time": "2025-07-31 07:10",
-          "price": 25017.25
-        },
-        "end": {
-          "time": "2025-07-31 07:10",
           "price": 25017.25,
-          "offset": 127
+          "time": "2025-07-31 07:10"
         },
         "style": {
           "color": "#ef4444",
-          "width": 2,
-          "dash": "solid"
-        },
-        "snapped": true,
-        "createdBy": "human",
-        "createdAt": 1793110529
+          "dash": "solid",
+          "width": 2
+        }
       }
     }
   },
@@ -1762,33 +1614,33 @@
     "action": "bar_advanced",
     "payload": {
       "bar": {
-        "time": "2025-07-31 07:25",
-        "open": 25017.5,
+        "close": 25022.25,
+        "ema20": 24993.251221891816,
         "high": 25023.25,
         "low": 25016.5,
-        "close": 25022.25,
-        "volume": 786,
-        "ema20": 24993.251221891816
+        "open": 25017.5,
+        "time": "2025-07-31 07:25",
+        "volume": 786
       },
-      "cursor": 629,
-      "hiddenBars": 1302,
-      "hasMore": true,
-      "orders": [],
-      "trades": [],
       "closedLots": null,
+      "cursor": 629,
+      "fills": [],
+      "hasMore": true,
+      "hiddenBars": 1302,
+      "orders": [],
       "position": {
+        "averagePrice": 0,
         "quantity": 0,
-        "side": "flat",
-        "averagePrice": 0
+        "side": "flat"
       },
       "realizedPnl": 0,
+      "trades": [],
       "unrealizedPnl": 0,
-      "fills": [],
       "voice": {
         "barTime": "2025-07-31 07:25",
         "clips": [],
-        "total": 0,
-        "max": 9
+        "max": 9,
+        "total": 0
       }
     }
   },
@@ -1799,33 +1651,33 @@
     "action": "bar_advanced",
     "payload": {
       "bar": {
-        "time": "2025-07-31 07:30",
-        "open": 25021.75,
+        "close": 25017.5,
+        "ema20": 24995.560629330692,
         "high": 25022.25,
         "low": 25017.25,
-        "close": 25017.5,
-        "volume": 719,
-        "ema20": 24995.560629330692
+        "open": 25021.75,
+        "time": "2025-07-31 07:30",
+        "volume": 719
       },
-      "cursor": 630,
-      "hiddenBars": 1301,
-      "hasMore": true,
-      "orders": [],
-      "trades": [],
       "closedLots": null,
+      "cursor": 630,
+      "fills": [],
+      "hasMore": true,
+      "hiddenBars": 1301,
+      "orders": [],
       "position": {
+        "averagePrice": 0,
         "quantity": 0,
-        "side": "flat",
-        "averagePrice": 0
+        "side": "flat"
       },
       "realizedPnl": 0,
+      "trades": [],
       "unrealizedPnl": 0,
-      "fills": [],
       "voice": {
         "barTime": "2025-07-31 07:30",
         "clips": [],
-        "total": 0,
-        "max": 9
+        "max": 9,
+        "total": 0
       }
     }
   },
@@ -1836,33 +1688,33 @@
     "action": "bar_advanced",
     "payload": {
       "bar": {
-        "time": "2025-07-31 07:35",
-        "open": 25018,
+        "close": 25019.75,
+        "ema20": 24997.864378918242,
         "high": 25020,
         "low": 25016.25,
-        "close": 25019.75,
-        "volume": 554,
-        "ema20": 24997.864378918242
+        "open": 25018,
+        "time": "2025-07-31 07:35",
+        "volume": 554
       },
-      "cursor": 631,
-      "hiddenBars": 1300,
-      "hasMore": true,
-      "orders": [],
-      "trades": [],
       "closedLots": null,
+      "cursor": 631,
+      "fills": [],
+      "hasMore": true,
+      "hiddenBars": 1300,
+      "orders": [],
       "position": {
+        "averagePrice": 0,
         "quantity": 0,
-        "side": "flat",
-        "averagePrice": 0
+        "side": "flat"
       },
       "realizedPnl": 0,
+      "trades": [],
       "unrealizedPnl": 0,
-      "fills": [],
       "voice": {
         "barTime": "2025-07-31 07:35",
         "clips": [],
-        "total": 0,
-        "max": 9
+        "max": 9,
+        "total": 0
       }
     }
   },
@@ -1873,33 +1725,33 @@
     "action": "bar_advanced",
     "payload": {
       "bar": {
-        "time": "2025-07-31 07:40",
-        "open": 25020,
+        "close": 25024.5,
+        "ema20": 25000.401104735553,
         "high": 25024.5,
         "low": 25017.25,
-        "close": 25024.5,
-        "volume": 841,
-        "ema20": 25000.401104735553
+        "open": 25020,
+        "time": "2025-07-31 07:40",
+        "volume": 841
       },
-      "cursor": 632,
-      "hiddenBars": 1299,
-      "hasMore": true,
-      "orders": [],
-      "trades": [],
       "closedLots": null,
+      "cursor": 632,
+      "fills": [],
+      "hasMore": true,
+      "hiddenBars": 1299,
+      "orders": [],
       "position": {
+        "averagePrice": 0,
         "quantity": 0,
-        "side": "flat",
-        "averagePrice": 0
+        "side": "flat"
       },
       "realizedPnl": 0,
+      "trades": [],
       "unrealizedPnl": 0,
-      "fills": [],
       "voice": {
         "barTime": "2025-07-31 07:40",
         "clips": [],
-        "total": 0,
-        "max": 9
+        "max": 9,
+        "total": 0
       }
     }
   },
@@ -1909,85 +1761,85 @@
     "by": "human",
     "action": "order_filled",
     "payload": {
+      "closedLots": null,
       "order": {
-        "id": "o1",
-        "side": "buy",
-        "kind": "market",
-        "price": 25024.5,
-        "quantity": 6,
-        "status": "filled",
-        "placedAt": "2025-07-31 07:40",
-        "placedIndex": 632,
+        "fillPrice": 25024.5,
         "filledAt": "2025-07-31 07:40",
         "filledIndex": 632,
-        "fillPrice": 25024.5
-      },
-      "trade": {
-        "id": "t1",
-        "orderId": "o1",
-        "time": "2025-07-31 07:40",
-        "side": "buy",
+        "id": "o1",
         "kind": "market",
-        "price": 25024.5,
-        "quantity": 6,
-        "realizedPnl": 0
-      },
-      "stopOrder": {
-        "id": "o2",
-        "side": "sell",
-        "kind": "stop",
-        "price": 24869.51,
-        "quantity": 6,
-        "status": "open",
         "placedAt": "2025-07-31 07:40",
         "placedIndex": 632,
-        "filledIndex": -1
+        "price": 25024.5,
+        "quantity": 6,
+        "side": "buy",
+        "status": "filled"
       },
       "orders": [
         {
-          "id": "o1",
-          "side": "buy",
-          "kind": "market",
-          "price": 25024.5,
-          "quantity": 6,
-          "status": "filled",
-          "placedAt": "2025-07-31 07:40",
-          "placedIndex": 632,
+          "fillPrice": 25024.5,
           "filledAt": "2025-07-31 07:40",
           "filledIndex": 632,
-          "fillPrice": 25024.5
-        },
-        {
-          "id": "o2",
-          "side": "sell",
-          "kind": "stop",
-          "price": 24869.51,
-          "quantity": 6,
-          "status": "open",
+          "id": "o1",
+          "kind": "market",
           "placedAt": "2025-07-31 07:40",
           "placedIndex": 632,
-          "filledIndex": -1
+          "price": 25024.5,
+          "quantity": 6,
+          "side": "buy",
+          "status": "filled"
+        },
+        {
+          "filledIndex": -1,
+          "id": "o2",
+          "kind": "stop",
+          "placedAt": "2025-07-31 07:40",
+          "placedIndex": 632,
+          "price": 24869.51,
+          "quantity": 6,
+          "side": "sell",
+          "status": "open"
         }
       ],
+      "position": {
+        "averagePrice": 25024.5,
+        "quantity": 6,
+        "side": "long"
+      },
+      "realizedPnl": 0,
+      "stopOrder": {
+        "filledIndex": -1,
+        "id": "o2",
+        "kind": "stop",
+        "placedAt": "2025-07-31 07:40",
+        "placedIndex": 632,
+        "price": 24869.51,
+        "quantity": 6,
+        "side": "sell",
+        "status": "open"
+      },
+      "trade": {
+        "id": "t1",
+        "kind": "market",
+        "orderId": "o1",
+        "price": 25024.5,
+        "quantity": 6,
+        "realizedPnl": 0,
+        "side": "buy",
+        "time": "2025-07-31 07:40"
+      },
       "trades": [
         {
           "id": "t1",
-          "orderId": "o1",
-          "time": "2025-07-31 07:40",
-          "side": "buy",
           "kind": "market",
+          "orderId": "o1",
           "price": 25024.5,
           "quantity": 6,
-          "realizedPnl": 0
+          "realizedPnl": 0,
+          "side": "buy",
+          "time": "2025-07-31 07:40"
         }
       ],
-      "closedLots": null,
-      "position": {
-        "quantity": 6,
-        "side": "long",
-        "averagePrice": 25024.5
-      },
-      "realizedPnl": 0,
       "unrealizedPnl": 0
     }
   },
@@ -1998,25 +1850,25 @@
     "action": "annotation_added",
     "payload": {
       "annotation": {
+        "createdAt": 1793110630,
+        "createdBy": "human",
+        "end": {
+          "offset": 175,
+          "price": 25022.25,
+          "time": "2025-07-31 07:30"
+        },
         "id": "a10",
         "kind": "ray",
+        "snapped": true,
         "start": {
-          "time": "2025-07-31 07:30",
-          "price": 25022.25
-        },
-        "end": {
-          "time": "2025-07-31 07:30",
           "price": 25022.25,
-          "offset": 175
+          "time": "2025-07-31 07:30"
         },
         "style": {
           "color": "#65a30d",
-          "width": 2,
-          "dash": "solid"
-        },
-        "snapped": true,
-        "createdBy": "human",
-        "createdAt": 1793110630
+          "dash": "solid",
+          "width": 2
+        }
       }
     }
   },
@@ -2027,43 +1879,43 @@
     "action": "annotation_added",
     "payload": {
       "annotation": {
+        "createdAt": 1793110641,
+        "createdBy": "human",
+        "end": {
+          "offset": 39,
+          "price": 25022.37,
+          "time": "2025-07-31 07:40"
+        },
         "id": "a11",
         "kind": "fib",
+        "snapped": false,
         "start": {
-          "time": "2025-07-31 06:00",
-          "price": 24977.5
-        },
-        "end": {
-          "time": "2025-07-31 07:40",
-          "price": 25022.37,
-          "offset": 39
+          "price": 24977.5,
+          "time": "2025-07-31 06:00"
         },
         "style": {
           "color": "#f59e0b",
-          "width": 1.2,
           "dash": "solid",
           "levels": [
             {
-              "ratio": -1,
-              "color": "#38bdf8"
+              "color": "#38bdf8",
+              "ratio": -1
             },
             {
-              "ratio": 0,
-              "color": "#f59e0b"
+              "color": "#f59e0b",
+              "ratio": 0
             },
             {
-              "ratio": 1,
-              "color": "#ec4899"
+              "color": "#ec4899",
+              "ratio": 1
             },
             {
-              "ratio": 2,
-              "color": "#22c55e"
+              "color": "#22c55e",
+              "ratio": 2
             }
-          ]
-        },
-        "snapped": false,
-        "createdBy": "human",
-        "createdAt": 1793110641
+          ],
+          "width": 1.2
+        }
       }
     }
   },
@@ -2075,39 +1927,39 @@
     "payload": {
       "orders": [
         {
-          "id": "o1",
-          "side": "buy",
-          "kind": "market",
-          "price": 25024.5,
-          "quantity": 6,
-          "status": "filled",
-          "placedAt": "2025-07-31 07:40",
-          "placedIndex": 632,
+          "fillPrice": 25024.5,
           "filledAt": "2025-07-31 07:40",
           "filledIndex": 632,
-          "fillPrice": 25024.5
+          "id": "o1",
+          "kind": "market",
+          "placedAt": "2025-07-31 07:40",
+          "placedIndex": 632,
+          "price": 25024.5,
+          "quantity": 6,
+          "side": "buy",
+          "status": "filled"
         },
         {
+          "filledIndex": -1,
           "id": "o2",
-          "side": "sell",
           "kind": "stop",
+          "placedAt": "2025-07-31 07:40",
+          "placedIndex": 632,
           "price": 24869.51,
           "quantity": 6,
-          "status": "open",
-          "placedAt": "2025-07-31 07:40",
-          "placedIndex": 632,
-          "filledIndex": -1
+          "side": "sell",
+          "status": "open"
         },
         {
+          "filledIndex": -1,
           "id": "o3",
-          "side": "sell",
           "kind": "limit",
-          "price": 25064.75,
-          "quantity": 6,
-          "status": "open",
           "placedAt": "2025-07-31 07:40",
           "placedIndex": 632,
-          "filledIndex": -1
+          "price": 25064.75,
+          "quantity": 6,
+          "side": "sell",
+          "status": "open"
         }
       ]
     }
@@ -2119,51 +1971,51 @@
     "action": "order_moved",
     "payload": {
       "order": {
+        "filledIndex": -1,
         "id": "o3",
-        "side": "sell",
         "kind": "limit",
-        "price": 25067,
-        "quantity": 6,
-        "status": "open",
         "placedAt": "2025-07-31 07:40",
         "placedIndex": 632,
-        "filledIndex": -1
+        "price": 25067,
+        "quantity": 6,
+        "side": "sell",
+        "status": "open"
       },
       "orders": [
         {
-          "id": "o1",
-          "side": "buy",
-          "kind": "market",
-          "price": 25024.5,
-          "quantity": 6,
-          "status": "filled",
-          "placedAt": "2025-07-31 07:40",
-          "placedIndex": 632,
+          "fillPrice": 25024.5,
           "filledAt": "2025-07-31 07:40",
           "filledIndex": 632,
-          "fillPrice": 25024.5
+          "id": "o1",
+          "kind": "market",
+          "placedAt": "2025-07-31 07:40",
+          "placedIndex": 632,
+          "price": 25024.5,
+          "quantity": 6,
+          "side": "buy",
+          "status": "filled"
         },
         {
+          "filledIndex": -1,
           "id": "o2",
-          "side": "sell",
           "kind": "stop",
+          "placedAt": "2025-07-31 07:40",
+          "placedIndex": 632,
           "price": 24869.51,
           "quantity": 6,
-          "status": "open",
-          "placedAt": "2025-07-31 07:40",
-          "placedIndex": 632,
-          "filledIndex": -1
+          "side": "sell",
+          "status": "open"
         },
         {
+          "filledIndex": -1,
           "id": "o3",
-          "side": "sell",
           "kind": "limit",
-          "price": 25067,
-          "quantity": 6,
-          "status": "open",
           "placedAt": "2025-07-31 07:40",
           "placedIndex": 632,
-          "filledIndex": -1
+          "price": 25067,
+          "quantity": 6,
+          "side": "sell",
+          "status": "open"
         }
       ]
     }
@@ -2175,80 +2027,80 @@
     "action": "bar_advanced",
     "payload": {
       "bar": {
-        "time": "2025-07-31 07:45",
-        "open": 25024.25,
+        "close": 25023.25,
+        "ema20": 25002.577189998836,
         "high": 25026,
         "low": 25021.5,
-        "close": 25023.25,
-        "volume": 711,
-        "ema20": 25002.577189998836
+        "open": 25024.25,
+        "time": "2025-07-31 07:45",
+        "volume": 711
       },
+      "closedLots": null,
       "cursor": 633,
-      "hiddenBars": 1298,
+      "fills": [],
       "hasMore": true,
+      "hiddenBars": 1298,
       "orders": [
         {
-          "id": "o1",
-          "side": "buy",
-          "kind": "market",
-          "price": 25024.5,
-          "quantity": 6,
-          "status": "filled",
-          "placedAt": "2025-07-31 07:40",
-          "placedIndex": 632,
+          "fillPrice": 25024.5,
           "filledAt": "2025-07-31 07:40",
           "filledIndex": 632,
-          "fillPrice": 25024.5
+          "id": "o1",
+          "kind": "market",
+          "placedAt": "2025-07-31 07:40",
+          "placedIndex": 632,
+          "price": 25024.5,
+          "quantity": 6,
+          "side": "buy",
+          "status": "filled"
         },
         {
+          "filledIndex": -1,
           "id": "o2",
-          "side": "sell",
           "kind": "stop",
+          "placedAt": "2025-07-31 07:40",
+          "placedIndex": 632,
           "price": 24869.51,
           "quantity": 6,
-          "status": "open",
-          "placedAt": "2025-07-31 07:40",
-          "placedIndex": 632,
-          "filledIndex": -1
+          "side": "sell",
+          "status": "open"
         },
         {
+          "filledIndex": -1,
           "id": "o3",
-          "side": "sell",
           "kind": "limit",
-          "price": 25067,
-          "quantity": 6,
-          "status": "open",
           "placedAt": "2025-07-31 07:40",
           "placedIndex": 632,
-          "filledIndex": -1
+          "price": 25067,
+          "quantity": 6,
+          "side": "sell",
+          "status": "open"
         }
       ],
+      "position": {
+        "averagePrice": 25024.5,
+        "quantity": 6,
+        "side": "long"
+      },
+      "realizedPnl": 0,
       "trades": [
         {
           "id": "t1",
-          "orderId": "o1",
-          "time": "2025-07-31 07:40",
-          "side": "buy",
           "kind": "market",
+          "orderId": "o1",
           "price": 25024.5,
           "quantity": 6,
-          "realizedPnl": 0
+          "realizedPnl": 0,
+          "side": "buy",
+          "time": "2025-07-31 07:40"
         }
       ],
-      "closedLots": null,
-      "position": {
-        "quantity": 6,
-        "side": "long",
-        "averagePrice": 25024.5
-      },
-      "realizedPnl": 0,
       "unrealizedPnl": -15,
-      "fills": [],
       "voice": {
         "barTime": "2025-07-31 07:45",
         "clips": [],
-        "total": 0,
-        "max": 9
+        "max": 9,
+        "total": 0
       }
     }
   },
@@ -2259,80 +2111,80 @@
     "action": "bar_advanced",
     "payload": {
       "bar": {
-        "time": "2025-07-31 07:50",
-        "open": 25024.25,
+        "close": 25020,
+        "ema20": 25004.23650523704,
         "high": 25025,
         "low": 25018.5,
-        "close": 25020,
-        "volume": 733,
-        "ema20": 25004.23650523704
+        "open": 25024.25,
+        "time": "2025-07-31 07:50",
+        "volume": 733
       },
+      "closedLots": null,
       "cursor": 634,
-      "hiddenBars": 1297,
+      "fills": [],
       "hasMore": true,
+      "hiddenBars": 1297,
       "orders": [
         {
-          "id": "o1",
-          "side": "buy",
-          "kind": "market",
-          "price": 25024.5,
-          "quantity": 6,
-          "status": "filled",
-          "placedAt": "2025-07-31 07:40",
-          "placedIndex": 632,
+          "fillPrice": 25024.5,
           "filledAt": "2025-07-31 07:40",
           "filledIndex": 632,
-          "fillPrice": 25024.5
+          "id": "o1",
+          "kind": "market",
+          "placedAt": "2025-07-31 07:40",
+          "placedIndex": 632,
+          "price": 25024.5,
+          "quantity": 6,
+          "side": "buy",
+          "status": "filled"
         },
         {
+          "filledIndex": -1,
           "id": "o2",
-          "side": "sell",
           "kind": "stop",
+          "placedAt": "2025-07-31 07:40",
+          "placedIndex": 632,
           "price": 24869.51,
           "quantity": 6,
-          "status": "open",
-          "placedAt": "2025-07-31 07:40",
-          "placedIndex": 632,
-          "filledIndex": -1
+          "side": "sell",
+          "status": "open"
         },
         {
+          "filledIndex": -1,
           "id": "o3",
-          "side": "sell",
           "kind": "limit",
-          "price": 25067,
-          "quantity": 6,
-          "status": "open",
           "placedAt": "2025-07-31 07:40",
           "placedIndex": 632,
-          "filledIndex": -1
+          "price": 25067,
+          "quantity": 6,
+          "side": "sell",
+          "status": "open"
         }
       ],
+      "position": {
+        "averagePrice": 25024.5,
+        "quantity": 6,
+        "side": "long"
+      },
+      "realizedPnl": 0,
       "trades": [
         {
           "id": "t1",
-          "orderId": "o1",
-          "time": "2025-07-31 07:40",
-          "side": "buy",
           "kind": "market",
+          "orderId": "o1",
           "price": 25024.5,
           "quantity": 6,
-          "realizedPnl": 0
+          "realizedPnl": 0,
+          "side": "buy",
+          "time": "2025-07-31 07:40"
         }
       ],
-      "closedLots": null,
-      "position": {
-        "quantity": 6,
-        "side": "long",
-        "averagePrice": 25024.5
-      },
-      "realizedPnl": 0,
       "unrealizedPnl": -54,
-      "fills": [],
       "voice": {
         "barTime": "2025-07-31 07:50",
         "clips": [],
-        "total": 0,
-        "max": 9
+        "max": 9,
+        "total": 0
       }
     }
   },
@@ -2352,51 +2204,51 @@
     "action": "order_moved",
     "payload": {
       "order": {
+        "filledIndex": -1,
         "id": "o2",
-        "side": "sell",
         "kind": "stop",
-        "price": 24977.75,
-        "quantity": 6,
-        "status": "open",
         "placedAt": "2025-07-31 07:40",
         "placedIndex": 632,
-        "filledIndex": -1
+        "price": 24977.75,
+        "quantity": 6,
+        "side": "sell",
+        "status": "open"
       },
       "orders": [
         {
-          "id": "o1",
-          "side": "buy",
-          "kind": "market",
-          "price": 25024.5,
-          "quantity": 6,
-          "status": "filled",
-          "placedAt": "2025-07-31 07:40",
-          "placedIndex": 632,
+          "fillPrice": 25024.5,
           "filledAt": "2025-07-31 07:40",
           "filledIndex": 632,
-          "fillPrice": 25024.5
+          "id": "o1",
+          "kind": "market",
+          "placedAt": "2025-07-31 07:40",
+          "placedIndex": 632,
+          "price": 25024.5,
+          "quantity": 6,
+          "side": "buy",
+          "status": "filled"
         },
         {
+          "filledIndex": -1,
           "id": "o2",
-          "side": "sell",
           "kind": "stop",
+          "placedAt": "2025-07-31 07:40",
+          "placedIndex": 632,
           "price": 24977.75,
           "quantity": 6,
-          "status": "open",
-          "placedAt": "2025-07-31 07:40",
-          "placedIndex": 632,
-          "filledIndex": -1
+          "side": "sell",
+          "status": "open"
         },
         {
+          "filledIndex": -1,
           "id": "o3",
-          "side": "sell",
           "kind": "limit",
-          "price": 25067,
-          "quantity": 6,
-          "status": "open",
           "placedAt": "2025-07-31 07:40",
           "placedIndex": 632,
-          "filledIndex": -1
+          "price": 25067,
+          "quantity": 6,
+          "side": "sell",
+          "status": "open"
         }
       ]
     }
@@ -2417,80 +2269,80 @@
     "action": "bar_advanced",
     "payload": {
       "bar": {
-        "time": "2025-07-31 07:55",
-        "open": 25020.5,
+        "close": 25014.25,
+        "ema20": 25005.19017140494,
         "high": 25020.5,
         "low": 25013.5,
-        "close": 25014.25,
-        "volume": 768,
-        "ema20": 25005.19017140494
+        "open": 25020.5,
+        "time": "2025-07-31 07:55",
+        "volume": 768
       },
+      "closedLots": null,
       "cursor": 635,
-      "hiddenBars": 1296,
+      "fills": [],
       "hasMore": true,
+      "hiddenBars": 1296,
       "orders": [
         {
-          "id": "o1",
-          "side": "buy",
-          "kind": "market",
-          "price": 25024.5,
-          "quantity": 6,
-          "status": "filled",
-          "placedAt": "2025-07-31 07:40",
-          "placedIndex": 632,
+          "fillPrice": 25024.5,
           "filledAt": "2025-07-31 07:40",
           "filledIndex": 632,
-          "fillPrice": 25024.5
+          "id": "o1",
+          "kind": "market",
+          "placedAt": "2025-07-31 07:40",
+          "placedIndex": 632,
+          "price": 25024.5,
+          "quantity": 6,
+          "side": "buy",
+          "status": "filled"
         },
         {
+          "filledIndex": -1,
           "id": "o2",
-          "side": "sell",
           "kind": "stop",
+          "placedAt": "2025-07-31 07:40",
+          "placedIndex": 632,
           "price": 24977.75,
           "quantity": 6,
-          "status": "open",
-          "placedAt": "2025-07-31 07:40",
-          "placedIndex": 632,
-          "filledIndex": -1
+          "side": "sell",
+          "status": "open"
         },
         {
+          "filledIndex": -1,
           "id": "o3",
-          "side": "sell",
           "kind": "limit",
-          "price": 25067,
-          "quantity": 6,
-          "status": "open",
           "placedAt": "2025-07-31 07:40",
           "placedIndex": 632,
-          "filledIndex": -1
+          "price": 25067,
+          "quantity": 6,
+          "side": "sell",
+          "status": "open"
         }
       ],
+      "position": {
+        "averagePrice": 25024.5,
+        "quantity": 6,
+        "side": "long"
+      },
+      "realizedPnl": 0,
       "trades": [
         {
           "id": "t1",
-          "orderId": "o1",
-          "time": "2025-07-31 07:40",
-          "side": "buy",
           "kind": "market",
+          "orderId": "o1",
           "price": 25024.5,
           "quantity": 6,
-          "realizedPnl": 0
+          "realizedPnl": 0,
+          "side": "buy",
+          "time": "2025-07-31 07:40"
         }
       ],
-      "closedLots": null,
-      "position": {
-        "quantity": 6,
-        "side": "long",
-        "averagePrice": 25024.5
-      },
-      "realizedPnl": 0,
       "unrealizedPnl": -123,
-      "fills": [],
       "voice": {
         "barTime": "2025-07-31 07:55",
         "clips": [],
-        "total": 0,
-        "max": 9
+        "max": 9,
+        "total": 0
       }
     }
   },
@@ -2501,25 +2353,25 @@
     "action": "annotation_added",
     "payload": {
       "annotation": {
+        "createdAt": 1793110731,
+        "createdBy": "human",
+        "end": {
+          "offset": 175,
+          "price": 25004.25,
+          "time": "2025-07-31 06:05"
+        },
         "id": "a12",
         "kind": "ray",
+        "snapped": true,
         "start": {
-          "time": "2025-07-31 06:05",
-          "price": 25004.25
-        },
-        "end": {
-          "time": "2025-07-31 06:05",
           "price": 25004.25,
-          "offset": 175
+          "time": "2025-07-31 06:05"
         },
         "style": {
           "color": "#65a30d",
-          "width": 2,
-          "dash": "solid"
-        },
-        "snapped": true,
-        "createdBy": "human",
-        "createdAt": 1793110731
+          "dash": "solid",
+          "width": 2
+        }
       }
     }
   },
@@ -2539,25 +2391,25 @@
     "action": "annotation_added",
     "payload": {
       "annotation": {
+        "createdAt": 1793110743,
+        "createdBy": "human",
+        "end": {
+          "offset": 175,
+          "price": 25016.25,
+          "time": "2025-07-31 07:35"
+        },
         "id": "a13",
         "kind": "ray",
+        "snapped": true,
         "start": {
-          "time": "2025-07-31 07:35",
-          "price": 25016.25
-        },
-        "end": {
-          "time": "2025-07-31 07:35",
           "price": 25016.25,
-          "offset": 175
+          "time": "2025-07-31 07:35"
         },
         "style": {
           "color": "#ef4444",
-          "width": 2,
-          "dash": "solid"
-        },
-        "snapped": true,
-        "createdBy": "human",
-        "createdAt": 1793110743
+          "dash": "solid",
+          "width": 2
+        }
       }
     }
   },
@@ -2568,80 +2420,80 @@
     "action": "bar_advanced",
     "payload": {
       "bar": {
-        "time": "2025-07-31 08:00",
-        "open": 25014.25,
+        "close": 25012.5,
+        "ema20": 25005.88634555685,
         "high": 25015.25,
         "low": 25006.25,
-        "close": 25012.5,
-        "volume": 2481,
-        "ema20": 25005.88634555685
+        "open": 25014.25,
+        "time": "2025-07-31 08:00",
+        "volume": 2481
       },
+      "closedLots": null,
       "cursor": 636,
-      "hiddenBars": 1295,
+      "fills": [],
       "hasMore": true,
+      "hiddenBars": 1295,
       "orders": [
         {
-          "id": "o1",
-          "side": "buy",
-          "kind": "market",
-          "price": 25024.5,
-          "quantity": 6,
-          "status": "filled",
-          "placedAt": "2025-07-31 07:40",
-          "placedIndex": 632,
+          "fillPrice": 25024.5,
           "filledAt": "2025-07-31 07:40",
           "filledIndex": 632,
-          "fillPrice": 25024.5
+          "id": "o1",
+          "kind": "market",
+          "placedAt": "2025-07-31 07:40",
+          "placedIndex": 632,
+          "price": 25024.5,
+          "quantity": 6,
+          "side": "buy",
+          "status": "filled"
         },
         {
+          "filledIndex": -1,
           "id": "o2",
-          "side": "sell",
           "kind": "stop",
+          "placedAt": "2025-07-31 07:40",
+          "placedIndex": 632,
           "price": 24977.75,
           "quantity": 6,
-          "status": "open",
-          "placedAt": "2025-07-31 07:40",
-          "placedIndex": 632,
-          "filledIndex": -1
+          "side": "sell",
+          "status": "open"
         },
         {
+          "filledIndex": -1,
           "id": "o3",
-          "side": "sell",
           "kind": "limit",
-          "price": 25067,
-          "quantity": 6,
-          "status": "open",
           "placedAt": "2025-07-31 07:40",
           "placedIndex": 632,
-          "filledIndex": -1
+          "price": 25067,
+          "quantity": 6,
+          "side": "sell",
+          "status": "open"
         }
       ],
+      "position": {
+        "averagePrice": 25024.5,
+        "quantity": 6,
+        "side": "long"
+      },
+      "realizedPnl": 0,
       "trades": [
         {
           "id": "t1",
-          "orderId": "o1",
-          "time": "2025-07-31 07:40",
-          "side": "buy",
           "kind": "market",
+          "orderId": "o1",
           "price": 25024.5,
           "quantity": 6,
-          "realizedPnl": 0
+          "realizedPnl": 0,
+          "side": "buy",
+          "time": "2025-07-31 07:40"
         }
       ],
-      "closedLots": null,
-      "position": {
-        "quantity": 6,
-        "side": "long",
-        "averagePrice": 25024.5
-      },
-      "realizedPnl": 0,
       "unrealizedPnl": -144,
-      "fills": [],
       "voice": {
         "barTime": "2025-07-31 08:00",
         "clips": [],
-        "total": 0,
-        "max": 9
+        "max": 9,
+        "total": 0
       }
     }
   },
@@ -2652,80 +2504,80 @@
     "action": "bar_advanced",
     "payload": {
       "bar": {
-        "time": "2025-07-31 08:05",
-        "open": 25012.5,
+        "close": 25004.5,
+        "ema20": 25005.754312646677,
         "high": 25013.5,
         "low": 25001,
-        "close": 25004.5,
-        "volume": 1681,
-        "ema20": 25005.754312646677
+        "open": 25012.5,
+        "time": "2025-07-31 08:05",
+        "volume": 1681
       },
+      "closedLots": null,
       "cursor": 637,
-      "hiddenBars": 1294,
+      "fills": [],
       "hasMore": true,
+      "hiddenBars": 1294,
       "orders": [
         {
-          "id": "o1",
-          "side": "buy",
-          "kind": "market",
-          "price": 25024.5,
-          "quantity": 6,
-          "status": "filled",
-          "placedAt": "2025-07-31 07:40",
-          "placedIndex": 632,
+          "fillPrice": 25024.5,
           "filledAt": "2025-07-31 07:40",
           "filledIndex": 632,
-          "fillPrice": 25024.5
+          "id": "o1",
+          "kind": "market",
+          "placedAt": "2025-07-31 07:40",
+          "placedIndex": 632,
+          "price": 25024.5,
+          "quantity": 6,
+          "side": "buy",
+          "status": "filled"
         },
         {
+          "filledIndex": -1,
           "id": "o2",
-          "side": "sell",
           "kind": "stop",
+          "placedAt": "2025-07-31 07:40",
+          "placedIndex": 632,
           "price": 24977.75,
           "quantity": 6,
-          "status": "open",
-          "placedAt": "2025-07-31 07:40",
-          "placedIndex": 632,
-          "filledIndex": -1
+          "side": "sell",
+          "status": "open"
         },
         {
+          "filledIndex": -1,
           "id": "o3",
-          "side": "sell",
           "kind": "limit",
-          "price": 25067,
-          "quantity": 6,
-          "status": "open",
           "placedAt": "2025-07-31 07:40",
           "placedIndex": 632,
-          "filledIndex": -1
+          "price": 25067,
+          "quantity": 6,
+          "side": "sell",
+          "status": "open"
         }
       ],
+      "position": {
+        "averagePrice": 25024.5,
+        "quantity": 6,
+        "side": "long"
+      },
+      "realizedPnl": 0,
       "trades": [
         {
           "id": "t1",
-          "orderId": "o1",
-          "time": "2025-07-31 07:40",
-          "side": "buy",
           "kind": "market",
+          "orderId": "o1",
           "price": 25024.5,
           "quantity": 6,
-          "realizedPnl": 0
+          "realizedPnl": 0,
+          "side": "buy",
+          "time": "2025-07-31 07:40"
         }
       ],
-      "closedLots": null,
-      "position": {
-        "quantity": 6,
-        "side": "long",
-        "averagePrice": 25024.5
-      },
-      "realizedPnl": 0,
       "unrealizedPnl": -240,
-      "fills": [],
       "voice": {
         "barTime": "2025-07-31 08:05",
         "clips": [],
-        "total": 0,
-        "max": 9
+        "max": 9,
+        "total": 0
       }
     }
   },
@@ -2745,80 +2597,80 @@
     "action": "bar_advanced",
     "payload": {
       "bar": {
-        "time": "2025-07-31 08:10",
-        "open": 25004.75,
+        "close": 25008.25,
+        "ema20": 25005.991997156518,
         "high": 25011,
         "low": 25002.5,
-        "close": 25008.25,
-        "volume": 1205,
-        "ema20": 25005.991997156518
+        "open": 25004.75,
+        "time": "2025-07-31 08:10",
+        "volume": 1205
       },
+      "closedLots": null,
       "cursor": 638,
-      "hiddenBars": 1293,
+      "fills": [],
       "hasMore": true,
+      "hiddenBars": 1293,
       "orders": [
         {
-          "id": "o1",
-          "side": "buy",
-          "kind": "market",
-          "price": 25024.5,
-          "quantity": 6,
-          "status": "filled",
-          "placedAt": "2025-07-31 07:40",
-          "placedIndex": 632,
+          "fillPrice": 25024.5,
           "filledAt": "2025-07-31 07:40",
           "filledIndex": 632,
-          "fillPrice": 25024.5
+          "id": "o1",
+          "kind": "market",
+          "placedAt": "2025-07-31 07:40",
+          "placedIndex": 632,
+          "price": 25024.5,
+          "quantity": 6,
+          "side": "buy",
+          "status": "filled"
         },
         {
+          "filledIndex": -1,
           "id": "o2",
-          "side": "sell",
           "kind": "stop",
+          "placedAt": "2025-07-31 07:40",
+          "placedIndex": 632,
           "price": 24977.75,
           "quantity": 6,
-          "status": "open",
-          "placedAt": "2025-07-31 07:40",
-          "placedIndex": 632,
-          "filledIndex": -1
+          "side": "sell",
+          "status": "open"
         },
         {
+          "filledIndex": -1,
           "id": "o3",
-          "side": "sell",
           "kind": "limit",
-          "price": 25067,
-          "quantity": 6,
-          "status": "open",
           "placedAt": "2025-07-31 07:40",
           "placedIndex": 632,
-          "filledIndex": -1
+          "price": 25067,
+          "quantity": 6,
+          "side": "sell",
+          "status": "open"
         }
       ],
+      "position": {
+        "averagePrice": 25024.5,
+        "quantity": 6,
+        "side": "long"
+      },
+      "realizedPnl": 0,
       "trades": [
         {
           "id": "t1",
-          "orderId": "o1",
-          "time": "2025-07-31 07:40",
-          "side": "buy",
           "kind": "market",
+          "orderId": "o1",
           "price": 25024.5,
           "quantity": 6,
-          "realizedPnl": 0
+          "realizedPnl": 0,
+          "side": "buy",
+          "time": "2025-07-31 07:40"
         }
       ],
-      "closedLots": null,
-      "position": {
-        "quantity": 6,
-        "side": "long",
-        "averagePrice": 25024.5
-      },
-      "realizedPnl": 0,
       "unrealizedPnl": -195,
-      "fills": [],
       "voice": {
         "barTime": "2025-07-31 08:10",
         "clips": [],
-        "total": 0,
-        "max": 9
+        "max": 9,
+        "total": 0
       }
     }
   },
@@ -2829,80 +2681,80 @@
     "action": "bar_advanced",
     "payload": {
       "bar": {
-        "time": "2025-07-31 08:15",
-        "open": 25008,
+        "close": 25026.5,
+        "ema20": 25007.945140284468,
         "high": 25029,
         "low": 25007.5,
-        "close": 25026.5,
-        "volume": 2541,
-        "ema20": 25007.945140284468
+        "open": 25008,
+        "time": "2025-07-31 08:15",
+        "volume": 2541
       },
+      "closedLots": null,
       "cursor": 639,
-      "hiddenBars": 1292,
+      "fills": [],
       "hasMore": true,
+      "hiddenBars": 1292,
       "orders": [
         {
-          "id": "o1",
-          "side": "buy",
-          "kind": "market",
-          "price": 25024.5,
-          "quantity": 6,
-          "status": "filled",
-          "placedAt": "2025-07-31 07:40",
-          "placedIndex": 632,
+          "fillPrice": 25024.5,
           "filledAt": "2025-07-31 07:40",
           "filledIndex": 632,
-          "fillPrice": 25024.5
+          "id": "o1",
+          "kind": "market",
+          "placedAt": "2025-07-31 07:40",
+          "placedIndex": 632,
+          "price": 25024.5,
+          "quantity": 6,
+          "side": "buy",
+          "status": "filled"
         },
         {
+          "filledIndex": -1,
           "id": "o2",
-          "side": "sell",
           "kind": "stop",
+          "placedAt": "2025-07-31 07:40",
+          "placedIndex": 632,
           "price": 24977.75,
           "quantity": 6,
-          "status": "open",
-          "placedAt": "2025-07-31 07:40",
-          "placedIndex": 632,
-          "filledIndex": -1
+          "side": "sell",
+          "status": "open"
         },
         {
+          "filledIndex": -1,
           "id": "o3",
-          "side": "sell",
           "kind": "limit",
-          "price": 25067,
-          "quantity": 6,
-          "status": "open",
           "placedAt": "2025-07-31 07:40",
           "placedIndex": 632,
-          "filledIndex": -1
+          "price": 25067,
+          "quantity": 6,
+          "side": "sell",
+          "status": "open"
         }
       ],
+      "position": {
+        "averagePrice": 25024.5,
+        "quantity": 6,
+        "side": "long"
+      },
+      "realizedPnl": 0,
       "trades": [
         {
           "id": "t1",
-          "orderId": "o1",
-          "time": "2025-07-31 07:40",
-          "side": "buy",
           "kind": "market",
+          "orderId": "o1",
           "price": 25024.5,
           "quantity": 6,
-          "realizedPnl": 0
+          "realizedPnl": 0,
+          "side": "buy",
+          "time": "2025-07-31 07:40"
         }
       ],
-      "closedLots": null,
-      "position": {
-        "quantity": 6,
-        "side": "long",
-        "averagePrice": 25024.5
-      },
-      "realizedPnl": 0,
       "unrealizedPnl": 24,
-      "fills": [],
       "voice": {
         "barTime": "2025-07-31 08:15",
         "clips": [],
-        "total": 0,
-        "max": 9
+        "max": 9,
+        "total": 0
       }
     }
   },
@@ -2922,24 +2774,24 @@
     "action": "annotation_added",
     "payload": {
       "annotation": {
+        "createdAt": 1793110839,
+        "createdBy": "human",
+        "end": {
+          "price": 25030.04,
+          "time": "2025-07-31 07:10"
+        },
         "id": "a14",
         "kind": "trend",
+        "snapped": false,
         "start": {
-          "time": "2025-07-31 06:15",
-          "price": 24979.25
-        },
-        "end": {
-          "time": "2025-07-31 07:10",
-          "price": 25030.04
+          "price": 24979.25,
+          "time": "2025-07-31 06:15"
         },
         "style": {
           "color": "#f59e0b",
-          "width": 1.6,
-          "dash": "solid"
-        },
-        "snapped": false,
-        "createdBy": "human",
-        "createdAt": 1793110839
+          "dash": "solid",
+          "width": 1.6
+        }
       }
     }
   },
@@ -2950,25 +2802,25 @@
     "action": "annotation_moved",
     "payload": {
       "annotation": {
+        "createdAt": 1793110839,
+        "createdBy": "human",
+        "end": {
+          "offset": 9,
+          "price": 25052.28,
+          "time": "2025-07-31 08:15"
+        },
         "id": "a14",
         "kind": "trend",
+        "snapped": false,
         "start": {
-          "time": "2025-07-31 08:05",
-          "price": 25001.49
-        },
-        "end": {
-          "time": "2025-07-31 08:15",
-          "price": 25052.28,
-          "offset": 9
+          "price": 25001.49,
+          "time": "2025-07-31 08:05"
         },
         "style": {
           "color": "#f59e0b",
-          "width": 1.6,
-          "dash": "solid"
-        },
-        "snapped": false,
-        "createdBy": "human",
-        "createdAt": 1793110839
+          "dash": "solid",
+          "width": 1.6
+        }
       }
     }
   },
@@ -2979,51 +2831,51 @@
     "action": "order_moved",
     "payload": {
       "order": {
+        "filledIndex": -1,
         "id": "o3",
-        "side": "sell",
         "kind": "limit",
-        "price": 25052.25,
-        "quantity": 6,
-        "status": "open",
         "placedAt": "2025-07-31 07:40",
         "placedIndex": 632,
-        "filledIndex": -1
+        "price": 25052.25,
+        "quantity": 6,
+        "side": "sell",
+        "status": "open"
       },
       "orders": [
         {
-          "id": "o1",
-          "side": "buy",
-          "kind": "market",
-          "price": 25024.5,
-          "quantity": 6,
-          "status": "filled",
-          "placedAt": "2025-07-31 07:40",
-          "placedIndex": 632,
+          "fillPrice": 25024.5,
           "filledAt": "2025-07-31 07:40",
           "filledIndex": 632,
-          "fillPrice": 25024.5
+          "id": "o1",
+          "kind": "market",
+          "placedAt": "2025-07-31 07:40",
+          "placedIndex": 632,
+          "price": 25024.5,
+          "quantity": 6,
+          "side": "buy",
+          "status": "filled"
         },
         {
+          "filledIndex": -1,
           "id": "o2",
-          "side": "sell",
           "kind": "stop",
+          "placedAt": "2025-07-31 07:40",
+          "placedIndex": 632,
           "price": 24977.75,
           "quantity": 6,
-          "status": "open",
-          "placedAt": "2025-07-31 07:40",
-          "placedIndex": 632,
-          "filledIndex": -1
+          "side": "sell",
+          "status": "open"
         },
         {
+          "filledIndex": -1,
           "id": "o3",
-          "side": "sell",
           "kind": "limit",
-          "price": 25052.25,
-          "quantity": 6,
-          "status": "open",
           "placedAt": "2025-07-31 07:40",
           "placedIndex": 632,
-          "filledIndex": -1
+          "price": 25052.25,
+          "quantity": 6,
+          "side": "sell",
+          "status": "open"
         }
       ]
     }
@@ -3035,80 +2887,80 @@
     "action": "bar_advanced",
     "payload": {
       "bar": {
-        "time": "2025-07-31 08:20",
-        "open": 25027.25,
+        "close": 25031.5,
+        "ema20": 25010.188460257377,
         "high": 25037.25,
         "low": 25025,
-        "close": 25031.5,
-        "volume": 3072,
-        "ema20": 25010.188460257377
+        "open": 25027.25,
+        "time": "2025-07-31 08:20",
+        "volume": 3072
       },
+      "closedLots": null,
       "cursor": 640,
-      "hiddenBars": 1291,
+      "fills": [],
       "hasMore": true,
+      "hiddenBars": 1291,
       "orders": [
         {
-          "id": "o1",
-          "side": "buy",
-          "kind": "market",
-          "price": 25024.5,
-          "quantity": 6,
-          "status": "filled",
-          "placedAt": "2025-07-31 07:40",
-          "placedIndex": 632,
+          "fillPrice": 25024.5,
           "filledAt": "2025-07-31 07:40",
           "filledIndex": 632,
-          "fillPrice": 25024.5
+          "id": "o1",
+          "kind": "market",
+          "placedAt": "2025-07-31 07:40",
+          "placedIndex": 632,
+          "price": 25024.5,
+          "quantity": 6,
+          "side": "buy",
+          "status": "filled"
         },
         {
+          "filledIndex": -1,
           "id": "o2",
-          "side": "sell",
           "kind": "stop",
+          "placedAt": "2025-07-31 07:40",
+          "placedIndex": 632,
           "price": 24977.75,
           "quantity": 6,
-          "status": "open",
-          "placedAt": "2025-07-31 07:40",
-          "placedIndex": 632,
-          "filledIndex": -1
+          "side": "sell",
+          "status": "open"
         },
         {
+          "filledIndex": -1,
           "id": "o3",
-          "side": "sell",
           "kind": "limit",
-          "price": 25052.25,
-          "quantity": 6,
-          "status": "open",
           "placedAt": "2025-07-31 07:40",
           "placedIndex": 632,
-          "filledIndex": -1
+          "price": 25052.25,
+          "quantity": 6,
+          "side": "sell",
+          "status": "open"
         }
       ],
+      "position": {
+        "averagePrice": 25024.5,
+        "quantity": 6,
+        "side": "long"
+      },
+      "realizedPnl": 0,
       "trades": [
         {
           "id": "t1",
-          "orderId": "o1",
-          "time": "2025-07-31 07:40",
-          "side": "buy",
           "kind": "market",
+          "orderId": "o1",
           "price": 25024.5,
           "quantity": 6,
-          "realizedPnl": 0
+          "realizedPnl": 0,
+          "side": "buy",
+          "time": "2025-07-31 07:40"
         }
       ],
-      "closedLots": null,
-      "position": {
-        "quantity": 6,
-        "side": "long",
-        "averagePrice": 25024.5
-      },
-      "realizedPnl": 0,
       "unrealizedPnl": 84,
-      "fills": [],
       "voice": {
         "barTime": "2025-07-31 08:20",
         "clips": [],
-        "total": 0,
-        "max": 9
+        "max": 9,
+        "total": 0
       }
     }
   },
@@ -3119,51 +2971,51 @@
     "action": "order_moved",
     "payload": {
       "order": {
+        "filledIndex": -1,
         "id": "o3",
-        "side": "sell",
         "kind": "limit",
-        "price": 25051.5,
-        "quantity": 6,
-        "status": "open",
         "placedAt": "2025-07-31 07:40",
         "placedIndex": 632,
-        "filledIndex": -1
+        "price": 25051.5,
+        "quantity": 6,
+        "side": "sell",
+        "status": "open"
       },
       "orders": [
         {
-          "id": "o1",
-          "side": "buy",
-          "kind": "market",
-          "price": 25024.5,
-          "quantity": 6,
-          "status": "filled",
-          "placedAt": "2025-07-31 07:40",
-          "placedIndex": 632,
+          "fillPrice": 25024.5,
           "filledAt": "2025-07-31 07:40",
           "filledIndex": 632,
-          "fillPrice": 25024.5
+          "id": "o1",
+          "kind": "market",
+          "placedAt": "2025-07-31 07:40",
+          "placedIndex": 632,
+          "price": 25024.5,
+          "quantity": 6,
+          "side": "buy",
+          "status": "filled"
         },
         {
+          "filledIndex": -1,
           "id": "o2",
-          "side": "sell",
           "kind": "stop",
+          "placedAt": "2025-07-31 07:40",
+          "placedIndex": 632,
           "price": 24977.75,
           "quantity": 6,
-          "status": "open",
-          "placedAt": "2025-07-31 07:40",
-          "placedIndex": 632,
-          "filledIndex": -1
+          "side": "sell",
+          "status": "open"
         },
         {
+          "filledIndex": -1,
           "id": "o3",
-          "side": "sell",
           "kind": "limit",
-          "price": 25051.5,
-          "quantity": 6,
-          "status": "open",
           "placedAt": "2025-07-31 07:40",
           "placedIndex": 632,
-          "filledIndex": -1
+          "price": 25051.5,
+          "quantity": 6,
+          "side": "sell",
+          "status": "open"
         }
       ]
     }
@@ -3175,25 +3027,25 @@
     "action": "annotation_added",
     "payload": {
       "annotation": {
+        "createdAt": 1793110867,
+        "createdBy": "human",
+        "end": {
+          "offset": 175,
+          "price": 25026,
+          "time": "2025-07-31 07:45"
+        },
         "id": "a15",
         "kind": "ray",
+        "snapped": true,
         "start": {
-          "time": "2025-07-31 07:45",
-          "price": 25026
-        },
-        "end": {
-          "time": "2025-07-31 07:45",
           "price": 25026,
-          "offset": 175
+          "time": "2025-07-31 07:45"
         },
         "style": {
           "color": "#65a30d",
-          "width": 2,
-          "dash": "solid"
-        },
-        "snapped": true,
-        "createdBy": "human",
-        "createdAt": 1793110867
+          "dash": "solid",
+          "width": 2
+        }
       }
     }
   },
@@ -3204,80 +3056,80 @@
     "action": "bar_advanced",
     "payload": {
       "bar": {
-        "time": "2025-07-31 08:25",
-        "open": 25031,
+        "close": 25026.25,
+        "ema20": 25011.718130709058,
         "high": 25031,
         "low": 25023.75,
-        "close": 25026.25,
-        "volume": 1214,
-        "ema20": 25011.718130709058
+        "open": 25031,
+        "time": "2025-07-31 08:25",
+        "volume": 1214
       },
+      "closedLots": null,
       "cursor": 641,
-      "hiddenBars": 1290,
+      "fills": [],
       "hasMore": true,
+      "hiddenBars": 1290,
       "orders": [
         {
-          "id": "o1",
-          "side": "buy",
-          "kind": "market",
-          "price": 25024.5,
-          "quantity": 6,
-          "status": "filled",
-          "placedAt": "2025-07-31 07:40",
-          "placedIndex": 632,
+          "fillPrice": 25024.5,
           "filledAt": "2025-07-31 07:40",
           "filledIndex": 632,
-          "fillPrice": 25024.5
+          "id": "o1",
+          "kind": "market",
+          "placedAt": "2025-07-31 07:40",
+          "placedIndex": 632,
+          "price": 25024.5,
+          "quantity": 6,
+          "side": "buy",
+          "status": "filled"
         },
         {
+          "filledIndex": -1,
           "id": "o2",
-          "side": "sell",
           "kind": "stop",
+          "placedAt": "2025-07-31 07:40",
+          "placedIndex": 632,
           "price": 24977.75,
           "quantity": 6,
-          "status": "open",
-          "placedAt": "2025-07-31 07:40",
-          "placedIndex": 632,
-          "filledIndex": -1
+          "side": "sell",
+          "status": "open"
         },
         {
+          "filledIndex": -1,
           "id": "o3",
-          "side": "sell",
           "kind": "limit",
-          "price": 25051.5,
-          "quantity": 6,
-          "status": "open",
           "placedAt": "2025-07-31 07:40",
           "placedIndex": 632,
-          "filledIndex": -1
+          "price": 25051.5,
+          "quantity": 6,
+          "side": "sell",
+          "status": "open"
         }
       ],
+      "position": {
+        "averagePrice": 25024.5,
+        "quantity": 6,
+        "side": "long"
+      },
+      "realizedPnl": 0,
       "trades": [
         {
           "id": "t1",
-          "orderId": "o1",
-          "time": "2025-07-31 07:40",
-          "side": "buy",
           "kind": "market",
+          "orderId": "o1",
           "price": 25024.5,
           "quantity": 6,
-          "realizedPnl": 0
+          "realizedPnl": 0,
+          "side": "buy",
+          "time": "2025-07-31 07:40"
         }
       ],
-      "closedLots": null,
-      "position": {
-        "quantity": 6,
-        "side": "long",
-        "averagePrice": 25024.5
-      },
-      "realizedPnl": 0,
       "unrealizedPnl": 21,
-      "fills": [],
       "voice": {
         "barTime": "2025-07-31 08:25",
         "clips": [],
-        "total": 0,
-        "max": 9
+        "max": 9,
+        "total": 0
       }
     }
   },
@@ -3288,80 +3140,80 @@
     "action": "bar_advanced",
     "payload": {
       "bar": {
-        "time": "2025-07-31 08:30",
-        "open": 25026.5,
+        "close": 25023.25,
+        "ema20": 25012.816403974863,
         "high": 25028.5,
         "low": 25022.5,
-        "close": 25023.25,
-        "volume": 1138,
-        "ema20": 25012.816403974863
+        "open": 25026.5,
+        "time": "2025-07-31 08:30",
+        "volume": 1138
       },
+      "closedLots": null,
       "cursor": 642,
-      "hiddenBars": 1289,
+      "fills": [],
       "hasMore": true,
+      "hiddenBars": 1289,
       "orders": [
         {
-          "id": "o1",
-          "side": "buy",
-          "kind": "market",
-          "price": 25024.5,
-          "quantity": 6,
-          "status": "filled",
-          "placedAt": "2025-07-31 07:40",
-          "placedIndex": 632,
+          "fillPrice": 25024.5,
           "filledAt": "2025-07-31 07:40",
           "filledIndex": 632,
-          "fillPrice": 25024.5
+          "id": "o1",
+          "kind": "market",
+          "placedAt": "2025-07-31 07:40",
+          "placedIndex": 632,
+          "price": 25024.5,
+          "quantity": 6,
+          "side": "buy",
+          "status": "filled"
         },
         {
+          "filledIndex": -1,
           "id": "o2",
-          "side": "sell",
           "kind": "stop",
+          "placedAt": "2025-07-31 07:40",
+          "placedIndex": 632,
           "price": 24977.75,
           "quantity": 6,
-          "status": "open",
-          "placedAt": "2025-07-31 07:40",
-          "placedIndex": 632,
-          "filledIndex": -1
+          "side": "sell",
+          "status": "open"
         },
         {
+          "filledIndex": -1,
           "id": "o3",
-          "side": "sell",
           "kind": "limit",
-          "price": 25051.5,
-          "quantity": 6,
-          "status": "open",
           "placedAt": "2025-07-31 07:40",
           "placedIndex": 632,
-          "filledIndex": -1
+          "price": 25051.5,
+          "quantity": 6,
+          "side": "sell",
+          "status": "open"
         }
       ],
+      "position": {
+        "averagePrice": 25024.5,
+        "quantity": 6,
+        "side": "long"
+      },
+      "realizedPnl": 0,
       "trades": [
         {
           "id": "t1",
-          "orderId": "o1",
-          "time": "2025-07-31 07:40",
-          "side": "buy",
           "kind": "market",
+          "orderId": "o1",
           "price": 25024.5,
           "quantity": 6,
-          "realizedPnl": 0
+          "realizedPnl": 0,
+          "side": "buy",
+          "time": "2025-07-31 07:40"
         }
       ],
-      "closedLots": null,
-      "position": {
-        "quantity": 6,
-        "side": "long",
-        "averagePrice": 25024.5
-      },
-      "realizedPnl": 0,
       "unrealizedPnl": -15,
-      "fills": [],
       "voice": {
         "barTime": "2025-07-31 08:30",
         "clips": [],
-        "total": 0,
-        "max": 9
+        "max": 9,
+        "total": 0
       }
     }
   },
@@ -3372,80 +3224,80 @@
     "action": "bar_advanced",
     "payload": {
       "bar": {
-        "time": "2025-07-31 08:35",
-        "open": 25023.5,
+        "close": 25032.75,
+        "ema20": 25014.71484169154,
         "high": 25033,
         "low": 25022,
-        "close": 25032.75,
-        "volume": 1445,
-        "ema20": 25014.71484169154
+        "open": 25023.5,
+        "time": "2025-07-31 08:35",
+        "volume": 1445
       },
+      "closedLots": null,
       "cursor": 643,
-      "hiddenBars": 1288,
+      "fills": [],
       "hasMore": true,
+      "hiddenBars": 1288,
       "orders": [
         {
-          "id": "o1",
-          "side": "buy",
-          "kind": "market",
-          "price": 25024.5,
-          "quantity": 6,
-          "status": "filled",
-          "placedAt": "2025-07-31 07:40",
-          "placedIndex": 632,
+          "fillPrice": 25024.5,
           "filledAt": "2025-07-31 07:40",
           "filledIndex": 632,
-          "fillPrice": 25024.5
+          "id": "o1",
+          "kind": "market",
+          "placedAt": "2025-07-31 07:40",
+          "placedIndex": 632,
+          "price": 25024.5,
+          "quantity": 6,
+          "side": "buy",
+          "status": "filled"
         },
         {
+          "filledIndex": -1,
           "id": "o2",
-          "side": "sell",
           "kind": "stop",
+          "placedAt": "2025-07-31 07:40",
+          "placedIndex": 632,
           "price": 24977.75,
           "quantity": 6,
-          "status": "open",
-          "placedAt": "2025-07-31 07:40",
-          "placedIndex": 632,
-          "filledIndex": -1
+          "side": "sell",
+          "status": "open"
         },
         {
+          "filledIndex": -1,
           "id": "o3",
-          "side": "sell",
           "kind": "limit",
-          "price": 25051.5,
-          "quantity": 6,
-          "status": "open",
           "placedAt": "2025-07-31 07:40",
           "placedIndex": 632,
-          "filledIndex": -1
+          "price": 25051.5,
+          "quantity": 6,
+          "side": "sell",
+          "status": "open"
         }
       ],
+      "position": {
+        "averagePrice": 25024.5,
+        "quantity": 6,
+        "side": "long"
+      },
+      "realizedPnl": 0,
       "trades": [
         {
           "id": "t1",
-          "orderId": "o1",
-          "time": "2025-07-31 07:40",
-          "side": "buy",
           "kind": "market",
+          "orderId": "o1",
           "price": 25024.5,
           "quantity": 6,
-          "realizedPnl": 0
+          "realizedPnl": 0,
+          "side": "buy",
+          "time": "2025-07-31 07:40"
         }
       ],
-      "closedLots": null,
-      "position": {
-        "quantity": 6,
-        "side": "long",
-        "averagePrice": 25024.5
-      },
-      "realizedPnl": 0,
       "unrealizedPnl": 99,
-      "fills": [],
       "voice": {
         "barTime": "2025-07-31 08:35",
         "clips": [],
-        "total": 0,
-        "max": 9
+        "max": 9,
+        "total": 0
       }
     }
   },
@@ -3465,25 +3317,25 @@
     "action": "annotation_added",
     "payload": {
       "annotation": {
+        "createdAt": 1793110892,
+        "createdBy": "human",
+        "end": {
+          "offset": 175,
+          "price": 25020.5,
+          "time": "2025-07-31 07:55"
+        },
         "id": "a16",
         "kind": "ray",
+        "snapped": true,
         "start": {
-          "time": "2025-07-31 07:55",
-          "price": 25020.5
-        },
-        "end": {
-          "time": "2025-07-31 07:55",
           "price": 25020.5,
-          "offset": 175
+          "time": "2025-07-31 07:55"
         },
         "style": {
           "color": "#65a30d",
-          "width": 2,
-          "dash": "solid"
-        },
-        "snapped": true,
-        "createdBy": "human",
-        "createdAt": 1793110892
+          "dash": "solid",
+          "width": 2
+        }
       }
     }
   },
@@ -3494,51 +3346,51 @@
     "action": "order_moved",
     "payload": {
       "order": {
+        "filledIndex": -1,
         "id": "o2",
-        "side": "sell",
         "kind": "stop",
-        "price": 25013.75,
-        "quantity": 6,
-        "status": "open",
         "placedAt": "2025-07-31 07:40",
         "placedIndex": 632,
-        "filledIndex": -1
+        "price": 25013.75,
+        "quantity": 6,
+        "side": "sell",
+        "status": "open"
       },
       "orders": [
         {
-          "id": "o1",
-          "side": "buy",
-          "kind": "market",
-          "price": 25024.5,
-          "quantity": 6,
-          "status": "filled",
-          "placedAt": "2025-07-31 07:40",
-          "placedIndex": 632,
+          "fillPrice": 25024.5,
           "filledAt": "2025-07-31 07:40",
           "filledIndex": 632,
-          "fillPrice": 25024.5
+          "id": "o1",
+          "kind": "market",
+          "placedAt": "2025-07-31 07:40",
+          "placedIndex": 632,
+          "price": 25024.5,
+          "quantity": 6,
+          "side": "buy",
+          "status": "filled"
         },
         {
+          "filledIndex": -1,
           "id": "o2",
-          "side": "sell",
           "kind": "stop",
+          "placedAt": "2025-07-31 07:40",
+          "placedIndex": 632,
           "price": 25013.75,
           "quantity": 6,
-          "status": "open",
-          "placedAt": "2025-07-31 07:40",
-          "placedIndex": 632,
-          "filledIndex": -1
+          "side": "sell",
+          "status": "open"
         },
         {
+          "filledIndex": -1,
           "id": "o3",
-          "side": "sell",
           "kind": "limit",
-          "price": 25051.5,
-          "quantity": 6,
-          "status": "open",
           "placedAt": "2025-07-31 07:40",
           "placedIndex": 632,
-          "filledIndex": -1
+          "price": 25051.5,
+          "quantity": 6,
+          "side": "sell",
+          "status": "open"
         }
       ]
     }
@@ -3550,51 +3402,51 @@
     "action": "order_moved",
     "payload": {
       "order": {
+        "filledIndex": -1,
         "id": "o2",
-        "side": "sell",
         "kind": "stop",
-        "price": 25005,
-        "quantity": 6,
-        "status": "open",
         "placedAt": "2025-07-31 07:40",
         "placedIndex": 632,
-        "filledIndex": -1
+        "price": 25005,
+        "quantity": 6,
+        "side": "sell",
+        "status": "open"
       },
       "orders": [
         {
-          "id": "o1",
-          "side": "buy",
-          "kind": "market",
-          "price": 25024.5,
-          "quantity": 6,
-          "status": "filled",
-          "placedAt": "2025-07-31 07:40",
-          "placedIndex": 632,
+          "fillPrice": 25024.5,
           "filledAt": "2025-07-31 07:40",
           "filledIndex": 632,
-          "fillPrice": 25024.5
+          "id": "o1",
+          "kind": "market",
+          "placedAt": "2025-07-31 07:40",
+          "placedIndex": 632,
+          "price": 25024.5,
+          "quantity": 6,
+          "side": "buy",
+          "status": "filled"
         },
         {
+          "filledIndex": -1,
           "id": "o2",
-          "side": "sell",
           "kind": "stop",
+          "placedAt": "2025-07-31 07:40",
+          "placedIndex": 632,
           "price": 25005,
           "quantity": 6,
-          "status": "open",
-          "placedAt": "2025-07-31 07:40",
-          "placedIndex": 632,
-          "filledIndex": -1
+          "side": "sell",
+          "status": "open"
         },
         {
+          "filledIndex": -1,
           "id": "o3",
-          "side": "sell",
           "kind": "limit",
-          "price": 25051.5,
-          "quantity": 6,
-          "status": "open",
           "placedAt": "2025-07-31 07:40",
           "placedIndex": 632,
-          "filledIndex": -1
+          "price": 25051.5,
+          "quantity": 6,
+          "side": "sell",
+          "status": "open"
         }
       ]
     }
@@ -3606,80 +3458,80 @@
     "action": "bar_advanced",
     "payload": {
       "bar": {
-        "time": "2025-07-31 08:40",
-        "open": 25032,
+        "close": 25041.75,
+        "ema20": 25017.2896186733,
         "high": 25047.25,
         "low": 25032,
-        "close": 25041.75,
-        "volume": 2841,
-        "ema20": 25017.2896186733
+        "open": 25032,
+        "time": "2025-07-31 08:40",
+        "volume": 2841
       },
+      "closedLots": null,
       "cursor": 644,
-      "hiddenBars": 1287,
+      "fills": [],
       "hasMore": true,
+      "hiddenBars": 1287,
       "orders": [
         {
-          "id": "o1",
-          "side": "buy",
-          "kind": "market",
-          "price": 25024.5,
-          "quantity": 6,
-          "status": "filled",
-          "placedAt": "2025-07-31 07:40",
-          "placedIndex": 632,
+          "fillPrice": 25024.5,
           "filledAt": "2025-07-31 07:40",
           "filledIndex": 632,
-          "fillPrice": 25024.5
+          "id": "o1",
+          "kind": "market",
+          "placedAt": "2025-07-31 07:40",
+          "placedIndex": 632,
+          "price": 25024.5,
+          "quantity": 6,
+          "side": "buy",
+          "status": "filled"
         },
         {
+          "filledIndex": -1,
           "id": "o2",
-          "side": "sell",
           "kind": "stop",
+          "placedAt": "2025-07-31 07:40",
+          "placedIndex": 632,
           "price": 25005,
           "quantity": 6,
-          "status": "open",
-          "placedAt": "2025-07-31 07:40",
-          "placedIndex": 632,
-          "filledIndex": -1
+          "side": "sell",
+          "status": "open"
         },
         {
+          "filledIndex": -1,
           "id": "o3",
-          "side": "sell",
           "kind": "limit",
-          "price": 25051.5,
-          "quantity": 6,
-          "status": "open",
           "placedAt": "2025-07-31 07:40",
           "placedIndex": 632,
-          "filledIndex": -1
+          "price": 25051.5,
+          "quantity": 6,
+          "side": "sell",
+          "status": "open"
         }
       ],
+      "position": {
+        "averagePrice": 25024.5,
+        "quantity": 6,
+        "side": "long"
+      },
+      "realizedPnl": 0,
       "trades": [
         {
           "id": "t1",
-          "orderId": "o1",
-          "time": "2025-07-31 07:40",
-          "side": "buy",
           "kind": "market",
+          "orderId": "o1",
           "price": 25024.5,
           "quantity": 6,
-          "realizedPnl": 0
+          "realizedPnl": 0,
+          "side": "buy",
+          "time": "2025-07-31 07:40"
         }
       ],
-      "closedLots": null,
-      "position": {
-        "quantity": 6,
-        "side": "long",
-        "averagePrice": 25024.5
-      },
-      "realizedPnl": 0,
       "unrealizedPnl": 207,
-      "fills": [],
       "voice": {
         "barTime": "2025-07-31 08:40",
         "clips": [],
-        "total": 0,
-        "max": 9
+        "max": 9,
+        "total": 0
       }
     }
   },
@@ -3690,25 +3542,25 @@
     "action": "annotation_added",
     "payload": {
       "annotation": {
+        "createdAt": 1793110918,
+        "createdBy": "human",
+        "end": {
+          "offset": 157,
+          "price": 25031,
+          "time": "2025-07-31 08:25"
+        },
         "id": "a17",
         "kind": "ray",
+        "snapped": true,
         "start": {
-          "time": "2025-07-31 08:25",
-          "price": 25031
-        },
-        "end": {
-          "time": "2025-07-31 08:25",
           "price": 25031,
-          "offset": 157
+          "time": "2025-07-31 08:25"
         },
         "style": {
           "color": "#65a30d",
-          "width": 2,
-          "dash": "solid"
-        },
-        "snapped": true,
-        "createdBy": "human",
-        "createdAt": 1793110918
+          "dash": "solid",
+          "width": 2
+        }
       }
     }
   },
@@ -3719,80 +3571,80 @@
     "action": "bar_advanced",
     "payload": {
       "bar": {
-        "time": "2025-07-31 08:45",
-        "open": 25041.5,
+        "close": 25038.75,
+        "ema20": 25019.33346451394,
         "high": 25047.25,
         "low": 25036.75,
-        "close": 25038.75,
-        "volume": 1851,
-        "ema20": 25019.33346451394
+        "open": 25041.5,
+        "time": "2025-07-31 08:45",
+        "volume": 1851
       },
+      "closedLots": null,
       "cursor": 645,
-      "hiddenBars": 1286,
+      "fills": [],
       "hasMore": true,
+      "hiddenBars": 1286,
       "orders": [
         {
-          "id": "o1",
-          "side": "buy",
-          "kind": "market",
-          "price": 25024.5,
-          "quantity": 6,
-          "status": "filled",
-          "placedAt": "2025-07-31 07:40",
-          "placedIndex": 632,
+          "fillPrice": 25024.5,
           "filledAt": "2025-07-31 07:40",
           "filledIndex": 632,
-          "fillPrice": 25024.5
+          "id": "o1",
+          "kind": "market",
+          "placedAt": "2025-07-31 07:40",
+          "placedIndex": 632,
+          "price": 25024.5,
+          "quantity": 6,
+          "side": "buy",
+          "status": "filled"
         },
         {
+          "filledIndex": -1,
           "id": "o2",
-          "side": "sell",
           "kind": "stop",
+          "placedAt": "2025-07-31 07:40",
+          "placedIndex": 632,
           "price": 25005,
           "quantity": 6,
-          "status": "open",
-          "placedAt": "2025-07-31 07:40",
-          "placedIndex": 632,
-          "filledIndex": -1
+          "side": "sell",
+          "status": "open"
         },
         {
+          "filledIndex": -1,
           "id": "o3",
-          "side": "sell",
           "kind": "limit",
-          "price": 25051.5,
-          "quantity": 6,
-          "status": "open",
           "placedAt": "2025-07-31 07:40",
           "placedIndex": 632,
-          "filledIndex": -1
+          "price": 25051.5,
+          "quantity": 6,
+          "side": "sell",
+          "status": "open"
         }
       ],
+      "position": {
+        "averagePrice": 25024.5,
+        "quantity": 6,
+        "side": "long"
+      },
+      "realizedPnl": 0,
       "trades": [
         {
           "id": "t1",
-          "orderId": "o1",
-          "time": "2025-07-31 07:40",
-          "side": "buy",
           "kind": "market",
+          "orderId": "o1",
           "price": 25024.5,
           "quantity": 6,
-          "realizedPnl": 0
+          "realizedPnl": 0,
+          "side": "buy",
+          "time": "2025-07-31 07:40"
         }
       ],
-      "closedLots": null,
-      "position": {
-        "quantity": 6,
-        "side": "long",
-        "averagePrice": 25024.5
-      },
-      "realizedPnl": 0,
       "unrealizedPnl": 171,
-      "fills": [],
       "voice": {
         "barTime": "2025-07-31 08:45",
         "clips": [],
-        "total": 0,
-        "max": 9
+        "max": 9,
+        "total": 0
       }
     }
   },
@@ -3803,80 +3655,80 @@
     "action": "bar_advanced",
     "payload": {
       "bar": {
-        "time": "2025-07-31 08:50",
-        "open": 25039,
+        "close": 25042.75,
+        "ema20": 25021.56361075071,
         "high": 25045,
         "low": 25035.25,
-        "close": 25042.75,
-        "volume": 1008,
-        "ema20": 25021.56361075071
+        "open": 25039,
+        "time": "2025-07-31 08:50",
+        "volume": 1008
       },
+      "closedLots": null,
       "cursor": 646,
-      "hiddenBars": 1285,
+      "fills": [],
       "hasMore": true,
+      "hiddenBars": 1285,
       "orders": [
         {
-          "id": "o1",
-          "side": "buy",
-          "kind": "market",
-          "price": 25024.5,
-          "quantity": 6,
-          "status": "filled",
-          "placedAt": "2025-07-31 07:40",
-          "placedIndex": 632,
+          "fillPrice": 25024.5,
           "filledAt": "2025-07-31 07:40",
           "filledIndex": 632,
-          "fillPrice": 25024.5
+          "id": "o1",
+          "kind": "market",
+          "placedAt": "2025-07-31 07:40",
+          "placedIndex": 632,
+          "price": 25024.5,
+          "quantity": 6,
+          "side": "buy",
+          "status": "filled"
         },
         {
+          "filledIndex": -1,
           "id": "o2",
-          "side": "sell",
           "kind": "stop",
+          "placedAt": "2025-07-31 07:40",
+          "placedIndex": 632,
           "price": 25005,
           "quantity": 6,
-          "status": "open",
-          "placedAt": "2025-07-31 07:40",
-          "placedIndex": 632,
-          "filledIndex": -1
+          "side": "sell",
+          "status": "open"
         },
         {
+          "filledIndex": -1,
           "id": "o3",
-          "side": "sell",
           "kind": "limit",
-          "price": 25051.5,
-          "quantity": 6,
-          "status": "open",
           "placedAt": "2025-07-31 07:40",
           "placedIndex": 632,
-          "filledIndex": -1
+          "price": 25051.5,
+          "quantity": 6,
+          "side": "sell",
+          "status": "open"
         }
       ],
+      "position": {
+        "averagePrice": 25024.5,
+        "quantity": 6,
+        "side": "long"
+      },
+      "realizedPnl": 0,
       "trades": [
         {
           "id": "t1",
-          "orderId": "o1",
-          "time": "2025-07-31 07:40",
-          "side": "buy",
           "kind": "market",
+          "orderId": "o1",
           "price": 25024.5,
           "quantity": 6,
-          "realizedPnl": 0
+          "realizedPnl": 0,
+          "side": "buy",
+          "time": "2025-07-31 07:40"
         }
       ],
-      "closedLots": null,
-      "position": {
-        "quantity": 6,
-        "side": "long",
-        "averagePrice": 25024.5
-      },
-      "realizedPnl": 0,
       "unrealizedPnl": 219,
-      "fills": [],
       "voice": {
         "barTime": "2025-07-31 08:50",
         "clips": [],
-        "total": 0,
-        "max": 9
+        "max": 9,
+        "total": 0
       }
     }
   },
@@ -3887,80 +3739,80 @@
     "action": "bar_advanced",
     "payload": {
       "bar": {
-        "time": "2025-07-31 08:55",
-        "open": 25042.5,
+        "close": 25043.75,
+        "ema20": 25023.67660020302,
         "high": 25043.75,
         "low": 25035,
-        "close": 25043.75,
-        "volume": 1106,
-        "ema20": 25023.67660020302
+        "open": 25042.5,
+        "time": "2025-07-31 08:55",
+        "volume": 1106
       },
+      "closedLots": null,
       "cursor": 647,
-      "hiddenBars": 1284,
+      "fills": [],
       "hasMore": true,
+      "hiddenBars": 1284,
       "orders": [
         {
-          "id": "o1",
-          "side": "buy",
-          "kind": "market",
-          "price": 25024.5,
-          "quantity": 6,
-          "status": "filled",
-          "placedAt": "2025-07-31 07:40",
-          "placedIndex": 632,
+          "fillPrice": 25024.5,
           "filledAt": "2025-07-31 07:40",
           "filledIndex": 632,
-          "fillPrice": 25024.5
+          "id": "o1",
+          "kind": "market",
+          "placedAt": "2025-07-31 07:40",
+          "placedIndex": 632,
+          "price": 25024.5,
+          "quantity": 6,
+          "side": "buy",
+          "status": "filled"
         },
         {
+          "filledIndex": -1,
           "id": "o2",
-          "side": "sell",
           "kind": "stop",
+          "placedAt": "2025-07-31 07:40",
+          "placedIndex": 632,
           "price": 25005,
           "quantity": 6,
-          "status": "open",
-          "placedAt": "2025-07-31 07:40",
-          "placedIndex": 632,
-          "filledIndex": -1
+          "side": "sell",
+          "status": "open"
         },
         {
+          "filledIndex": -1,
           "id": "o3",
-          "side": "sell",
           "kind": "limit",
-          "price": 25051.5,
-          "quantity": 6,
-          "status": "open",
           "placedAt": "2025-07-31 07:40",
           "placedIndex": 632,
-          "filledIndex": -1
+          "price": 25051.5,
+          "quantity": 6,
+          "side": "sell",
+          "status": "open"
         }
       ],
+      "position": {
+        "averagePrice": 25024.5,
+        "quantity": 6,
+        "side": "long"
+      },
+      "realizedPnl": 0,
       "trades": [
         {
           "id": "t1",
-          "orderId": "o1",
-          "time": "2025-07-31 07:40",
-          "side": "buy",
           "kind": "market",
+          "orderId": "o1",
           "price": 25024.5,
           "quantity": 6,
-          "realizedPnl": 0
+          "realizedPnl": 0,
+          "side": "buy",
+          "time": "2025-07-31 07:40"
         }
       ],
-      "closedLots": null,
-      "position": {
-        "quantity": 6,
-        "side": "long",
-        "averagePrice": 25024.5
-      },
-      "realizedPnl": 0,
       "unrealizedPnl": 231,
-      "fills": [],
       "voice": {
         "barTime": "2025-07-31 08:55",
         "clips": [],
-        "total": 0,
-        "max": 9
+        "max": 9,
+        "total": 0
       }
     }
   },
@@ -3971,80 +3823,80 @@
     "action": "bar_advanced",
     "payload": {
       "bar": {
-        "time": "2025-07-31 09:00",
-        "open": 25043.75,
+        "close": 25044.25,
+        "ema20": 25025.635971612257,
         "high": 25045,
         "low": 25035.25,
-        "close": 25044.25,
-        "volume": 1078,
-        "ema20": 25025.635971612257
+        "open": 25043.75,
+        "time": "2025-07-31 09:00",
+        "volume": 1078
       },
+      "closedLots": null,
       "cursor": 648,
-      "hiddenBars": 1283,
+      "fills": [],
       "hasMore": true,
+      "hiddenBars": 1283,
       "orders": [
         {
-          "id": "o1",
-          "side": "buy",
-          "kind": "market",
-          "price": 25024.5,
-          "quantity": 6,
-          "status": "filled",
-          "placedAt": "2025-07-31 07:40",
-          "placedIndex": 632,
+          "fillPrice": 25024.5,
           "filledAt": "2025-07-31 07:40",
           "filledIndex": 632,
-          "fillPrice": 25024.5
+          "id": "o1",
+          "kind": "market",
+          "placedAt": "2025-07-31 07:40",
+          "placedIndex": 632,
+          "price": 25024.5,
+          "quantity": 6,
+          "side": "buy",
+          "status": "filled"
         },
         {
+          "filledIndex": -1,
           "id": "o2",
-          "side": "sell",
           "kind": "stop",
+          "placedAt": "2025-07-31 07:40",
+          "placedIndex": 632,
           "price": 25005,
           "quantity": 6,
-          "status": "open",
-          "placedAt": "2025-07-31 07:40",
-          "placedIndex": 632,
-          "filledIndex": -1
+          "side": "sell",
+          "status": "open"
         },
         {
+          "filledIndex": -1,
           "id": "o3",
-          "side": "sell",
           "kind": "limit",
-          "price": 25051.5,
-          "quantity": 6,
-          "status": "open",
           "placedAt": "2025-07-31 07:40",
           "placedIndex": 632,
-          "filledIndex": -1
+          "price": 25051.5,
+          "quantity": 6,
+          "side": "sell",
+          "status": "open"
         }
       ],
+      "position": {
+        "averagePrice": 25024.5,
+        "quantity": 6,
+        "side": "long"
+      },
+      "realizedPnl": 0,
       "trades": [
         {
           "id": "t1",
-          "orderId": "o1",
-          "time": "2025-07-31 07:40",
-          "side": "buy",
           "kind": "market",
+          "orderId": "o1",
           "price": 25024.5,
           "quantity": 6,
-          "realizedPnl": 0
+          "realizedPnl": 0,
+          "side": "buy",
+          "time": "2025-07-31 07:40"
         }
       ],
-      "closedLots": null,
-      "position": {
-        "quantity": 6,
-        "side": "long",
-        "averagePrice": 25024.5
-      },
-      "realizedPnl": 0,
       "unrealizedPnl": 237,
-      "fills": [],
       "voice": {
         "barTime": "2025-07-31 09:00",
         "clips": [],
-        "total": 0,
-        "max": 9
+        "max": 9,
+        "total": 0
       }
     }
   },
@@ -4055,42 +3907,42 @@
     "action": "voice_added",
     "payload": {
       "audio": {
-        "id": "v1",
-        "step": 41,
-        "time": "2025-07-31 09:00",
+        "by": "human",
+        "createdAt": 1793110968,
         "durationMs": 14640,
         "file": "voice-1.wav",
+        "id": "v1",
         "size": 468524,
-        "createdAt": 1793110968,
-        "by": "human"
+        "step": 41,
+        "time": "2025-07-31 09:00"
       },
       "voice": {
         "barTime": "2025-07-31 09:00",
         "clips": [
           {
-            "id": "v1",
-            "step": 41,
-            "time": "2025-07-31 09:00",
+            "by": "human",
+            "createdAt": 1793110968,
             "durationMs": 14640,
             "file": "voice-1.wav",
+            "id": "v1",
             "size": 468524,
-            "createdAt": 1793110968,
-            "by": "human"
+            "step": 41,
+            "time": "2025-07-31 09:00"
           }
         ],
-        "total": 1,
-        "max": 9
+        "max": 9,
+        "total": 1
       },
       "voiceAll": [
         {
-          "id": "v1",
-          "step": 41,
-          "time": "2025-07-31 09:00",
+          "by": "human",
+          "createdAt": 1793110968,
           "durationMs": 14640,
           "file": "voice-1.wav",
+          "id": "v1",
           "size": 468524,
-          "createdAt": 1793110968,
-          "by": "human"
+          "step": 41,
+          "time": "2025-07-31 09:00"
         }
       ]
     }
@@ -4102,17 +3954,157 @@
     "action": "bar_advanced",
     "payload": {
       "bar": {
-        "time": "2025-07-31 09:05",
-        "open": 25043.75,
+        "close": 25047.75,
+        "ema20": 25027.742069553948,
         "high": 25051.75,
         "low": 25041.5,
-        "close": 25047.75,
-        "volume": 1666,
-        "ema20": 25027.742069553948
+        "open": 25043.75,
+        "time": "2025-07-31 09:05",
+        "volume": 1666
       },
+      "closedLots": [
+        {
+          "closePrice": 25051.5,
+          "closeTime": "2025-07-31 09:05",
+          "openPrice": 25024.5,
+          "openTime": "2025-07-31 07:40",
+          "quantity": 6,
+          "realizedPnl": 324,
+          "side": "long"
+        }
+      ],
       "cursor": 649,
-      "hiddenBars": 1282,
+      "fills": [
+        {
+          "id": "t2",
+          "kind": "limit",
+          "orderId": "o3",
+          "price": 25051.5,
+          "quantity": 6,
+          "realizedPnl": 324,
+          "side": "sell",
+          "time": "2025-07-31 09:05"
+        }
+      ],
       "hasMore": true,
+      "hiddenBars": 1282,
+      "orders": [
+        {
+          "fillPrice": 25024.5,
+          "filledAt": "2025-07-31 07:40",
+          "filledIndex": 632,
+          "id": "o1",
+          "kind": "market",
+          "placedAt": "2025-07-31 07:40",
+          "placedIndex": 632,
+          "price": 25024.5,
+          "quantity": 6,
+          "side": "buy",
+          "status": "filled"
+        },
+        {
+          "filledIndex": -1,
+          "id": "o2",
+          "kind": "stop",
+          "placedAt": "2025-07-31 07:40",
+          "placedIndex": 632,
+          "price": 25005,
+          "quantity": 6,
+          "side": "sell",
+          "status": "open"
+        },
+        {
+          "fillPrice": 25051.5,
+          "filledAt": "2025-07-31 09:05",
+          "filledIndex": 649,
+          "id": "o3",
+          "kind": "limit",
+          "placedAt": "2025-07-31 07:40",
+          "placedIndex": 632,
+          "price": 25051.5,
+          "quantity": 6,
+          "side": "sell",
+          "status": "filled"
+        }
+      ],
+      "position": {
+        "averagePrice": 0,
+        "quantity": 0,
+        "side": "flat"
+      },
+      "realizedPnl": 324,
+      "trades": [
+        {
+          "id": "t1",
+          "kind": "market",
+          "orderId": "o1",
+          "price": 25024.5,
+          "quantity": 6,
+          "realizedPnl": 0,
+          "side": "buy",
+          "time": "2025-07-31 07:40"
+        },
+        {
+          "id": "t2",
+          "kind": "limit",
+          "orderId": "o3",
+          "price": 25051.5,
+          "quantity": 6,
+          "realizedPnl": 324,
+          "side": "sell",
+          "time": "2025-07-31 09:05"
+        }
+      ],
+      "unrealizedPnl": 0,
+      "voice": {
+        "barTime": "2025-07-31 09:05",
+        "clips": [],
+        "max": 9,
+        "total": 1
+      }
+    }
+  },
+  {
+    "seq": 116,
+    "at": 1793111165,
+    "by": "human",
+    "action": "annotation_deleted",
+    "payload": {
+      "annotationId": "a14"
+    }
+  },
+  {
+    "seq": 117,
+    "at": 1793111866,
+    "by": "human",
+    "action": "control_changed",
+    "payload": {
+      "operator": "human"
+    }
+  },
+  {
+    "seq": 118,
+    "at": 1793111866,
+    "by": "system",
+    "action": "members_changed",
+    "payload": {
+      "members": [
+        {
+          "clientId": "c2",
+          "name": "human",
+          "operator": true,
+          "connected": true
+        }
+      ]
+    }
+  },
+  {
+    "seq": 119,
+    "at": 1793111867,
+    "by": "human",
+    "action": "flat_all",
+    "payload": {
+      "cancelled": 1,
       "orders": [
         {
           "id": "o1",
@@ -4133,7 +4125,7 @@
           "kind": "stop",
           "price": 25005,
           "quantity": 6,
-          "status": "open",
+          "status": "cancelled",
           "placedAt": "2025-07-31 07:40",
           "placedIndex": 632,
           "filledIndex": -1
@@ -4191,34 +4183,23 @@
         "averagePrice": 0
       },
       "realizedPnl": 324,
-      "unrealizedPnl": 0,
-      "fills": [
-        {
-          "id": "t2",
-          "orderId": "o3",
-          "time": "2025-07-31 09:05",
-          "side": "sell",
-          "kind": "limit",
-          "price": 25051.5,
-          "quantity": 6,
-          "realizedPnl": 324
-        }
-      ],
-      "voice": {
-        "barTime": "2025-07-31 09:05",
-        "clips": [],
-        "total": 1,
-        "max": 9
-      }
+      "unrealizedPnl": 0
     }
   },
   {
-    "seq": 116,
-    "at": 1793111165,
-    "by": "human",
-    "action": "annotation_deleted",
+    "seq": 120,
+    "at": 1793112732,
+    "by": "system",
+    "action": "members_changed",
     "payload": {
-      "annotationId": "a14"
+      "members": [
+        {
+          "clientId": "c2",
+          "name": "human",
+          "operator": true,
+          "connected": true
+        }
+      ]
     }
   }
 ]

@@ -1,6 +1,6 @@
 {
   "version": 2,
-  "savedAt": 1793110970,
+  "savedAt": 1793117338,
   "items": [
     {
       "id": "rec-20261027-221654",
@@ -14,7 +14,7 @@
       "audioCount": 1,
       "eventCount": 40,
       "bars": 18,
-      "size": 561394,
+      "size": 561540,
       "createdBy": "human",
       "createdAt": 1793110614,
       "endedAt": 1793110970,
@@ -35,7 +35,13 @@
         "closed": true
       },
       "source": "human",
-      "sourceName": "human"
+      "sourceName": "human",
+      "tags": [
+        {
+          "name": "趋势看对，但入场不好",
+          "color": "#ef4444"
+        }
+      ]
     },
     {
       "id": "rec-20261027-210354",

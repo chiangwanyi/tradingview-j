@@ -18,7 +18,7 @@
     "kind": "stop",
     "price": 25005,
     "quantity": 6,
-    "status": "open",
+    "status": "cancelled",
     "placedAt": "2025-07-31 07:40",
     "placedIndex": 632,
     "filledIndex": -1
