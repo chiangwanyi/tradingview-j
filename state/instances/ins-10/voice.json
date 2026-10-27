@@ -1,0 +1,12 @@
+[
+  {
+    "id": "v1",
+    "step": 41,
+    "time": "2025-07-31 09:00",
+    "durationMs": 14640,
+    "file": "voice-1.wav",
+    "size": 468524,
+    "createdAt": 1793110968,
+    "by": "human"
+  }
+]

@@ -1,0 +1,39 @@
+[
+  {
+    "id": "o1",
+    "side": "buy",
+    "kind": "market",
+    "price": 25024.5,
+    "quantity": 6,
+    "status": "filled",
+    "placedAt": "2025-07-31 07:40",
+    "placedIndex": 632,
+    "filledAt": "2025-07-31 07:40",
+    "filledIndex": 632,
+    "fillPrice": 25024.5
+  },
+  {
+    "id": "o2",
+    "side": "sell",
+    "kind": "stop",
+    "price": 25005,
+    "quantity": 6,
+    "status": "open",
+    "placedAt": "2025-07-31 07:40",
+    "placedIndex": 632,
+    "filledIndex": -1
+  },
+  {
+    "id": "o3",
+    "side": "sell",
+    "kind": "limit",
+    "price": 25051.5,
+    "quantity": 6,
+    "status": "filled",
+    "placedAt": "2025-07-31 07:40",
+    "placedIndex": 632,
+    "filledAt": "2025-07-31 09:05",
+    "filledIndex": 649,
+    "fillPrice": 25051.5
+  }
+]
