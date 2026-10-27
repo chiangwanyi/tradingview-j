@@ -11,6 +11,7 @@ package replay
 // 开发期用 `npm run dev` 连的是同一个 WS 端口。
 
 import (
+	"encoding/json"
 	"fmt"
 	"net"
 	"net/http"
@@ -82,6 +83,34 @@ func NewHandler(hub *Hub, distDir string) http.Handler {
 		w.Header().Set("Cache-Control", "private, max-age=3600")
 		w.Header().Set("Content-Type", "audio/wav")
 		http.ServeFile(w, r, path)
+	})
+
+	// 周期切换：/api/timeframe?instance=<实例 id>&timeframe=15m
+	//
+	// 走 HTTP 而不是 WS：它是个**纯查询**（同一份已揭示数据换一种画法），
+	// 不广播、不进操作记录、不影响别人。塞进 WS 只会多一对请求/响应消息，
+	// 还要在 Hub 里为「每个连接各自的周期」存一份没人需要的状态。
+	// 没有缓存也没有持久化：结果只活在发起请求的那个标签页里。
+	mux.HandleFunc("/api/timeframe", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			http.Error(w, "只支持 GET", http.StatusMethodNotAllowed)
+			return
+		}
+		tf, ok := ParseTimeframe(r.URL.Query().Get("timeframe"))
+		if !ok {
+			http.Error(w, "不认识的周期（可选 5m/10m/15m/30m/60m/2h/3h/4h）", http.StatusBadRequest)
+			return
+		}
+		id := r.URL.Query().Get("instance")
+		bars, err := hub.TimeframeBars(id, tf.Minutes)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusNotFound)
+			return
+		}
+		// 每走一根就变，别让浏览器缓存住上一根
+		w.Header().Set("Cache-Control", "no-store")
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		_ = json.NewEncoder(w).Encode(TimeframeBarsMsg{InstanceID: id, Timeframe: tf.ID, Bars: bars})
 	})
 
 	// 语音讲解的音频：/api/instances/<实例 id>/voice/<voice-N.wav>

@@ -285,6 +285,17 @@ type Bar struct {
 	Ema20 *float64 `json:"ema20"`
 }
 
+// TimeframeBarsMsg 是 `GET /api/timeframe` 的响应体（HTTP，不是 WS 消息）。
+//
+// 故意比实例快照小得多：只有「已揭示的 K 线在这个周期下的样子」。
+// 订单、成交、标注、语音都不在里面 —— 它们锚的是**时间**，不随周期变，
+// 前端手里已经有一份，按时间在聚合序列里找那根就行了。
+type TimeframeBarsMsg struct {
+	InstanceID string `json:"instanceId"`
+	Timeframe  string `json:"timeframe"`
+	Bars       []Bar  `json:"bars"`
+}
+
 // Annotation 是画在画布上的一个图形。五种图形都用「起点/终点」两个点表示：
 // 趋势线/射线/箭头线是两点连成的一条线，矩形用两个对角点，斐波那契回撤用两点的
 // 价格区间摊开四条水平线（见 FibLevel）。

@@ -35,6 +35,11 @@ export default defineConfig({
         target: 'http://127.0.0.1:8790',
         changeOrigin: true,
       },
+      // 周期切换（/api/timeframe）也是复盘服务的接口，同样要在 '/api' 之前
+      '/api/timeframe': {
+        target: 'http://127.0.0.1:8790',
+        changeOrigin: true,
+      },
       '/api': {
         target: 'http://127.0.0.1:8765',
         changeOrigin: true,

@@ -24,6 +24,33 @@ export interface Bar {
    */
 }
 
+/** 一根**聚合**周期上画出来的 K 线，`time` 是它所在桶里第一根 5 分钟 K 线的真实时间。 */
+export interface TimeframeBars {
+  instanceId: string
+  timeframe: string
+  bars: Bar[]
+}
+
+/**
+ * 周期切换：画布可以把「已揭示的 5 分钟 K 线」换一种周期看。
+ *
+ * 取值和后端 `internal/replay/timeframe.go` 的 `Timeframes` **一一对应**，
+ * 认不出的值后端直接 400 —— 所以这里不许自己加。
+ * `minutes` 只用来在界面上写提示（「每 N 根 5 分钟合成一根」），不参与计算。
+ */
+export type Timeframe = '5m' | '10m' | '15m' | '30m' | '60m' | '2h' | '3h' | '4h'
+
+export const TIMEFRAMES: { id: Timeframe; minutes: number }[] = [
+  { id: '5m', minutes: 5 },
+  { id: '10m', minutes: 10 },
+  { id: '15m', minutes: 15 },
+  { id: '30m', minutes: 30 },
+  { id: '60m', minutes: 60 },
+  { id: '2h', minutes: 120 },
+  { id: '3h', minutes: 180 },
+  { id: '4h', minutes: 240 },
+]
+
 /**
  * 标注端点。`time` 是**锚点** K 线的时间（一定真实存在），`offset` 是从它往右延伸的根数：
  * 0/缺省 = 就在那根 K 线上，>0 = 越过最后一根已画出来的 K 线、延伸到右侧空白区。

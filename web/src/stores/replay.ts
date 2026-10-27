@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia'
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 
 import { atrSeries, DEFAULT_ATR, sanitizeAtr, type AtrSettings } from '@/components/chart/atr'
 import { DEFAULT_BAR_COUNT, sanitizeBarCount, type BarCountSettings } from '@/components/chart/barcount'
@@ -13,6 +13,7 @@ import type {
   AnnotationDeletedPayload,
   AudioClip,
   AnnotationStyle,
+  Bar,
   ClientMessage,
   ControlChangedPayload,
   InstanceDetail,
@@ -32,6 +33,8 @@ import type {
   StrategyInfo,
   SymbolInfo,
   Template,
+  Timeframe,
+  TimeframeBars,
   VoiceAddedPayload,
   VoiceClearedPayload,
   VoiceState,
@@ -329,6 +332,75 @@ export const useReplayStore = defineStore('replay', () => {  const socket = new 
   const bars = computed(() => instance.value?.bars ?? [])
   const cursor = computed(() => instance.value?.cursor ?? 0)
   const currentBar = computed(() => bars.value[bars.value.length - 1] ?? null)
+
+  // ---------------- 周期切换（只影响画布，不影响盘面） ----------------
+
+  /**
+   * 当前看的 K 线周期。
+   *
+   * **只是画布的一种看法**，不是盘面的一部分：后端拿「已揭示的 5 分钟 K 线」现聚合
+   * 一份返回来（`GET /api/timeframe`），不落盘、不进交易记录、也不广播给别人 ——
+   * 所以它只活在这个标签页的内存里（刷新就回到 5 分钟）。
+   *
+   * 规矩：`bars` 永远是**5 分钟原始序列**（游标、步进、下单手数、语音挂哪根，全按它算）；
+   * 只有画布用 `displayBars`。混用两者就会出「走了一根但图没动」或者「语音挂错根」。
+   */
+  const timeframe = ref<Timeframe>('5m')
+  /** 后端聚合回来的那一份；5 分钟时不用请求（就是 `bars` 本身） */
+  const tfBars = ref<Bar[]>([])
+  /** `tfBars` 属于哪个实例（换实例时用来判断要不要先清空） */
+  let tfOwnerID = ''
+  /** 画布真正画的那一份 */
+  const displayBars = computed(() => {
+    // 回放里的 K 线是录像自己的（`instance.bars` 已被换成录像的 base），
+    // 服务端没有这份盘面可以聚合 —— 回放一律按原始周期。
+    if (timeframe.value === '5m' || playbackActive.value) return bars.value
+    return tfBars.value
+  })
+
+  /**
+   * 拉一次聚合数据。
+   *
+   * 不做缓存也不做增量：一次请求就是把几百根已揭示的 5 分钟 K 线按桶过一遍，
+   * 比一次重绘还便宜。每走一根、换实例、换周期都会重来一次。
+   */
+  async function loadTimeframe(): Promise<void> {
+    const id = instance.value?.id
+    const tf = timeframe.value
+    if (!id || tf === '5m' || playbackActive.value) {
+      tfBars.value = []
+      tfOwnerID = ''
+      return
+    }
+    // 换了实例就先清空：否则在响应回来之前，画布会拿上一个标的的聚合 K 线顶一两帧
+    if (tfOwnerID !== id) {
+      tfBars.value = []
+      tfOwnerID = id
+    }
+    try {
+      const res = await fetch(
+        `/api/timeframe?instance=${encodeURIComponent(id)}&timeframe=${encodeURIComponent(tf)}`,
+        { cache: 'no-store' },
+      )
+      if (!res.ok) throw new Error((await res.text()).trim() || `HTTP ${res.status}`)
+      const data = (await res.json()) as TimeframeBars
+      // 迟到的响应：人已经换了实例/周期，这一份不能再盖上去
+      if (timeframe.value !== tf || instance.value?.id !== id) return
+      tfBars.value = data.bars ?? []
+    } catch (e) {
+      if (timeframe.value !== tf) return
+      // 聚合失败就老实退回 5 分钟：一张空图比「回不去」更难懂
+      timeframe.value = '5m'
+      noteNotice(`切到 ${tf} 失败（${String(e)}），已回到 5 分钟`)
+    }
+  }
+
+  function setTimeframe(tf: Timeframe): void {
+    timeframe.value = tf
+  }
+
+  // 换周期、换实例、多走一根 —— 三种情况都要重算（值没变时 watch 不会触发）
+  watch([timeframe, () => instance.value?.id, () => cursor.value, () => bars.value.length], loadTimeframe)
   const isOperator = computed(() => you.value?.operator === true)
   /**
    * 语音讲解（v0.16.0）。**和交易记录无关**：空仓也有一份，空的时候就是空清单。
@@ -1142,6 +1214,9 @@ export const useReplayStore = defineStore('replay', () => {  const socket = new 
     bars,
     cursor,
     currentBar,
+    timeframe,
+    setTimeframe,
+    displayBars,
     atrValue,
     natrPlan,
     isOperator,

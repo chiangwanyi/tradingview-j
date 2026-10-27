@@ -6,6 +6,7 @@ import { ATR_SMOOTHINGS, type AtrSmoothing } from '@/components/chart/atr'
 import AnnotationTemplates from '@/components/AnnotationTemplates.vue'
 import BotMenu from '@/components/BotMenu.vue'
 import { TOOL_LABEL, isDrawTool, useReplayStore, type DrawTool } from '@/stores/replay'
+import { TIMEFRAMES, type Timeframe } from '@/types/protocol'
 
 /**
  * 图表上方的操作条。
@@ -126,6 +127,35 @@ function onAtrSmoothing(e: Event): void {
   store.setAtr({ smoothing: el.value as AtrSmoothing })
 }
 
+// ---------------- 周期切换 ----------------
+
+/**
+ * 【周期 ▾】：把画布上的 K 线换成 10/15/30/60/2h/3h/4h。
+ *
+ * 只换**画布看的那一份**，不动盘面：游标、步进、下单、语音仍然按 5 分钟走
+ * （后端拿已揭示的 5 分钟数据现聚合，见 `store.displayBars`）。
+ *
+ * 为什么收进下拉框：每个按钮约 60px，8 个平铺会把工具条从一行挤成两行，
+ * 画布跟着矮一截 —— 那正是文件头说过不能发生的事。
+ */
+const tfOpen = ref(false)
+const tfBox = ref<HTMLElement | null>(null)
+/** 当前周期是几个 5 分钟一根（写提示用，不参与计算） */
+const tfMinutes = computed(() => TIMEFRAMES.find((t) => t.id === store.timeframe)?.minutes ?? 5)
+/** 回放里不能换：那种时候画布上的 K 线来自录像，服务端没有这份盘面可以聚合 */
+const canTimeframe = computed(() => !!store.instance && !store.playbackActive)
+const tfHint = computed(() => {
+  if (store.playbackActive) return '回放按原始 5 分钟周期：录像里的 K 线是当时那一根，不能换成别的周期'
+  if (!store.instance) return '先进入一个实例，才能换周期'
+  return 'K 线周期：后端用已揭示的 5 分钟数据现聚合（只影响显示，不进存档，也不广播给别人）'
+})
+
+/** 选一个周期：点完就收起面板（请求由 store 里的 watch 触发） */
+function pickTimeframe(tf: Timeframe): void {
+  store.setTimeframe(tf)
+  tfOpen.value = false
+}
+
 // ---------------- 指标下拉框 ----------------
 
 const indicatorOpen = ref(false)
@@ -146,16 +176,20 @@ const activeIndicators = computed(
     (store.barCount.show ? 1 : 0),
 )
 
-/** 点下拉框外面就收起：面板是浮在画布上的，不收起会一直挡住 K 线 */
+/** 点下拉框外面就收起：面板是浮在画布上的，不收起会一直挡住 K 线（两个下拉各判各的框） */
 function onDocPointerDown(ev: PointerEvent): void {
-  if (!indicatorOpen.value) return
-  const box = indicatorBox.value
-  if (box && !box.contains(ev.target as Node)) indicatorOpen.value = false
+  const target = ev.target as Node
+  if (indicatorOpen.value && indicatorBox.value && !indicatorBox.value.contains(target)) {
+    indicatorOpen.value = false
+  }
+  if (tfOpen.value && tfBox.value && !tfBox.value.contains(target)) tfOpen.value = false
 }
 
 /** Esc 也收起（和画布上「Esc 退一层」的习惯一致；这里只退下拉框这一层） */
 function onDocKeyDown(ev: KeyboardEvent): void {
-  if (ev.key === 'Escape' && indicatorOpen.value) indicatorOpen.value = false
+  if (ev.key !== 'Escape') return
+  indicatorOpen.value = false
+  tfOpen.value = false
 }
 
 onMounted(() => {
@@ -225,6 +259,51 @@ onBeforeUnmount(() => {
       🎙 录音
       <span class="tnum ml-1 text-[11px]">{{ store.voiceClips.length }}/{{ store.voiceMax }}</span>
     </button>
+
+    <div class="h-4 w-px bg-line" />
+
+    <!--
+      周期切换：只换画布看的那份 K 线，不动盘面（游标 / 步进 / 下单 / 语音全按 5 分钟走）。
+      收进下拉框：8 个按钮平铺会把工具条挤成两行，画布跟着矮一截（见文件头）。
+    -->
+    <div ref="tfBox" class="relative">
+      <button
+        type="button"
+        :class="[btn, tfOpen ? btnActive : btnIdle]"
+        :disabled="!canTimeframe"
+        :title="tfHint"
+        @click="tfOpen = !tfOpen"
+      >
+        周期
+        <span class="tnum ml-1 rounded bg-accent-soft px-1 text-[11px] text-accent">{{
+          store.timeframe
+        }}</span>
+        <span class="ml-0.5 text-[10px]">▾</span>
+      </button>
+
+      <div
+        v-if="tfOpen"
+        class="absolute top-full left-0 z-40 mt-1 w-[10.5rem] rounded border border-line bg-panel p-1 text-[13px] shadow-xl"
+      >
+        <button
+          v-for="t in TIMEFRAMES"
+          :key="t.id"
+          type="button"
+          :class="[
+            'flex w-full items-center justify-between rounded px-2 py-1 text-left',
+            store.timeframe === t.id ? btnActive : 'text-ink hover:bg-accent-soft',
+          ]"
+          @click="pickTimeframe(t.id)"
+        >
+          <span>{{ t.id }}</span>
+          <span class="text-[11px] text-faint">{{ t.minutes }} 分钟</span>
+        </button>
+        <div class="mt-1 border-t border-line px-2 pt-1 text-[11px] leading-4 text-faint">
+          后端用<span class="text-ink">已揭示</span>的 5 分钟数据现聚合；【下一根】仍按 5
+          分钟走 —— {{ tfMinutes }} 分钟要连点 {{ tfMinutes / 5 }} 次才多出一根。
+        </div>
+      </div>
+    </div>
 
     <div class="h-4 w-px bg-line" />
 

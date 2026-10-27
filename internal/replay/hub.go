@@ -1024,6 +1024,36 @@ func (h *Hub) fail(c *Client, req Request, msg string) {
 	h.reply(c, ErrorMsg{Type: MsgError, Request: req.Type, Instance: req.InstanceID, Message: msg})
 }
 
+// ---------------- 周期切换（只读） ----------------
+
+// TimeframeBars 把一个实例**已揭示**的 K 线聚合到目标周期。只读：不改状态、
+// 不广播、不落盘 —— 周期是每个人自己的看盘方式，别人不该被带着一起变。
+//
+// 只给已揭示的部分（Bars[:Cursor+1]）：游标之后那些根是「已加载但没揭示」，
+// 提前露出来等于剧透（快照也只给到游标）。
+func (h *Hub) TimeframeBars(id string, minutes int) ([]Bar, error) {
+	h.mu.Lock()
+	inst, ok := h.instances[id]
+	var src []Bar
+	if ok {
+		end := inst.Cursor + 1
+		if end > len(inst.Bars) {
+			end = len(inst.Bars)
+		}
+		if end < 0 {
+			end = 0
+		}
+		// 拷一份再解锁：实例的 Bars 在步进时会被续读、会被原地改写（去重那一处），
+		// 拿着它的切片头到锁外去遍历等于赌「这会儿没人点下一根」。
+		src = append([]Bar(nil), inst.Bars[:end]...)
+	}
+	h.mu.Unlock()
+	if !ok {
+		return nil, fmt.Errorf("实例 %s 不在内存里（可能已经删掉了）", id)
+	}
+	return Aggregate(src, minutes), nil
+}
+
 // ---------------- 摘要 / 成员 ----------------
 
 func (h *Hub) summariesLocked() []InstanceSummary {

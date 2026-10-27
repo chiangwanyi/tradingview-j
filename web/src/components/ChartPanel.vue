@@ -284,7 +284,7 @@ const activeOrderId = computed(() => orderDrag.value?.id ?? hoverOrderId.value)
 const activeClosed = computed(() => tip.value?.index ?? pinned.value?.index ?? null)
 
 onMounted(() => {
-  scale.setBars(store.bars)
+  scale.setBars(store.displayBars)
   // 先定副图开关再量尺寸：setSize 会按这个标志算 layout，
   // 反过来的话第一帧会按「没有副图」铺一次，开了 ATR 的人会看到 K 线跳一下。
   scale.setAtrPane(store.atr.show)
@@ -335,7 +335,7 @@ onBeforeUnmount(() => {
 watch(
   () => store.instance?.id,
   () => {
-    scale.setBars(store.bars)
+    scale.setBars(store.displayBars)
     scale.resetView()
     hover.value = null
     pending.value = null
@@ -368,19 +368,23 @@ watch(
   },
 )
 
-// 新增一根 K 线：**只追加渲染，不动视图**。
+// 画布上那份序列变了：多了一根（步进）、整体换了（换实例 / 重连）、或者换了周期。
 //
-// 旧版这里调了 scrollToTail() + fitPrice(true)，于是每点一次「下一根」整屏 K 线就向左滑一格，
-// 正在看的那段历史、画在上面的标注全都跟着跑掉 —— 这里把自动移动彻底去掉：
+// 盯的是 `displayBars` 而不是 `bars`：换周期时 5 分钟序列一根都没变，
+// 变的是「画布该画哪一份」—— 只看 `bars.length` 的话按钮点了图不动。
+//
+// **只换数据，不动视图**。旧版这里调了 scrollToTail() + fitPrice(true)，于是每点一次
+// 「下一根」整屏 K 线就向左滑一格，正在看的那段历史、画在上面的标注全都跟着跑掉：
 // scroll / barWidth / priceMin / priceMax 一概不碰。已有 K 线的下标没变、scroll 没变，
 // xOf() 算出来的像素位置就逐点相同；新 K 线只是按自己的下标画在右侧
 // （落在可见区外就先看不见，等用户自己拖过去）。
 watch(
-  () => store.bars.length,
+  () => store.displayBars,
   () => {
-    scale.setBars(store.bars)
+    scale.setBars(store.displayBars)
     // 追加时 maxScroll 只会变大，clampScroll 不会动到现有位置；
-    // 但数据被整体替换（重连后重新对齐）时 bars 可能变短，越界的 scroll 得拉回来。
+    // 但数据被整体替换（重连后重新对齐 / 换到更大的周期，根数少得多）时，
+    // 越界的 scroll 得拉回来，否则会停在「最右一根之外」看着一片空白。
     scale.clampScroll()
     requestDraw()
   },

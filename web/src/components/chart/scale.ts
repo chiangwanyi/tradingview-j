@@ -193,8 +193,36 @@ export class ChartScale {
     return typeof v === 'number' && Number.isFinite(v) ? v : null
   }
 
+  /**
+   * 时间 -> 下标。
+   *
+   * 先精确命中（`bars` 的时间是唯一键）。精确找不到时，退一步取「时间不晚于它的
+   * 最后一根」—— 这是**聚合周期**要的语义：成交 / 标注锚的永远是 5 分钟时刻，
+   * 而更大周期里它们落在某一个桶里（桶的 `time` 是桶内第一根的真实时间），
+   * 不退这一步，切成 15 分钟后成交三角和标注就全都不见了。
+   *
+   * 比最早的 K 线还早的时间仍然返回 undefined（那是「这根不存在」，不该硬贴到第一根上）。
+   *
+   * shortcut: 5 分钟视图里若某个时刻真的缺根（数据被清理过），会画到前一根上而不是消失，
+   * 需要区分「缺根」和「聚合成桶」时再引入显式判断。
+   */
   indexOfTime(time: string): number | undefined {
-    return this.indexOf.get(time)
+    const exact = this.indexOf.get(time)
+    if (exact !== undefined) return exact
+    // 时间文本是定长的 "yyyy-MM-dd HH:MM"，字典序就是时间序
+    let lo = 0
+    let hi = this.bars.length - 1
+    let found = -1
+    while (lo <= hi) {
+      const mid = (lo + hi) >> 1
+      if (this.bars[mid].time <= time) {
+        found = mid
+        lo = mid + 1
+      } else {
+        hi = mid - 1
+      }
+    }
+    return found >= 0 ? found : undefined
   }
 
   /**

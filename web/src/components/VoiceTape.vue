@@ -76,11 +76,23 @@ const clips = computed<AudioClip[]>(() => {
   return pb.recording?.audios ?? []
 })
 
-/** 时间 → K 线下标。语音的落点是**时间**（存储键），横轴要的是下标，这里是一次性换算。 */
+/**
+ * 时间 → K 线下标。语音的落点是**时间**（存储键），横轴要的是下标，这里是一次性换算。
+ *
+ * 键走 `store.bars`（5 分钟原始序列，语音就挂在那些时刻上），下标落在
+ * `store.displayBars`（画布真正画的那一份）—— 换成 15 分钟后一条语音仍在它所在的那根上，
+ * 不这么换的话录音条会按 5 分钟的下标去摆，整条带子往前/往后错一大截。
+ * 两串都是升序，所以一趟双指针就够（每根 5 分钟找它所属的那个聚合桶）。
+ */
 const indexOfTime = computed(() => {
   const map = new Map<string, number>()
   const bars = store.bars
-  for (let i = 0; i < bars.length; i += 1) map.set(bars[i].time, i)
+  const shown = store.displayBars
+  let j = 0
+  for (let i = 0; i < bars.length; i += 1) {
+    while (j + 1 < shown.length && shown[j + 1].time <= bars[i].time) j += 1
+    if (shown[j] && shown[j].time <= bars[i].time) map.set(bars[i].time, j)
+  }
   return map
 })
 
