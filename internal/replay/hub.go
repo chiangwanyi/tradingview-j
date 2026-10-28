@@ -891,7 +891,7 @@ func (h *Hub) findInstanceLocked(c *Client, req Request) (*Instance, bool) {
 	}
 	inst, ok := h.instances[id]
 	if !ok {
-		h.fail(c, req, fmt.Sprintf("实例 %s 不存在（可能已被删除）", id))
+		h.fail(c, req, fmt.Sprintf("考核账户 %s 不存在（可能已被删除）", id))
 		return nil, false
 	}
 	return inst, true
@@ -1149,7 +1149,7 @@ func (h *Hub) TimeframeBars(id string, minutes int) ([]Bar, error) {
 	}
 	h.mu.Unlock()
 	if !ok {
-		return nil, fmt.Errorf("实例 %s 不在内存里（可能已经删掉了）", id)
+		return nil, fmt.Errorf("考核账户 %s 不在内存里（可能已经删掉了）", id)
 	}
 	return Aggregate(src, minutes), nil
 }

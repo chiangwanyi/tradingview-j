@@ -2,6 +2,7 @@
 import { computed, ref, watch } from 'vue'
 import { RouterLink } from 'vue-router'
 
+import AccountCalendar from '@/components/AccountCalendar.vue'
 import EventLog from '@/components/EventLog.vue'
 import OrderPanel from '@/components/OrderPanel.vue'
 import PlaybackPanel from '@/components/PlaybackPanel.vue'
@@ -18,6 +19,9 @@ import { useReplayStore } from '@/stores/replay'
  *
  * v0.18.0：第三个 Tab 从【回放】改名【交易记录】—— 它本来就不是「录像」。
  * v0.19.0：又把**记录列表**搬走了，那个 Tab 回到只做【回放】这件事。
+ * v0.32.0：多出【交易日历】—— 只有考核账户才有（`account` 非空）。它是这一页里唯一
+ * 「按行情的日子看盈亏」的地方：画布上只有一根根 K 线，看不出「这一整天做到哪儿了」。
+ *
  * v0.20.0：**干脆不要这个 Tab 了**。平时它只是一行「现在没有在回放」的空文案，
  * 占着 Tab 条却没有任何能点的事；真正要用它的时候（从交易记录页点【回放】），
  * 播放器本来就应该自己顶上来。所以现在：
@@ -28,9 +32,12 @@ import { useReplayStore } from '@/stores/replay'
 
 const store = useReplayStore()
 const pb = usePlaybackStore()
-type DockTab = 'trade' | 'log' | 'player'
+type DockTab = 'trade' | 'log' | 'calendar' | 'player'
 const tab = ref<DockTab>('trade')
 const collapsed = ref(false)
+
+/** 交易日历只对考核账户有意义：自由模式没有余额、没有日终结算，列出来只是噪音 */
+const hasAccount = computed(() => !!store.instance?.account)
 
 const tabClass = (key: DockTab) =>
   [
@@ -75,6 +82,11 @@ watch(
   },
   { immediate: true },
 )
+
+// 账户没了（离开账户 / 回放到别的盘面 / 自由模式）：日历 Tab 不该留在那儿
+watch(hasAccount, (on) => {
+  if (!on && tab.value === 'calendar') tab.value = 'trade'
+})
 </script>
 
 <template>
@@ -86,6 +98,15 @@ watch(
         @click="((tab = 'trade'), (collapsed = false))"
       >
         模拟交易
+      </button>
+      <button
+        v-if="hasAccount"
+        type="button"
+        :class="tabClass('calendar')"
+        title="交易日历：每个交易日（行情走到的那一天）赚了多少"
+        @click="((tab = 'calendar'), (collapsed = false))"
+      >
+        交易日历
       </button>
       <button type="button" :class="tabClass('log')" @click="((tab = 'log'), (collapsed = false))">
         操作记录
@@ -132,6 +153,12 @@ watch(
     <div v-show="!collapsed" class="h-[14.5rem] border-t border-line">
       <OrderPanel v-show="tab === 'trade'" />
       <EventLog v-show="tab === 'log'" />
+      <AccountCalendar
+        v-if="hasAccount"
+        v-show="tab === 'calendar'"
+        :days="store.instance?.account?.days ?? []"
+        :current="store.instance?.account?.dayDate"
+      />
       <PlaybackPanel v-if="pb.active" v-show="tab === 'player'" />
     </div>
   </section>

@@ -88,7 +88,7 @@ export const usePlaybackStore = defineStore('playback', () => {
   const audioLabel = ref('')
   /** 正在响的那一条（列表里点的那条会高亮，自动播放时也跟上） */
   const currentClip = ref<AudioClip | null>(null)
-  /** 进入回放之前所在的实例：退出时回到它 */
+  /** 进入回放之前所在的账户：退出时回到它 */
   const restoreInstanceId = ref('')
   /**
    * 正在等「加载下一根」的回复。
@@ -273,7 +273,7 @@ export const usePlaybackStore = defineStore('playback', () => {
 
   // ---------------- 打开 / 关闭 ----------------
 
-  /** 打开一条录像开始回放。会记住当前实例，退出时自动回去。 */
+  /** 打开一条录像开始回放。会记住当前账户，退出时自动回去。 */
   function open(rec: Recording | null): void {
     if (!rec || !rec.steps?.length) {
       replay.noteNotice('这条录像没有内容（可能只录了一个空盘面）')
@@ -300,9 +300,9 @@ export const usePlaybackStore = defineStore('playback', () => {
   }
 
   /**
-   * 退出回放。restore=true 时回到进入之前的实例（重新 join 拿一份最新快照）；
-   * 从实例菜单里直接切到另一个实例时传 false —— 那边会自己发 join，
-   * 不必先回到旧实例再跳。
+   * 退出回放。restore=true 时回到进入之前的账户（重新 join 拿一份最新快照）；
+   * 从账户菜单里直接切到另一个账户时传 false —— 那边会自己发 join，
+   * 不必先回到旧账户再跳。
    */
   function close(restore = true): void {
     stopTimer()

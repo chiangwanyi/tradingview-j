@@ -172,7 +172,7 @@ func checkAudioClip(data []byte, durationMs int) (int, error) {
 // 下一次落盘会补（见 persist.go 的 voice.json + 目录一起写）。
 func (v *voiceStore) add(data []byte, durationMs int, barTime, by string) (AudioClip, error) {
 	if v == nil {
-		return AudioClip{}, errors.New("这个实例还没有语音存储")
+		return AudioClip{}, errors.New("这个考核账户还没有语音存储")
 	}
 	if barTime == "" {
 		return AudioClip{}, errors.New("这根 K 线上还没有 K 线数据（先点【下一根】揭示一根）")
@@ -420,10 +420,10 @@ func (h *Hub) VoiceFile(instID, name string) (string, error) {
 	}
 	h.mu.Unlock()
 	if !ok {
-		return "", fmt.Errorf("没有这个实例：%s（可能已被删除）", instID)
+		return "", fmt.Errorf("没有这个考核账户：%s（可能已被删除）", instID)
 	}
 	if dir == "" {
-		return "", errors.New("这个实例的语音没有落盘（没配 state 目录）")
+		return "", errors.New("这个考核账户的语音没有落盘（没配 state 目录）")
 	}
 	path := filepath.Join(dir, name)
 	if fi, err := os.Stat(path); err != nil || fi.IsDir() {

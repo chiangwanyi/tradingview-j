@@ -178,7 +178,7 @@ export class ChartScale {
   }
 
   /**
-   * 换一份 ATR 序列（改参数、多了一根、换了实例都要换）。
+   * 换一份 ATR 序列（改参数、多了一根、换了账户都要换）。
    *
    * 传进来的数组必须和 `bars` **按下标对齐**：两头都靠下标取数，错一格就是整条线平移一格，
    * 而且肉眼看不太出来 —— 只有和 K 线高低点对不上时才会觉得「这线怪怪的」。
@@ -430,7 +430,7 @@ export class ChartScale {
   /**
    * 让最后一根出现在右侧偏内一点的位置。
    *
-   * **只给 `resetView()` 用**（首次进入实例 / 换实例时的初始取景）。
+   * **只给 `resetView()` 用**（首次进入账户 / 换账户时的初始取景）。
    * 加载新 K 线时绝不能调它：那会把整屏 K 线向左推，用户正在看的历史就跑掉了。
    */
   scrollToTail(): void {
@@ -438,7 +438,7 @@ export class ChartScale {
     this.clampScroll()
   }
 
-  /** 重置视图：合适的时间密度 + 自动价格轴 + 贴住末端（换实例才用，加载新 K 线不用） */
+  /** 重置视图：合适的时间密度 + 自动价格轴 + 贴住末端（换账户才用，加载新 K 线不用） */
   resetView(): void {
     const targetBars = 140
     this.barWidth = clamp(this.plotWidth / targetBars, 3, 16)
@@ -529,7 +529,7 @@ export function formatTick(tick: number): string {
  * MES 一跳 0.25，那么光标只能落在 6484.00 / 6484.25 / 6484.50 / 6484.75，
  * 绝不会出现 6484.12 —— 鼠标停在两根刻度之间时，取**最近**的那个合法价。
  *
- * 没拿到 tick（还没进实例）时退化为两位小数，和加载时的四舍五入保持同一把尺子。
+ * 没拿到 tick（还没进账户）时退化为两位小数，和加载时的四舍五入保持同一把尺子。
  */
 export function snapToTick(price: number, tick: number): number {
   if (!(tick > 0)) return roundTo(price, 2)

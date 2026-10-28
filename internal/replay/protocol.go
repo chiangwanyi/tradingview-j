@@ -605,6 +605,27 @@ type AccountDTO struct {
 	// WaitingFund 为 true = EVAL 已达标但还带着仓，等平仓才切 FUNDED。
 	// 这条不能省：否则用户会觉得「明明赚够了怎么还是 EVAL」。
 	WaitingFund bool `json:"waitingFund,omitempty"`
+
+	// Days 是**交易日历**：已经走过的每个交易日一行（见 account.go accountDays）。
+	// 空 = 还没走过一根 K 线。
+	Days []AccountDayDTO `json:"days,omitempty"`
+}
+
+// AccountDayDTO 是交易日历里的一格。
+//
+// 这里的「一天」是**日文件那一天**（barDate），和日终结算同一把尺子，不是「我什么时候
+// 做的这笔单」，也不是日历上的今天 —— 今天补做去年 1 月的行情，格子要落在行情那一天。
+// 所以它由后端算：前端自己切，遇到跨夜的交易日（美盘 06:00 → 次日 05:00）就会切错。
+type AccountDayDTO struct {
+	Date   string  `json:"date"`   // 这一天的日期（开盘首根的日期）
+	Start  string  `json:"start"`  // 第一个已揭示 K 线的时间
+	End    string  `json:"end"`    // 最后一个已揭示 K 线的时间
+	Bars   int     `json:"bars"`   // 已揭示几根
+	Trades int     `json:"trades"` // 这一天成交几笔
+	Pnl    float64 `json:"pnl"`    // 当日已实现净额（含手续费，和余额同口径）
+	Cum    float64 `json:"cum"`    // 到这一天结束时的累计已实现净额
+	// Current = 正在过的一天（K 线还没走完，日终结算还没发生）。
+	Current bool `json:"current,omitempty"`
 }
 
 // AccountChangedPayload 是 account_changed 的载荷：一份完整账户视图 + 一句中文。

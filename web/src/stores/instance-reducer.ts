@@ -1,5 +1,5 @@
 /**
- * 一条广播对实例状态的**唯一**作用点。
+ * 一条广播对账户状态的**唯一**作用点。
  *
  * 为什么单独抽出来：实时界面和回放必须逐像素一致，而要做到这一点，最省事也最可靠的
  * 办法不是"把回放写得像实时"，而是**两边跑同一个函数**：
@@ -90,7 +90,7 @@ export function applyInstanceEvent(inst: InstanceDetail, action: string, payload
     }
     case ACTION.annotationCleared: {
       // 一次清空是**一个原子状态**：不按 payload 里的编号逐个过滤 ——
-      // 服务端说的是「这个实例现在一个绘图都没有」，照它办就不会有漏网的那一个。
+      // 服务端说的是「这个账户现在一个绘图都没有」，照它办就不会有漏网的那一个。
       const p = payload as AnnotationClearedPayload
       void p
       inst.annotations = []

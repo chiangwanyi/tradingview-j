@@ -107,7 +107,7 @@ export interface Annotation {
   createdAt: number
 }
 
-/** 一个工具下面的一套样式预设（全局的，不属于某个实例）。 */
+/** 一个工具下面的一套样式预设（全局的，不属于某个账户）。 */
 export interface Template {
   id: string
   kind: string
@@ -270,6 +270,28 @@ export interface AccountState {
   failReason?: string
   /** EVAL 已达标但还带着仓，等平仓才切 FUNDED */
   waitingFund?: boolean
+  /** 交易日历：走过的每个交易日一行（后端按日文件切，见 account.go accountDays） */
+  days?: AccountDay[]
+}
+
+/**
+ * 交易日历里的一格。
+ *
+ * 「一天」是**行情走到的那一天**（日文件那一天），不是日历上的今天，也不是这笔单
+ * 什么时候做的。所以这里只排版，绝不按 `time.slice(0,10)` 自己切。
+ */
+export interface AccountDay {
+  date: string
+  start: string
+  end: string
+  bars: number
+  trades: number
+  /** 当日已实现净额（含手续费），和余额同口径 */
+  pnl: number
+  /** 到这一天结束的累计净额 */
+  cum: number
+  /** 正在过的一天（K 线还没走完） */
+  current?: boolean
 }
 
 /** account_changed 的载荷：一份完整账户视图 + 一句中文（进操作记录） */
@@ -319,7 +341,7 @@ export interface InstanceDetail {
    */
   voice: VoiceState
   /**
-   * 整个实例的语音清单（按 K 线时间排序）。
+   * 整个账户的语音清单（按 K 线时间排序）。
    *
    * 复盘只能往前走、不能倒回：只有当前那根的清单的话，离开一根就再也听不到了。
    * 这份全量清单只在快照和语音广播时下发，`bar_advanced` 不带（它只换当前那根）。
@@ -697,7 +719,7 @@ export const ANNOTATION_COLORS = [
  * - `realizedPnl` 全部成交的已实现盈亏之和（美元）
  * - `mfe` / `mae` 最大有利 / 不利波动（美元，`mfe >= 0 >= mae`）
  * - `barsHeld` 持仓期间**完整**走过的 K 线根数
- * - `closed` 是否正常平完（false = 记录结束时仓位还在：实例被删 / 程序退出 / 崩溃草稿）
+ * - `closed` 是否正常平完（false = 记录结束时仓位还在：账户被删 / 程序退出 / 崩溃草稿）
  */
 export interface TradeStats {
   /** long / short（开仓方向） */
@@ -750,8 +772,8 @@ export interface RecordingSummary {
   anchor: string
   endTime: string
   /**
-   * 这笔交易发生在哪个实例上。**只用于追溯和显示**：记录是独立的一份数据，
-   * 实例被删掉之后这里会指向一个不存在的 id，打开 / 回放 / 删除都不依赖它。
+   * 这笔交易发生在哪个账户上。**只用于追溯和显示**：记录是独立的一份数据，
+   * 账户被删掉之后这里会指向一个不存在的 id，打开 / 回放 / 删除都不依赖它。
    */
   instanceId?: string
   /**
@@ -845,7 +867,7 @@ export interface AudioClip {
   step: number
   time: string
   durationMs: number
-  /** 文件名（记录里是 audio-N.wav，实例上的语音是 voice-N.wav），音频本身走 HTTP 取 */
+  /** 文件名（记录里是 audio-N.wav，账户上的语音是 voice-N.wav），音频本身走 HTTP 取 */
   file: string
   size: number
   createdAt: number
@@ -864,7 +886,7 @@ export interface VoiceState {
   barTime: string
   /** 这根 K 线上的语音（按录制顺序，含更早几步里录的） */
   clips: AudioClip[]
-  /** 整个实例一共几条（**不限**，只有同一根 K 线才限 9 条） */
+  /** 整个账户一共几条（**不限**，只有同一根 K 线才限 9 条） */
   total: number
   /** 同一根 K 线的上限（9） */
   max: number
@@ -934,7 +956,7 @@ export interface RecordingVoiceMessage {
 /**
  * 「一笔交易刚刚收尾、记录已保存」的一次性通知（v0.18.0）。
  *
- * 它**不是广播**（不进实例的操作记录）：交易记录是独立的数据集，和事件流不是一回事。
+ * 它**不是广播**（不进账户的操作记录）：交易记录是独立的数据集，和事件流不是一回事。
  * 前端拿它做两件事 —— 刷新列表、给一句「这笔赚了多少」的轻提示；
  * 不需要也不应该因此把界面切到某种「正在记录」的状态（那个状态已经被取消了）。
  *
@@ -951,7 +973,7 @@ export interface TradeRecordedMessage {
 export interface VoiceAddedPayload {
   audio: AudioClip
   voice: VoiceState
-  /** 整个实例的清单（「其他 K 线还有 N 条」要用） */
+  /** 整个账户的清单（「其他 K 线还有 N 条」要用） */
   voiceAll: AudioClip[]
 }
 

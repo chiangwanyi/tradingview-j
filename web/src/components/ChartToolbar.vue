@@ -54,7 +54,7 @@ const operator = computed(() => store.operatorLabel)
 const canVoicePanel = computed(() => !!store.instance && !store.playbackActive)
 const voiceHint = computed(() => {
   if (store.playbackActive) return '回放是只读的：退出回放后才能录音'
-  if (!store.instance) return '先进入一个实例，才能在某根 K 线上录语音'
+  if (!store.instance) return '先进入一个账户，才能在某根 K 线上录语音'
   if (!store.canOperate) return '语音讲解：每根 K 线最多 9 条（现在是观看状态，可以听、不能录）'
   return '语音讲解：空格开始/结束录音，挂在这根 K 线上（每根最多 9 条；随时能录，不必等开仓）'
 })
@@ -146,7 +146,7 @@ const tfMinutes = computed(() => TIMEFRAMES.find((t) => t.id === store.timeframe
 const canTimeframe = computed(() => !!store.instance && !store.playbackActive)
 const tfHint = computed(() => {
   if (store.playbackActive) return '回放按原始 5 分钟周期：录像里的 K 线是当时那一根，不能换成别的周期'
-  if (!store.instance) return '先进入一个实例，才能换周期'
+  if (!store.instance) return '先进入一个账户，才能换周期'
   return 'K 线周期：后端用已揭示的 5 分钟数据现聚合（只影响显示，不进存档，也不广播给别人）'
 })
 
@@ -223,7 +223,7 @@ onBeforeUnmount(() => {
       </button>
     </div>
 
-    <!-- 模板条：每个工具各有自己的一组（后端持久化，换实例也不会丢） -->
+    <!-- 模板条：每个工具各有自己的一组（后端持久化，换账户也不会丢） -->
     <AnnotationTemplates v-if="drawKind" :kind="drawKind" />
 
     <!--

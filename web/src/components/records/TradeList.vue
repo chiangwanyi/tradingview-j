@@ -214,7 +214,7 @@ const td = 'px-2.5 py-2'
             <span
               v-else
               class="rounded bg-sky-500/15 px-1 text-[11px] text-sky-600"
-              title="这一笔还没平仓：记录停在最后一次操作上（可能实例被删、程序退出，或还在持仓中）"
+              title="这一笔还没平仓：记录停在最后一次操作上（可能账户被删、程序退出，或还在持仓中）"
             >
               持仓中
             </span>

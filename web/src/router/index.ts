@@ -3,7 +3,11 @@ import { createRouter, createWebHistory } from 'vue-router'
 import type { RouteRecordRaw } from 'vue-router'
 
 /**
- * 三条路由：复盘画布（`/`）、交易记录首页（`/records`）、某一天的详情（`/records/day/:date`）。
+ * 四条路由：考核账户总览（`/`）、复盘画布（`/account/:id?`）、交易记录首页（`/records`）、
+ * 某一天的详情（`/records/day/:date`）。
+ *
+ * v0.32.0 把 `/` 让给了总览：账户与考核账户合并之后，「几个户、哪个快达标、哪个失败了」
+ * 是一屏看完的事，而画布只装得下一块盘面。画布的 id 放进 URL，刷新/返回键才对得上。
  *
  * 为什么交易记录要从画布里拆出去（v0.19.0）：底部那 180px 的抽屉只够扫一眼摘要，
  * 而「我最近赚没赚、靠什么赚、哪类单子在亏」是要占满一屏对着图看的。
@@ -13,8 +17,8 @@ import type { RouteRecordRaw } from 'vue-router'
  * **点某一天进详情**（那一天每一笔 + 图表 + 回放入口）。日期放进 URL 而不是做成
  * 弹窗，是为了让刷新 / 分享 / 浏览器返回都对得上 —— 返回键正好回到日历。
  *
- * 剩下的东西仍然留在一条路由里（实例、标注、交易、语音）：它们是**同一块盘面**上的
- * 不同侧面，服务端也是按实例存的，用路由拆开只会把「当前实例」这种状态切碎。
+ * 剩下的东西仍然留在一条路由里（账户、标注、交易、语音）：它们是**同一块盘面**上的
+ * 不同侧面，服务端也是按账户存的，用路由拆开只会把「当前账户」这种状态切碎。
  *
  * 两页之间传递的只有一件事：**要回放哪一条记录**（`stores/replay.ts` 的
  * `pendingPlaybackId`）。所以不是把记录塞进 URL，也就不需要 `/records/:id` 这种路由。
@@ -22,6 +26,12 @@ import type { RouteRecordRaw } from 'vue-router'
 const routes: RouteRecordRaw[] = [
   {
     path: '/',
+    name: 'accounts',
+    component: () => import('@/views/AccountsView.vue'),
+  },
+  {
+    // id 可省：交易记录页的「回到画布」没有具体账户可指定，那就回到当前那一块
+    path: '/account/:id?',
     name: 'replay',
     component: () => import('@/views/ReplayView.vue'),
   },

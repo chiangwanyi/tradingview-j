@@ -29,7 +29,7 @@ import type { OrderKind, Side } from '@/types/protocol'
  * 一键退仓（v0.20.0）放在这里而不是底部的挂单列表里：它是「现在就收摊」的动作，
  * 和下单是同一件事的两头，手边要够得着。
  *
- * 价格/方向/单型是**这个组件自己的状态**（和以前底部那一列一样）：换实例时回到现价，
+ * 价格/方向/单型是**这个组件自己的状态**（和以前底部那一列一样）：换账户时回到现价，
  * 行情往前走而用户没手改过就跟着现价走。数量用 `store.orderQuantity`，因为它同时被
  * 右键菜单用着，只能是同一个数。
  */
@@ -77,7 +77,7 @@ const step = computed(() => {
   return t > 0 ? String(t) : '0.01'
 })
 
-// 换实例、或者行情往前走而用户没手动改过价格时，价格框跟着现价
+// 换账户、或者行情往前走而用户没手动改过价格时，价格框跟着现价
 watch(
   () => inst.value?.id,
   () => {
@@ -234,7 +234,7 @@ const flatDisabled = computed(
 )
 
 const flatTitle = computed(() => {
-  if (!inst.value) return '先进入一个实例'
+  if (!inst.value) return '先进入一个账户'
   if (!store.canOperate) return '现在只能看：先「接管」操作权再退仓'
   if (positionQty.value === 0 && store.openOrders.length === 0) return '已经空仓、也没有挂单，没什么可退的'
   const parts: string[] = []
@@ -264,7 +264,7 @@ function flatAll(): void {
 // ---------------- 位置：拖动、折叠、夹在视口里 ----------------
 
 function clampPos(p: { x: number; y: number }): { x: number; y: number } {
-  // 展开态用实测宽高：内容会随「有没有实例 / 小数位」微变，硬编码迟早夹不准
+  // 展开态用实测宽高：内容会随「有没有账户 / 小数位」微变，硬编码迟早夹不准
   const w = root.value?.offsetWidth || (expanded.value ? PANEL_W : ICON)
   const h = root.value?.offsetHeight || (expanded.value ? EST_H : ICON)
   const maxX = Math.max(MARGIN, window.innerWidth - w - MARGIN)

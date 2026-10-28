@@ -19,7 +19,7 @@ import type { AudioClip } from '@/types/protocol'
  * 播放器不认路由，只认「给我一个 url」。
  */
 
-/** 正在响的那条的**文件名**（'' = 没在放）。文件名在实例和录像里都唯一。 */
+/** 正在响的那条的**文件名**（'' = 没在放）。文件名在账户和录像里都唯一。 */
 export const voiceCurrentFile = ref('')
 /** 当前这条放到百分之几（0..1）—— 录音条底部那条进度就是它 */
 export const voiceProgress = ref(0)

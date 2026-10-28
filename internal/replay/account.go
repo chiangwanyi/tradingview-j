@@ -417,5 +417,58 @@ func (inst *Instance) accountDTO() *AccountDTO {
 		ClosedAt:    a.ClosedAt,
 		FailReason:  a.FailReason,
 		WaitingFund: a.PendingFunded,
+		Days:        inst.accountDays(),
 	}
+}
+
+// accountDays 把「已经揭示的 K 线」按交易日切成日历，并把成交按各自所在的那一天归集。
+//
+// 判据用的是 `barDate` —— 也就是**日文件那一天**，和 accountSettleDay 日终结算同一把尺子。
+// 不能用「盘间断档」（session.go）来切：CME 每天 05:00 那个结算断档也在 30 分钟以上，
+// 那样一个交易日会被切成两格，日历上的「当日盈亏」就和日终结算对不上。
+// 也不能让前端按 `time[:10]` 自己分：口径一散，两处数字迟早打架。
+//
+// Pnl 用成交的 RealizedPnl 累加（开仓那笔是负数手续费），所以「一天赚了多少」和
+// 余额的变化是同一个口径；Cum 只是它的前缀和，方便看进度。
+func (inst *Instance) accountDays() []AccountDayDTO {
+	if len(inst.Bars) == 0 || inst.Cursor < 0 {
+		return nil
+	}
+	last := inst.Cursor
+	if last >= len(inst.Bars) {
+		last = len(inst.Bars) - 1
+	}
+
+	days := make([]AccountDayDTO, 0, 8)
+	for i := 0; i <= last; i++ {
+		b := inst.Bars[i]
+		if i == 0 || barDate(inst.Bars[i-1].Time) != barDate(b.Time) {
+			days = append(days, AccountDayDTO{Date: barDate(b.Time), Start: b.Time})
+		}
+		d := &days[len(days)-1]
+		d.End = b.Time
+		d.Bars++
+	}
+
+	// 成交按时间落到某一天：Time 和 K 线是同一把明文尺子，直接比字符串。
+	// 指针只往后走（成交天然有序），所以整段是线性的。
+	at := 0
+	for _, t := range inst.Trades {
+		for at+1 < len(days) && t.Time >= days[at+1].Start {
+			at++
+		}
+		if t.Time < days[at].Start {
+			continue // 锚点之前的成交（正常不会有）
+		}
+		days[at].Pnl += t.RealizedPnl
+		days[at].Trades++
+	}
+
+	cum := 0.0
+	for i := range days {
+		cum += days[i].Pnl
+		days[i].Cum = cum
+	}
+	days[len(days)-1].Current = true
+	return days
 }

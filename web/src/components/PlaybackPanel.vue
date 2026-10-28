@@ -188,7 +188,7 @@ onBeforeUnmount(() => {
         <button
           type="button"
           :class="[btn, 'shrink-0']"
-          title="退出回放，回到原来的实例"
+          title="退出回放，回到原来的账户"
           @click="pb.close()"
         >
           ← 退出回放

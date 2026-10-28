@@ -1,54 +1,36 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
+import { useRouter } from 'vue-router'
 
 import { phaseClass, phaseLabel } from '@/lib/account'
 import { usePlaybackStore } from '@/stores/playback'
 import { useReplayStore } from '@/stores/replay'
 
 /**
- * 右上角的「标的与实例」：一个按钮 + 一个折叠面板。
+ * 右上角的「标的与考核账户」：一个按钮 + 一个折叠面板。
  *
  * 为什么从左侧栏搬到这里：复盘时 90% 的时间在看图，那一栏只占地方。
  * 需求里明确要求「以腾出画布空间为目标」，所以它默认收起，点开才有内容。
  *
- * 实例是**服务端**的概念：关掉页面不等于删实例（随时能回来），只有主动删才消失。
+ * v0.32.0：账户与考核账户合并，所以这里**只剩一个建户入口** ——
+ * 【新建账户】【新增账户（最新）】【新增账户（开盘）】三个入口连同「时间点」输入框一起删掉了：
+ * 考核账户必须从一个完整交易日的开盘开始，锚点只能由后端按停盘缺口挑（随机一个交易日）。
+ *
+ * 账户是**服务端**的概念：关掉页面不等于删户（随时能回来），只有主动删才消失。
  * 所以列表是服务端状态的投影，不是本地草稿。
  */
 
 const store = useReplayStore()
 const pb = usePlaybackStore()
+const router = useRouter()
 
 const open = ref(false)
 const symbol = ref('')
-const timeText = ref('')
 const busy = ref(false)
 /** 考核模板：首批只有 LucidFlex 50K，做成下拉是为了以后加更多不用改界面 */
 const accountTemplate = ref('lucid-flex-50k')
 
 const symbolInfo = computed(() => store.symbols.find((s) => s.symbol === symbol.value))
-
-/**
- * 【新增实例（最新）】下面那行说明。
- *
- * 拼成一句话而不是写在模板里：模板里的空白有它自己的规则（换行会变成一个空格），
- * 条件片段一多就会出现「（2026-10-22）， 不用填时间」这种多余的间隙。
- */
-const latestHint = computed(() => {
-  const last = symbolInfo.value?.lastDate
-  const where = last ? `（${last} 这天）` : ''
-  return `「最新」不用填时间：取数据目录里最近的一根 K 线作为起点${where}，之后没有更多行情可揭示。`
-})
-
-/**
- * 【新增实例（开盘）】下面那行说明。
- *
- * 说的是「随机一个交易日」而不是「最近那个交易日」：同一天反复练没有意义，
- * 而最后一天之后已经没有行情可推演（那就等于【最新】）。
- * 「按开盘时间、不是按 0 点」也值得写出来：日盘按美国时间开，北京时间是 6 点或 7 点。
- */
-const sessionHint = computed(
-  () => '「开盘」也不用填时间：随机挑一个交易日，从那天第 1 根 K 线开始，之后逐根往后推演。',
-)
 
 /**
  * 【新建考核账户】下面那行说明。
@@ -76,48 +58,25 @@ watch(
 )
 
 /**
- * 回放中要切到实例：先安静地退出回放（不自动 join 旧实例，免得连发两条 join）。
- * 回放是只读的临时视图，它和「当前实例」是互斥的 —— 两者同时存在只会让顶栏自相矛盾。
+ * 回放中要切到考核账户：先安静地退出回放（不自动 join 旧账户，免得连发两条 join）。
+ * 回放是只读的临时视图，它和「当前账户」是互斥的 —— 两者同时存在只会让顶栏自相矛盾。
  */
 function leavePlayback(): void {
   if (pb.active) pb.close(false)
 }
 
+/** 进账户 = 换 URL（刷新/分享/返回键都对得上），join 由画布那一页按 :id 发出去 */
 function enter(id: string): void {
   leavePlayback()
-  store.joinInstance(id)
-}
-
-function create(): void {
-  submit(timeText.value.trim(), false)
-}
-
-/**
- * 【新增实例（最新）】：不读时间输入框，让后端把锚点定在「数据目录里最新的那一根」。
- *
- * 为什么不在前端算好这个时间再走 create：文件名只精确到「哪一天」，最后一根在几点
- * 取决于那天有没有提前收市，只有读 CSV 才知道；猜一个钟点发过去，多半换来一句
- * 「时间点 xxx 不在 CSV 里」。所以这件事必须由有数据的后端决定。
- */
-function createLatest(): void {
-  submit('', true)
-}
-
-/**
- * 【新增实例（开盘）】：同样不读时间输入框，让后端**随机挑一个交易日**、把锚点定在
- * 那天的开盘首根上。挑哪一天是随机的（每天都能换个日子练），但开盘那一根在几点只有
- * 读 CSV 才知道（夏令时 6 点、冬令时 7 点），而且「哪一天算交易日」也要看缺口 ——
- * 前端猜不出来。
- */
-function createSession(): void {
-  submit('', false, true)
+  void router.push({ name: 'replay', params: { id } })
 }
 
 /**
  * 【新建考核账户】：选一个规则模板，后端随机挑一个交易日的开盘首根建户。
  *
- * 锚点不由前端给（和【开盘】同一个理由），并且这条路上「时间点」输入框是无效的 ——
- * 考核账户必须从一个完整交易日的开头开始，否则日终结算和当日封顶都无从谈起。
+ * 锚点不由前端给：「哪一天算交易日」要看停盘缺口、开盘是 6 点还是 7 点要看美国夏令时，
+ * 前端猜不出来。这条路上也没有「时间点」可填 —— 考核账户必须从一个完整交易日的开头开始，
+ * 否则日终结算和当日封顶都无从谈起。
  */
 function createAccount(): void {
   if (!symbol.value) return
@@ -129,18 +88,8 @@ function createAccount(): void {
   }, 600)
 }
 
-function submit(time: string, latest: boolean, session = false): void {
-  if (!symbol.value) return
-  leavePlayback()
-  busy.value = true
-  store.createInstance(symbol.value, time, latest, session)
-  window.setTimeout(() => {
-    busy.value = false
-  }, 600)
-}
-
 function remove(id: string): void {
-  if (window.confirm('删除这个实例？标注、挂单、成交记录都会一起没掉（不影响 CSV 数据）。')) {
+  if (window.confirm('删除这个考核账户？标注、挂单、成交记录都会一起没掉（不影响 CSV 数据）。')) {
     store.deleteInstance(id)
   }
 }
@@ -168,7 +117,7 @@ function statusOf(inst: { operator: string; bot: boolean; botStrategy?: string }
       :class="open ? 'border-accent' : ''"
       @click="open = !open"
     >
-      <span>标的与实例</span>
+      <span>标的与考核账户</span>
       <span class="rounded bg-accent-soft px-1 text-[12px] text-accent">{{ store.instances.length }}</span>
       <span v-if="store.instance" class="max-w-[9rem] truncate text-dim">{{ store.instance.symbol }}</span>
       <span class="text-faint">{{ open ? '▲' : '▼' }}</span>
@@ -197,51 +146,6 @@ function statusOf(inst: { operator: string; bot: boolean; botStrategy?: string }
           {{ symbolInfo.tick }} · 目录 {{ symbolInfo.folder }}
         </div>
 
-        <label class="block text-[13px] text-dim">时间点（留空 = 随机）</label>
-        <input
-          v-model="timeText"
-          type="text"
-          placeholder="2026-10-16 12:00"
-          class="w-full rounded border border-line bg-surface px-2 py-1 text-[14px] text-ink tnum placeholder:text-faint"
-        />
-        <div class="text-[12px] text-faint">
-          加载这个时间点及之前的 400 根 K 线，之后的行情逐根揭示。
-        </div>
-
-        <button
-          type="button"
-          class="w-full rounded bg-accent px-2 py-1.5 text-[14px] font-medium text-white hover:opacity-90 disabled:opacity-50"
-          :disabled="busy || store.symbols.length === 0 || store.status !== 'open'"
-          @click="create"
-        >
-          {{ busy ? '加载中…' : '新建实例' }}
-        </button>
-
-        <!-- 第二个入口：不用输时间，后端直接把锚点定在数据目录里最新的那一根 -->
-        <button
-          type="button"
-          class="w-full rounded border border-accent px-2 py-1.5 text-[14px] font-medium text-accent hover:bg-accent-soft disabled:opacity-50"
-          :disabled="busy || store.symbols.length === 0 || store.status !== 'open'"
-          title="不用输时间：直接以数据目录里最新的那一根 K 线为起点"
-          @click="createLatest"
-        >
-          新增实例（最新）
-        </button>
-        <div class="text-[12px] text-faint">{{ latestHint }}</div>
-
-        <!-- 第三个入口：随机挑一天，锚点定在那天的开盘首根（后端按停盘缺口认的） -->
-        <button
-          type="button"
-          class="w-full rounded border border-accent px-2 py-1.5 text-[14px] font-medium text-accent hover:bg-accent-soft disabled:opacity-50"
-          :disabled="busy || store.symbols.length === 0 || store.status !== 'open'"
-          title="不用输时间：随机挑一个交易日，以那天开盘的第 1 根 K 线为起点（按开盘时间，不是 0 点）"
-          @click="createSession"
-        >
-          新增实例（开盘）
-        </button>
-        <div class="text-[12px] text-faint">{{ sessionHint }}</div>
-
-        <!-- 第四个入口：Prop Firm 考核账户。规则来自模板，锚点同样是「随机一个交易日的开盘首根」 -->
         <label class="block text-[13px] text-dim">考核模板</label>
         <select
           v-model="accountTemplate"
@@ -249,14 +153,15 @@ function statusOf(inst: { operator: string; bot: boolean; botStrategy?: string }
         >
           <option value="lucid-flex-50k">LucidFlex 50K · 目标 3,000 / 回撤 2,000 / 5 个盈利日</option>
         </select>
+
         <button
           type="button"
-          class="w-full rounded border border-accent px-2 py-1.5 text-[14px] font-medium text-accent hover:bg-accent-soft disabled:opacity-50"
+          class="w-full rounded bg-accent px-2 py-1.5 text-[14px] font-medium text-white hover:opacity-90 disabled:opacity-50"
           :disabled="busy || store.symbols.length === 0 || store.status !== 'open'"
           title="建一个 Prop Firm 考核账户：随机一个交易日开盘，按模板扣手续费、算余额和亏损线"
           @click="createAccount"
         >
-          新建考核账户
+          {{ busy ? '加载中…' : '新建考核账户' }}
         </button>
         <div class="text-[12px] text-faint">{{ accountHint }}</div>
       </div>
@@ -265,11 +170,11 @@ function statusOf(inst: { operator: string; bot: boolean; botStrategy?: string }
         v-if="pb.active"
         class="mt-2 rounded border border-amber-400 bg-amber-500/10 px-2 py-1 text-[12px] text-amber-700"
       >
-        正在回放录像（只读）。新建或进入实例会先退出回放。
+        正在回放录像（只读）。新建或进入账户会先退出回放。
       </div>
 
       <div class="mt-3 flex items-center justify-between border-t border-line pt-2">
-        <span class="text-[13px] text-dim">实例 {{ store.instances.length }} 个</span>
+        <span class="text-[13px] text-dim">考核账户 {{ store.instances.length }} 个</span>
         <div class="flex items-center gap-2">
           <button type="button" class="text-[13px] text-accent hover:underline" @click="store.refresh()">
             刷新
@@ -287,7 +192,7 @@ function statusOf(inst: { operator: string; bot: boolean; botStrategy?: string }
 
       <div class="mt-1 max-h-[46vh] overflow-auto">
         <div v-if="store.instances.length === 0" class="py-2 text-[13px] text-faint">
-          还没有实例。选个标的、点「新建实例」开始复盘。
+          还没有考核账户。选个标的、点「新建考核账户」开始。
         </div>
         <div
           v-for="inst in store.instances"
