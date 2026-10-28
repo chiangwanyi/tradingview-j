@@ -1,11 +1,6 @@
 {
   "version": 2,
-  "savedAt": 1793117382,
-  "nextInstance": 25,
-  "instances": [
-    {
-      "id": "ins-10",
-      "dir": "ins-10"
-    }
-  ]
+  "savedAt": 1793191612,
+  "nextInstance": 27,
+  "instances": []
 }
