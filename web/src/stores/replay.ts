@@ -835,9 +835,27 @@ export const useReplayStore = defineStore('replay', () => {  const socket = new 
    * 两种模式下 `time` 都会被忽略。**不在前端算这个时间** —— 文件名只到「哪一天」，
    * 最后一根在几点（那天可能提前收市）、开盘是 6 点还是 7 点（美国夏令时）都只有
    * 读 CSV 才知道，拼一个猜的时刻只会得到「这个时间点不在 CSV 里」。
+   *
+   * `accountTemplate` 非空 = 建一个 Prop Firm 考核账户（【新建考核账户】）。
+   * 它隐含 `session`：考核账户必须锚在某个交易日的开盘首根，随机到哪一天由后端定。
    */
-  function createInstance(symbol: string, time: string, latest = false, session = false): void {
-    send({ type: 'create_instance', symbol, time, latest, session, bars: 400, forwardDays: 5 })
+  function createInstance(
+    symbol: string,
+    time: string,
+    latest = false,
+    session = false,
+    accountTemplate = '',
+  ): void {
+    send({
+      type: 'create_instance',
+      symbol,
+      time,
+      latest,
+      session,
+      accountTemplate,
+      bars: 400,
+      forwardDays: 5,
+    })
   }
 
   function joinInstance(id: string): void {

@@ -44,6 +44,8 @@ export function stepKindLabel(kind: string): string {
       return '一键退仓'
     case STEP_AUDIO:
       return '语音'
+    case ACTION.accountChanged:
+      return '考核'
     default:
       return kind
   }
@@ -74,6 +76,10 @@ export function stepKindClass(kind: string): string {
       return 'border-violet-500/80 bg-violet-500/35'
     case STEP_AUDIO:
       return 'border-amber-500 bg-amber-500/50'
+    // 账户节点（进 FUNDED / 盈利日 / 封顶 / 爆仓）不是盘面动作，但当下的语气最重，
+    // 用中性灰显得像噪音，给它一档偏冷的颜色。
+    case ACTION.accountChanged:
+      return 'border-slate-600/80 bg-slate-600/30'
     default:
       return 'border-line bg-elev'
   }

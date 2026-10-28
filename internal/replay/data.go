@@ -238,11 +238,12 @@ func (ds *DataSource) open(symbol, anchorTime string, latest bool, history, forw
 	}
 
 	inst := &Instance{
-		Symbol:    info.Symbol,
-		Folder:    info.Folder,
-		Tick:      info.Tick,
-		TickValue: info.TickValue,
-		dayFiles:  files,
+		Symbol:                info.Symbol,
+		Folder:                info.Folder,
+		Tick:                  info.Tick,
+		TickValue:             info.TickValue,
+		CommissionPerContract: store.DefaultCommission(info.Symbol),
+		dayFiles:              files,
 	}
 	var notes []string
 

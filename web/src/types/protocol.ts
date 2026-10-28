@@ -148,7 +148,15 @@ export interface Trade {
   kind: OrderKind
   price: number
   quantity: number
+  /**
+   * **扣手续费后的净额**（价差盈亏 - 本笔手续费）。
+   *
+   * 开仓/加仓那一笔没有价差、只有手续费，所以是负的 —— 这不是 bug，
+   * 成交本身就要花钱。
+   */
   realizedPnl: number
+  /** 本笔收的手续费（手数 × 每手每边费率），永远 >= 0；没配费率的标的是 0 */
+  commission?: number
 }
 
 /**
@@ -192,6 +200,82 @@ export interface ReplayEvent {
   by: string
   action: string
   payload?: unknown
+}
+
+// ---------------- Prop Firm 考核账户 ----------------
+
+/**
+ * 建户那一刻从模板拷贝进来的规则快照。
+ *
+ * 改模板不会影响已经建出来的账户 —— 这和 AnnotationStyle「画下去那一刻定死」
+ * 是同一个道理。所以这里出现的数字就是「这个账户受哪套规则约束」的唯一答案。
+ */
+export interface AccountRules {
+  id: string
+  name: string
+  /** 初始余额 */
+  initial: number
+  /** EVAL 盈利目标（余额到 initial + 它算通过） */
+  profitTarget: number
+  /** 最大回撤（日终追踪） */
+  maxDrawdown: number
+  /** 日终余额到这儿之后亏损线不再上移 */
+  lockBalance: number
+  /** 亏损线的天花板（= lockBalance - maxDrawdown） */
+  floorCap: number
+  /** 当日净盈利到这儿就禁止再开仓 */
+  dailyLimit: number
+  /** 每品种最大持仓手数 */
+  maxContracts: number
+  /** FUNDED 需要几个盈利日 */
+  profitDays: number
+  /** 一个盈利日至少净赚多少 */
+  profitDayMin: number
+}
+
+/** 账户阶段：EVAL → FUNDED → PAYOUT；breached = 触及亏损线的终态 */
+export type AccountPhase = 'eval' | 'funded' | 'payout' | 'breached'
+
+/**
+ * 考核账户的视图（v0.31.0）。
+ *
+ * **所有数字都是后端算好的**，这里一个乘法都不要做：余额、权益、亏损线、当日净额
+ * 的口径必须和日终结算完全一致，前端自己算必然对不上。
+ */
+export interface AccountState {
+  rules: AccountRules
+  phase: AccountPhase
+  /** 已实现净额（含手续费） */
+  balance: number
+  /** 余额 + 当前收盘价下的浮动盈亏 */
+  equity: number
+  /** 当前亏损线（权益 <= 它就判违规） */
+  floor: number
+  /** 日终权益的最高点，亏损线的基准 */
+  peakEod: number
+  /** EVAL 目标余额 */
+  target: number
+  /** 已攒到的盈利日 */
+  profitDays: number
+  /** 当日已实现净额 */
+  dayNet: number
+  /** 当日净盈利已封顶（不能再开仓） */
+  dayLocked: boolean
+  /** 亏损线已锁死，不再上移 */
+  locked: boolean
+  /** 当前交易日（开盘首根的日期） */
+  dayDate: string
+  payout?: number
+  closedAt?: string
+  failReason?: string
+  /** EVAL 已达标但还带着仓，等平仓才切 FUNDED */
+  waitingFund?: boolean
+}
+
+/** account_changed 的载荷：一份完整账户视图 + 一句中文（进操作记录） */
+export interface AccountChangedPayload {
+  account: AccountState
+  note: string
 }
 
 export interface InstanceDetail {
@@ -241,6 +325,13 @@ export interface InstanceDetail {
    * 这份全量清单只在快照和语音广播时下发，`bar_advanced` 不带（它只换当前那根）。
    */
   voiceAll: AudioClip[]
+  /**
+   * 考核账户（v0.31.0）。undefined = 自由模式。
+   *
+   * 回放里永远没有它：`account_changed` 不进交易记录的步骤白名单，记录也只覆盖
+   * 「持仓期间」。所有账户界面都要同时判 `!playbackActive`。
+   */
+  account?: AccountState
 }
 
 export interface InstanceSummary {
@@ -258,6 +349,8 @@ export interface InstanceSummary {
   createdAt: number
   realizedPnl: number
   trades: number
+  /** 非空 = 考核账户（eval / funded / payout / breached），列表行显示徽标 */
+  accountPhase?: string
 }
 
 export interface SymbolInfo {
@@ -379,6 +472,8 @@ export interface BarAdvancedPayload {
   fills: Trade[]
   /** 换根之后的语音状态（清单和「本根 x/9」跟着走，v0.16.0） */
   voice: VoiceState
+  /** 考核账户：换根可能撮合出成交，余额/权益/亏损线都会变 */
+  account?: AccountState
 }
 
 /**
@@ -440,6 +535,8 @@ export interface OrderFilledPayload {
   position: Position
   realizedPnl: number
   unrealizedPnl: number
+  /** 考核账户：余额跟着这笔成交变 */
+  account?: AccountState
 }
 
 /**
@@ -464,6 +561,8 @@ export interface FlatAllPayload {
   position: Position
   realizedPnl: number
   unrealizedPnl: number
+  /** 考核账户：接单后余额/当日净额都可能变 */
+  account?: AccountState
 }
 
 export interface ControlChangedPayload {
@@ -552,6 +651,11 @@ export const ACTION = {
    * 回放里的仓位会被改写成「还开着」。
    */
   barExtended: 'bar_extended',
+  /**
+   * 考核账户「值得进操作记录」的那一刻（v0.31.0）：进入 FUNDED、盈利日 +1、
+   * 当日封顶、触及亏损线、转 PAYOUT。余额随成交变化不在这里，那走 payload.account。
+   */
+  accountChanged: 'account_changed',
 } as const
 
 /**

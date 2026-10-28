@@ -9,6 +9,7 @@ import TradeDock from '@/components/TradeDock.vue'
 import TradeFloat from '@/components/TradeFloat.vue'
 import VoiceFloat from '@/components/VoiceFloat.vue'
 import VoiceTape from '@/components/VoiceTape.vue'
+import { money, phaseClass, phaseLabel } from '@/lib/account'
 import { usePlaybackStore } from '@/stores/playback'
 import { useReplayStore } from '@/stores/replay'
 
@@ -150,6 +151,21 @@ watch(
         <span class="tnum whitespace-nowrap text-[12px] text-faint">{{ store.instance.anchor }}</span>
         <span class="whitespace-nowrap text-[12px] text-faint">{{ cursorText }}</span>
         <span class="tnum whitespace-nowrap text-[12px] text-faint">tick {{ store.tick }}</span>
+        <!-- 考核账户：阶段 + 余额 + 亏损线常驻顶栏。这是要边看盘边盯的三个数字， -->
+        <!-- 放进底部的 Tab 里一收起就看不见了。 -->
+        <span
+          v-if="store.instance.account"
+          class="whitespace-nowrap rounded px-1.5 text-[12px] font-medium"
+          :class="phaseClass(store.instance.account.phase)"
+        >
+          {{ phaseLabel(store.instance.account.phase) }}
+        </span>
+        <span v-if="store.instance.account" class="tnum whitespace-nowrap text-[12px] text-dim">
+          余额 {{ money(store.instance.account.balance) }}
+        </span>
+        <span v-if="store.instance.account" class="tnum whitespace-nowrap text-[12px] text-down">
+          亏损线 {{ money(store.instance.account.floor) }}
+        </span>
         <span v-if="store.instance.bot" class="rounded bg-sky-600/20 px-1.5 text-[12px] text-sky-600">
           机器人演示中
         </span>

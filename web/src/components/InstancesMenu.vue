@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
 
+import { phaseClass, phaseLabel } from '@/lib/account'
 import { usePlaybackStore } from '@/stores/playback'
 import { useReplayStore } from '@/stores/replay'
 
@@ -21,6 +22,8 @@ const open = ref(false)
 const symbol = ref('')
 const timeText = ref('')
 const busy = ref(false)
+/** 考核模板：首批只有 LucidFlex 50K，做成下拉是为了以后加更多不用改界面 */
+const accountTemplate = ref('lucid-flex-50k')
 
 const symbolInfo = computed(() => store.symbols.find((s) => s.symbol === symbol.value))
 
@@ -45,6 +48,18 @@ const latestHint = computed(() => {
  */
 const sessionHint = computed(
   () => '「开盘」也不用填时间：随机挑一个交易日，从那天第 1 根 K 线开始，之后逐根往后推演。',
+)
+
+/**
+ * 【新建考核账户】下面那行说明。
+ *
+ * 三件事必须提前说清：账户会随机落到某个交易日（不是今天）、
+ * 只有 MES/MNQ/MGC 有手续费档位所以只能选它们、规则建户即冻结。
+ */
+const accountHint = computed(
+  () =>
+    '随机挑一个交易日开盘建户，规则在那一刻冻结。首批只支持 MES / MNQ / MGC（有手续费档位），' +
+    '交易照常自动存进交易记录。',
 )
 
 onMounted(() => {
@@ -96,6 +111,22 @@ function createLatest(): void {
  */
 function createSession(): void {
   submit('', false, true)
+}
+
+/**
+ * 【新建考核账户】：选一个规则模板，后端随机挑一个交易日的开盘首根建户。
+ *
+ * 锚点不由前端给（和【开盘】同一个理由），并且这条路上「时间点」输入框是无效的 ——
+ * 考核账户必须从一个完整交易日的开头开始，否则日终结算和当日封顶都无从谈起。
+ */
+function createAccount(): void {
+  if (!symbol.value) return
+  leavePlayback()
+  busy.value = true
+  store.createInstance(symbol.value, '', false, true, accountTemplate.value)
+  window.setTimeout(() => {
+    busy.value = false
+  }, 600)
 }
 
 function submit(time: string, latest: boolean, session = false): void {
@@ -209,6 +240,25 @@ function statusOf(inst: { operator: string; bot: boolean; botStrategy?: string }
           新增实例（开盘）
         </button>
         <div class="text-[12px] text-faint">{{ sessionHint }}</div>
+
+        <!-- 第四个入口：Prop Firm 考核账户。规则来自模板，锚点同样是「随机一个交易日的开盘首根」 -->
+        <label class="block text-[13px] text-dim">考核模板</label>
+        <select
+          v-model="accountTemplate"
+          class="w-full rounded border border-line bg-surface px-2 py-1 text-[14px] text-ink"
+        >
+          <option value="lucid-flex-50k">LucidFlex 50K · 目标 3,000 / 回撤 2,000 / 5 个盈利日</option>
+        </select>
+        <button
+          type="button"
+          class="w-full rounded border border-accent px-2 py-1.5 text-[14px] font-medium text-accent hover:bg-accent-soft disabled:opacity-50"
+          :disabled="busy || store.symbols.length === 0 || store.status !== 'open'"
+          title="建一个 Prop Firm 考核账户：随机一个交易日开盘，按模板扣手续费、算余额和亏损线"
+          @click="createAccount"
+        >
+          新建考核账户
+        </button>
+        <div class="text-[12px] text-faint">{{ accountHint }}</div>
       </div>
 
       <div
@@ -251,6 +301,13 @@ function statusOf(inst: { operator: string; bot: boolean; botStrategy?: string }
           <div class="tnum mt-0.5 text-[12px] text-dim">{{ inst.anchor }}</div>
           <div class="mt-0.5 flex flex-wrap items-center gap-x-2 text-[12px] text-faint">
             <span>第 {{ inst.cursor + 1 }} 根</span>
+            <span
+              v-if="inst.accountPhase"
+              class="rounded px-1 py-px text-[11px] font-medium"
+              :class="phaseClass(inst.accountPhase)"
+            >
+              {{ phaseLabel(inst.accountPhase) }}
+            </span>
             <span>· {{ inst.members }} 人</span>
             <span>· {{ statusOf(inst) }}</span>
             <span v-if="inst.trades > 0">· {{ inst.trades }} 笔</span>

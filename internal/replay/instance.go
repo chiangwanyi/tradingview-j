@@ -42,7 +42,11 @@ type Instance struct {
 	// TickValue 是一个 tick 值多少美元（MNQ 0.5 / MES 1.25 / MGC 1 / CL 10）。
 	// 0 = _symbols.json 没登记、按标的名也认不出来：盈亏退化成「每点 1 美元」。
 	TickValue float64
-	Anchor    string // 锚点 K 线的时间字符串
+	// CommissionPerContract 是一手、一个成交边的手续费（美元）。0 = 这个标的不收费。
+	// 建实例时从 store.DefaultCommission 按标的名查一次就冻在这里：改费率表不影响已建的实例，
+	// 和「账户规则快照」是同一个理由。
+	CommissionPerContract float64
+	Anchor                string // 锚点 K 线的时间字符串
 
 	Bars   []Bar
 	Cursor int
@@ -52,6 +56,11 @@ type Instance struct {
 	Trades      []Trade
 	Position    Position
 	RealizedPnl float64
+
+	// account 非空 = 这个实例是 Prop Firm 考核账户（见 account.go）。
+	// nil = 自由模式：没有余额、没有亏损线、没有下单限制，和以前完全一样。
+	// 它随实例落进 meta.json（提交点），所以「已经爆仓的账户」重启后不会复活。
+	account *accountState
 
 	Operator  string // 当前操作者的名字；空 = 没人接管
 	CreatedBy string
@@ -406,6 +415,9 @@ func (inst *Instance) placeOrderGrouped(by, side, kind string, price, qty float6
 	if err != nil {
 		return Order{}, err
 	}
+	if err := inst.accountGate(side, qty); err != nil {
+		return Order{}, err
+	}
 	bar := inst.currentBar()
 	o := Order{
 		ID:          inst.nextOrderID(),
@@ -439,6 +451,9 @@ func (inst *Instance) marketOrder(by, side string, qty float64) (Order, Trade, e
 	if err != nil {
 		return Order{}, Trade{}, err
 	}
+	if err := inst.accountGate(side, qty); err != nil {
+		return Order{}, Trade{}, err
+	}
 	bar := inst.currentBar()
 	price := roundPrice(bar.Close)
 	if !finitePositive(price) {
@@ -462,6 +477,10 @@ func (inst *Instance) marketOrder(by, side string, qty float64) (Order, Trade, e
 	inst.Trades = append(inst.Trades, tr)
 	inst.RealizedPnl += tr.RealizedPnl
 	inst.Position = inst.position()
+	if inst.account != nil {
+		inst.accountEvaluate(bar)
+		inst.accountEnforce()
+	}
 	return o, tr, nil
 }
 
@@ -724,6 +743,15 @@ func (inst *Instance) advance(ds *DataSource) (Bar, []Trade, error) {
 	inst.Cursor++
 	bar := inst.Bars[inst.Cursor]
 
+	// 跨交易日：先把上一个交易日的日终结算掉（峰值、亏损线、盈利日、阶段切换），
+	// 再撮合这一根的挂单。顺序反了就会把今天开盘那笔成交算进昨天的日终。
+	//
+	// 判据只能用 isSessionOpen（停盘缺口）：它在夏令时/冬令时都自动对，
+	// 而 strategy.TradeDay 把开盘写死成 06:00，冬令时那一小时会被算进前一天。
+	if inst.account != nil && isSessionOpen(inst.Bars[inst.Cursor-1].Time, bar.Time) {
+		inst.accountSettleDay(inst.Bars[inst.Cursor-1])
+	}
+
 	var fills []Trade
 	// 先算出本根里每个 OCO 组「该成交哪一张」。规则写在 ocoWinner 里：**止损优先**。
 	//
@@ -758,8 +786,18 @@ func (inst *Instance) advance(ds *DataSource) (Bar, []Trade, error) {
 		inst.Trades = append(inst.Trades, tr)
 		inst.RealizedPnl += tr.RealizedPnl
 		fills = append(fills, tr)
+		// 判线必须在 RealizedPnl 累加**之后**：早一行余额就少算这一笔，爆仓会慢一拍。
+		// 每笔都判（不是整根判一次）是因为同一根里可能「先止损打穿、后止盈补回来」。
+		if inst.accountEvaluate(bar) {
+			break
+		}
 	}
 	inst.Position = inst.position()
+	if inst.account != nil {
+		// 兜底：这一根没成交，但持仓的浮亏也可能已经打穿亏损线。
+		inst.accountEvaluate(bar)
+		inst.accountEnforce()
+	}
 	return bar, fills, nil
 }
 
@@ -899,6 +937,13 @@ func (inst *Instance) applyFill(o Order, price float64, t string) Trade {
 	}
 	inst.Position = inst.position()
 
+	// 手续费：按本笔成交手数 × 每手每边的费率，开平各收一次。
+	// 直接从这里减掉 realized，所以 Trade.RealizedPnl 是**净额**，Instance.RealizedPnl
+	// 又是它的累加 —— 界面上的已实现盈亏、实例列表、交易记录统计全都是净额，不用各自再扣。
+	// 反手（一笔既平又开）按成交手数算一次，不做「平/开各收」的拆分。
+	comm := o.Quantity * inst.CommissionPerContract
+	realized -= comm
+
 	return Trade{
 		ID:          inst.nextTradeID(),
 		OrderID:     o.ID,
@@ -908,6 +953,7 @@ func (inst *Instance) applyFill(o Order, price float64, t string) Trade {
 		Price:       price,
 		Quantity:    o.Quantity,
 		RealizedPnl: realized,
+		Commission:  comm,
 	}
 }
 
@@ -1101,6 +1147,7 @@ func (inst *Instance) snapshot(members []Member) InstanceDTO {
 		CreatedAt:     inst.CreatedAt,
 		Voice:         inst.voiceState(),
 		VoiceAll:      inst.voiceNotes().all(),
+		Account:       inst.accountDTO(),
 	}
 }
 
@@ -1118,20 +1165,29 @@ func (inst *Instance) stepContext() StepContext {
 
 func (inst *Instance) summary(members int) InstanceSummary {
 	return InstanceSummary{
-		ID:          inst.ID,
-		Symbol:      inst.Symbol,
-		Anchor:      inst.Anchor,
-		Cursor:      inst.Cursor,
-		LoadedBars:  len(inst.Bars),
-		Members:     members,
-		Operator:    inst.Operator,
-		Bot:         inst.botStop != nil,
-		BotStrategy: inst.botStrategy,
-		CreatedBy:   inst.CreatedBy,
-		CreatedAt:   inst.CreatedAt,
-		RealizedPnl: inst.RealizedPnl,
-		Trades:      len(inst.Trades),
+		ID:           inst.ID,
+		Symbol:       inst.Symbol,
+		Anchor:       inst.Anchor,
+		Cursor:       inst.Cursor,
+		LoadedBars:   len(inst.Bars),
+		Members:      members,
+		Operator:     inst.Operator,
+		Bot:          inst.botStop != nil,
+		BotStrategy:  inst.botStrategy,
+		CreatedBy:    inst.CreatedBy,
+		CreatedAt:    inst.CreatedAt,
+		RealizedPnl:  inst.RealizedPnl,
+		Trades:       len(inst.Trades),
+		AccountPhase: inst.accountPhase(),
 	}
+}
+
+// accountPhase 是实例列表上的徽标文字（空 = 不是考核账户）。
+func (inst *Instance) accountPhase() string {
+	if inst.account == nil {
+		return ""
+	}
+	return inst.account.Phase
 }
 
 // appendEvent 记录一条操作。只保留最近 maxEventsKept 条：复盘日志是给人看的，

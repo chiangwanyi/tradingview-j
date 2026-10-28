@@ -104,6 +104,33 @@ func DefaultTickValue(symbol string) float64 {
 	return 0
 }
 
+// commissionRules 是「一手、一个成交边收多少美元」的费率表。
+//
+// 全局生效：自由模式和考核账户都按这张表扣，不再各写一套。匹配方式和 tickRules 一样
+// （标的名里包含这个片段），所以 "CME_MINI:MNQ1!" 命中 MNQ。
+//
+// **认不出来就回 0（不扣）**：宁可显示「没这笔费用」，也不猜一个数去改动用户的盈亏。
+// 加新标的只改这张表。
+var commissionRules = []struct {
+	key         string
+	perContract float64
+}{
+	{"MNQ", 0.50},
+	{"MES", 0.50},
+	{"MGC", 0.80},
+}
+
+// DefaultCommission 返回一手、一个成交边的手续费（美元）。认不出来返回 0。
+func DefaultCommission(symbol string) float64 {
+	up := strings.ToUpper(symbol)
+	for _, r := range commissionRules {
+		if strings.Contains(up, r.key) {
+			return r.perContract
+		}
+	}
+	return 0
+}
+
 // readDayRows 把一份日文件读成按时间升序的行，保留时间文本。
 // 坏行照旧跳过并计数，不因为一行坏行丢掉整份文件。
 func readDayRows(path string, loc *time.Location) ([]TimeBar, RowStat, error) {
