@@ -15,3 +15,14 @@
 
 # 写盘的中间态
 *.tmp
+
+# ---- Spring Boot 工程（pom.xml / src 在仓库根，和 Go 模块共用根目录）----
+# Maven 构建产物
+/target/
+# 运行期日志（logback-spring.xml 写到这里）
+/logs/
+
+# IDE（Java 侧用得多，同时覆盖 Go/前端）
+.idea/
+*.iml
+.vscode/

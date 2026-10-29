@@ -7,6 +7,11 @@
 # "#!.../bash\r"，连解释器都定位不到，直接 Permission denied / bad interpreter。
 *.sh text eol=lf
 
+# Maven wrapper 的 sh 脚本没有扩展名，上面的 *.sh 规则选不中它。
+# 本机 core.autocrlf=true 时 checkout 会把 LF 翻成 CRLF，mvnw 当场 报
+# "bad interpreter"。单独钉死。mvnw.cmd 由上面的 *.cmd 规则覆盖。
+mvnw text eol=lf
+
 # 版本号文件由 build.cmd 用 set /p 读，保持 Windows 行尾
 VERSION text eol=crlf
 
