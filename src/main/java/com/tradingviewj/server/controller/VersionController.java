@@ -1,6 +1,6 @@
 package com.tradingviewj.server.controller;
 
-import com.tradingviewj.server.entity.VersionResponse;
+import com.tradingviewj.server.dto.VersionResponse;
 import com.tradingviewj.server.service.VersionService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;

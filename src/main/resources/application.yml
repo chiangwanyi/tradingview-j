@@ -15,10 +15,49 @@ spring:
     # 否则请求会转到 /error 端点，返回结构和成功响应不一样
     throw-exception-if-no-handler-found: true
 
+  # ---------------------------------------------------------------------------
+  # SQLite：只存「业务事实」（标的、复盘会话、图形、挂单、成交、录音、策略…）。
+  # K 线仍然留在 data/<folder>/<日期>.csv，一行都不进库（见 storage/CsvBarStore）。
+  # ---------------------------------------------------------------------------
+  datasource:
+    # 文件放在 ./db/ 下，和行情目录 data/ 分开：data/ 是入库的行情数据，
+    # db/ 是本机运行期状态（已加进 .gitignore），两者备份策略不同。
+    url: jdbc:sqlite:./db/tradingview-j.db
+    driver-class-name: org.sqlite.JDBC
+    hikari:
+      # SQLite 同一时刻只允许一个写者。连接池开大只会换来 "database is locked"，
+      # 这里锁死 1 条连接：读写串行，但本项目是单用户本机应用，串行的代价可以忽略。
+      maximum-pool-size: 1
+      # 每条连接打开时先打开外键约束 —— SQLite 默认是关的，不设这一句
+      # schema.sql 里写的 REFERENCES 全是装饰品。
+      connection-init-sql: PRAGMA foreign_keys = ON
+
+  jpa:
+    # Hibernate 主线不带 SQLite 方言，用 community 包里的这一份
+    database-platform: org.hibernate.community.dialect.SQLiteDialect
+    open-in-view: false
+    hibernate:
+      # 表结构由 schema.sql 管，不让 Hibernate 生成。
+      # 原因：SQLite 的 ALTER TABLE 只支持很有限的形式（加列、改名），Hibernate 的
+      # update 会生成它不支持的 DDL，而且这种失败只在「第二次启动且字段变了」时才出现 ——
+      # 属于最难查的一类问题。所以 DDL 写死在脚本里，可 review、可 diff。
+      ddl-auto: none
+    properties:
+      hibernate:
+        jdbc:
+          # 批量写：录一天几百笔成交时不至于一条一条往返
+          batch_size: 50
+  sql:
+    init:
+      # 每次启动都执行 schema.sql；脚本里全是 CREATE ... IF NOT EXISTS，天然幂等
+      mode: always
+
 app:
   # 由 Maven 资源过滤把 pom.xml 的 project.version 填进来（@..@ 是 Spring Boot 父 pom 约定的分隔符）
   version: '@project.version@'
   name: tradingview-j-server
+  # K 线 CSV 的根目录（对应 Go 版 config.json 的 outDir）
+  bar-root: ./data
 
 # Swagger / OpenAPI 文档（springdoc）
 # 页面地址：http://127.0.0.1:8791/swagger-ui.html

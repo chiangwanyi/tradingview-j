@@ -37,6 +37,30 @@
             <artifactId>spring-boot-starter-web</artifactId>
         </dependency>
 
+        <!-- 持久化：Spring Data JPA（Hibernate 6.6）+ SQLite -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-data-jpa</artifactId>
+        </dependency>
+        <!--
+          SQLite 的 JDBC 驱动（Xerial）。纯 Java + 内嵌原生库，不需要装数据库服务。
+          版本刻意自己钉：Boot 的 BOM 不管第三方数据库驱动，跟着 xerial 的发布走。
+        -->
+        <dependency>
+            <groupId>org.xerial</groupId>
+            <artifactId>sqlite-jdbc</artifactId>
+            <version>3.50.1.0</version>
+        </dependency>
+        <!--
+          Hibernate 官方主线不带 SQLite 方言，方言在 hibernate-community-dialects 里
+          （org.hibernate.community.dialect.SQLiteDialect）。版本由 Boot BOM 管（hibernate.version），
+          这里不写 version，避免和 hibernate-core 版本错位。
+        -->
+        <dependency>
+            <groupId>org.hibernate.orm</groupId>
+            <artifactId>hibernate-community-dialects</artifactId>
+        </dependency>
+
         <!-- 日志：logback + slf4j（starter-web 已传递引入，这里显式声明以示这是有意为之） -->
         <dependency>
             <groupId>org.springframework.boot</groupId>

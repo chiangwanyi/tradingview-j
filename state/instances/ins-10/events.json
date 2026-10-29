@@ -1,79 +1,5 @@
 [
   {
-    "seq": 21,
-    "at": 1793110075,
-    "by": "human",
-    "action": "bar_advanced",
-    "payload": {
-      "bar": {
-        "close": 24712.25,
-        "ema20": 24738.0729445984,
-        "high": 24724.25,
-        "low": 24682,
-        "open": 24682.25,
-        "time": "2025-07-31 03:45",
-        "volume": 13966
-      },
-      "closedLots": null,
-      "cursor": 597,
-      "fills": [],
-      "hasMore": true,
-      "hiddenBars": 1334,
-      "orders": [],
-      "position": {
-        "averagePrice": 0,
-        "quantity": 0,
-        "side": "flat"
-      },
-      "realizedPnl": 0,
-      "trades": [],
-      "unrealizedPnl": 0,
-      "voice": {
-        "barTime": "2025-07-31 03:45",
-        "clips": [],
-        "max": 9,
-        "total": 0
-      }
-    }
-  },
-  {
-    "seq": 22,
-    "at": 1793110076,
-    "by": "human",
-    "action": "bar_advanced",
-    "payload": {
-      "bar": {
-        "close": 24742.75,
-        "ema20": 24738.518378446173,
-        "high": 24755.75,
-        "low": 24712.25,
-        "open": 24712.5,
-        "time": "2025-07-31 03:50",
-        "volume": 18976
-      },
-      "closedLots": null,
-      "cursor": 598,
-      "fills": [],
-      "hasMore": true,
-      "hiddenBars": 1333,
-      "orders": [],
-      "position": {
-        "averagePrice": 0,
-        "quantity": 0,
-        "side": "flat"
-      },
-      "realizedPnl": 0,
-      "trades": [],
-      "unrealizedPnl": 0,
-      "voice": {
-        "barTime": "2025-07-31 03:50",
-        "clips": [],
-        "max": 9,
-        "total": 0
-      }
-    }
-  },
-  {
     "seq": 23,
     "at": 1793110076,
     "by": "human",
@@ -4091,9 +4017,9 @@
       "members": [
         {
           "clientId": "c2",
+          "connected": true,
           "name": "human",
-          "operator": true,
-          "connected": true
+          "operator": true
         }
       ]
     }
@@ -4105,84 +4031,84 @@
     "action": "flat_all",
     "payload": {
       "cancelled": 1,
-      "orders": [
-        {
-          "id": "o1",
-          "side": "buy",
-          "kind": "market",
-          "price": 25024.5,
-          "quantity": 6,
-          "status": "filled",
-          "placedAt": "2025-07-31 07:40",
-          "placedIndex": 632,
-          "filledAt": "2025-07-31 07:40",
-          "filledIndex": 632,
-          "fillPrice": 25024.5
-        },
-        {
-          "id": "o2",
-          "side": "sell",
-          "kind": "stop",
-          "price": 25005,
-          "quantity": 6,
-          "status": "cancelled",
-          "placedAt": "2025-07-31 07:40",
-          "placedIndex": 632,
-          "filledIndex": -1
-        },
-        {
-          "id": "o3",
-          "side": "sell",
-          "kind": "limit",
-          "price": 25051.5,
-          "quantity": 6,
-          "status": "filled",
-          "placedAt": "2025-07-31 07:40",
-          "placedIndex": 632,
-          "filledAt": "2025-07-31 09:05",
-          "filledIndex": 649,
-          "fillPrice": 25051.5
-        }
-      ],
-      "trades": [
-        {
-          "id": "t1",
-          "orderId": "o1",
-          "time": "2025-07-31 07:40",
-          "side": "buy",
-          "kind": "market",
-          "price": 25024.5,
-          "quantity": 6,
-          "realizedPnl": 0
-        },
-        {
-          "id": "t2",
-          "orderId": "o3",
-          "time": "2025-07-31 09:05",
-          "side": "sell",
-          "kind": "limit",
-          "price": 25051.5,
-          "quantity": 6,
-          "realizedPnl": 324
-        }
-      ],
       "closedLots": [
         {
-          "openTime": "2025-07-31 07:40",
-          "openPrice": 25024.5,
-          "closeTime": "2025-07-31 09:05",
           "closePrice": 25051.5,
-          "side": "long",
+          "closeTime": "2025-07-31 09:05",
+          "openPrice": 25024.5,
+          "openTime": "2025-07-31 07:40",
           "quantity": 6,
-          "realizedPnl": 324
+          "realizedPnl": 324,
+          "side": "long"
+        }
+      ],
+      "orders": [
+        {
+          "fillPrice": 25024.5,
+          "filledAt": "2025-07-31 07:40",
+          "filledIndex": 632,
+          "id": "o1",
+          "kind": "market",
+          "placedAt": "2025-07-31 07:40",
+          "placedIndex": 632,
+          "price": 25024.5,
+          "quantity": 6,
+          "side": "buy",
+          "status": "filled"
+        },
+        {
+          "filledIndex": -1,
+          "id": "o2",
+          "kind": "stop",
+          "placedAt": "2025-07-31 07:40",
+          "placedIndex": 632,
+          "price": 25005,
+          "quantity": 6,
+          "side": "sell",
+          "status": "cancelled"
+        },
+        {
+          "fillPrice": 25051.5,
+          "filledAt": "2025-07-31 09:05",
+          "filledIndex": 649,
+          "id": "o3",
+          "kind": "limit",
+          "placedAt": "2025-07-31 07:40",
+          "placedIndex": 632,
+          "price": 25051.5,
+          "quantity": 6,
+          "side": "sell",
+          "status": "filled"
         }
       ],
       "position": {
+        "averagePrice": 0,
         "quantity": 0,
-        "side": "flat",
-        "averagePrice": 0
+        "side": "flat"
       },
       "realizedPnl": 324,
+      "trades": [
+        {
+          "id": "t1",
+          "kind": "market",
+          "orderId": "o1",
+          "price": 25024.5,
+          "quantity": 6,
+          "realizedPnl": 0,
+          "side": "buy",
+          "time": "2025-07-31 07:40"
+        },
+        {
+          "id": "t2",
+          "kind": "limit",
+          "orderId": "o3",
+          "price": 25051.5,
+          "quantity": 6,
+          "realizedPnl": 324,
+          "side": "sell",
+          "time": "2025-07-31 09:05"
+        }
+      ],
       "unrealizedPnl": 0
     }
   },
@@ -4195,6 +4121,31 @@
       "members": [
         {
           "clientId": "c2",
+          "connected": true,
+          "name": "human",
+          "operator": true
+        }
+      ]
+    }
+  },
+  {
+    "seq": 121,
+    "at": 1793253188,
+    "by": "human",
+    "action": "control_changed",
+    "payload": {
+      "operator": "human"
+    }
+  },
+  {
+    "seq": 122,
+    "at": 1793253188,
+    "by": "system",
+    "action": "members_changed",
+    "payload": {
+      "members": [
+        {
+          "clientId": "c1",
           "name": "human",
           "operator": true,
           "connected": true

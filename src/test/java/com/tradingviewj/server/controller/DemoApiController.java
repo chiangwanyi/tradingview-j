@@ -3,7 +3,7 @@ package com.tradingviewj.server.controller;
 import cn.hutool.core.bean.BeanUtil;
 import cn.hutool.core.util.StrUtil;
 import com.tradingviewj.server.api.R;
-import com.tradingviewj.server.entity.VersionResponse;
+import com.tradingviewj.server.dto.VersionResponse;
 import com.tradingviewj.server.exception.BusinessException;
 import lombok.Data;
 import org.springframework.web.bind.annotation.GetMapping;

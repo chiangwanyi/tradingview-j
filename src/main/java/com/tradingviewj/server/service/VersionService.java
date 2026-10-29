@@ -1,7 +1,7 @@
 package com.tradingviewj.server.service;
 
 import com.tradingviewj.server.config.AppProperties;
-import com.tradingviewj.server.entity.VersionResponse;
+import com.tradingviewj.server.dto.VersionResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 

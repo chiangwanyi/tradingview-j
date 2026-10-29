@@ -22,4 +22,12 @@ public class AppProperties {
 
     /** 应用名。 */
     private String name = "tradingview-j-server";
+
+    /**
+     * K 线 CSV 的根目录（对应 Go 版 config.json 的 {@code outDir}）。
+     *
+     * <p>只有这一项走配置：数据库路径由 {@code spring.datasource.url} 管，
+     * 两者分开是因为它们的生命周期不同 —— 行情会被清、会被重新抓，业务库不会。
+     */
+    private String barRoot = "./data";
 }

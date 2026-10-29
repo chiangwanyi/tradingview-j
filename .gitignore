@@ -22,6 +22,11 @@
 # 运行期日志（logback-spring.xml 写到这里）
 /logs/
 
+# SQLite 业务库（./db/tradingview-j.db）：本机运行期状态，不入库。
+# 注意和 data/ 区分 —— 后者是 K 线 CSV，是行情数据，要入库。
+/db/*
+!/db/.gitkeep
+
 # IDE（Java 侧用得多，同时覆盖 Go/前端）
 .idea/
 *.iml
