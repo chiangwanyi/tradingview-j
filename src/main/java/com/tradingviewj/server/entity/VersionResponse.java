@@ -1,4 +1,4 @@
-package com.tradingviewj.server.api;
+package com.tradingviewj.server.entity;
 
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.AllArgsConstructor;

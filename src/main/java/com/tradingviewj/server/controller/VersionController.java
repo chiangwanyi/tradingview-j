@@ -1,7 +1,7 @@
 package com.tradingviewj.server.controller;
 
-import com.tradingviewj.server.api.VersionResponse;
-import com.tradingviewj.server.config.AppProperties;
+import com.tradingviewj.server.entity.VersionResponse;
+import com.tradingviewj.server.service.VersionService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
@@ -30,7 +30,7 @@ import org.springframework.web.bind.annotation.RestController;
 @RequiredArgsConstructor
 public class VersionController {
 
-    private final AppProperties appProperties;
+    private final VersionService versionService;
 
     @Operation(
             summary = "查询版本号",
@@ -44,11 +44,8 @@ public class VersionController {
                     """)
     @GetMapping("/version")
     public VersionResponse version() {
-        String version = appProperties.getVersion();
-        log.debug("GET /api/version -> {}", version);
-        return VersionResponse.builder()
-                .version(version)
-                .application(appProperties.getName())
-                .build();
+        VersionResponse response = versionService.currentVersion();
+        log.debug("GET /api/version -> {}", response.getVersion());
+        return response;
     }
 }
