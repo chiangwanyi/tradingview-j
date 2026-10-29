@@ -103,7 +103,8 @@ class PersistenceSmokeTest {
     @Test
     void everyAggregateRoundTrips() {
         // ---- 标的：主键就是标的代码，刻度用 BigDecimal ----
-        Symbol symbol = symbols.save(Symbol.of("CME_MINI:MNQ1!", "CME_MINI_MNQ1!"));
+        Symbol symbol = symbols.save(Symbol.of("CME_MINI:MNQ1!", "CME_MINI_MNQ1!",
+                new BigDecimal("0.50")));
         symbol.setTick(new BigDecimal("0.25"));
         symbol.setTickValue(new BigDecimal("0.5"));
         symbols.save(symbol);

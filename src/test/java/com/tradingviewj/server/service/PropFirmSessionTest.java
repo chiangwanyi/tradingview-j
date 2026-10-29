@@ -263,10 +263,9 @@ class PropFirmSessionTest {
     }
 
     private static Map<String, Symbol> symbols() {
-        Symbol mes = Symbol.of(SYM, "CME_MINI_MES1!");
+        Symbol mes = Symbol.of(SYM, "CME_MINI_MES1!", new BigDecimal("0.50"));
         mes.setTick(new BigDecimal("0.25"));
         mes.setTickValue(new BigDecimal("1.25"));
-        mes.setCommission(new BigDecimal("0.50"));
         return Map.of(SYM, mes);
     }
 

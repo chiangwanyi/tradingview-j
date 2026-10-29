@@ -58,12 +58,16 @@ Go 版 `tradingview-j` 的 Java / Spring Boot 迁移目标，工程文件（`pom
 
 ## 手续费：标的自己的参数，没有价目表
 
-`data/_symbols.json` 每个标的自带 `commission`（**每手每边**美元），Java 侧就是 `symbol.commission` 一列。
+`data/_symbols.json` 每个标的自带 `commission`（**每手每边**美元），Java 侧就是 `symbol.commission` 一列，
+**`NOT NULL`**：`0` = 明确免费（`NYMEX:CL1!` 就是这样）、`>0` = 收费，**没有「还没配」这个第三态**。
+`Symbol#of(code, folder, commission)` 和 `setCommission` 都收不了 `null`，所以 `perSideCommission` /
+`roundTripCommission` 也不会再返回 `null`；数据库列自己也是 NOT NULL（绕过实体直接 insert 会被拦下）。
 「往返乘不乘 2」只有 `Symbol#roundTripCommission` 一处回答（= 单边 × 2），散到调用方迟早一处乘一处忘。
-**`null` ≠ `0`**：`null`=还没配、`0`=明确免费（`NYMEX:CL1!`），没配时返回 `null` 而不是 0。
 
 Go 侧会**整个重写** `_symbols.json`：0.31.0 起 `commission` 被原样带回去（`*float64`，`0` 不会被
 `omitempty` 省掉）。**教训**：`saveXxxLocked` 会重写的文件，用户手写的每个键都必须有对应 struct 字段。
+⚠️ Go 侧仍可能写出「没有 `commission` 键」的标的（新标的刚出现时抓取端不知道费率），
+这种行**进不了库**（列 NOT NULL），也就是必须在 `_symbols.json` 里补上费率才谈得上建标。
 
 ## 全局约定
 

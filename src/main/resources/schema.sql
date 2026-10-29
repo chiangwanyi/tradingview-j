@@ -36,7 +36,7 @@ CREATE TABLE IF NOT EXISTS symbol (
     folder     TEXT NOT NULL UNIQUE, -- data/ 下的目录名，K 线靠它定位
     tick       TEXT,                 -- 最小跳动
     tick_value TEXT,                 -- 一跳值多少美元
-    commission TEXT,                 -- 每手每边的手续费（美元）；NULL = 没配，0 = 免手续费
+    commission TEXT NOT NULL,        -- 每手每边的手续费（美元）；0 = 免手续费，不允许 NULL
     created_at INTEGER NOT NULL,
     updated_at INTEGER NOT NULL
 );
@@ -127,6 +127,8 @@ CREATE UNIQUE INDEX IF NOT EXISTS ux_stage_account_seq ON prop_firm_stage_log (a
 -- 手续费不单独建表：它是标的自己的一个参数（symbol.commission），
 -- 每手每边多少美元，跟着品种走。以前那两张 commission_schedule / commission_rate
 -- 已删除 —— 「一套全局口径 + 一张价目表」这层结构对一只标的只说一次就够了。
+-- 这一列 **NOT NULL**：0 就是「免费」（NYMEX:CL1! 就是这样），没有第三个「还没配」状态。
+-- 允许 NULL 的话，漏配的标的会安静地按免费结算，账面上看不出来。
 
 -- 指标：暂时没有表。
 -- 「指标怎么存」还没定（定义表 / 参数 JSON / 前端本地），在决定之前不建半张表。

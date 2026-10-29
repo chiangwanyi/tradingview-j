@@ -105,7 +105,8 @@ class PropFirmAccountLifecycleTest {
     void setUp() {
         // 每个用例用独立的标的主键，避免共用临时库时互相干扰
         String suffix = Long.toHexString(System.nanoTime());
-        symbol = symbols.save(Symbol.of("CME_MINI:MNQ-" + suffix, "MNQ-" + suffix));
+        symbol = symbols.save(Symbol.of("CME_MINI:MNQ-" + suffix, "MNQ-" + suffix,
+                new BigDecimal("0.50")));
 
         // LucidFlex 50K：先有 FUNDED 模板，EVAL 才有 next 可指
         fundedTemplate = templates.save(PropFirmTemplate.define(

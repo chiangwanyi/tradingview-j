@@ -55,53 +55,65 @@ public class Symbol extends BaseEntity {
      * 计费口径是<strong>内建的</strong>：按手数收费、单边收费（见 {@link #roundTripCommission(int)}），
      * 所以一条交易的开仓和平仓各收一次。
      *
-     * <p><strong>NULL 和 0 不是一回事</strong>：NULL = 这只标的还没配（{@code data/_symbols.json}
-     * 里那一行没有 {@code commission} 键），0 = 明确写了 {@code "commission": 0}，也就是免手续费
-     * （{@code NYMEX:CL1!} 就是这样）。调用方必须区分「没配」和「免费」，
-     * 否则漏配的标的会安静地按免手续费结算。
+     * <p><strong>只有两个值：0 = 免费，&gt;0 = 收费。没有 NULL</strong>。
+     * 这一列 NOT NULL，建标的那一刻就必须给出费率（{@link #of}），之后改费率走
+     * {@link #setCommission(BigDecimal)}，同样收不了 null。为什么不再留一个「还没配」：
+     * 三态（没配 / 免费 / 收费）看起来更严谨，实际用法是漏配的标的安静地按免费结算，
+     * 账面上完全看不出来；而 {@code NYMEX:CL1!} 那种免手续费是<strong>明确写下 0</strong>
+     * 的事实，不是省略出来的默认值。
      *
      * <p>金额是 {@code BigDecimal}，库里存 TEXT（{@code BigDecimalTextConverter}）：
      * 手续费要按月累加几千笔，用 double 会攒出小数位的偏差。
      */
-    @Setter
+    @Column(nullable = false)
     private BigDecimal commission;
 
     private Symbol(String code) {
         useId(code);
     }
 
-    /** 按标的代码建一个还没填刻度的标的。 */
-    public static Symbol of(String code, String folder) {
+    /**
+     * 按标的代码建一个还没填刻度的标的；<strong>手续费必须当场给出</strong>（{@code 0} = 免费）。
+     *
+     * @throws IllegalArgumentException 没给手续费
+     */
+    public static Symbol of(String code, String folder, BigDecimal commission) {
         Symbol symbol = new Symbol(code);
         symbol.folder = folder;
+        symbol.setCommission(commission);
         return symbol;
     }
 
     /**
-     * 单边手续费 = 每手每边费率 × 手数。没配手续费返回 {@code null}。
+     * 改费率（已有标的调费率用这个，历史成交不受影响：成交存的是当时的快照）。
+     *
+     * @throws IllegalArgumentException 给了 {@code null} —— 「不知道多少」不是一个可以入库的状态
+     */
+    public void setCommission(BigDecimal commission) {
+        if (commission == null) {
+            throw new IllegalArgumentException("标的必须带手续费（可以为 0，但不能没有）: " + getId());
+        }
+        this.commission = commission;
+    }
+
+    /**
+     * 单边手续费 = 每手每边费率 × 手数。费率不可能为空，所以这里不会有 {@code null}。
      *
      * <p>这里只算「成交一次」那一次：开仓调一次、平仓再调一次。往返请用
      * {@link #roundTripCommission(int)}，别在两个地方各乘一遍 2。
      */
     public BigDecimal perSideCommission(int contracts) {
-        if (commission == null) {
-            return null;
-        }
         return commission.multiply(BigDecimal.valueOf(contracts));
     }
 
     /**
-     * 往返手续费（开仓 + 平仓）= 单边 × 2。没配手续费返回 {@code null}。
+     * 往返手续费（开仓 + 平仓）= 单边 × 2。
      *
      * <p>为什么乘 2 写在这里而不是让调用方自己乘：本项目的手续费口径就是「单边收费」，
      * 一买一卖等于两笔手续费。把它收在实体里，「往返到底收几次」就只有一个答案；
      * 散在调用方那边迟早出现一处乘 2、一处忘乘 —— 而这种错不会抛异常，只会安静地少算一半成本。
      */
     public BigDecimal roundTripCommission(int contracts) {
-        BigDecimal side = perSideCommission(contracts);
-        if (side == null) {
-            return null;
-        }
-        return side.multiply(BigDecimal.valueOf(2));
+        return perSideCommission(contracts).multiply(BigDecimal.valueOf(2));
     }
 }
