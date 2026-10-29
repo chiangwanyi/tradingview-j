@@ -50,13 +50,46 @@ Controller 返回的是裸 `VersionResponse`，`code/msg/data` 是运行期补�
 `pom.xml` 的 `<version>` → Maven 资源过滤写入 `application.yml` 的 `app.version` → `AppProperties` → Controller。
 升版本只改 pom。测试 `VersionControllerTest` 钉住 1.0.0，过滤失效会当场红。
 
+## 实体层（Go 数据结构的 Java 镜像）
+
+Java 侧**不负责抓 K 线**（那是 Go 的活：CDP 接入、WS 帧解码、CSV 落盘全留在 `internal/`）。
+所以实体层只镜像「读已有数据 + 复盘 + 报告」用得上的那部分，按 Go 的包一一对应分子包，
+类名、字段名、JSON 键全部照抄，**只看类名就能回去搜 Go**：
+
+| Java 包 | 对应 Go | 内容 |
+| --- | --- | --- |
+| `entity.store` | `internal/store` | 只读侧：`TimeBar` / `RowStat`（读 CSV）、`DayStat` / `FolderStat` / `ScanResult`（扫描摘要）、`CatalogEntry` / `SymRec` / `SymbolIndex`（`_symbols.json`）、`DateTotal` / `BarCount` / `Gap` / `WeekExpect` |
+| `entity.report` | `internal/webreport` | 网页报告的 `Report` 及 `meta/totals/folders/byDate` |
+| `entity.replay` | `internal/replay` | 复盘协议全部消息、负载、录像与存档格式 |
+| `entity.strategy` | `internal/strategy` | 策略输入 `StrategyContext`、`Signal`、参数描述 |
+
+**没有搬的（抓取侧，别往回加）**：`internal/config`（config.json 全是抓取/端口配置，Java 用 `application.yml`）、
+`internal/cdp`、`internal/tvproto`、`internal/ingest`、`internal/capture`，以及 `store` 里只服务抓取的
+`Bar`（落盘用的最小 K 线，只有 `ingest` 在造）和 `SymbolStat`（会话内累计写入统计）。
+
+**只搬了数据，没搬行为。** 带锁、带 channel、带未导出字段的运行期对象（`store.Store`、`Scanner`、
+`replay.Hub`、`replay.Instance`、`recording.tradeRecorder` …）留在将来当 Service 写，它们不是实体。
+同理 `*_test.go` 里的替身一个没搬。
+
+三个必须知道的约定：
+
+1. **重名类靠子包区分**。Go 里 `store.TimeBar` 与 `replay.Bar` 是两个不同的东西
+   （读文件的中间态 / 送前端的 K 线），Java 里就是两个包下的两个类，不要合并。
+2. **类上都有 `@JsonInclude(ALWAYS)`**。`application.yml` 全局是 `non_null`，但 Go 的协议里
+   数组字段没写 omitempty 时是 **`null` 而不是消失**——前端拿 `msg.orders.length` 会当场抛错。
+   所以实体类一律 ALWAYS，Go 里带 `omitempty` 的字段在**字段上**单独标 `NON_DEFAULT`（字段级优先于类级）。
+3. **`Recording extends RecordingSummary`** 是 Go 的内嵌结构体，JSON 是平的（摘要字段和记录字段同一个对象）。
+   两边都用 `@SuperBuilder`，别改成 `@Builder`——那会丢掉父类字段。
+
 ## 文件
 
 | 文件 | 作用 |
 | --- | --- |
 | `src/main/java/.../ServerApplication.java` | 入口，对应 Go 的 `main.go` |
 | `.../controller/VersionController.java` | `GET /api/version` |
-| `.../api/VersionResponse.java` | 响应体（Lombok `@Data`/`@Builder`） |
+| `.../entity/VersionResponse.java` | 响应体（Lombok `@Data`/`@Builder`） |
+| `.../entity/**` | 94 个数据类，Go 侧「读数据 / 复盘 / 报告」那部分结构的镜像，见上面「实体层」一节（抓取侧的 cdp / tvproto / ingest / capture / config 一概没有） |
+| `src/test/java/.../entity/EntityJsonTest.java` | 钉住 `ema20:null`、`offset` 省略、`filledIndex:-1`、录像字段扁平 |
 | `.../config/AppProperties.java` | 绑定 `app.*`，对应 Go 的 `config.json` |
 | `.../config/OpenApiConfig.java` | Swagger 文档定义 + 把 `code/msg/data` 还原进文档 |
 | `.../web/GlobalResponseAdvice.java` | 统一响应包裹（排除 `org.springdoc`，否则文档白屏） |
