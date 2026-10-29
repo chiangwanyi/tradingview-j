@@ -98,10 +98,12 @@ class TradeLedgerTest {
     }
 
     private static Trade sell(String barTime, String price, String qty) {
-        return Trade.fill("s1", "o1", barTime, Side.SELL, new BigDecimal(price), new BigDecimal(qty), BigDecimal.ZERO);
+        return Trade.fill("s1", "MNQ", "o1", barTime, Side.SELL,
+                new BigDecimal(price), new BigDecimal(qty), BigDecimal.ZERO, BigDecimal.ZERO);
     }
 
     private static Trade buy(String barTime, String price, String qty) {
-        return Trade.fill("s1", "o1", barTime, Side.BUY, new BigDecimal(price), new BigDecimal(qty), BigDecimal.ZERO);
+        return Trade.fill("s1", "MNQ", "o1", barTime, Side.BUY,
+                new BigDecimal(price), new BigDecimal(qty), BigDecimal.ZERO, BigDecimal.ZERO);
     }
 }

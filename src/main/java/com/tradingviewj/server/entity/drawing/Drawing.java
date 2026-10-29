@@ -54,6 +54,15 @@ public class Drawing extends BaseEntity {
     @Column(nullable = false)
     private String accountId;
 
+    /**
+     * 画在哪个品种的时间轴上。
+     *
+     * <p>图形的坐标只有 {@code {barTime, price}} —— 没有品种就不知道这两条轴属于哪张图。
+     * 账户可以同时做多个品种，所以品种必须记在图形自己身上。
+     */
+    @Column(nullable = false)
+    private String symbolId;
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     private Kind kind;
@@ -98,14 +107,20 @@ public class Drawing extends BaseEntity {
      *
      * @param accountId 画在哪个 PF 账户的盘面上，<strong>不能为空</strong>：图形只可能是
      *                  考核期里的操作。允许为空的列只是为「账户被删」留的出口
-     * @throws IllegalArgumentException 没给账户
+     * @param symbolId  画在哪个品种上，<strong>不能为空</strong>：坐标里没有品种，只有时间和价格
+     * @throws IllegalArgumentException 没给账户 / 标的
      */
-    public static Drawing of(String accountId, Kind kind, Anchor start, Anchor end, String createdBy) {
+    public static Drawing of(String accountId, String symbolId, Kind kind,
+                            Anchor start, Anchor end, String createdBy) {
         if (accountId == null || accountId.isBlank()) {
             throw new IllegalArgumentException("图形必须画在某个 PF 账户里，收到: " + accountId);
         }
+        if (symbolId == null || symbolId.isBlank()) {
+            throw new IllegalArgumentException("图形必须画在某个标的上，收到: " + symbolId);
+        }
         Drawing drawing = new Drawing();
         drawing.accountId = accountId;
+        drawing.symbolId = symbolId;
         drawing.kind = kind;
         drawing.start = start;
         drawing.end = end;

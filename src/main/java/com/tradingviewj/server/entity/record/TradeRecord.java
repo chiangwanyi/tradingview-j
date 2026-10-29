@@ -66,6 +66,10 @@ public class TradeRecord extends BaseEntity {
     @Column(nullable = false)
     private String accountId;
 
+    /** 这笔交易做的是哪个品种。账户可以多品种，{@link #anchorBarTime} 只说明"哪一根"。 */
+    @Column(nullable = false)
+    private String symbolId;
+
     /** 起点那一屏的 K 线时间（开仓**之前**）。 */
     @Column(nullable = false)
     private String anchorBarTime;
@@ -153,19 +157,25 @@ public class TradeRecord extends BaseEntity {
      * 开一条记录。
      *
      * @param accountId 这笔交易算在哪个 PF 账户上，<strong>不能为空</strong>：没有账户就不该有交易
+     * @param symbolId  这笔交易做的是哪个品种，<strong>不能为空</strong>：回放要找到对应的时间轴
      * @param actor     只能是 {@link Actor#HUMAN} 或 {@link Actor#BOT}
-     * @throws IllegalArgumentException 没给账户，或者传了 {@code SYSTEM}
+     * @throws IllegalArgumentException 没给账户 / 标的，或者传了 {@code SYSTEM}
      *                                  （它不是一笔交易的来源，而是「系统自己动的手」这类操作的操作者）
      */
-    public static TradeRecord open(String accountId, String anchorBarTime, Actor actor, String actorName) {
+    public static TradeRecord open(String accountId, String symbolId, String anchorBarTime,
+                                   Actor actor, String actorName) {
         if (actor != Actor.HUMAN && actor != Actor.BOT) {
             throw new IllegalArgumentException("交易记录的来源只能是 HUMAN 或 BOT，收到: " + actor);
         }
         if (accountId == null || accountId.isBlank()) {
             throw new IllegalArgumentException("交易记录必须属于一个 PF 账户，收到: " + accountId);
         }
+        if (symbolId == null || symbolId.isBlank()) {
+            throw new IllegalArgumentException("交易记录必须指定标的，收到: " + symbolId);
+        }
         TradeRecord record = new TradeRecord();
         record.accountId = accountId;
+        record.symbolId = symbolId;
         record.anchorBarTime = anchorBarTime;
         record.actor = actor;
         record.actorName = actorName;

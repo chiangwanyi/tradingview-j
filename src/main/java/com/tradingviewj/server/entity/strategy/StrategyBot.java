@@ -43,6 +43,10 @@ public class StrategyBot extends BaseEntity {
     @Column(nullable = false)
     private String accountId;
 
+    /** 在哪个品种上跑。账户可以多品种，机器人只盯一张图。 */
+    @Column(nullable = false)
+    private String symbolId;
+
     /** NULL = 老式的随机演示机器人（不下真单，只演示操作）。 */
     @Column
     private String strategyId;
@@ -76,14 +80,20 @@ public class StrategyBot extends BaseEntity {
      * 启动一次运行。
      *
      * @param accountId 在哪个 PF 账户上跑，<strong>不能为空</strong>：机器人做的一切也要算在账上
-     * @throws IllegalArgumentException 没给账户
+     * @param symbolId  跑在哪个品种上，<strong>不能为空</strong>
+     * @throws IllegalArgumentException 没给账户 / 标的
      */
-    public static StrategyBot start(String accountId, String strategyId, BigDecimal quantity, int intervalMs) {
+    public static StrategyBot start(String accountId, String symbolId, String strategyId,
+                                    BigDecimal quantity, int intervalMs) {
         if (accountId == null || accountId.isBlank()) {
             throw new IllegalArgumentException("策略机器人必须跑在某个 PF 账户上，收到: " + accountId);
         }
+        if (symbolId == null || symbolId.isBlank()) {
+            throw new IllegalArgumentException("策略机器人必须指定标的，收到: " + symbolId);
+        }
         StrategyBot bot = new StrategyBot();
         bot.accountId = accountId;
+        bot.symbolId = symbolId;
         bot.strategyId = strategyId;
         bot.quantity = quantity;
         bot.intervalMs = intervalMs;

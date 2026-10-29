@@ -41,6 +41,10 @@ public class Indicator extends BaseEntity {
     @Column(nullable = false)
     private String accountId;
 
+    /** 算在哪个品种的 K 线上。账户可以多品种，指标是画在某一张图上的。 */
+    @Column(nullable = false)
+    private String symbolId;
+
     @Setter
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
@@ -74,13 +78,18 @@ public class Indicator extends BaseEntity {
      *
      * @param accountId 所属账户，<strong>不能为空</strong>：指标是某个考核期里的东西，
      *                  没有账户就没有「算给谁看」这回事
+     * @param symbolId  算在哪个品种上，<strong>不能为空</strong>
      */
-    public static Indicator of(String accountId, Type type, int period, Source source) {
+    public static Indicator of(String accountId, String symbolId, Type type, int period, Source source) {
         if (accountId == null || accountId.isBlank()) {
             throw new IllegalArgumentException("指标必须属于一个 PF 账户，收到: " + accountId);
         }
+        if (symbolId == null || symbolId.isBlank()) {
+            throw new IllegalArgumentException("指标必须指定标的，收到: " + symbolId);
+        }
         Indicator indicator = new Indicator();
         indicator.accountId = accountId;
+        indicator.symbolId = symbolId;
         indicator.type = type;
         indicator.period = period;
         indicator.source = source;

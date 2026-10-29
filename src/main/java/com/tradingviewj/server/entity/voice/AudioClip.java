@@ -42,6 +42,10 @@ public class AudioClip extends BaseEntity {
     @Column(nullable = false)
     private String accountId;
 
+    /** 讲的是哪个品种的 K 线。账户可以多品种，而 {@link #barTime} 只说明"哪一根"。 */
+    @Column(nullable = false)
+    private String symbolId;
+
     /** 挂在哪根 K 线上。 */
     @Column(nullable = false)
     private String barTime;
@@ -69,15 +73,20 @@ public class AudioClip extends BaseEntity {
      * 录一段语音。
      *
      * @param accountId 录在哪个 PF 账户里，<strong>不能为空</strong>：语音是考核期里的操作
-     * @throws IllegalArgumentException 没给账户
+     * @param symbolId  录在哪个品种的 K 线上，<strong>不能为空</strong>
+     * @throws IllegalArgumentException 没给账户 / 标的
      */
-    public static AudioClip record(String accountId, String barTime, int seq, String fileName,
-                                   int durationMs, long sizeBytes, Actor actor) {
+    public static AudioClip record(String accountId, String symbolId, String barTime, int seq,
+                                   String fileName, int durationMs, long sizeBytes, Actor actor) {
         if (accountId == null || accountId.isBlank()) {
             throw new IllegalArgumentException("语音必须录在某个 PF 账户里，收到: " + accountId);
         }
+        if (symbolId == null || symbolId.isBlank()) {
+            throw new IllegalArgumentException("语音必须挂在某个标的的 K 线上，收到: " + symbolId);
+        }
         AudioClip clip = new AudioClip();
         clip.accountId = accountId;
+        clip.symbolId = symbolId;
         clip.barTime = barTime;
         clip.seq = seq;
         clip.fileName = fileName;

@@ -9,8 +9,11 @@ import com.tradingviewj.server.entity.drawing.DrawingStyle;
 import com.tradingviewj.server.entity.drawing.FibLevel;
 import com.tradingviewj.server.entity.indicator.Indicator;
 import com.tradingviewj.server.entity.market.Symbol;
+import com.tradingviewj.server.entity.propfirm.PositionTier;
 import com.tradingviewj.server.entity.propfirm.PropFirmAccount;
 import com.tradingviewj.server.entity.propfirm.PropFirmRules;
+import com.tradingviewj.server.entity.propfirm.PropFirmStage;
+import com.tradingviewj.server.entity.propfirm.PropFirmStageLog;
 import com.tradingviewj.server.entity.propfirm.PropFirmTemplate;
 import com.tradingviewj.server.entity.record.RecordTag;
 import com.tradingviewj.server.entity.record.TradeRecord;
@@ -27,6 +30,7 @@ import com.tradingviewj.server.repository.DrawingRepository;
 import com.tradingviewj.server.repository.IndicatorRepository;
 import com.tradingviewj.server.repository.OrderRepository;
 import com.tradingviewj.server.repository.PropFirmAccountRepository;
+import com.tradingviewj.server.repository.PropFirmStageLogRepository;
 import com.tradingviewj.server.repository.PropFirmTemplateRepository;
 import com.tradingviewj.server.repository.StrategyBotRepository;
 import com.tradingviewj.server.repository.StrategyRepository;
@@ -49,6 +53,7 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -95,6 +100,7 @@ class PersistenceSmokeTest {
     @Autowired private TradeRecordStepRepository steps;
     @Autowired private PropFirmTemplateRepository templates;
     @Autowired private PropFirmAccountRepository accounts;
+    @Autowired private PropFirmStageLogRepository stageLogs;
     @Autowired private JdbcTemplate jdbc;
 
     @Test
@@ -112,22 +118,57 @@ class PersistenceSmokeTest {
         assertNotNull(reloadedSymbol.getCreatedAt());
 
         // ---- PF 模板 + 账户：所有子数据的归属点就在这里 ----
-        PropFirmTemplate template = templates.save(PropFirmTemplate.define("Apex 50K", "50K 考核",
+        // 规则是「一个阶段」的规则：EVAL 有目标 + 50% 一致性 + 40 手一档，没有盈利日要求
+        PropFirmTemplate template = templates.save(PropFirmTemplate.define(
+                "LucidFlex 50K EVAL", "50K 考试", PropFirmStage.EVAL, null,
                 new PropFirmRules(new BigDecimal("50000.00"), new BigDecimal("3000.00"),
-                        new BigDecimal("2500.00"), new BigDecimal("1250.00"),
-                        PropFirmRules.DrawdownType.TRAILING_EOD, 5, new BigDecimal("0.90"))));
-        PropFirmAccount account = accounts.save(PropFirmAccount.open(template, "第一次考核", symbol.getId()));
+                        new BigDecimal("2000.00"), PropFirmRules.DrawdownType.TRAILING_EOD,
+                        new BigDecimal("52100.00"), new BigDecimal("0.50"), null, null,
+                        List.of(new PositionTier(BigDecimal.ZERO, 40)))));
+        PropFirmAccount account = accounts.save(PropFirmAccount.open(template, "第一次考核"));
 
-        assertEquals(new BigDecimal("50000.00"), accounts.findById(account.getId()).orElseThrow().getBalance());
-        assertEquals(PropFirmAccount.Status.ACTIVE, account.getStatus());
-        assertEquals("CME_MINI:MNQ1!", account.getSymbolId());
+        PropFirmAccount reloadedAccount = accounts.findById(account.getId()).orElseThrow();
+        assertEquals(new BigDecimal("50000.00"), reloadedAccount.getBalance());
+        assertEquals(new BigDecimal("50000.00"), reloadedAccount.getBaseBalance(),
+                "阶段起点余额必须单独存：升级时它会被重置，余额就不能再由成交累加反推");
+        assertEquals(PropFirmAccount.Status.ACTIVE, reloadedAccount.getStatus());
+        assertEquals(PropFirmStage.EVAL, reloadedAccount.getStage());
+        assertEquals(new BigDecimal("52100.00"), reloadedAccount.getRules().getTrailingLockLevel());
+        // 手数分档是 JSON 列，往返之后必须还是原来那两样东西
+        assertEquals(1, reloadedAccount.getRules().getPositionTiers().size());
+        assertEquals(40, reloadedAccount.getRules().getPositionTiers().get(0).maxContracts());
+        assertEquals(0, BigDecimal.ZERO.compareTo(
+                reloadedAccount.getRules().getPositionTiers().get(0).fromProfit()));
+
+        // ---- 阶段流水：三阶段挤在同一行账户上，历史只能靠这张表 ----
+        stageLogs.save(PropFirmStageLog.begin(account.getId(), 0, account.getStage(),
+                account.getBaseBalance(), account.getStageStartedAt(), PropFirmStageLog.Reason.CREATED));
+        List<PropFirmStageLog> history = stageLogs.findByAccountIdOrderBySeqAsc(account.getId());
+        assertEquals(1, history.size());
+        assertEquals(PropFirmStageLog.Reason.CREATED, history.get(0).getReason());
+        assertEquals(PropFirmStage.EVAL, history.get(0).getStage());
+        assertNull(history.get(0).getEndedAt(), "刚建的阶段还没结束");
+
+        // 第二段（升上来的）+ 收尾：结束原因和进入原因是两列，不能混成一个
+        PropFirmStageLog funded = stageLogs.save(PropFirmStageLog.begin(account.getId(), 1,
+                PropFirmStage.FUNDED, new BigDecimal("50000.00"),
+                java.time.Instant.now(), PropFirmStageLog.Reason.PROMOTED));
+        funded.close(PropFirmStageLog.EndReason.FAILED, new BigDecimal("47900.00"),
+                new BigDecimal("1800.00"), 3, java.time.Instant.now());
+        stageLogs.save(funded);
+        PropFirmStageLog reloadedLog = stageLogs.findTopByAccountIdOrderBySeqDesc(account.getId()).orElseThrow();
+        assertEquals(PropFirmStageLog.Reason.PROMOTED, reloadedLog.getReason());
+        assertEquals(PropFirmStageLog.EndReason.FAILED, reloadedLog.getEndReason());
+        assertEquals(new BigDecimal("-2100.00"), reloadedLog.getNetPnl(), "净额 = 结束余额 − 起点余额");
+        assertEquals(3, reloadedLog.getProfitDays());
 
         // ---- 指标 ----
-        indicators.save(Indicator.of(account.getId(), Indicator.Type.EMA, 20, Indicator.Source.CLOSE));
+        indicators.save(Indicator.of(account.getId(), symbol.getId(),
+                Indicator.Type.EMA, 20, Indicator.Source.CLOSE));
         assertEquals(1, indicators.findByAccountIdOrderBySortOrderAsc(account.getId()).size());
 
         // ---- 图形：两个 @Embedded 锚点靠 @AttributeOverride 分列 + 斐波那契从表 ----
-        Drawing drawing = Drawing.of(account.getId(), Drawing.Kind.FIB,
+        Drawing drawing = Drawing.of(account.getId(), symbol.getId(), Drawing.Kind.FIB,
                 new Anchor("2026-10-16 12:00", new BigDecimal("21250.25"), 0),
                 new Anchor("2026-10-16 15:00", new BigDecimal("21300.5"), 40),
                 "jiang");
@@ -145,19 +186,23 @@ class PersistenceSmokeTest {
         assertEquals(new BigDecimal("0.618"), reloadedDrawing.getFibLevels().get(1).getRatio());
 
         // ---- 挂单 + 成交 ----
-        Order order = Order.place(account.getId(), Side.BUY, Order.Type.LIMIT,
+        Order order = Order.place(account.getId(), symbol.getId(), Side.BUY, Order.Type.LIMIT,
                 new BigDecimal("21250"), new BigDecimal("1"), "2026-10-16 12:00", 0, null);
         orders.save(order);
         order.markFilled("2026-10-16 12:05", 1, new BigDecimal("21250"));
         orders.save(order);
         assertEquals(Order.Status.FILLED, orders.findById(order.getId()).orElseThrow().getStatus());
 
-        Trade trade = trades.save(Trade.fill(account.getId(), order.getId(), "2026-10-16 12:05",
-                Side.BUY, new BigDecimal("21250"), new BigDecimal("1"), BigDecimal.ZERO));
+        Trade trade = trades.save(Trade.fill(account.getId(), symbol.getId(), order.getId(),
+                "2026-10-16 12:05", Side.BUY, new BigDecimal("21250"), new BigDecimal("1"),
+                BigDecimal.ZERO, new BigDecimal("0.50")));
         assertEquals(1, trades.findByAccountIdOrderByBarTimeAscIdAsc(account.getId()).size());
+        // 手续费是成交那一刻的快照，不是"读 symbol 现算" —— 净盈亏 = 毛利 − 手续费
+        assertEquals(new BigDecimal("-0.50"),
+                trades.findById(trade.getId()).orElseThrow().netPnl());
 
         // ---- 语音 ----
-        audioClips.save(AudioClip.record(account.getId(), "2026-10-16 12:00", 0,
+        audioClips.save(AudioClip.record(account.getId(), symbol.getId(), "2026-10-16 12:00", 0,
                 account.getId() + "/voice-0.wav", 3200, 65536, Actor.HUMAN));
         assertEquals(1, audioClips.countByAccountIdAndBarTime(account.getId(), "2026-10-16 12:00"));
 
@@ -178,7 +223,7 @@ class PersistenceSmokeTest {
 
         // ---- 策略 + 机器人 ----
         Strategy strategy = strategies.save(Strategy.register("caveman", "Caveman", "野人", "{}"));
-        StrategyBot bot = bots.save(StrategyBot.start(account.getId(), strategy.getId(),
+        StrategyBot bot = bots.save(StrategyBot.start(account.getId(), symbol.getId(), strategy.getId(),
                 new BigDecimal("1"), 300));
         bot.stop(StrategyBot.Status.FINISHED, StrategyBot.StopReason.DATA_END, 4);
         bots.save(bot);
@@ -188,12 +233,15 @@ class PersistenceSmokeTest {
         template.setName("Apex 50K（改名）");
         template.getRules().setMaxDrawdown(new BigDecimal("9999.00"));
         templates.save(template);
-        assertEquals(new BigDecimal("2500.00"),
+        assertEquals(new BigDecimal("2000.00"),
                 accounts.findById(account.getId()).orElseThrow().getRules().getMaxDrawdown(),
                 "模板改了，账户上的规则快照不能跟着变");
+        // 手数分档也必须各自独立（深拷贝），不能共享同一个列表
+        assertEquals(40, accounts.findById(account.getId()).orElseThrow()
+                .getRules().getPositionTiers().get(0).maxContracts());
 
         // ---- 交易记录 + 步骤 + 标签 ----
-        TradeRecord record = TradeRecord.open(account.getId(), "2026-10-16 12:00",
+        TradeRecord record = TradeRecord.open(account.getId(), symbol.getId(), "2026-10-16 12:00",
                 Actor.HUMAN, "jiang");
         record.openPosition(Side.BUY, "2026-10-16 12:05", new BigDecimal("21250"), new BigDecimal("1"));
         record.closeAt("2026-10-16 13:00", new BigDecimal("21260"), new BigDecimal("20"));

@@ -18,40 +18,40 @@ import java.time.Instant;
 /**
  * Prop Firm 账户：一个<strong>具体在考核中的</strong>账户，也是全库唯一的<strong>操作归属点</strong>。
  *
- * <p><strong>它取代了原来的「复盘会话」（ReplaySession）</strong>。理由不是「两个东西长得像」，
- * 而是它们回答的是同一个问题：这次操作算在谁头上。留着会话就会出现「操作属于会话、账算在账户」
- * 两套归属，任何一个统计问题都要先想清楚走哪条线。现在只有一条：
- * <strong>一切操作都必须发生在一个 PF 账户里</strong>（图形、挂单、成交、语音、操作记录、
- * 机器人、交易记录全部按 {@code accountId} 归属）。
+ * <p><strong>一切操作都必须发生在一个 PF 账户里</strong>（图形、挂单、成交、语音、操作记录、
+ * 机器人、交易记录全部按 {@code accountId} 归属），但账户<strong>不拥有</strong>这些操作：
+ * 删除账户只删这一行，子数据一条都不会被级联删除，它们的 {@code accountId} 原样保留。
  *
- * <p><strong>它是一个「临时的统计点」，不是一个「容器」</strong>：统计考核期内的一切操作，
- * 但<strong>不拥有</strong>这些操作。删除账户只删这一行，下面的成交、交易记录、语音、
- * 操作记录、图形<strong>一条都不会被级联删除</strong>——它们与账户在数据归属上相互独立，
- * 只在「算在谁头上」这一点上引用账户。账户删掉之后，那些行的 {@code account_id}
- * <strong>原样保留</strong>（指向一个已经不存在的账户），数据本身一行不少，
- * 可以由用户手动删除，也可以将来重新挂到另一个账户上。
+ * <p><strong>它是一个「临时的统计点」，不是一个「容器」</strong>。
  *
- * <p>{@code account_id} 因此是 <strong>NOT NULL 且不加外键</strong>：
- * 三种级联策略都不合适 —— {@code SET NULL} 会把归属抹掉、{@code CASCADE} 会连带删数据、
- * {@code RESTRICT} 会让账户一旦有数据就永远删不掉。「创建时必须属于某个账户」这条规则
- * 只由领域方法（各实体的工厂方法 + {@code service.PropFirmAccountService#requireActive}）把关。
+ * <h2>它不再绑定一个标的</h2>
  *
- * <p>{@link #symbolId} 是<strong>账户开在哪个标的上</strong>。会话被移除之后，它是
- * 「这块盘面是哪个品种」的唯一落点：图形和成交只存 K 线时间与价格，没有标的就找不到
- * 对应的时间轴。{@code ReplaySession} 原来的锚点、游标、操作人<strong>不搬到这里</strong>，
- * 那是盘面推进过程中的运行期状态，不属于账户。
+ * <p>LucidFlex 50K 的账户可以同时做 MES / MNQ / MGC，所以「账户是哪个品种」这个问题
+ * 没有答案。品种下沉到每一条操作上（{@code symbolId}），账户只回答「算在谁头上」。
+ * 原来的 {@code symbolId} 列已删除 —— 留着它会诱使后来的人把它当成"账户的主品种"，
+ * 再用它去推断图形属于哪个时间轴。
  *
- * <p>{@link #rules} 是<strong>开账户时从模板复制进来的副本</strong>，
+ * <h2>规则是「一个阶段」的规则，且会换</h2>
+ *
+ * <p>{@link #rules} 是<strong>当前阶段</strong>的规则快照（开账户时从模板复制），
  * 不是指向模板的引用。理由见 {@link PropFirmRules}：模板改了，我签的那一份不能变。
- * {@link #templateId} 只用来回答「这个账户是从哪套模板开的」。
+ * 阶段升级时整份快照被换成下一套模板的副本，所以<b>一个账户在不同时间签的是两份不同规则</b>
+ * —— 这正是 {@link PropFirmStageLog} 存在的理由。
  *
- * <p>{@link #peakEquity} 是「历史最高权益」，跟踪型回撤全靠它。之所以<strong>存下来</strong>
- * 而不是每次从成交重算：峰值是<strong>路径依赖</strong>的 —— 重算需要知道每一个时刻的
- * 浮盈浮亏，而成交记录里没有「每一刻的持仓市值」。这是本类里唯一必须持久化的派生量。
+ * <h2>为什么 balance 不能从成交重算</h2>
  *
- * <p>⚠️ 待确认：{@link #status} 什么时候从 ACTIVE 变成 PASSED / FAILED、
- * {@link #tradingDays} 怎么数（跨日算一天还是有过成交才算），口径未定，
- * 本类只提供状态位，不做判定。
+ * <p>EVAL 通过时余额被<strong>强制拨回账户规模</strong>（EVAL 的盈利不带进 FUNDED）。
+ * 所以「余额 = Σ已实现净额」这个等式只在<strong>一个阶段内</strong>成立。
+ * 为此每个阶段记一个 {@link #baseBalance}，余额读作
+ * {@code baseBalance + 本阶段净额}。这也是本类里除了 {@link #eodPeakBalance}
+ * 之外第二个<strong>必须持久化</strong>的派生量。
+ *
+ * <p>{@link #eodPeakBalance} 是「<strong>日终余额</strong>的历史最高」，跟踪型回撤全靠它。
+ * 之所以存下来而不是每次重算：它只在日终更新，而盘中推进时当前这根 K 线的日终余额还不存在；
+ * 重算需要"每到 04:45 记一次"的时间序列，比存一个数贵得多。
+ *
+ * <p>⚠️ 判定（失败 / 升级）不在本类：本类只提供状态位和<b>被权威实现调用</b>的迁移动作，
+ * 口径在 {@code service.PropFirmSession}。
  */
 @Getter
 @Entity
@@ -63,41 +63,45 @@ public class PropFirmAccount extends BaseEntity {
     @Column(nullable = false)
     private String name;
 
-    /** 这个账户做的是哪个标的（外键指向 {@code symbol.id}），图形和成交靠它找到时间轴。 */
-    @Column(nullable = false)
-    private String symbolId;
-
     /**
      * 从哪套模板开的（只用于追溯）。
      *
      * <p><strong>NOT NULL 且不加外键</strong>：模板被删掉之后这里仍然保留原来那个 id，
      * 不置空 —— 账户上真正生效的是 {@link #rules} 那份快照，这一列只是用来回答「当初从哪套开的」。
+     *
+     * <p>阶段升级时<strong>不</strong>改它：它记的是「建户那一刻用的模板」，
+     * 后来换了几次规则看阶段流水。
      */
     @Column(nullable = false)
     private String templateId;
 
-    /** 规则快照。 */
+    /** 当前阶段。升级时连同 {@link #rules} 和余额基准一起换。 */
+    @Column(nullable = false)
+    @Enumerated(EnumType.STRING)
+    private PropFirmStage stage;
+
+    /** 当前阶段的规则快照。 */
     @Embedded
     private PropFirmRules rules;
 
-    /** 当前余额（已结算的现金）。 */
-    @Setter
+    /** 本阶段的起点余额。升级时重置成账户规模。 */
+    @Column(nullable = false)
+    private BigDecimal baseBalance;
+
+    /** 本阶段的「日终余额」历史最高。只增不减，升级时重置。 */
+    @Column(nullable = false)
+    private BigDecimal eodPeakBalance;
+
+    /** 当前余额 = {@link #baseBalance} + 本阶段已实现净额（已扣手续费）。 */
     @Column(nullable = false)
     private BigDecimal balance;
 
-    /** 历史最高权益。跟踪型回撤的基准，只增不减。 */
-    @Setter
+    /** 进入当前阶段的时刻。统计「本阶段成交」的时间下界。 */
     @Column(nullable = false)
-    private BigDecimal peakEquity;
+    private Instant stageStartedAt;
 
-    /** 已经过的交易日数。 */
-    @Setter
     @Column(nullable = false)
-    private int tradingDays;
-
-    @Setter
     @Enumerated(EnumType.STRING)
-    @Column(nullable = false)
     private Status status;
 
     @Column(nullable = false)
@@ -106,40 +110,135 @@ public class PropFirmAccount extends BaseEntity {
     /**
      * 按模板开一个账户。规则在这一刻<strong>复制</strong>进来，此后与模板无关。
      *
-     * @param template 规则来源
-     * @param name     账户名（用户自己起，例如「Apex 50K 第一次」）
-     * @param symbolId 这个账户做哪个标的
+     * <p>阶段由模板决定：拿 FUNDED 模板建出来的账户直接从 FUNDED 开始
+     * （「有的是创建的时候就是 FUNDED」就是这条路径），流水里只会有 CREATED 一行。
+     *
+     * @param template 规则来源（它的 {@code stage} 就是新账户的初始阶段）
+     * @param name     账户名（用户自己起，例如「LucidFlex 50K 第一次」）
      */
-    public static PropFirmAccount open(PropFirmTemplate template, String name, String symbolId) {
-        if (symbolId == null || symbolId.isBlank()) {
-            throw new IllegalArgumentException("账户必须绑定一个标的，收到: " + symbolId);
-        }
+    public static PropFirmAccount open(PropFirmTemplate template, String name) {
         if (name == null || name.isBlank()) {
             throw new IllegalArgumentException("账户必须有名字，收到: " + name);
         }
+        if (template == null || template.getRules() == null) {
+            throw new IllegalArgumentException("账户必须有模板和规则，收到: " + template);
+        }
+        Instant now = Instant.now();
         PropFirmAccount account = new PropFirmAccount();
         account.name = name;
-        account.symbolId = symbolId;
         account.templateId = template.getId();
+        account.stage = template.getStage();
         account.rules = template.getRules().copy();
-        account.balance = template.getRules().getAccountSize();
-        account.peakEquity = account.balance;
+        account.baseBalance = template.getRules().getAccountSize();
+        account.eodPeakBalance = account.baseBalance;
+        account.balance = account.baseBalance;
+        account.stageStartedAt = now;
         account.status = Status.ACTIVE;
-        account.startedAt = Instant.now();
+        account.startedAt = now;
         return account;
     }
 
-    /** 还能不能往上挂操作。删掉的账户（行已不存在）、失败的账户都不该继续下单。 */
+    /** 还能不能往上挂操作（下单、画图、录音、起机器人）。 */
     public boolean isOpen() {
         return status == Status.ACTIVE;
     }
 
+    /** 还能不能下单。比 {@link #isOpen()} 多一条：PAYOUT 阶段虽然"开着"，但它是终点。 */
+    public boolean isTradable() {
+        return isOpen() && stage.tradable();
+    }
+
+    /** 本阶段赚了多少（已扣手续费）。可正可负。 */
+    public BigDecimal netProfitInStage() {
+        return balance.subtract(baseBalance);
+    }
+
+    /**
+     * 记一笔已实现净额（成交毛利 − 手续费）。
+     *
+     * <p>调用方是撮合/评估那一层，每次平仓都会调一次 —— 余额<strong>不等日终</strong>。
+     */
+    public void applyNetPnl(BigDecimal netPnl) {
+        if (netPnl == null) {
+            return;
+        }
+        this.balance = this.balance.add(netPnl);
+    }
+
+    /**
+     * 把权威实现（{@code service.PropFirmSession}）算出来的余额和峰值同步过来。
+     *
+     * <p>这两个列是<strong>缓存</strong>：真值在「成交流水 + 规则快照」里，
+     * 任何时候都可以从阶段起点重算一遍。写成缓存而不是每次现算，是因为界面上
+     * 「还剩多少回撤」要显示在每一根 K 线上，每根都扫一遍成交不划算。
+     *
+     * <p>所以这里<strong>不做校验</strong>：它只是在追平一个已经算好的结果。
+     * 想让余额变，正确做法是产生成交，不是调这个方法。
+     */
+    public void syncComputed(BigDecimal balance, BigDecimal eodPeak) {
+        if (balance != null) {
+            this.balance = balance;
+        }
+        if (eodPeak != null) {
+            this.eodPeakBalance = eodPeak;
+        }
+    }
+
+    /**
+     * 日终结算：用当前余额更新峰值。{@link PropFirmSession} 在跨交易日时调。
+     *
+     * <p>只增不减 —— 这也是"跟踪"两个字的全部含义。
+     */
+    public void settleEndOfDay() {
+        if (balance.compareTo(eodPeakBalance) > 0) {
+            this.eodPeakBalance = balance;
+        }
+    }
+
+    /**
+     * 升级到下一个阶段：换规则、换余额基准、换统计起点。
+     *
+     * <p>余额<strong>不是</strong>"接着上一阶段往下算"，而是重置成新模板的账户规模 ——
+     * EVAL 赚的钱不带进 FUNDED。
+     *
+     * <p>{@code status} <strong>不动</strong>：进入 {@link PropFirmStage#PAYOUT} 之后
+     * {@link #isTradable()} 会变成 {@code false}（不再接受下单），但账户本身仍然是
+     * {@link Status#ACTIVE} —— 用户还可能在收工后回来标注、录音、看复盘，
+     * 「走完流程」和「这行数据作废」是两件事。
+     *
+     * @param next      下一阶段的模板；{@code null} 表示升到尽头（进 {@link PropFirmStage#PAYOUT}）
+     * @param nextStage 目标阶段
+     */
+    public void enterStage(PropFirmStage nextStage, PropFirmTemplate next, Instant at) {
+        if (nextStage == null) {
+            throw new IllegalArgumentException("升级目标阶段不能为空");
+        }
+        this.stage = nextStage;
+        if (next != null && next.getRules() != null) {
+            this.templateId = next.getId();
+            this.rules = next.getRules().copy();
+            this.baseBalance = next.getRules().getAccountSize();
+            this.eodPeakBalance = this.baseBalance;
+            this.balance = this.baseBalance;
+        }
+        this.stageStartedAt = at;
+    }
+
+    /** 判失败：撞了亏损线。之后不再接受任何操作。 */
+    public void markFailed() {
+        this.status = Status.FAILED;
+    }
+
     public enum Status {
-        /** 考核进行中。 */
+        /** 考核进行中（EVAL / FUNDED / PAYOUT 三个阶段都算）。 */
         ACTIVE,
-        /** 达标通过。 */
-        PASSED,
-        /** 触发回撤/日内亏损，失败。 */
+        /**
+         * 撞了亏损线，失败。终态。
+         *
+         * <p>只有"失败"才有一个专门的状态位；「走到 PAYOUT 了」由 {@link #stage} 表达
+         * —— 再补一个 {@code COMPLETED} 就是同一个事实的第二份说法，
+         * 两份说法迟早会有一天不一致。
+         */
         FAILED
     }
 }

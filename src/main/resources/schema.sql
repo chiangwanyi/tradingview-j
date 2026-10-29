@@ -13,6 +13,10 @@
 --   4. **PF 账户是唯一的操作归属点，但不是数据的所有者**。
 --      没有「会话」这张表了：图形、挂单、成交、语音、操作记录、机器人、交易记录、
 --      指标全部用 account_id 指向 prop_firm_account。
+--      **账户不再是"一个标的"**：它是可以同时做 MES / MNQ / MGC 的考核账户，
+--      所以凡是"挂在一根 K 线上"的数据（图形、指标、语音、挂单、成交、交易记录、
+--      机器人）都另有 symbol_id —— 只有 account_id 就没有时间轴，只有 symbol_id
+--      就不知道算在谁头上，两个都要。
 --      这一列 **NOT NULL 且不加外键**：删账户只删 prop_firm_account 那一行，子表里
 --      仍然保留原来那个 account_id 字符串（指向一个已经不存在的账户），既不置空也不删行。
 --      为什么不加外键：SET NULL 会改写子表、CASCADE 会删数据、RESTRICT 会让账户
@@ -37,46 +41,88 @@ CREATE TABLE IF NOT EXISTS symbol (
     updated_at INTEGER NOT NULL
 );
 
--- PF 模板：考核规则的预设
+-- PF 模板：**一个阶段**的规则预设（EVAL 一条、FUNDED 一条，靠 next_template_id 串成链）。
+-- 不再有 daily_loss_limit / min_trading_days / profit_split：
+--   · 单日盈利硬顶取消，只保留一致性上限；
+--   · EVAL 没有最少交易日；FUNDED 数的是"盈利日"，字段是 min_profit_days；
+--   · 本项目是模拟考核，出金提利润没有意义，所以没有分成比例。
 CREATE TABLE IF NOT EXISTS prop_firm_template (
-    id               TEXT PRIMARY KEY,
-    name             TEXT NOT NULL,
-    description      TEXT,
-    account_size     TEXT,
-    profit_target    TEXT,
-    max_drawdown     TEXT,
-    daily_loss_limit TEXT,
-    drawdown_type    TEXT,           -- STATIC / TRAILING_INTRADAY / TRAILING_EOD
-    min_trading_days INTEGER,
-    profit_split     TEXT,
-    created_at       INTEGER NOT NULL,
-    updated_at       INTEGER NOT NULL
+    id                   TEXT PRIMARY KEY,
+    name                 TEXT NOT NULL,
+    description          TEXT,
+    stage                TEXT NOT NULL,  -- EVAL / FUNDED / PAYOUT：用这套模板开出来的账户处于哪个阶段
+    next_template_id     TEXT,           -- 达标后接哪套模板；NULL = 升到尽头（PAYOUT）
+    account_size         TEXT,           -- 名义规模 + 阶段起始余额（升级时余额重置成它）
+    profit_target        TEXT,           -- NULL = 无盈利目标（FUNDED 就是 NULL）
+    max_drawdown         TEXT,
+    drawdown_type        TEXT,           -- 实际只用 TRAILING_EOD，留着是为了不把话说死
+    trailing_lock_level  TEXT,           -- EOD 余额达到此值后亏损线冻结（50K Flex = 52100）
+    consistency_ratio    TEXT,           -- 一致性上限（0.5）；NULL = 这套考核不要求一致性
+    min_profit_days      INTEGER,        -- 需要几个"盈利日"（FUNDED = 5）；NULL = 不需要
+    profit_day_threshold TEXT,           -- 单个盈利日的最低净盈利（150）
+    position_tiers_json  TEXT,           -- [{"fromProfit":"0","maxContracts":20}, …]，净持仓手数上限
+    created_at           INTEGER NOT NULL,
+    updated_at           INTEGER NOT NULL
 );
 
 -- PF 账户：唯一的「操作归属点」，也是统计考核期一切操作的那个点。
 -- 它是一个临时统计点，不是容器：删掉这一行，下面的子数据全部原地保留（account_id 原样留着）。
 -- 规则在开出来那一刻从模板**复制**一份存进来（模板后续改动不影响已有账户）。
+--
+-- **阶段是逐行升级的，不是一次判定**：EVAL 达标 → 同一行切成 FUNDED（规则换成下一套、
+-- base_balance 重置回账户规模）；FUNDED 攒够盈利日 → 切成 PAYOUT 并置 status=COMPLETED。
+-- 每次切换在 prop_firm_stage_log 里留一行，所以"建户时就是 FUNDED"和"考过来的 FUNDED"
+-- 在流水里只是行数不同，账户行长得一样。
+--
+-- **balance 不能由成交重算**：升级时余额被强制拨回账户规模，Σ净盈亏会算出一个负数。
+-- 所以每个阶段存一个 base_balance，balance = base_balance + 本阶段净额。
 CREATE TABLE IF NOT EXISTS prop_firm_account (
+    id                   TEXT PRIMARY KEY,
+    name                 TEXT NOT NULL,
+    template_id          TEXT NOT NULL,  -- 从哪套模板开的；模板删了也保留原 id（不置空）
+    stage                TEXT NOT NULL,  -- 当前阶段：EVAL / FUNDED / PAYOUT
+    -- ↓↓ 以下 9 列是建户那一刻从模板复制的规则快照，和模板同名同义
+    account_size         TEXT,
+    profit_target        TEXT,
+    max_drawdown         TEXT,
+    drawdown_type        TEXT,
+    trailing_lock_level  TEXT,
+    consistency_ratio    TEXT,
+    min_profit_days      INTEGER,
+    profit_day_threshold TEXT,
+    position_tiers_json  TEXT,
+    -- ↑↑
+    base_balance         TEXT NOT NULL,  -- 本阶段起点余额（= account_size）
+    eod_peak_balance     TEXT NOT NULL,  -- 本阶段"日终余额"的历史最高，初值 = base_balance
+    balance              TEXT NOT NULL,  -- 当前余额 = base_balance + 本阶段已实现净额
+    stage_started_at     INTEGER NOT NULL,
+    status               TEXT NOT NULL,  -- ACTIVE / FAILED（走到 PAYOUT 用 stage 表达，不另立一个状态）
+    started_at           INTEGER NOT NULL,
+    created_at           INTEGER NOT NULL,
+    updated_at           INTEGER NOT NULL
+);
+
+-- 阶段流水：这个账户"当过哪几个阶段的什么身份"。
+-- 建户时无条件写一行（reason=CREATED），所以建户即 FUNDED 也有记录。
+-- account_id 按本文件第 4 条约定：不加外键、删账户也保留 —— 它是这个账户的生命记录。
+CREATE TABLE IF NOT EXISTS prop_firm_stage_log (
     id               TEXT PRIMARY KEY,
-    name             TEXT NOT NULL,
-    symbol_id        TEXT NOT NULL REFERENCES symbol (id),  -- 这个账户做哪个标的
-    template_id      TEXT NOT NULL,  -- 从哪套模板开的；模板删了也保留原 id（不置空）
-    account_size     TEXT,
-    profit_target    TEXT,
-    max_drawdown     TEXT,
-    daily_loss_limit TEXT,
-    drawdown_type    TEXT,
-    min_trading_days INTEGER,
-    profit_split     TEXT,
-    balance          TEXT NOT NULL,
-    peak_equity      TEXT NOT NULL,
-    trading_days     INTEGER NOT NULL DEFAULT 0,
-    status           TEXT NOT NULL,  -- ACTIVE / PASSED / FAILED
+    account_id       TEXT NOT NULL,
+    seq              INTEGER NOT NULL,   -- 从 0 起，账户内连续
+    stage            TEXT NOT NULL,
     started_at       INTEGER NOT NULL,
+    ended_at         INTEGER,            -- NULL = 就是当前所处阶段
+    base_balance     TEXT NOT NULL,
+    balance_at_end   TEXT,               -- 离开那一刻的余额
+    net_pnl          TEXT,               -- 该阶段净盈亏（balance_at_end - base_balance）
+    max_daily_profit TEXT,               -- 该阶段单日最大净盈利，一致性就是拿它算的
+    profit_days      INTEGER,            -- 该阶段达标盈利日数
+    reason           TEXT NOT NULL,      -- 这一行是怎么来的：CREATED（建户即是此阶段）/ PROMOTED（从上一阶段升上来）
+    end_reason       TEXT,               -- 这个阶段是怎么结束的：PROMOTED / FAILED / PAYOUT_DONE；NULL = 还开着
     created_at       INTEGER NOT NULL,
     updated_at       INTEGER NOT NULL
 );
-CREATE INDEX IF NOT EXISTS idx_account_symbol ON prop_firm_account (symbol_id);
+CREATE UNIQUE INDEX IF NOT EXISTS ux_stage_account_seq ON prop_firm_stage_log (account_id, seq);
 
 -- 手续费不单独建表：它是标的自己的一个参数（symbol.commission），
 -- 每手每边多少美元，跟着品种走。以前那两张 commission_schedule / commission_rate
@@ -86,6 +132,7 @@ CREATE INDEX IF NOT EXISTS idx_account_symbol ON prop_firm_account (symbol_id);
 CREATE TABLE IF NOT EXISTS indicator (
     id          TEXT PRIMARY KEY,
     account_id  TEXT NOT NULL,       -- 保留原账户 id；账户删了也不置空
+    symbol_id   TEXT NOT NULL REFERENCES symbol (id),  -- 算在哪个品种的 K 线上
     type        TEXT NOT NULL,       -- EMA / SMA / RMA / WMA / ATR
     period      INTEGER NOT NULL,
     source      TEXT NOT NULL,       -- CLOSE / HIGH / LOW / HL2
@@ -102,6 +149,7 @@ CREATE INDEX IF NOT EXISTS idx_indicator_account ON indicator (account_id);
 CREATE TABLE IF NOT EXISTS drawing (
     id            TEXT PRIMARY KEY,
     account_id    TEXT NOT NULL,     -- 保留原账户 id；账户删了也不置空
+    symbol_id     TEXT NOT NULL REFERENCES symbol (id),  -- 画在哪个品种的时间轴上
     kind          TEXT NOT NULL,     -- TREND / RAY / RECT / ARROW / FIB
     start_bar_time TEXT NOT NULL,
     start_price   TEXT NOT NULL,
@@ -135,6 +183,7 @@ CREATE TABLE IF NOT EXISTS drawing_fib_level (
 CREATE TABLE IF NOT EXISTS audio_clip (
     id          TEXT PRIMARY KEY,
     account_id  TEXT NOT NULL,       -- 保留原账户 id；账户删了也不置空
+    symbol_id   TEXT NOT NULL REFERENCES symbol (id),  -- 讲的是哪个品种的 K 线
     bar_time    TEXT NOT NULL,       -- 挂在哪根 K 线上
     seq         INTEGER NOT NULL,    -- 同一根上的第几段（上限 9）
     file_name   TEXT NOT NULL,       -- 相对路径，不存绝对路径
@@ -152,6 +201,7 @@ CREATE INDEX IF NOT EXISTS idx_audio_account ON audio_clip (account_id, bar_time
 CREATE TABLE IF NOT EXISTS trade_record (
     id             TEXT PRIMARY KEY,
     account_id     TEXT NOT NULL,    -- 保留原账户 id；账户删了也不置空
+    symbol_id      TEXT NOT NULL REFERENCES symbol (id),  -- 这笔交易做的是哪个品种
     anchor_bar_time TEXT NOT NULL,
     entry_bar_time TEXT,
     exit_bar_time  TEXT,
@@ -204,6 +254,7 @@ CREATE TABLE IF NOT EXISTS trade_record_tag (
 CREATE TABLE IF NOT EXISTS trade_order (
     id            TEXT PRIMARY KEY,
     account_id    TEXT NOT NULL,     -- 保留原账户 id；账户删了也不置空
+    symbol_id     TEXT NOT NULL REFERENCES symbol (id),  -- 挂在哪个品种上
     side          TEXT NOT NULL,     -- BUY / SELL
     type          TEXT NOT NULL,     -- LIMIT / STOP / MARKET
     status        TEXT NOT NULL,     -- OPEN / FILLED / CANCELLED
@@ -225,17 +276,19 @@ CREATE INDEX IF NOT EXISTS idx_order_account ON trade_order (account_id);
 CREATE TABLE IF NOT EXISTS trade (
     id              TEXT PRIMARY KEY,
     account_id      TEXT NOT NULL,   -- 保留原账户 id；账户删了也不置空
+    symbol_id       TEXT NOT NULL REFERENCES symbol (id),  -- 成交在哪个品种上
     order_id        TEXT NOT NULL,
     bar_time        TEXT NOT NULL,
     side            TEXT NOT NULL,
     price           TEXT NOT NULL,
     quantity        TEXT NOT NULL,
-    realized_pnl    TEXT NOT NULL,   -- 平均成本法算出的「这一笔平掉的部分」
+    realized_pnl    TEXT NOT NULL,   -- 平均成本法算出的「这一笔平掉的部分」（**税前毛利**）
+    commission      TEXT NOT NULL,   -- 这一笔成交的单边手续费（成交那一刻的快照，改费率不影响历史账）
     trade_record_id TEXT REFERENCES trade_record (id) ON DELETE SET NULL,
     created_at      INTEGER NOT NULL,
     updated_at      INTEGER NOT NULL
 );
-CREATE INDEX IF NOT EXISTS idx_trade_account ON trade (account_id, bar_time);
+CREATE INDEX IF NOT EXISTS idx_trade_account ON trade (account_id, symbol_id, bar_time);
 CREATE INDEX IF NOT EXISTS idx_trade_record ON trade (trade_record_id);
 
 -- 操作记录：append-only 的审计流水。
@@ -269,6 +322,7 @@ CREATE TABLE IF NOT EXISTS strategy (
 CREATE TABLE IF NOT EXISTS strategy_bot (
     id          TEXT PRIMARY KEY,
     account_id  TEXT NOT NULL,       -- 保留原账户 id；账户删了也不置空
+    symbol_id   TEXT NOT NULL REFERENCES symbol (id),  -- 这个机器人在哪个品种上跑
     strategy_id TEXT REFERENCES strategy (id),  -- NULL = 老式随机演示机器人
     quantity    TEXT NOT NULL,
     interval_ms INTEGER NOT NULL,

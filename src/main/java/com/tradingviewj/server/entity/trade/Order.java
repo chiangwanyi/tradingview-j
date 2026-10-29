@@ -43,6 +43,10 @@ public class Order extends BaseEntity {
     @Column(nullable = false)
     private String accountId;
 
+    /** 挂在哪个品种上。账户可以同时做多个品种，所以挂单必须自己记着品种。 */
+    @Column(nullable = false)
+    private String symbolId;
+
     @Column(nullable = false)
     @Enumerated(EnumType.STRING)
     private Side side;
@@ -92,16 +96,21 @@ public class Order extends BaseEntity {
      * 挂一张单。
      *
      * @param accountId 在哪个 PF 账户里下单，<strong>不能为空</strong>；账户是不是还能交易
-     *                  （ACTIVE）由 {@code service.PropFirmAccountService#requireActive} 把关
-     * @throws IllegalArgumentException 没给账户
+     *                  （ACTIVE 且不在 PAYOUT）由 {@code service.PropFirmAccountService#requireTradable} 把关
+     * @param symbolId  挂在哪个品种上，<strong>不能为空</strong>
+     * @throws IllegalArgumentException 没给账户 / 标的
      */
-    public static Order place(String accountId, Side side, Type type, BigDecimal price,
+    public static Order place(String accountId, String symbolId, Side side, Type type, BigDecimal price,
                               BigDecimal quantity, String placedAtBar, int placedIndex, String ocoGroup) {
         if (accountId == null || accountId.isBlank()) {
             throw new IllegalArgumentException("下单必须发生在某个 PF 账户里，收到: " + accountId);
         }
+        if (symbolId == null || symbolId.isBlank()) {
+            throw new IllegalArgumentException("下单必须指定标的，收到: " + symbolId);
+        }
         Order order = new Order();
         order.accountId = accountId;
+        order.symbolId = symbolId;
         order.side = side;
         order.type = type;
         order.price = price;
