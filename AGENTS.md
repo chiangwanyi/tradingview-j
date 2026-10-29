@@ -1,7 +1,6 @@
 # AGENTS.md
 
-> 现状审计、业务规则与架构决策见 `docs/architecture-audit.md`、`docs/business-rules.md`、`docs/architecture-decisions.md`。
-> 当前实现以代码为准；本文件只约束协作方式。
+> 当前实现以代码为准；本文件只约束协作方式。（原 `docs/` 下的审计、业务规则与 ADR 已于 2026-10-29 删除，需要时用 `git checkout HEAD -- docs/` 取回。）
 
 ## 1. 项目目标
 
