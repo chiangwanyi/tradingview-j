@@ -1,7 +1,7 @@
 # tradingview-j-server
 
 Go 版 `tradingview-j` 的 Java / Spring Boot 迁移目标。当前有两条链路：版本号接口（用来确认服务起得来），
-以及**领域层 + SQLite 持久化**（13 个业务概念的实体、仓储与交易账本）。复盘/抓取的 HTTP 与 WS 接口还没搬。
+以及**领域层 + SQLite 持久化**（14 个业务概念的实体、仓储与交易账本）。复盘/抓取的 HTTP 与 WS 接口还没搬。
 
 工程文件（`pom.xml`、`src/`、`mvnw`）就在**仓库根目录**，和 Go 模块共用同一个根：
 
@@ -78,11 +78,12 @@ controller  →  service  →  repository  →  SQLite（./db/tradingview-j.db�
 **为什么业务事实进库**：图形、挂单、成交、语音、交易记录、PF 账户这些东西的**一致性要求**远高于
 K 线，而且需要按条件查（这个账户的记录、这条记录的步骤、这块盘面还挂着的单）。CSV 做不到这些。
 
-## 实体设计（13 个业务概念 + 1 个聚合根）
+## 实体设计（14 个业务概念 + 1 个聚合根）
 
 | 概念 | 实体 | 包 | 关键设计 |
 | --- | --- | --- | --- |
 | 标的 | `Symbol` | `entity.market` | 主键就是标的代码；`folder` 是 CSV 目录的锚；tick/tickValue 只存在这一处 |
+| 手续费价目表 | `CommissionSchedule` | `entity.market` | **全库只有一行**（id 固定 `commission`）；口径一份、费率按品种根名一张表 |
 | 复盘会话 | `ReplaySession` | `entity.session` | 只管「推进到第几根、谁在操作」；不存 tick、不存持仓、不存 K 线 |
 | 指标 | `Indicator` | `entity.session` | 只存**定义**（类型+周期+来源），值靠 OHLC 现算 |
 | 绘图图形 | `Drawing` | `entity.drawing` | 五种图形共用「起点+终点」；样式是**画下去那一刻的快照** |
@@ -97,6 +98,16 @@ K 线，而且需要按条件查（这个账户的记录、这条记录的步骤
 | （步骤） | `TradeRecordStep` | `entity.record` | 一步 = 一次真实操作，第 0 步是「开仓前那一屏」 |
 | PF 模板 | `PropFirmTemplate` | `entity.propfirm` | 只是价目表；不做版本化 |
 | PF 账户 | `PropFirmAccount` | `entity.propfirm` | 规则是**开账户那一刻的副本**，模板改名改参数都不影响它 |
+
+### 手续费：JSON 只是初始值，库里那张表才是落点
+
+`data/_symbols.json` 顶层多了一个 `commission` 段（`type` + `rates`，键是品种根名 `MES` / `MNQ` / `MGC`）。
+Java 侧对应 `entity.market.CommissionSchedule`：一张全局行存口径、一张 `commission_rate` 从表存费率，
+`rateFor("CME_MINI:MES1!")` 会把代码归约成根名再查，查不到返回 `null`（不是 0 —— 「漏配」和「免手续费」必须能分开）。
+
+**⚠️ 这个 JSON 段不是可靠存储**：Go 抓取侧不读它（多一个未知键直接忽略），但它在分配新标的文件夹时
+会按自己的结构重写整个 `_symbols.json`（只写 `version` + `symbols`），`commission` 段会被静默抹掉。
+所以费率的权威副本在 `commission_schedule` / `commission_rate` 两张表里。
 
 ### 关系（全部按 id 引用，不写 `@ManyToOne`）
 
@@ -127,7 +138,7 @@ PropFirmTemplate ──1:N──> PropFirmAccount ──1:N──> TradeRecord
 
 ## 枚举清单
 
-**凡是取值域封闭的东西一律是枚举，不写成 `String`。** 当前 13 个：
+**凡是取值域封闭的东西一律是枚举，不写成 `String`。** 当前 14 个：
 
 | 枚举 | 位置 | 取值 | 落库值 |
 | --- | --- | --- | --- |
@@ -144,6 +155,7 @@ PropFirmTemplate ──1:N──> PropFirmAccount ──1:N──> TradeRecord
 | `StrategyBot.StopReason` | 嵌套 | MANUAL / DATA_END / SESSION_CLOSED / ERROR | 常量名 |
 | `PropFirmRules.DrawdownType` | 嵌套 | STATIC / TRAILING_INTRADAY / TRAILING_EOD | 常量名 |
 | `PropFirmAccount.Status` | 嵌套 | ACTIVE / PASSED / FAILED | 常量名 |
+| `CommissionSchedule.FeeType` | 嵌套 | PER_CONTRACT_PER_SIDE | 常量名 |
 
 三条约定：
 

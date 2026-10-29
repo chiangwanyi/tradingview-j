@@ -24,6 +24,24 @@ CREATE TABLE IF NOT EXISTS symbol (
     updated_at INTEGER NOT NULL
 );
 
+-- 手续费价目表：全库只有一行（id 固定为 'commission'）。
+-- 口径（type）只有一份，费率（commission_rate）按品种根名查——
+-- 这和 data/_symbols.json 里 commission 段的结构一一对应。
+CREATE TABLE IF NOT EXISTS commission_schedule (
+    id         TEXT PRIMARY KEY,     -- 固定 'commission'
+    type       TEXT NOT NULL,        -- PER_CONTRACT_PER_SIDE
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL
+);
+
+-- 每手每边的手续费（美元）。键是品种根名（MES / MNQ / MGC），不是完整标的代码
+CREATE TABLE IF NOT EXISTS commission_rate (
+    schedule_id TEXT NOT NULL REFERENCES commission_schedule (id) ON DELETE CASCADE,
+    symbol_root TEXT NOT NULL,
+    rate        TEXT NOT NULL,       -- 金额一律 TEXT，走 BigDecimalTextConverter
+    PRIMARY KEY (schedule_id, symbol_root)
+);
+
 -- 复盘会话：一个标的 + 一个锚点 = 一块盘面
 CREATE TABLE IF NOT EXISTS replay_session (
     id             TEXT PRIMARY KEY,

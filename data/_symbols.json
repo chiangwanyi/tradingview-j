@@ -21,5 +21,13 @@
       "tick": 0.01,
       "tickValue": 10
     }
+  },
+  "commission": {
+    "type": "PER_CONTRACT_PER_SIDE",
+    "rates": {
+      "MES": 0.50,
+      "MNQ": 0.50,
+      "MGC": 0.80
+    }
   }
 }
