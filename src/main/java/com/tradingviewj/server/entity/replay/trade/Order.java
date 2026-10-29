@@ -14,22 +14,24 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor
 @AllArgsConstructor
 @JsonInclude(JsonInclude.Include.ALWAYS)
-public class Order {
+public final class Order {
 
     private String id;
 
-    /** buy | sell */
-    private String side;
+    /** 买还是卖 */
+    private OrderSide side;
 
     /** limit | stop | market */
-    private String kind;
+    private OrderKind kind;
 
+    /** 挂单价（已按 tick 取整）；市价单记的是成交那一刻的收盘价 */
     private double price;
 
+    /** 手数，恒为正；方向看 side */
     private double quantity;
 
     /** open | filled | cancelled */
-    private String status;
+    private OrderStatus status;
 
     /** 下单那一刻的 K 线时间 */
     private String placedAt;

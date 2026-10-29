@@ -18,7 +18,7 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor
 @AllArgsConstructor
 @JsonInclude(JsonInclude.Include.ALWAYS)
-public class FlatAllPayload {
+public final class FlatAllPayload {
 
     @JsonInclude(JsonInclude.Include.NON_NULL)
     private Order order;

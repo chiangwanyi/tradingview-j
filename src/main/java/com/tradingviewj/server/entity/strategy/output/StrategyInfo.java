@@ -15,7 +15,7 @@ import lombok.NoArgsConstructor;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-public class StrategyInfo {
+public final class StrategyInfo {
 
     private String id;
 

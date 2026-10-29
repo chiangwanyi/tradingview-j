@@ -16,7 +16,7 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor
 @AllArgsConstructor
 @JsonInclude(JsonInclude.Include.ALWAYS)
-public class TradeRecordedMsg {
+public final class TradeRecordedMsg {
 
     private String type;
 

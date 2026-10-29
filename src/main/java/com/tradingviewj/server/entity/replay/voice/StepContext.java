@@ -16,7 +16,7 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor
 @AllArgsConstructor
 @JsonInclude(JsonInclude.Include.ALWAYS)
-public class StepContext {
+public final class StepContext {
 
     /** 当前那根 K 线的明文时间（空 = 还没有 K 线） */
     private String time;

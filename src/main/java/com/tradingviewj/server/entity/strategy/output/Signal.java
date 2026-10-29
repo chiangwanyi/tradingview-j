@@ -14,7 +14,7 @@ import lombok.NoArgsConstructor;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-public class Signal {
+public final class Signal {
 
     /** buy | sell */
     private String side;

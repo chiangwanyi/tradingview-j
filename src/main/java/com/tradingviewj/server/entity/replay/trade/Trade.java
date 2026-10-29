@@ -16,17 +16,19 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor
 @AllArgsConstructor
 @JsonInclude(JsonInclude.Include.ALWAYS)
-public class Trade {
+public final class Trade {
 
     private String id;
 
+    /** 由哪张挂单触发（市价单也有，就是那张一次性存在的 market 单） */
     private String orderId;
 
+    /** 成交所在 K 线的时间 */
     private String time;
 
-    private String side;
+    private OrderSide side;
 
-    private String kind;
+    private OrderKind kind;
 
     private double price;
 

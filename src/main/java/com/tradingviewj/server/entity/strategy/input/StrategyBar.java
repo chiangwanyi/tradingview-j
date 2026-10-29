@@ -12,7 +12,7 @@ import lombok.NoArgsConstructor;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-public class StrategyBar {
+public final class StrategyBar {
 
     /** "2026-10-16 21:30"，本地时区明文 */
     private String time;

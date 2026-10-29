@@ -15,7 +15,7 @@ import lombok.NoArgsConstructor;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-public class StrategyContext {
+public final class StrategyContext {
 
     private List<StrategyBar> bars;
 

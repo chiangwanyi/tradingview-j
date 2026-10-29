@@ -14,7 +14,7 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor
 @AllArgsConstructor
 @JsonInclude(JsonInclude.Include.ALWAYS)
-public class RowStat {
+public final class RowStat {
 
     /** 读到的数据行数（不含表头） */
     private int rows;

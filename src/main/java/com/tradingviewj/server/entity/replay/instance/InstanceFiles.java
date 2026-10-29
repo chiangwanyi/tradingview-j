@@ -22,7 +22,7 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor
 @AllArgsConstructor
 @JsonInclude(JsonInclude.Include.ALWAYS)
-public class InstanceFiles {
+public final class InstanceFiles {
 
     private InstanceMeta meta;
 

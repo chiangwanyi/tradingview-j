@@ -15,7 +15,7 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor
 @AllArgsConstructor
 @JsonInclude(JsonInclude.Include.ALWAYS)
-public class OrdersPayload {
+public final class OrdersPayload {
 
     private List<Order> orders;
 }

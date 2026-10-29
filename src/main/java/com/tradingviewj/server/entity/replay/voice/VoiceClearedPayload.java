@@ -17,7 +17,7 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor
 @AllArgsConstructor
 @JsonInclude(JsonInclude.Include.ALWAYS)
-public class VoiceClearedPayload {
+public final class VoiceClearedPayload {
 
     private List<AudioClip> removed;
 

@@ -65,7 +65,7 @@ public class RecordingSummary {
 
     /** human / bot：来源在**开仓那一刻**定下来存进记录，后面的筛选才和回放里看到的一致 */
     @JsonInclude(JsonInclude.Include.NON_DEFAULT)
-    private String source;
+    private RecordingSource source;
 
     @JsonInclude(JsonInclude.Include.NON_DEFAULT)
     private String sourceId;

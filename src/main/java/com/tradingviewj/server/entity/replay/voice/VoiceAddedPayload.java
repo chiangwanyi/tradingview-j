@@ -17,7 +17,7 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor
 @AllArgsConstructor
 @JsonInclude(JsonInclude.Include.ALWAYS)
-public class VoiceAddedPayload {
+public final class VoiceAddedPayload {
 
     private AudioClip audio;
 

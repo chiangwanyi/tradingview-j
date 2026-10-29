@@ -19,7 +19,7 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor
 @AllArgsConstructor
 @JsonInclude(JsonInclude.Include.ALWAYS)
-public class AnnotationClearedPayload {
+public final class AnnotationClearedPayload {
 
     private int count;
 

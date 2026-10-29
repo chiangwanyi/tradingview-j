@@ -16,7 +16,7 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor
 @AllArgsConstructor
 @JsonInclude(JsonInclude.Include.ALWAYS)
-public class TimeBar {
+public final class TimeBar {
 
     /** 原始文本，形如 "2026-10-16 12:00" */
     private String time;

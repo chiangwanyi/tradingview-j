@@ -14,7 +14,7 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor
 @AllArgsConstructor
 @JsonInclude(JsonInclude.Include.ALWAYS)
-public class Gap {
+public final class Gap {
 
     /** 缺失的第一根应当出现的时间（Unix 秒） */
     private long startT;

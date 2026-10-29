@@ -14,7 +14,7 @@ import lombok.NoArgsConstructor;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-public class StrategyPosition {
+public final class StrategyPosition {
 
     private double quantity;
 

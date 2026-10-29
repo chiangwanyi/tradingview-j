@@ -21,7 +21,7 @@ import lombok.NoArgsConstructor;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-public class VersionResponse {
+public final class VersionResponse {
 
     /** 版本号，例如 1.0.0。 */
     @Schema(description = "版本号，来自 pom.xml 的 project.version", example = "1.0.0")

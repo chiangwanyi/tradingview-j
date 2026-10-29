@@ -16,12 +16,12 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor
 @AllArgsConstructor
 @JsonInclude(JsonInclude.Include.ALWAYS)
-public class Template {
+public final class Template {
 
     private String id;
 
-    /** trend | ray | rect | arrow | fib */
-    private String kind;
+    /** 这个模板属于哪种图形；它和样式一起决定画出来的样子 */
+    private AnnotationKind kind;
 
     private String name;
 

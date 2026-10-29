@@ -18,7 +18,7 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor
 @AllArgsConstructor
 @JsonInclude(JsonInclude.Include.ALWAYS)
-public class DayStat {
+public final class DayStat {
 
     /** 文件名里的日期 */
     private String date;

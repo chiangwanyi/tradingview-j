@@ -19,7 +19,7 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor
 @AllArgsConstructor
 @JsonInclude(JsonInclude.Include.ALWAYS)
-public class RecordingVoiceMsg {
+public final class RecordingVoiceMsg {
 
     private String type;
 

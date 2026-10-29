@@ -17,7 +17,7 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor
 @AllArgsConstructor
 @JsonInclude(JsonInclude.Include.ALWAYS)
-public class RecordingExtendedMsg {
+public final class RecordingExtendedMsg {
 
     private String type;
 

@@ -17,7 +17,7 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor
 @AllArgsConstructor
 @JsonInclude(JsonInclude.Include.ALWAYS)
-public class WeekExpect {
+public final class WeekExpect {
 
     /** 周一…周日 */
     private String weekday;

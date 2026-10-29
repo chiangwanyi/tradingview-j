@@ -24,7 +24,7 @@ import lombok.experimental.SuperBuilder;
 @AllArgsConstructor
 @EqualsAndHashCode(callSuper = true)
 @JsonInclude(JsonInclude.Include.ALWAYS)
-public class Recording extends RecordingSummary {
+public final class Recording extends RecordingSummary {
 
     /** 2 = 一步一个操作；1 = 旧的一步一根 K 线。两种格式**不迁移、不混读** */
     private int format;

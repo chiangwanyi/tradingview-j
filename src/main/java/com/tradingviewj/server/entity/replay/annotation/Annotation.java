@@ -18,24 +18,30 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor
 @AllArgsConstructor
 @JsonInclude(JsonInclude.Include.ALWAYS)
-public class Annotation {
+public final class Annotation {
 
+    /** 图形编号（ann-1 这种），迁移存档时用来对号 */
     private String id;
 
-    /** trend | ray | rect | arrow | fib */
-    private String kind;
+    /** 图形种类：决定 start/end 怎么解读 */
+    private AnnotationKind kind;
 
+    /** 起点：时间锚在一根已揭示的 K 线上，价格是坐标 */
     private Point start;
 
+    /** 终点：矩形是对角，其余是一根线的另一端 */
     private Point end;
 
+    /** 画下那一刻从模板复制的样式快照，之后改模板不影响它 */
     private AnnotationStyle style;
 
     /** 端点吸附过 OHLC（界面上画小圆点提示） */
     private boolean snapped;
 
+    /** 谁画的（human / bot / system），操作记录里显示用 */
     private String createdBy;
 
+    /** Unix 毫秒 */
     private long createdAt;
 
     /**

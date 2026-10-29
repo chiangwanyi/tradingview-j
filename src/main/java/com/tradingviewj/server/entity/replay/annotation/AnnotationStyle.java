@@ -18,7 +18,7 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor
 @AllArgsConstructor
 @JsonInclude(JsonInclude.Include.ALWAYS)
-public class AnnotationStyle {
+public final class AnnotationStyle {
 
     /** 线条 / 矩形边框颜色 */
     private String color;
@@ -27,7 +27,7 @@ public class AnnotationStyle {
     private double width;
 
     /** solid | dashed */
-    private String dash;
+    private DashStyle dash;
 
     /** 矩形填充色，空 = 只画边框 */
     @JsonInclude(JsonInclude.Include.NON_DEFAULT)

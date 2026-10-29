@@ -22,7 +22,7 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor
 @AllArgsConstructor
 @JsonInclude(JsonInclude.Include.ALWAYS)
-public class BarAdvancedPayload {
+public final class BarAdvancedPayload {
 
     private Bar bar;
 

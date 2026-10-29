@@ -17,7 +17,7 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor
 @AllArgsConstructor
 @JsonInclude(JsonInclude.Include.ALWAYS)
-public class CatalogEntry {
+public final class CatalogEntry {
 
     /** _symbols.json 里登记的标的；没登记就用文件夹名 */
     private String symbol;

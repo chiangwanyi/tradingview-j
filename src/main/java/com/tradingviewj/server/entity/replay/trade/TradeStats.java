@@ -17,10 +17,10 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor
 @AllArgsConstructor
 @JsonInclude(JsonInclude.Include.ALWAYS)
-public class TradeStats {
+public final class TradeStats {
 
-    /** long / short（开仓方向） */
-    private String side;
+    /** 开仓方向 */
+    private TradeSide side;
 
     /** 开仓手数 */
     private double quantity;

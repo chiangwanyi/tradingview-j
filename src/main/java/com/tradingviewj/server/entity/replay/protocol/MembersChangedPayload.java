@@ -15,7 +15,7 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor
 @AllArgsConstructor
 @JsonInclude(JsonInclude.Include.ALWAYS)
-public class MembersChangedPayload {
+public final class MembersChangedPayload {
 
     private List<Member> members;
 }

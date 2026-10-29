@@ -17,7 +17,7 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor
 @AllArgsConstructor
 @JsonInclude(JsonInclude.Include.ALWAYS)
-public class BarExtendedPayload {
+public final class BarExtendedPayload {
 
     private Bar bar;
 

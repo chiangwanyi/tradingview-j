@@ -20,7 +20,7 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor
 @AllArgsConstructor
 @JsonInclude(JsonInclude.Include.ALWAYS)
-public class ClosedLot {
+public final class ClosedLot {
 
     /** 开仓成交的 K 线时间（= 那个三角的横坐标） */
     private String openTime;
@@ -33,7 +33,7 @@ public class ClosedLot {
     private double closePrice;
 
     /** long = 买开的仓，short = 卖开的仓 */
-    private String side;
+    private TradeSide side;
 
     /** 这一批被平掉的手数 */
     private double quantity;

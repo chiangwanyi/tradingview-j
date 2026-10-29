@@ -14,13 +14,14 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor
 @AllArgsConstructor
 @JsonInclude(JsonInclude.Include.ALWAYS)
-public class Position {
+public final class Position {
 
     /** 正=多 负=空 0=空仓 */
     private double quantity;
 
     /** long | short | flat */
-    private String side;
+    private PositionSide side;
 
+    /** 按成交手数加权的平均开仓成本 */
     private double averagePrice;
 }

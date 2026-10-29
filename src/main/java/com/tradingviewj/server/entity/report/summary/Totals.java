@@ -14,7 +14,7 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor
 @AllArgsConstructor
 @JsonInclude(JsonInclude.Include.ALWAYS)
-public class Totals {
+public final class Totals {
 
     /** 有数据的标的目录数 */
     private int symbols;

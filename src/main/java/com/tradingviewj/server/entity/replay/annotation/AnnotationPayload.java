@@ -14,7 +14,7 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor
 @AllArgsConstructor
 @JsonInclude(JsonInclude.Include.ALWAYS)
-public class AnnotationPayload {
+public final class AnnotationPayload {
 
     private Annotation annotation;
 }

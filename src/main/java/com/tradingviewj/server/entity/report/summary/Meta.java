@@ -18,7 +18,7 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor
 @AllArgsConstructor
 @JsonInclude(JsonInclude.Include.ALWAYS)
-public class Meta {
+public final class Meta {
 
     /** 数据目录（绝对路径） */
     private String root;

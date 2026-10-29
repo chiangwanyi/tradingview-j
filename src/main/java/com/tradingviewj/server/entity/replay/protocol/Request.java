@@ -1,10 +1,12 @@
 package com.tradingviewj.server.entity.replay.protocol;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
+import com.tradingviewj.server.entity.replay.annotation.AnnotationKind;
 import com.tradingviewj.server.entity.replay.annotation.AnnotationStyle;
 import com.tradingviewj.server.entity.replay.annotation.Template;
 import com.tradingviewj.server.entity.replay.market.Point;
 import com.tradingviewj.server.entity.replay.recording.RecordTag;
+import com.tradingviewj.server.entity.replay.trade.OrderSide;
 import java.util.List;
 import java.util.Map;
 import lombok.AllArgsConstructor;
@@ -23,7 +25,7 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor
 @AllArgsConstructor
 @JsonInclude(JsonInclude.Include.ALWAYS)
-public class Request {
+public final class Request {
 
     private String type;
 
@@ -64,8 +66,8 @@ public class Request {
     private String instanceId;
 
     // ---- annotation_add / annotation_move ----
-    /** trend | ray | rect | arrow | fib */
-    private String kind;
+    /** 画哪种图形；只有 annotation_* 消息带它 */
+    private AnnotationKind kind;
 
     private Point start;
 
@@ -87,8 +89,8 @@ public class Request {
     private String templateId;
 
     // ---- order_place / order_market / bot_start ----
-    /** buy | sell */
-    private String side;
+    /** 买还是卖；bot_start 时不用它（策略自己决定） */
+    private OrderSide side;
 
     private double price;
 
