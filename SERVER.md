@@ -165,8 +165,8 @@ Strategy ──1:N──> StrategyBot
 
 | 枚举 | 位置 | 取值 | 落库值 |
 | --- | --- | --- | --- |
-| `Actor` | `entity/`（4 处共用） | HUMAN / BOT / SYSTEM | 小写线值 `human` `bot` `system` |
-| `ReplayAction` | `entity/`（2 处共用） | 19 个动作 + BASE | Go 协议原串 `bar_advanced` … |
+| `Actor` | `enums/`（4 处共用） | HUMAN / BOT / SYSTEM | 常量名 `HUMAN` `BOT` `SYSTEM` |
+| `ReplayAction` | `enums/`（2 处共用） | 19 个动作 + BASE | 常量名 `BAR_ADVANCED` … |
 | `Side` | `entity.trade` | BUY / SELL | `BUY` `SELL` |
 | `Order.Type` | 嵌套 | LIMIT / STOP / MARKET | 常量名 |
 | `Order.Status` | 嵌套 | OPEN / FILLED / CANCELLED | 常量名 |
@@ -182,14 +182,14 @@ Strategy ──1:N──> StrategyBot
 
 三条约定：
 
-1. **只有两个枚举需要保留「线值」（落库/上协议的字符串）**：`Actor` 和 `ReplayAction`。
-   Go 那边的 `by`、`action`、`step.kind` 一直用 `"human"` / `"bar_advanced"` 这种小写，
-   而 Java 常量名是大写。所以这两个枚举带 `wire()` 字段，配 `ActorConverter` /
-   `ReplayActionConverter`（`autoApply = true`）在边界上转，**库里存的是原串**。
-   `PersistenceSmokeTest` 直接查 `select action from audit_event` 断言拿到的是
-   `bar_advanced` —— 谁把 converter 换成 `@Enumerated(STRING)`，测试当场红。
-2. **其余枚举直接用 `@Enumerated(EnumType.STRING)`**，存常量名。它们不出现在协议里，
-   没有兼容负担。（注意 `@Enumerated` 和 `@Convert` 不能同时用在同一个字段上。）
+1. **一切枚举都用 `@Enumerated(EnumType.STRING)` 存常量名，没有转换器。**
+   Go 协议里 `by`、`action`、`step.kind` 用的是小写串（`"human"` / `"bar_advanced"`），
+   换算规则只有一条：**常量名转小写**（`name().toLowerCase()`）。这个换算在输出侧
+   （DTO 或前端）做，持久化层不为客户端格式让步 —— 库里存的是 `HUMAN` / `BAR_ADVANCED`。
+   `PersistenceSmokeTest` 直接查 `select action from audit_event` 断言拿到 `BAR_ADVANCED`，
+   谁把它换回小写线值的 `AttributeConverter`，测试当场红。
+   推论：**新增动作时不能有两个常量小写后撞名**，否则协议侧分不开。
+2. **`@Enumerated` 和 `@Convert` 不能同时用在同一个字段上**，不要在枚举字段上加转换器。
 3. **`TradeRecord` 没有自己的来源枚举**：它的「这些操作是谁做的」就是 `Actor`，
    Go 里那两个看起来不同的概念（`CreatedBy` = 谁开的盘面 / `Source` = 谁动的）在
    业务上问的是后一个问题。`SYSTEM` 不是一笔交易的来源，由 `TradeRecord.open()` 拦掉。

@@ -15,7 +15,7 @@
  *   <li>{@code record} —— 交易记录（一笔完整交易的过程 + 摘要）</li>
  * </ul>
  *
- * <p>四条硬规矩：
+ * <p>五条硬规矩：
  *
  * <ol>
  *   <li><strong>跨聚合只按 id 引用，不写 {@code @ManyToOne}。</strong> 聚合之间通过
@@ -30,7 +30,10 @@
  *       全部是派生的，一律现算（{@code service.TradeLedger}）。存副本迟早和事实对不上，
  *       而对不上的时候没有任何办法判断谁对。</li>
  *   <li><strong>金额一律 BigDecimal。</strong> 对应列是 TEXT（SQLite 没有 decimal），
- *       由 {@code converter.BigDecimalTextConverter} 在边界上转换。</li>
+ *       由 {@link com.tradingviewj.server.converter.BigDecimalTextConverter} 在边界上转换。</li>
+ *   <li><strong>枚举字段存 Java 常量名。</strong> 用 {@code @Enumerated(EnumType.STRING)}，
+ *       不再配 {@code AttributeConverter} —— 库里的值就是枚举名的意思，协议上的小写串
+ *       由输出侧换算。转换器只在「Java 类型落不进 SQLite」时才存在。</li>
  * </ol>
  */
 package com.tradingviewj.server.entity;

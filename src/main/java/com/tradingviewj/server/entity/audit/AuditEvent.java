@@ -5,6 +5,8 @@ import com.tradingviewj.server.entity.BaseEntity;
 import com.tradingviewj.server.enums.ReplayAction;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.Table;
 import lombok.AccessLevel;
 import lombok.Getter;
@@ -24,8 +26,9 @@ import lombok.NoArgsConstructor;
  * 不知道该还原成哪个类，只能全存成 {@code Map}，读的时候到处强转、到处判空。
  * 存字符串 + 一个类型化的 {@link #action}，读的一方按 action 自己挑 DTO 解析。
  *
- * <p>两个枚举字段（{@link #actor} / {@link #action}）在库里存的是<strong>小写线值</strong>
- * （{@code "human"} / {@code "bar_advanced"}），不是 Java 常量名 —— 见各自的枚举说明。
+ * <p>两个枚举字段（{@link #actor} / {@link #action}）在库里存的是 <strong>Java 常量名</strong>
+ * （{@code HUMAN} / {@code BAR_ADVANCED}）。协议上的小写串由输出侧映射，持久化不跟展示格式走 ——
+ * 见 {@link com.tradingviewj.server.enums.Actor} 的说明。
  */
 @Getter
 @Entity
@@ -49,10 +52,12 @@ public class AuditEvent extends BaseEntity {
     private int seq;
 
     /** 谁做的。 */
+    @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     private Actor actor;
 
     /** 做了什么。 */
+    @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     private ReplayAction action;
 

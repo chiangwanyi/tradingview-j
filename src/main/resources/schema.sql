@@ -1,7 +1,7 @@
 -- ---------------------------------------------------------------------------
 -- tradingview-j 业务库（SQLite）
 --
--- 四条约定：
+-- 五条约定：
 --   1. K 线不在这里。行情在 data/<folder>/<日期>.csv，本库只存「谁在什么时候做了什么」。
 --   2. 表之间的引用一律是「按 id 引用」，不做 JPA 关联映射（没有 @ManyToOne）。
 --      外键由下面的 REFERENCES 让数据库自己守（连接打开时 PRAGMA foreign_keys=ON）。
@@ -17,6 +17,9 @@
 --      想删数据只能显式删那一行（图形尤其如此：只有用户自己点删除才该消失）。
 --      代价：这些 account_id 列必须可空。「创建时必须有账户」由 Java 侧工厂方法把关，
 --      因为列上的 NOT NULL 和 ON DELETE SET NULL 不可能同时成立。
+--   5. 枚举列（actor / action / kind）存 **Java 常量名**（HUMAN / BAR_ADVANCED），
+--      没有任何转换器参与。Go 协议里的小写下划线串（human / bar_advanced）由输出侧
+--      按「常量名转小写」换算，库里不为客户端格式让步。
 --
 -- 全部 IF NOT EXISTS，可以每次启动重复执行。
 -- ---------------------------------------------------------------------------
@@ -148,7 +151,7 @@ CREATE TABLE IF NOT EXISTS audio_clip (
     file_name   TEXT NOT NULL,       -- 相对路径，不存绝对路径
     duration_ms INTEGER NOT NULL,
     size_bytes  INTEGER NOT NULL,
-    actor       TEXT,                -- human / bot / system
+    actor       TEXT,                -- JAVA 常量名：HUMAN / BOT / SYSTEM
     created_at  INTEGER NOT NULL,
     updated_at  INTEGER NOT NULL
 );
@@ -174,7 +177,7 @@ CREATE TABLE IF NOT EXISTS trade_record (
     bars_held      INTEGER NOT NULL DEFAULT 0,
     fill_count     INTEGER NOT NULL DEFAULT 0,
     closed         INTEGER NOT NULL DEFAULT 0,
-    actor          TEXT NOT NULL,    -- human / bot（SYSTEM 不是一笔交易的来源）
+    actor          TEXT NOT NULL,    -- JAVA 常量名：HUMAN / BOT（SYSTEM 不是一笔交易的来源）
     actor_name     TEXT,
     ended_at       INTEGER,
     created_at     INTEGER NOT NULL,
@@ -188,10 +191,10 @@ CREATE TABLE IF NOT EXISTS trade_record_step (
     id            TEXT PRIMARY KEY,
     record_id     TEXT NOT NULL REFERENCES trade_record (id) ON DELETE CASCADE,
     step_no       INTEGER NOT NULL,  -- 0 = 起点（开仓前那一屏）
-    kind          TEXT NOT NULL,     -- base / 动作名 / recording_audio（见 ReplayAction）
+    kind          TEXT NOT NULL,     -- JAVA 常量名：BASE / BAR_ADVANCED / RECORDING_AUDIO …（见 ReplayAction）
     bar_time      TEXT NOT NULL,
     cursor_index  INTEGER NOT NULL,
-    actor         TEXT,              -- human / bot / system
+    actor         TEXT,              -- JAVA 常量名：HUMAN / BOT / SYSTEM
     audio_clip_id TEXT REFERENCES audio_clip (id) ON DELETE SET NULL,
     payload_json  TEXT,
     created_at    INTEGER NOT NULL,
@@ -253,8 +256,8 @@ CREATE TABLE IF NOT EXISTS audit_event (
     id           TEXT PRIMARY KEY,
     account_id   TEXT,
     seq          INTEGER NOT NULL,
-    actor        TEXT NOT NULL,      -- human / bot / system
-    action       TEXT NOT NULL,      -- bar_advanced / order_placed / ...（见 ReplayAction）
+    actor        TEXT NOT NULL,      -- JAVA 常量名：HUMAN / BOT / SYSTEM
+    action       TEXT NOT NULL,      -- JAVA 常量名：BAR_ADVANCED / ORDER_PLACED …（见 ReplayAction）
     payload_json TEXT,               -- 原始广播负载，原样留存
     created_at   INTEGER NOT NULL,
     updated_at   INTEGER NOT NULL

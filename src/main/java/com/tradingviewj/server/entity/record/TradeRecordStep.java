@@ -5,6 +5,8 @@ import com.tradingviewj.server.entity.BaseEntity;
 import com.tradingviewj.server.enums.ReplayAction;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.Table;
 import lombok.AccessLevel;
 import lombok.Getter;
@@ -39,6 +41,7 @@ public class TradeRecordStep extends BaseEntity {
     private int stepNo;
 
     /** 这一步是什么。和 {@code AuditEvent.action} 共用同一套取值。 */
+    @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     private ReplayAction kind;
 
@@ -51,6 +54,7 @@ public class TradeRecordStep extends BaseEntity {
     private int cursorIndex;
 
     /** 谁动的。 */
+    @Enumerated(EnumType.STRING)
     @Column
     private Actor actor;
 

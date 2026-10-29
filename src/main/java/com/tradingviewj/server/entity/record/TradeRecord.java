@@ -130,6 +130,7 @@ public class TradeRecord extends BaseEntity {
      * <p>取值只可能是 {@link Actor#HUMAN} 或 {@link Actor#BOT}，这一点由
      * {@link #open} 把关（{@code SYSTEM} 用来描述系统自动收尾，不是一笔交易的来源）。
      */
+    @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     private Actor actor;
 

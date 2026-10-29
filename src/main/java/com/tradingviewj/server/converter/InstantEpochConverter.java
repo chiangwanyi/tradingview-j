@@ -1,4 +1,4 @@
-package com.tradingviewj.server.entity.converter;
+package com.tradingviewj.server.converter;
 
 import jakarta.persistence.AttributeConverter;
 import jakarta.persistence.Converter;
@@ -14,6 +14,8 @@ import java.time.Instant;
  *
  * <p>注意 <strong>K 线时间不走这里</strong>：K 线用的是 CSV 里那一列的原始明文
  * （{@code "2026-10-16 12:00"}），它是协议里的唯一标识，一旦转成时间戳就再也对不上了。
+ *
+ * <p>放在 {@code entity} 包外面：它是<strong>持久化边界的适配器</strong>，不是领域对象的一部分。
  */
 @Converter(autoApply = true)
 public class InstantEpochConverter implements AttributeConverter<Instant, Long> {

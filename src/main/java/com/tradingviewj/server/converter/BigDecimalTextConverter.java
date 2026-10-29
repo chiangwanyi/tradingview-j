@@ -1,4 +1,4 @@
-package com.tradingviewj.server.entity.converter;
+package com.tradingviewj.server.converter;
 
 import jakarta.persistence.AttributeConverter;
 import jakarta.persistence.Converter;
@@ -17,6 +17,9 @@ import java.math.BigDecimal;
  * 走字符串是唯一不丢精度的路径。
  *
  * <p>{@code autoApply = true}：所有实体的 BigDecimal 字段自动套用，不用逐字段写 @Convert。
+ *
+ * <p>放在 {@code entity} 包外面：它是<strong>持久化边界的适配器</strong>，不是领域对象的一部分。
+ * 实体包只管「业务上是什么」，这里管「SQLite 存得下什么」。
  */
 @Converter(autoApply = true)
 public class BigDecimalTextConverter implements AttributeConverter<BigDecimal, String> {

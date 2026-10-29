@@ -166,12 +166,15 @@ class PersistenceSmokeTest {
         auditEvents.save(AuditEvent.of(account.getId(), 1, Actor.HUMAN, ReplayAction.ORDER_PLACED, "{}"));
         assertEquals(1, auditEvents.findTopByAccountIdOrderBySeqDesc(account.getId()).orElseThrow().getSeq());
 
-        // 枚举字段落库的是**小写线值**，不是 Java 常量名 —— 这一条是协议兼容性的全部依据，
-        // 谁把 @Convert 换成 @Enumerated，库里就会变成 BAR_ADVANCED，回放当场挑不到分支。
+        // 枚举字段落库的是 **Java 常量名**（@Enumerated(STRING)），不是协议里的小写串。
+        // 谁把 @Enumerated 换回小写线值的转换器，这里就会变成 bar_advanced；
+        // 而协议值是「常量名转小写」算出来的，属于输出侧的活，不该由持久化层承担。
         assertEquals(ReplayAction.ORDER_PLACED,
                 auditEvents.findTopByAccountIdOrderBySeqDesc(account.getId()).orElseThrow().getAction());
-        assertEquals("bar_advanced", jdbc.queryForObject(
+        assertEquals("BAR_ADVANCED", jdbc.queryForObject(
                 "select action from audit_event where account_id = ? and seq = 0", String.class, account.getId()));
+        assertEquals("HUMAN", jdbc.queryForObject(
+                "select actor from audit_event where account_id = ? and seq = 0", String.class, account.getId()));
 
         // ---- 策略 + 机器人 ----
         Strategy strategy = strategies.save(Strategy.register("caveman", "Caveman", "野人", "{}"));
