@@ -50,6 +50,7 @@ import java.nio.file.Files;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -161,7 +162,8 @@ class PersistenceSmokeTest {
         assertEquals(3, reloadedLog.getProfitDays());
 
         // ---- 图形：两个 @Embedded 锚点靠 @AttributeOverride 分列 + 斐波那契从表 ----
-        Drawing drawing = Drawing.of(account.getId(), symbol.getId(), Drawing.Kind.FIB,
+        // 注意没有账户参数：图形挂在 K 线上，不挂账户
+        Drawing drawing = Drawing.of(symbol.getId(), Drawing.Kind.FIB,
                 new Anchor("2026-10-16 12:00", new BigDecimal("21250.25"), 0),
                 new Anchor("2026-10-16 15:00", new BigDecimal("21300.5"), 40),
                 "jiang");
@@ -172,11 +174,18 @@ class PersistenceSmokeTest {
                 new FibLevel(new BigDecimal("0.618"), "#f59e0b")));
         drawings.save(drawing);
 
-        Drawing reloadedDrawing = drawings.findByAccountId(account.getId()).get(0);
+        Drawing reloadedDrawing = drawings.findBySymbolId(symbol.getId()).get(0);
         assertEquals(new BigDecimal("21300.5"), reloadedDrawing.getEnd().getPrice());
         assertEquals(40, reloadedDrawing.getEnd().getOffset());
         assertEquals(2, reloadedDrawing.getFibLevels().size());
         assertEquals(new BigDecimal("0.618"), reloadedDrawing.getFibLevels().get(1).getRatio());
+
+        // 这两张表**没有 account_id 列**：图形和语音的附体是 K 线，不参加账户统计。
+        // 谁把这一列加回去，这里会当场红 —— 加了它，「换个账户同一张图」的线就消失了。
+        assertFalse(columnNames("drawing").contains("account_id"), "drawing 不该有 account_id");
+        assertFalse(columnNames("audio_clip").contains("account_id"), "audio_clip 不该有 account_id");
+        assertTrue(columnNames("drawing").contains("symbol_id"));
+        assertTrue(columnNames("audio_clip").contains("symbol_id"));
 
         // ---- 挂单 + 成交 ----
         Order order = Order.place(account.getId(), symbol.getId(), Side.BUY, Order.Type.LIMIT,
@@ -195,9 +204,9 @@ class PersistenceSmokeTest {
                 trades.findById(trade.getId()).orElseThrow().netPnl());
 
         // ---- 语音 ----
-        audioClips.save(AudioClip.record(account.getId(), symbol.getId(), "2026-10-16 12:00", 0,
-                account.getId() + "/voice-0.wav", 3200, 65536, Actor.HUMAN));
-        assertEquals(1, audioClips.countByAccountIdAndBarTime(account.getId(), "2026-10-16 12:00"));
+        audioClips.save(AudioClip.record(symbol.getId(), "2026-10-16 12:00", 0,
+                "CME_MINI_MNQ1!/2026-10-16/12-00-0.wav", 3200, 65536, Actor.HUMAN));
+        assertEquals(1, audioClips.countBySymbolIdAndBarTime(symbol.getId(), "2026-10-16 12:00"));
 
         // ---- 操作记录：账户内 seq 连续 ----
         auditEvents.save(AuditEvent.of(account.getId(), 0, Actor.HUMAN, ReplayAction.BAR_ADVANCED, "{\"cursor\":1}"));
@@ -257,5 +266,13 @@ class PersistenceSmokeTest {
         trade.setTradeRecordId(record.getId());
         trades.save(trade);
         assertEquals(1, trades.findByTradeRecordIdOrderByBarTimeAscIdAsc(record.getId()).size());
+    }
+
+    /**
+     * 表的真实列名。<strong>必须问数据库、不能看实体</strong>：实体上删掉一个字段，
+     * 旧库里的列还在（{@code schema.sql} 只有 CREATE IF NOT EXISTS），只有 PRAGMA 能说出真相。
+     */
+    private List<String> columnNames(String table) {
+        return jdbc.queryForList("select name from pragma_table_info(?)", String.class, table);
     }
 }

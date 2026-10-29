@@ -20,25 +20,30 @@ Go 版 `tradingview-j` 的 Java / Spring Boot 迁移目标，工程文件（`pom
 `dto` 网线形状 · `entity` 按聚合分子包 · `repository` 每聚合根一个接口、不写业务 · `service` 是事务边界与领域
 计算（`TradeLedger` 是**唯一**算盈亏的地方）。K 线不进库：一天一个文件、能 diff、Go 侧已在写。
 
-## 数据模型（12 个业务概念，PF 账户是唯一聚合根）
+## 数据模型（12 个业务概念，PF 账户是记账数据的唯一聚合根）
 
 | 概念 | 实体（包） | 关键设计 |
 |---|---|---|
 | 标的 | `Symbol`（market） | 主键就是代码；`folder` 是 CSV 目录锚；tick/tickValue/commission 只存这 |
 | PF 模板 / 账户 | `PropFirmTemplate` / `PropFirmAccount`（propfirm） | 模板 `stage`+`nextTemplateId` 串成三阶段链；账户是**唯一归属点**，带 `stage`/`baseBalance`/`eodPeakBalance`，规则是建户那刻的副本 |
-| 绘图 / 下单 | `Drawing` / `Order` | 样式是**画下那刻的快照**；没有止损/止盈单类型，`ocoGroup` 管同根不双触发 |
+| 绘图 / 下单 | `Drawing` / `Order` | 样式是**画下那刻的快照**；`Drawing` **不带 `account_id`**（挂在 K 线上）；没有止损/止盈单类型，`ocoGroup` 管同根不双触发 |
 | 交易 | `Trade`（trade） | **交易域的唯一真相**，持仓与盈亏由它重放；`commission` 是成交那刻的快照；`Position`/`ClosedLot` **不落库**（均价法给账户，FIFO 给画线） |
-| 录音 / 审计 | `AudioClip` / `AuditEvent` | 每根最多 9 段；审计 append-only |
+| 录音 / 审计 | `AudioClip` / `AuditEvent` | 每根最多 9 段；`AudioClip` **不带 `account_id`**（挂在 K 线上）；审计 append-only |
 | 策略 / 机器人 | `Strategy` / `StrategyBot` | 算法必须是 Java 类 |
 | 交易记录 | `TradeRecord` / `TradeRecordStep` | 一笔 = 起点 + 步骤 + 结算摘要，第 0 步是「开仓前那一屏」 |
 
-七张「挂 K 线」的表（drawing / audio_clip / trade / trade_order / trade_record / strategy_bot）各带
+「挂 K 线」的表（drawing / audio_clip / trade / trade_order / trade_record / strategy_bot）各带
 `symbol_id` —— **账户不绑单个标的**，一个账户可同时做 MES / MNQ / MGC。
+
+**图形和语音只有 `symbol_id`，没有 `account_id`**：它们依附在 K 线上，不参加任何账户统计
+（余额、回撤、一致性、盈利日都不看它们），所以 `Drawing.of(symbolId, kind, start, end, createdBy)` 和
+`AudioClip.record(symbolId, barTime, seq, …)` 压根没有账户参数。删账户天然不影响它们，不用靠
+「保留原 id」来兜。
 
 **关系一律按 id 引用，不写 `@ManyToOne`**；真需库守的外键才写 `REFERENCES`。
 
 **删账户不删数据**。原「会话」概念**整个不存在了**，归属改成 `account_id`，这一列 **`NOT NULL` 但不加
-外键**：删账户只删账户行，另外六张表的 `account_id` **原样保留**。三种级联都不合适 ——`SET NULL` 抹归属、
+外键**：删账户只删账户行，其余五张表的 `account_id` **原样保留**。三种级联都不合适 ——`SET NULL` 抹归属、
 `CASCADE` 连带删、`RESTRICT` 让账户永远删不掉。规则落在 Java 侧：工厂方法拿不到账户 id 直接抛
 `IllegalArgumentException`，`#requireActive/requireTradable` 再拦一笔，**没有例外**。
 

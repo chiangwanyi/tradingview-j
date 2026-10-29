@@ -132,17 +132,19 @@ class PropFirmAccountLifecycleTest {
         PropFirmAccount account = accountService.open(evalTemplate.getId(), "第一次考核");
         String accountId = account.getId();
 
-        // 账户里干了一整套活
-        Drawing drawing = drawings.save(Drawing.of(accountId, symbol.getId(), Drawing.Kind.TREND,
+        // 图形和语音先画/先录：它们和账户无关，所以没有账户参数
+        Drawing drawing = drawings.save(Drawing.of(symbol.getId(), Drawing.Kind.TREND,
                 new Anchor("2026-10-16 12:00", new BigDecimal("21250.25"), 0),
                 new Anchor("2026-10-16 15:00", new BigDecimal("21300.50"), 40), "jiang"));
+        AudioClip clip = audioClips.save(AudioClip.record(symbol.getId(), "2026-10-16 12:00", 0,
+                "MNQ/2026-10-16/12-00-0.wav", 3200, 65536, Actor.HUMAN));
+
+        // 账户里干了一整套活
         Order order = orders.save(Order.place(accountId, symbol.getId(), Side.BUY, Order.Type.LIMIT,
                 new BigDecimal("21250"), new BigDecimal("1"), "2026-10-16 12:00", 0, null));
         Trade trade = trades.save(Trade.fill(accountId, symbol.getId(), order.getId(), "2026-10-16 12:05",
                 Side.BUY, new BigDecimal("21250"), new BigDecimal("1"), BigDecimal.ZERO,
                 new BigDecimal("0.13")));
-        AudioClip clip = audioClips.save(AudioClip.record(accountId, symbol.getId(), "2026-10-16 12:00", 0,
-                accountId + "/voice-0.wav", 3200, 65536, Actor.HUMAN));
         auditEvents.save(AuditEvent.of(accountId, 0, Actor.HUMAN, ReplayAction.BAR_ADVANCED, "{\"cursor\":1}"));
         Strategy strategy = strategies.save(Strategy.register("caveman-" + accountId, "Caveman", "野人", "{}"));
         StrategyBot bot = bots.save(StrategyBot.start(accountId, symbol.getId(), strategy.getId(),
@@ -162,15 +164,14 @@ class PropFirmAccountLifecycleTest {
         // 账户没了
         assertTrue(accounts.findById(accountId).isEmpty(), "账户这一行应该被删掉");
 
-        // 但账上的东西一件都不少，而且仍然记着原来那个 account_id（不置空、不改写）
-        assertEquals(accountId, drawings.findById(drawing.getId()).orElseThrow().getAccountId(),
-                "图形必须保留，并且保留原账户 id");
-        assertEquals(symbol.getId(), drawings.findById(drawing.getId()).orElseThrow().getSymbolId(),
-                "图形还必须记着自己属于哪个品种 —— 账户已经不记得了");
+        // 账上的东西一件都不少，而且仍然记着原来那个 account_id（不置空、不改写）
         assertEquals(accountId, orders.findById(order.getId()).orElseThrow().getAccountId());
         assertEquals(accountId, trades.findById(trade.getId()).orElseThrow().getAccountId());
-        assertEquals(accountId, audioClips.findById(clip.getId()).orElseThrow().getAccountId());
         assertEquals(accountId, bots.findById(bot.getId()).orElseThrow().getAccountId());
+
+        // 图形和语音一条都不能少 —— 它们本来就没记账户，所以删账户根本不经过它们
+        assertEquals(symbol.getId(), drawings.findById(drawing.getId()).orElseThrow().getSymbolId());
+        assertEquals(symbol.getId(), audioClips.findById(clip.getId()).orElseThrow().getSymbolId());
 
         TradeRecord keptRecord = records.findById(record.getId()).orElseThrow();
         assertEquals(accountId, keptRecord.getAccountId(), "交易记录必须保留，并且保留原账户 id");

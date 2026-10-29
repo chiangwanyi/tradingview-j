@@ -11,14 +11,18 @@
 --      由 BigDecimalTextConverter 在 Java 侧还原成 BigDecimal。
 --      时间戳是 INTEGER，Unix 毫秒（InstantEpochConverter）。
 --   4. **PF 账户是唯一的操作归属点，但不是数据的所有者**。
---      没有「会话」这张表了：图形、挂单、成交、语音、操作记录、机器人、交易记录
+--      没有「会话」这张表了：挂单、成交、操作记录、机器人、交易记录
 --      全部用 account_id 指向 prop_firm_account。
 --      **账户不再是"一个标的"**：它是可以同时做 MES / MNQ / MGC 的考核账户，
---      所以凡是"挂在一根 K 线上"的数据（图形、语音、挂单、成交、交易记录、
+--      所以凡是"挂在一根 K 线上"且**要记账**的数据（挂单、成交、交易记录、
 --      机器人）都另有 symbol_id —— 只有 account_id 就没有时间轴，只有 symbol_id
 --      就不知道算在谁头上，两个都要。
---      这一列 **NOT NULL 且不加外键**：删账户只删 prop_firm_account 那一行，子表里
---      仍然保留原来那个 account_id 字符串（指向一个已经不存在的账户），既不置空也不删行。
+--      **图形（drawing）和语音（audio_clip）例外：它们没有 account_id。**
+--      两者的附体是 K 线（symbol_id + bar_time），不参与任何账户统计 —— 既不进余额、
+--      也不算回撤/一致性/盈利日。给它们挂账户只会让「同一条线换个账户就消失」
+--      变成一种需要解释的行为。谁画的/谁录的仍有 created_by / actor 记着。
+--      这些 account_id 列 **NOT NULL 且不加外键**：删账户只删 prop_firm_account 那一行，
+--      子表里仍然保留原来那个 account_id 字符串（指向一个已经不存在的账户），既不置空也不删行。
 --      为什么不加外键：SET NULL 会改写子表、CASCADE 会删数据、RESTRICT 会让账户
 --      一旦有数据就永远删不掉 —— 三种都不是想要的。一致性由 Java 侧的
 --      PropFirmAccountService#requireActive 把关，不用数据库的引用约束。
@@ -135,10 +139,10 @@ CREATE UNIQUE INDEX IF NOT EXISTS ux_stage_account_seq ON prop_firm_stage_log (a
 -- 旧库里的 indicator 表要手动删：DROP TABLE indicator;（本脚本只管建，不管删）
 
 -- 绘图图形：5 种图形共用「起点 + 终点」两个锚。
--- 只有用户手动删除才会消失：删账户不删图形，account_id 原样留着。
+-- **不带 account_id**：图形依附在 K 线上（symbol_id + bar_time），不参与账户统计。
+-- 只有用户手动删除才会消失：删账户跟它一点关系都没有（它压根没记着自己属于谁）。
 CREATE TABLE IF NOT EXISTS drawing (
     id            TEXT PRIMARY KEY,
-    account_id    TEXT NOT NULL,     -- 保留原账户 id；账户删了也不置空
     symbol_id     TEXT NOT NULL REFERENCES symbol (id),  -- 画在哪个品种的时间轴上
     kind          TEXT NOT NULL,     -- TREND / RAY / RECT / ARROW / FIB
     start_bar_time TEXT NOT NULL,
@@ -153,11 +157,11 @@ CREATE TABLE IF NOT EXISTS drawing (
     fill          TEXT,
     fill_opacity  TEXT,
     snapped       INTEGER NOT NULL DEFAULT 0,
-    created_by    TEXT NOT NULL,
+    created_by    TEXT NOT NULL,     -- 谁画的（人/机器人），不是账户
     created_at    INTEGER NOT NULL,
     updated_at    INTEGER NOT NULL
 );
-CREATE INDEX IF NOT EXISTS idx_drawing_account ON drawing (account_id);
+CREATE INDEX IF NOT EXISTS idx_drawing_symbol ON drawing (symbol_id);
 
 -- 斐波那契的四条水平线（只有 FIB 图形有）。
 -- 这一条是**真级联**：水平线是图形的一部分，图形没了它就没有意义。
@@ -169,10 +173,10 @@ CREATE TABLE IF NOT EXISTS drawing_fib_level (
     PRIMARY KEY (drawing_id, level_index)
 );
 
--- 录音：只存元数据，WAV 文件在磁盘上（storage 层管路径）
+-- 录音：只存元数据，WAV 文件在磁盘上（storage 层管路径）。
+-- **不带 account_id**：语音依附在 K 线上（symbol_id + bar_time），不参与账户统计。
 CREATE TABLE IF NOT EXISTS audio_clip (
     id          TEXT PRIMARY KEY,
-    account_id  TEXT NOT NULL,       -- 保留原账户 id；账户删了也不置空
     symbol_id   TEXT NOT NULL REFERENCES symbol (id),  -- 讲的是哪个品种的 K 线
     bar_time    TEXT NOT NULL,       -- 挂在哪根 K 线上
     seq         INTEGER NOT NULL,    -- 同一根上的第几段（上限 9）
@@ -183,7 +187,7 @@ CREATE TABLE IF NOT EXISTS audio_clip (
     created_at  INTEGER NOT NULL,
     updated_at  INTEGER NOT NULL
 );
-CREATE INDEX IF NOT EXISTS idx_audio_account ON audio_clip (account_id, bar_time);
+CREATE INDEX IF NOT EXISTS idx_audio_symbol_bar ON audio_clip (symbol_id, bar_time);
 
 -- 交易记录：一笔完整交易（开仓前那一屏 + 之后每一步操作）。
 -- 名字不叫 recording：它确实不是录像，是「操作流水 + 结算摘要」。

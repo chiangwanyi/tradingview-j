@@ -31,6 +31,9 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
  * <p>{@code account_id} 在库里是 {@code NOT NULL}，所以这一层拦的不是「数据库能不能存 null」，
  * 而是「造对象时有没有给账户」—— 后者在编译期完全看不出来，只能靠工厂方法当场拦。
  * 删账户不会把归属置空（保留原 id），所以「列上非空」和「删账户不删数据」并不冲突。
+ *
+ * <p><strong>图形和语音不在这一列里</strong>：它们只挂在 K 线上（{@code symbolId} + {@code barTime}），
+ * 不参与账户统计，所以工厂方法压根没有账户参数 —— 不是「可以不给」，是「没有这个口」。
  */
 class AccountRequiredTest {
 
@@ -39,13 +42,6 @@ class AccountRequiredTest {
 
     @Test
     void everyOperationRefusesToExistWithoutAnAccount() {
-        Anchor a = new Anchor("2026-10-16 12:00", new BigDecimal("21250.25"), 0);
-
-        assertThrows(IllegalArgumentException.class,
-                () -> Drawing.of(null, SYMBOL, Drawing.Kind.TREND, a, a, "jiang"));
-        assertThrows(IllegalArgumentException.class,
-                () -> Drawing.of("  ", SYMBOL, Drawing.Kind.TREND, a, a, "jiang"));
-
         assertThrows(IllegalArgumentException.class,
                 () -> Order.place(null, SYMBOL, Side.BUY, Order.Type.LIMIT,
                         new BigDecimal("21250"), BigDecimal.ONE, "2026-10-16 12:00", 0, null));
@@ -53,9 +49,6 @@ class AccountRequiredTest {
         assertThrows(IllegalArgumentException.class,
                 () -> Trade.fill(null, SYMBOL, "order-1", "2026-10-16 12:05",
                         Side.BUY, new BigDecimal("21250"), BigDecimal.ONE, BigDecimal.ZERO, BigDecimal.ZERO));
-
-        assertThrows(IllegalArgumentException.class,
-                () -> AudioClip.record(null, SYMBOL, "2026-10-16 12:00", 0, "x.wav", 1000, 1024, Actor.HUMAN));
 
         assertThrows(IllegalArgumentException.class,
                 () -> StrategyBot.start(null, SYMBOL, "strategy-1", BigDecimal.ONE, 300));
@@ -68,7 +61,6 @@ class AccountRequiredTest {
                 () -> AuditEvent.of(null, 0, Actor.HUMAN, ReplayAction.BAR_ADVANCED, "{}"));
 
         // 有账户就能造出来，说明拦截的是「空」而不是「所有」
-        assertDoesNotThrow(() -> Drawing.of(ACCOUNT, SYMBOL, Drawing.Kind.TREND, a, a, "jiang"));
         assertDoesNotThrow(() -> TradeRecord.open(ACCOUNT, SYMBOL, "2026-10-16 12:00", Actor.HUMAN, "jiang"));
         assertDoesNotThrow(() -> AuditEvent.of(ACCOUNT, 0, Actor.HUMAN, ReplayAction.BAR_ADVANCED, "{}"));
     }
@@ -85,15 +77,17 @@ class AccountRequiredTest {
         Anchor a = new Anchor("2026-10-16 12:00", new BigDecimal("21250.25"), 0);
 
         assertThrows(IllegalArgumentException.class,
-                () -> Drawing.of(ACCOUNT, null, Drawing.Kind.TREND, a, a, "jiang"));
+                () -> Drawing.of(null, Drawing.Kind.TREND, a, a, "jiang"));
+        assertThrows(IllegalArgumentException.class,
+                () -> Drawing.of("  ", Drawing.Kind.TREND, a, a, "jiang"));
+        assertThrows(IllegalArgumentException.class,
+                () -> AudioClip.record(null, "2026-10-16 12:00", 0, "x.wav", 1000, 1024, Actor.HUMAN));
         assertThrows(IllegalArgumentException.class,
                 () -> Order.place(ACCOUNT, " ", Side.BUY, Order.Type.LIMIT,
                         new BigDecimal("21250"), BigDecimal.ONE, "2026-10-16 12:00", 0, null));
         assertThrows(IllegalArgumentException.class,
                 () -> Trade.fill(ACCOUNT, null, "order-1", "2026-10-16 12:05",
                         Side.BUY, new BigDecimal("21250"), BigDecimal.ONE, BigDecimal.ZERO, BigDecimal.ZERO));
-        assertThrows(IllegalArgumentException.class,
-                () -> AudioClip.record(ACCOUNT, null, "2026-10-16 12:00", 0, "x.wav", 1000, 1024, Actor.HUMAN));
         assertThrows(IllegalArgumentException.class,
                 () -> StrategyBot.start(ACCOUNT, null, "strategy-1", BigDecimal.ONE, 300));
         assertThrows(IllegalArgumentException.class,
