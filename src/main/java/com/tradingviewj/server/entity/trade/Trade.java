@@ -30,8 +30,14 @@ import java.math.BigDecimal;
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class Trade extends BaseEntity {
 
-    @Column(nullable = false)
-    private String sessionId;
+    /**
+     * 这笔成交发生在哪个 PF 账户里；NULL = 所在账户已被删除。
+     *
+     * <p>成交是<strong>盘面上的事实</strong>，不是账户的从属物：删账户不删成交。
+     * 创建时必须有账户，见 {@link #fill}。
+     */
+    @Column
+    private String accountId;
 
     /** 触发这张成交的挂单。市价单也有，就是那张一次性存在的 MARKET 单。 */
     @Column(nullable = false)
@@ -70,10 +76,20 @@ public class Trade extends BaseEntity {
     @Setter
     private String tradeRecordId;
 
-    public static Trade fill(String sessionId, String orderId, String barTime, Side side,
+    /**
+     * 记一笔成交。
+     *
+     * @param accountId 在哪个 PF 账户里成交，<strong>不能为空</strong>：成交只可能发生在
+     *                  某个考核期里。允许为空的列只是为「账户被删」留的出口
+     * @throws IllegalArgumentException 没给账户
+     */
+    public static Trade fill(String accountId, String orderId, String barTime, Side side,
                              BigDecimal price, BigDecimal quantity, BigDecimal realizedPnl) {
+        if (accountId == null || accountId.isBlank()) {
+            throw new IllegalArgumentException("成交必须发生在某个 PF 账户里，收到: " + accountId);
+        }
         Trade trade = new Trade();
-        trade.sessionId = sessionId;
+        trade.accountId = accountId;
         trade.orderId = orderId;
         trade.barTime = barTime;
         trade.side = side;

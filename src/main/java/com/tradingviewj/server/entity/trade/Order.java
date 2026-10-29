@@ -34,8 +34,13 @@ import java.math.BigDecimal;
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class Order extends BaseEntity {
 
-    @Column(nullable = false)
-    private String sessionId;
+    /**
+     * 挂在哪个 PF 账户的盘面上；NULL = 所在账户已被删除（挂单本身保留）。
+     *
+     * <p>创建时必须有账户，见 {@link #place}。
+     */
+    @Column
+    private String accountId;
 
     @Column(nullable = false)
     @Enumerated(EnumType.STRING)
@@ -82,10 +87,20 @@ public class Order extends BaseEntity {
     @Column
     private String ocoGroup;
 
-    public static Order place(String sessionId, Side side, Type type, BigDecimal price,
+    /**
+     * 挂一张单。
+     *
+     * @param accountId 在哪个 PF 账户里下单，<strong>不能为空</strong>；账户是不是还能交易
+     *                  （ACTIVE）由 {@code service.PropFirmAccountService#requireActive} 把关
+     * @throws IllegalArgumentException 没给账户
+     */
+    public static Order place(String accountId, Side side, Type type, BigDecimal price,
                               BigDecimal quantity, String placedAtBar, int placedIndex, String ocoGroup) {
+        if (accountId == null || accountId.isBlank()) {
+            throw new IllegalArgumentException("下单必须发生在某个 PF 账户里，收到: " + accountId);
+        }
         Order order = new Order();
-        order.sessionId = sessionId;
+        order.accountId = accountId;
         order.side = side;
         order.type = type;
         order.price = price;

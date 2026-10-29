@@ -7,6 +7,7 @@ import com.tradingviewj.server.entity.drawing.Anchor;
 import com.tradingviewj.server.entity.drawing.Drawing;
 import com.tradingviewj.server.entity.drawing.DrawingStyle;
 import com.tradingviewj.server.entity.drawing.FibLevel;
+import com.tradingviewj.server.entity.indicator.Indicator;
 import com.tradingviewj.server.entity.market.Symbol;
 import com.tradingviewj.server.entity.propfirm.PropFirmAccount;
 import com.tradingviewj.server.entity.propfirm.PropFirmRules;
@@ -14,8 +15,6 @@ import com.tradingviewj.server.entity.propfirm.PropFirmTemplate;
 import com.tradingviewj.server.entity.record.RecordTag;
 import com.tradingviewj.server.entity.record.TradeRecord;
 import com.tradingviewj.server.entity.record.TradeRecordStep;
-import com.tradingviewj.server.entity.session.Indicator;
-import com.tradingviewj.server.entity.session.ReplaySession;
 import com.tradingviewj.server.entity.strategy.Strategy;
 import com.tradingviewj.server.entity.strategy.StrategyBot;
 import com.tradingviewj.server.entity.trade.Order;
@@ -29,7 +28,6 @@ import com.tradingviewj.server.repository.IndicatorRepository;
 import com.tradingviewj.server.repository.OrderRepository;
 import com.tradingviewj.server.repository.PropFirmAccountRepository;
 import com.tradingviewj.server.repository.PropFirmTemplateRepository;
-import com.tradingviewj.server.repository.ReplaySessionRepository;
 import com.tradingviewj.server.repository.StrategyBotRepository;
 import com.tradingviewj.server.repository.StrategyRepository;
 import com.tradingviewj.server.repository.SymbolRepository;
@@ -67,6 +65,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  *
  * <p>用临时文件库而不是 {@code :memory:}：Hikari 只有一条连接，但连接一旦被回收，
  * 内存库就跟着消失了 —— 那种失败看起来像「表不见了」，极难定位。
+ *
+ * <p>所有子数据都挂在<strong>一个 PF 账户</strong>下：账户是唯一的操作归属点，
+ * 「删账户不删数据」那条规则由 {@code PropFirmAccountLifecycleTest} 专门钉住。
  */
 @SpringBootTest
 class PersistenceSmokeTest {
@@ -82,7 +83,6 @@ class PersistenceSmokeTest {
     }
 
     @Autowired private SymbolRepository symbols;
-    @Autowired private ReplaySessionRepository sessions;
     @Autowired private IndicatorRepository indicators;
     @Autowired private DrawingRepository drawings;
     @Autowired private OrderRepository orders;
@@ -111,16 +111,23 @@ class PersistenceSmokeTest {
         assertEquals(new BigDecimal("0.25"), reloadedSymbol.getTick());
         assertNotNull(reloadedSymbol.getCreatedAt());
 
-        // ---- 会话 + 指标 ----
-        ReplaySession session = sessions.save(
-                ReplaySession.open(symbol.getId(), "2026-10-16 12:00", "jiang"));
-        assertEquals(1, sessions.findBySymbolId(symbol.getId()).size());
+        // ---- PF 模板 + 账户：所有子数据的归属点就在这里 ----
+        PropFirmTemplate template = templates.save(PropFirmTemplate.define("Apex 50K", "50K 考核",
+                new PropFirmRules(new BigDecimal("50000.00"), new BigDecimal("3000.00"),
+                        new BigDecimal("2500.00"), new BigDecimal("1250.00"),
+                        PropFirmRules.DrawdownType.TRAILING_EOD, 5, new BigDecimal("0.90"))));
+        PropFirmAccount account = accounts.save(PropFirmAccount.open(template, "第一次考核", symbol.getId()));
 
-        indicators.save(Indicator.of(session.getId(), Indicator.Type.EMA, 20, Indicator.Source.CLOSE));
-        assertEquals(1, indicators.findBySessionIdOrderBySortOrderAsc(session.getId()).size());
+        assertEquals(new BigDecimal("50000.00"), accounts.findById(account.getId()).orElseThrow().getBalance());
+        assertEquals(PropFirmAccount.Status.ACTIVE, account.getStatus());
+        assertEquals("CME_MINI:MNQ1!", account.getSymbolId());
+
+        // ---- 指标 ----
+        indicators.save(Indicator.of(account.getId(), Indicator.Type.EMA, 20, Indicator.Source.CLOSE));
+        assertEquals(1, indicators.findByAccountIdOrderBySortOrderAsc(account.getId()).size());
 
         // ---- 图形：两个 @Embedded 锚点靠 @AttributeOverride 分列 + 斐波那契从表 ----
-        Drawing drawing = Drawing.of(session.getId(), Drawing.Kind.FIB,
+        Drawing drawing = Drawing.of(account.getId(), Drawing.Kind.FIB,
                 new Anchor("2026-10-16 12:00", new BigDecimal("21250.25"), 0),
                 new Anchor("2026-10-16 15:00", new BigDecimal("21300.5"), 40),
                 "jiang");
@@ -131,59 +138,50 @@ class PersistenceSmokeTest {
                 new FibLevel(new BigDecimal("0.618"), "#f59e0b")));
         drawings.save(drawing);
 
-        Drawing reloadedDrawing = drawings.findBySessionId(session.getId()).get(0);
+        Drawing reloadedDrawing = drawings.findByAccountId(account.getId()).get(0);
         assertEquals(new BigDecimal("21300.5"), reloadedDrawing.getEnd().getPrice());
         assertEquals(40, reloadedDrawing.getEnd().getOffset());
         assertEquals(2, reloadedDrawing.getFibLevels().size());
         assertEquals(new BigDecimal("0.618"), reloadedDrawing.getFibLevels().get(1).getRatio());
 
         // ---- 挂单 + 成交 ----
-        Order order = Order.place(session.getId(), Side.BUY, Order.Type.LIMIT,
+        Order order = Order.place(account.getId(), Side.BUY, Order.Type.LIMIT,
                 new BigDecimal("21250"), new BigDecimal("1"), "2026-10-16 12:00", 0, null);
         orders.save(order);
         order.markFilled("2026-10-16 12:05", 1, new BigDecimal("21250"));
         orders.save(order);
         assertEquals(Order.Status.FILLED, orders.findById(order.getId()).orElseThrow().getStatus());
 
-        Trade trade = trades.save(Trade.fill(session.getId(), order.getId(), "2026-10-16 12:05",
+        Trade trade = trades.save(Trade.fill(account.getId(), order.getId(), "2026-10-16 12:05",
                 Side.BUY, new BigDecimal("21250"), new BigDecimal("1"), BigDecimal.ZERO));
-        assertEquals(1, trades.findBySessionIdOrderByBarTimeAscIdAsc(session.getId()).size());
+        assertEquals(1, trades.findByAccountIdOrderByBarTimeAscIdAsc(account.getId()).size());
 
         // ---- 语音 ----
-        audioClips.save(AudioClip.record(session.getId(), "2026-10-16 12:00", 0,
-                session.getId() + "/voice-0.wav", 3200, 65536, Actor.HUMAN));
-        assertEquals(1, audioClips.countBySessionIdAndBarTime(session.getId(), "2026-10-16 12:00"));
+        audioClips.save(AudioClip.record(account.getId(), "2026-10-16 12:00", 0,
+                account.getId() + "/voice-0.wav", 3200, 65536, Actor.HUMAN));
+        assertEquals(1, audioClips.countByAccountIdAndBarTime(account.getId(), "2026-10-16 12:00"));
 
-        // ---- 操作记录：会话内 seq 连续 ----
-        auditEvents.save(AuditEvent.of(session.getId(), 0, Actor.HUMAN, ReplayAction.BAR_ADVANCED, "{\"cursor\":1}"));
-        auditEvents.save(AuditEvent.of(session.getId(), 1, Actor.HUMAN, ReplayAction.ORDER_PLACED, "{}"));
-        assertEquals(1, auditEvents.findTopBySessionIdOrderBySeqDesc(session.getId()).orElseThrow().getSeq());
+        // ---- 操作记录：账户内 seq 连续 ----
+        auditEvents.save(AuditEvent.of(account.getId(), 0, Actor.HUMAN, ReplayAction.BAR_ADVANCED, "{\"cursor\":1}"));
+        auditEvents.save(AuditEvent.of(account.getId(), 1, Actor.HUMAN, ReplayAction.ORDER_PLACED, "{}"));
+        assertEquals(1, auditEvents.findTopByAccountIdOrderBySeqDesc(account.getId()).orElseThrow().getSeq());
 
         // 枚举字段落库的是**小写线值**，不是 Java 常量名 —— 这一条是协议兼容性的全部依据，
         // 谁把 @Convert 换成 @Enumerated，库里就会变成 BAR_ADVANCED，回放当场挑不到分支。
         assertEquals(ReplayAction.ORDER_PLACED,
-                auditEvents.findTopBySessionIdOrderBySeqDesc(session.getId()).orElseThrow().getAction());
+                auditEvents.findTopByAccountIdOrderBySeqDesc(account.getId()).orElseThrow().getAction());
         assertEquals("bar_advanced", jdbc.queryForObject(
-                "select action from audit_event where session_id = ? and seq = 0", String.class, session.getId()));
+                "select action from audit_event where account_id = ? and seq = 0", String.class, account.getId()));
 
         // ---- 策略 + 机器人 ----
         Strategy strategy = strategies.save(Strategy.register("caveman", "Caveman", "野人", "{}"));
-        StrategyBot bot = bots.save(StrategyBot.start(session.getId(), strategy.getId(),
+        StrategyBot bot = bots.save(StrategyBot.start(account.getId(), strategy.getId(),
                 new BigDecimal("1"), 300));
         bot.stop(StrategyBot.Status.FINISHED, StrategyBot.StopReason.DATA_END, 4);
         bots.save(bot);
-        assertEquals(4, bots.findBySessionIdOrderByStartedAtDesc(session.getId()).get(0).getEntryCount());
+        assertEquals(4, bots.findByAccountIdOrderByStartedAtDesc(account.getId()).get(0).getEntryCount());
 
-        // ---- PF 模板 + 账户：规则是副本，改模板不影响已开的账户 ----
-        PropFirmTemplate template = templates.save(PropFirmTemplate.define("Apex 50K", "50K 考核",
-                new PropFirmRules(new BigDecimal("50000.00"), new BigDecimal("3000.00"),
-                        new BigDecimal("2500.00"), new BigDecimal("1250.00"),
-                        PropFirmRules.DrawdownType.TRAILING_EOD, 5, new BigDecimal("0.90"))));
-        PropFirmAccount account = accounts.save(PropFirmAccount.open(template, "第一次考核"));
-
-        assertEquals(new BigDecimal("50000.00"), accounts.findById(account.getId()).orElseThrow().getBalance());
-        assertEquals(PropFirmAccount.Status.ACTIVE, account.getStatus());
-
+        // 模板改了，账户上的规则快照不能跟着变
         template.setName("Apex 50K（改名）");
         template.getRules().setMaxDrawdown(new BigDecimal("9999.00"));
         templates.save(template);
@@ -192,9 +190,8 @@ class PersistenceSmokeTest {
                 "模板改了，账户上的规则快照不能跟着变");
 
         // ---- 交易记录 + 步骤 + 标签 ----
-        TradeRecord record = TradeRecord.open(session.getId(), "2026-10-16 12:00",
+        TradeRecord record = TradeRecord.open(account.getId(), "2026-10-16 12:00",
                 Actor.HUMAN, "jiang");
-        record.setAccountId(account.getId());
         record.openPosition(Side.BUY, "2026-10-16 12:05", new BigDecimal("21250"), new BigDecimal("1"));
         record.closeAt("2026-10-16 13:00", new BigDecimal("21260"), new BigDecimal("20"));
         record.setTags(List.of(new RecordTag("追单", "#ef4444")));

@@ -1,4 +1,4 @@
-package com.tradingviewj.server.entity.session;
+package com.tradingviewj.server.entity.indicator;
 
 import com.tradingviewj.server.entity.BaseEntity;
 import jakarta.persistence.Column;
@@ -21,6 +21,10 @@ import lombok.Setter;
  * <p>这条规则在 Go 版里已经用血换过一次：EMA20 曾经在 Go 里算好塞进每一根 Bar 下发，
  * ATR 则由前端拿着 OHLC 自己算 —— 结果是两边各有一套口径。现在「指标怎么算」
  * 只有一个答案（{@code service} 里的实现），存下来的只有「算什么」。
+ *
+ * <p>归属：它挂在<strong>某个 PF 账户</strong>上（{@code accountId}）。账户被删之后
+ * 指标定义<strong>保留</strong>，只是 {@code accountId} 变成 NULL，和图形、成交一样
+ * 不随账户消失 —— 删的是统计点，不是数据。
  */
 @Getter
 @Entity
@@ -28,8 +32,9 @@ import lombok.Setter;
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class Indicator extends BaseEntity {
 
-    @Column(nullable = false)
-    private String sessionId;
+    /** 属于哪个账户；NULL = 所在账户已被删除（数据本身保留）。 */
+    @Column
+    private String accountId;
 
     @Setter
     @Enumerated(EnumType.STRING)
@@ -59,9 +64,18 @@ public class Indicator extends BaseEntity {
     @Column(nullable = false)
     private int sortOrder;
 
-    public static Indicator of(String sessionId, Type type, int period, Source source) {
+    /**
+     * 加一个指标。
+     *
+     * @param accountId 所属账户，<strong>不能为空</strong>：指标是某个考核期里的东西，
+     *                  没有账户就没有「算给谁看」这回事
+     */
+    public static Indicator of(String accountId, Type type, int period, Source source) {
+        if (accountId == null || accountId.isBlank()) {
+            throw new IllegalArgumentException("指标必须属于一个 PF 账户，收到: " + accountId);
+        }
         Indicator indicator = new Indicator();
-        indicator.sessionId = sessionId;
+        indicator.accountId = accountId;
         indicator.type = type;
         indicator.period = period;
         indicator.source = source;

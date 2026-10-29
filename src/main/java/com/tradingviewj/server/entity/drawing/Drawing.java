@@ -33,6 +33,10 @@ import java.util.List;
  * 而不是每种图形一个表或一个子类。理由很实在：画笔工具、命中测试、拖动端点、
  * 序列化下发这四件事对五种图形是完全一样的，只有「怎么把两个点画成图形」不同，
  * 那是渲染层的事。用继承或分表换来的是五个几乎相同的类和一堆 JOIN。
+ *
+ * <p><strong>它不随账户消失</strong>：删掉 PF 账户只是删掉那个统计点，已经画下来的线
+ * 一条都不会被级联删除 —— 图形是用户的劳动成果，只有用户自己点删除才该消失。
+ * 账户没了之后图上这里只剩 {@code accountId = NULL}，等下次挂到别的账户上再显示。
  */
 @Getter
 @Entity
@@ -40,8 +44,14 @@ import java.util.List;
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class Drawing extends BaseEntity {
 
-    @Column(nullable = false)
-    private String sessionId;
+    /**
+     * 画在哪个 PF 账户的盘面上；NULL = 所在账户已被删除。
+     *
+     * <p>可空是<strong>故意的</strong>：图形与账户在归属上相互独立，删账户不删图形。
+     * 创建时必须有账户（{@link #of} 会拦），可空只用来承接「账户被删」这一个事实。
+     */
+    @Column
+    private String accountId;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
@@ -82,9 +92,19 @@ public class Drawing extends BaseEntity {
     @Column(nullable = false, updatable = false)
     private String createdBy;
 
-    public static Drawing of(String sessionId, Kind kind, Anchor start, Anchor end, String createdBy) {
+    /**
+     * 画一个图形。
+     *
+     * @param accountId 画在哪个 PF 账户的盘面上，<strong>不能为空</strong>：图形只可能是
+     *                  考核期里的操作。允许为空的列只是为「账户被删」留的出口
+     * @throws IllegalArgumentException 没给账户
+     */
+    public static Drawing of(String accountId, Kind kind, Anchor start, Anchor end, String createdBy) {
+        if (accountId == null || accountId.isBlank()) {
+            throw new IllegalArgumentException("图形必须画在某个 PF 账户里，收到: " + accountId);
+        }
         Drawing drawing = new Drawing();
-        drawing.sessionId = sessionId;
+        drawing.accountId = accountId;
         drawing.kind = kind;
         drawing.start = start;
         drawing.end = end;

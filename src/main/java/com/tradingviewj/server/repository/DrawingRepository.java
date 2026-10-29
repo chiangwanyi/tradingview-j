@@ -7,7 +7,7 @@ import java.util.List;
 
 public interface DrawingRepository extends JpaRepository<Drawing, String> {
 
-    List<Drawing> findBySessionId(String sessionId);
+    List<Drawing> findByAccountId(String accountId);
 
-    long countBySessionId(String sessionId);
+    long countByAccountId(String accountId);
 }

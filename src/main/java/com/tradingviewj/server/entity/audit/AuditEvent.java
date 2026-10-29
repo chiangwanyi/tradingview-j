@@ -13,7 +13,7 @@ import lombok.NoArgsConstructor;
 /**
  * 一条操作记录。<strong>只追加，永不修改、永不删除</strong>。
  *
- * <p><strong>职责边界</strong>：它回答「谁在什么时候对哪块盘面做了什么」。
+ * <p><strong>职责边界</strong>：它回答「谁在什么时候对哪个 PF 账户做了什么」。
  * 它<strong>不是</strong>业务状态的来源 —— 图形、挂单、成交各自有自己的表。
  * 这条分界很重要：如果靠重放操作记录来还原状态，那么一次转发/合并出错就会让
  * 整块盘面的状态永久错位；而独立存表的话，最坏情况是「审计流水少了一条」，
@@ -33,11 +33,18 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class AuditEvent extends BaseEntity {
 
-    /** 属于哪块盘面；NULL = 全局操作（例如新建标的）。 */
+    /**
+     * 属于哪个 PF 账户；NULL = 全局操作（例如新建标的）。
+     *
+     * <p><strong>这一列故意不加外键</strong>，和别的表不一样：账户被删之后这里仍然保留
+     * 原来的 id。理由是「只追加」—— 外键的 {@code ON DELETE SET NULL} 本质上是一次
+     * UPDATE，会改写一条审计流水，而审计流水的全部价值就在于它没被改过。
+     * 指向一个已经不存在的账户 id 不丢任何信息，反而记住了「当初算在谁头上」。
+     */
     @Column
-    private String sessionId;
+    private String accountId;
 
-    /** 会话内的自增序号，从 0 起。断档就说明某次广播没落库。 */
+    /** 账户内的自增序号，从 0 起。断档就说明某次广播没落库。 */
     @Column(nullable = false)
     private int seq;
 
@@ -53,9 +60,9 @@ public class AuditEvent extends BaseEntity {
     @Column
     private String payloadJson;
 
-    public static AuditEvent of(String sessionId, int seq, Actor actor, ReplayAction action, String payloadJson) {
+    public static AuditEvent of(String accountId, int seq, Actor actor, ReplayAction action, String payloadJson) {
         AuditEvent event = new AuditEvent();
-        event.sessionId = sessionId;
+        event.accountId = accountId;
         event.seq = seq;
         event.actor = actor;
         event.action = action;

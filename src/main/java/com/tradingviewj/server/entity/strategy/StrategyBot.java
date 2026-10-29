@@ -34,8 +34,9 @@ import java.time.Instant;
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class StrategyBot extends BaseEntity {
 
-    @Column(nullable = false)
-    private String sessionId;
+    /** 在哪个 PF 账户上跑；NULL = 所在账户已被删除（运行摘要保留）。 */
+    @Column
+    private String accountId;
 
     /** NULL = 老式的随机演示机器人（不下真单，只演示操作）。 */
     @Column
@@ -66,9 +67,18 @@ public class StrategyBot extends BaseEntity {
     @Enumerated(EnumType.STRING)
     private StopReason stopReason;
 
-    public static StrategyBot start(String sessionId, String strategyId, BigDecimal quantity, int intervalMs) {
+    /**
+     * 启动一次运行。
+     *
+     * @param accountId 在哪个 PF 账户上跑，<strong>不能为空</strong>：机器人做的一切也要算在账上
+     * @throws IllegalArgumentException 没给账户
+     */
+    public static StrategyBot start(String accountId, String strategyId, BigDecimal quantity, int intervalMs) {
+        if (accountId == null || accountId.isBlank()) {
+            throw new IllegalArgumentException("策略机器人必须跑在某个 PF 账户上，收到: " + accountId);
+        }
         StrategyBot bot = new StrategyBot();
-        bot.sessionId = sessionId;
+        bot.accountId = accountId;
         bot.strategyId = strategyId;
         bot.quantity = quantity;
         bot.intervalMs = intervalMs;
@@ -107,8 +117,8 @@ public class StrategyBot extends BaseEntity {
         MANUAL,
         /** 数据跑到末尾（没有更多 K 线了）。 */
         DATA_END,
-        /** 盘面被删 / 会话关闭，机器人被动停。 */
-        SESSION_CLOSED,
+        /** 所在 PF 账户被删 / 关闭，机器人被动停（数据保留，只是不再有账户可挂）。 */
+        ACCOUNT_CLOSED,
         /** 撮合或下单过程抛了异常。 */
         ERROR
     }

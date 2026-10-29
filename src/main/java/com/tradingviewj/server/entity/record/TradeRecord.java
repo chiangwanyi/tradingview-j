@@ -39,15 +39,16 @@ import java.util.List;
  *   <li>它<strong>不持有成交</strong>。成交在 {@code trade} 表里，靠 {@code trade.trade_record_id}
  *       反向引用 —— 因为成交先发生、记录后收尾，硬做成「记录包含成交」就需要先有记录再有成交，
  *       而用户是直接下单的。</li>
- *   <li>它不持有音频。语音是会话的一级实体，记录的步骤里只存 {@code audioClipId} 指向它。</li>
+ *   <li>它不持有音频。语音是账户下的一级实体，记录的步骤里只存 {@code audioClipId} 指向它。</li>
  * </ul>
  *
  * <p><strong>生命周期是自动的</strong>：仓位从空仓变成有仓那一刻开始，回到空仓那一刻收尾。
  * 让用户记得点「开始/结束」的结果必然是「忘了开就没有记录」。所以没有「录制中」这个状态，
  * 也没有开关。
  *
- * <p>{@link #sessionId} 只是追溯线索：会话被删掉之后这里会指向一个不存在的 id，
- * 打开、回放、删除都不依赖它 —— 记录是独立的一份数据。
+ * <p>{@link #accountId} 只是<strong>统计归属</strong>，不是所有权：账户被删掉之后这里指向一个
+ * 不存在的 id（外键把它置空），打开、回放、删除记录都不依赖账户 ——
+ * 记录是独立的一份数据，只有用户自己点删除才会消失。
  */
 @Getter
 @Entity
@@ -55,11 +56,13 @@ import java.util.List;
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class TradeRecord extends BaseEntity {
 
-    /** 这笔交易发生在哪块盘面。弱引用，会话删了不影响记录。 */
-    private String sessionId;
-
-    /** 属于哪个 PF 账户；NULL = 纯练习，不计入任何考核。 */
-    @Setter
+    /**
+     * 属于哪个 PF 账户；NULL = 所在账户已被删除。
+     *
+     * <p>和成交、图形一样是<strong>弱引用</strong>：账户只是统计点，记录不归它所有。
+     * 删账户之后这条记录仍在，只是暂时没有账户可算；可以用 {@link #attachTo} 重新挂上。
+     */
+    @Column
     private String accountId;
 
     /** 起点那一屏的 K 线时间（开仓**之前**）。 */
@@ -112,7 +115,7 @@ public class TradeRecord extends BaseEntity {
     /**
      * 这一笔是否<strong>正常平完</strong>。
      *
-     * <p>false 不是数据丢了：会话被删、程序退出、进程崩溃时仓位确实还在，
+     * <p>false 不是数据丢了：账户被删、程序退出、进程崩溃时仓位确实还在，
      * 那条记录就是「当时还没结束」。重启后不续录（开头已经在崩溃前那次检查点里了），
      * 下一次「空仓 → 有仓」才开新的一条。
      */
@@ -147,20 +150,36 @@ public class TradeRecord extends BaseEntity {
     /**
      * 开一条记录。
      *
-     * @param actor 只能是 {@link Actor#HUMAN} 或 {@link Actor#BOT}
-     * @throws IllegalArgumentException 传了 {@code SYSTEM}（它不是一笔交易的来源，而是
-     *                                  「系统自己动的手」这类操作的操作者）
+     * @param accountId 这笔交易算在哪个 PF 账户上，<strong>不能为空</strong>：没有账户就不该有交易
+     * @param actor     只能是 {@link Actor#HUMAN} 或 {@link Actor#BOT}
+     * @throws IllegalArgumentException 没给账户，或者传了 {@code SYSTEM}
+     *                                  （它不是一笔交易的来源，而是「系统自己动的手」这类操作的操作者）
      */
-    public static TradeRecord open(String sessionId, String anchorBarTime, Actor actor, String actorName) {
+    public static TradeRecord open(String accountId, String anchorBarTime, Actor actor, String actorName) {
         if (actor != Actor.HUMAN && actor != Actor.BOT) {
             throw new IllegalArgumentException("交易记录的来源只能是 HUMAN 或 BOT，收到: " + actor);
         }
+        if (accountId == null || accountId.isBlank()) {
+            throw new IllegalArgumentException("交易记录必须属于一个 PF 账户，收到: " + accountId);
+        }
         TradeRecord record = new TradeRecord();
-        record.sessionId = sessionId;
+        record.accountId = accountId;
         record.anchorBarTime = anchorBarTime;
         record.actor = actor;
         record.actorName = actorName;
         return record;
+    }
+
+    /**
+     * 把一条已经存在的记录挂到另一个账户上（典型场景：原来的账户被删了）。
+     *
+     * <p>只动归属，不动内容 —— 记录里的每一步操作都是当时发生的事实，重挂不改历史。
+     */
+    public void attachTo(String accountId) {
+        if (accountId == null || accountId.isBlank()) {
+            throw new IllegalArgumentException("要挂到的账户不能为空，收到: " + accountId);
+        }
+        this.accountId = accountId;
     }
 
     /** 这笔交易是从哪一边开的。还没有成交时无法确定。 */

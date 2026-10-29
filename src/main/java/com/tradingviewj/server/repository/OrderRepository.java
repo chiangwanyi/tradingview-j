@@ -7,8 +7,8 @@ import java.util.List;
 
 public interface OrderRepository extends JpaRepository<Order, String> {
 
-    List<Order> findBySessionIdOrderByPlacedIndexAsc(String sessionId);
+    List<Order> findByAccountIdOrderByPlacedIndexAsc(String accountId);
 
     /** 进快照时只需要还挂着的单。 */
-    List<Order> findBySessionIdAndStatusOrderByPlacedIndexAsc(String sessionId, Order.Status status);
+    List<Order> findByAccountIdAndStatusOrderByPlacedIndexAsc(String accountId, Order.Status status);
 }

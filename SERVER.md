@@ -76,17 +76,18 @@ controller  →  service  →  repository  →  SQLite（./db/tradingview-j.db�
 要 readdir + 逐文件读，但那正是现在的用法。
 
 **为什么业务事实进库**：图形、挂单、成交、语音、交易记录、PF 账户这些东西的**一致性要求**远高于
-K 线，而且需要按条件查（这个账户的记录、这条记录的步骤、这块盘面还挂着的单）。CSV 做不到这些。
+K 线，而且需要按条件查（这个账户的记录、这条记录的步骤、这个账户还挂着的单）。CSV 做不到这些。
 
-## 实体设计（14 个业务概念 + 1 个聚合根）
+## 实体设计（14 个业务概念，PF 账户是唯一聚合根）
 
 | 概念 | 实体 | 包 | 关键设计 |
 | --- | --- | --- | --- |
 | 标的 | `Symbol` | `entity.market` | 主键就是标的代码；`folder` 是 CSV 目录的锚；tick/tickValue 只存在这一处 |
 | 手续费价目表 | `CommissionSchedule` | `entity.market` | **全库只有一行**（id 固定 `commission`）；口径一份、费率按品种根名一张表 |
-| 复盘会话 | `ReplaySession` | `entity.session` | 只管「推进到第几根、谁在操作」；不存 tick、不存持仓、不存 K 线 |
-| 指标 | `Indicator` | `entity.session` | 只存**定义**（类型+周期+来源），值靠 OHLC 现算 |
-| 绘图图形 | `Drawing` | `entity.drawing` | 五种图形共用「起点+终点」；样式是**画下去那一刻的快照** |
+| PF 模板 | `PropFirmTemplate` | `entity.propfirm` | 只是价目表；不做版本化 |
+| PF 账户 | `PropFirmAccount` | `entity.propfirm` | **一切操作的唯一归属点**；规则是开账户那一刻的副本；删它不删任何子数据 |
+| 指标 | `Indicator` | `entity.indicator` | 只存**定义**（类型+周期+来源），值靠 OHLC 现算 |
+| 绘图图形 | `Drawing` | `entity.drawing` | 五种图形共用「起点+终点」；样式是**画下去那一刻的快照**；只有用户手动删除才消失 |
 | 下单 | `Order` | `entity.trade` | 没有「止损单/止盈单」类型；`ocoGroup` 保证同根不双触发 |
 | 交易 | `Trade` | `entity.trade` | **整个交易域的唯一真相**；持仓和盈亏由它重放得出 |
 | （派生） | `Position` / `ClosedLot` | `entity.trade` | **不落库**。均价法给账户看，FIFO 逐批给画线看 |
@@ -96,8 +97,6 @@ K 线，而且需要按条件查（这个账户的记录、这条记录的步骤
 | 策略执行机器人 | `StrategyBot` | `entity.strategy` | 一次运行一行；只存摘要，运行期逐拍状态在内存 |
 | 交易记录 | `TradeRecord` | `entity.record` | 一笔完整交易：起点 + 步骤 + 结算摘要；生命周期自动 |
 | （步骤） | `TradeRecordStep` | `entity.record` | 一步 = 一次真实操作，第 0 步是「开仓前那一屏」 |
-| PF 模板 | `PropFirmTemplate` | `entity.propfirm` | 只是价目表；不做版本化 |
-| PF 账户 | `PropFirmAccount` | `entity.propfirm` | 规则是**开账户那一刻的副本**，模板改名改参数都不影响它 |
 
 ### 手续费：JSON 只是初始值，库里那张表才是落点
 
@@ -112,16 +111,40 @@ Java 侧对应 `entity.market.CommissionSchedule`：一张全局行存口径、�
 ### 关系（全部按 id 引用，不写 `@ManyToOne`）
 
 ```
-Symbol ──1:N──> ReplaySession ──1:N──> Drawing / Order / Trade / AudioClip / AuditEvent / Indicator
-                                   └─1:N──> StrategyBot ──N:1──> Strategy
-                                   └─1:N──> TradeRecord ──1:N──> TradeRecordStep
-                                                          └── Trade（反向引用 trade_record_id）
-PropFirmTemplate ──1:N──> PropFirmAccount ──1:N──> TradeRecord
+Symbol ──1:N──> PropFirmAccount ──1:N──> Drawing / Order / Trade / AudioClip / AuditEvent
+                              │            / Indicator / StrategyBot / TradeRecord
+                              └─1:N──> TradeRecord ──1:N──> TradeRecordStep
+                                                     └── Trade（反向引用 trade_record_id）
+PropFirmTemplate ──1:N（规则副本）──> PropFirmAccount
+Strategy ──1:N──> StrategyBot
 ```
 
 外键写在 `schema.sql` 的 `REFERENCES` 上，由 SQLite 自己守（连接串里 `PRAGMA foreign_keys = ON`）。
 不在实体上写 `@ManyToOne` 的理由：聚合之间的引用本来就只是「知道对方 id」，
 用 ORM 关联换来的是一次懒加载异常和一堆 fetch join。
+
+### 账户只是统计点：删账户不删数据
+
+原来是「会话」把图形、挂单、成交、语音、操作记录、指标、机器人、交易记录收在一起（`ON DELETE CASCADE`）。
+现在**会话这个概念整个不存在了**，归属改成 `accountId`，而且外键全部是 **`ON DELETE SET NULL`**：
+
+| 被删的东西 | 会发生什么 |
+| --- | --- |
+| PF 账户（`prop_firm_account` 一行） | 只删这一行。另外七张表（指标 / 图形 / 语音 / 交易记录 / 挂单 / 成交 / 机器人）的 `account_id` 被置成 NULL，**一行子数据都不删** |
+| 图形（`drawing`） | 只能由用户自己删；删图形会带走它的斐波那契水平线（真级联，那是图形的一部分） |
+| 交易记录（`trade_record`） | 只能由用户自己删；删记录会带走它的步骤和标签（真级联） |
+| 操作记录（`audit_event`） | **不走外键**，账户删了仍保留原 `account_id`。`SET NULL` 本质是一次 UPDATE，改过就不叫审计了 |
+| 挂单 / 成交 / 语音 / 指标 / 机器人 | 保留，`account_id` 置空 |
+
+两条连锁规矩：
+
+1. **没有账户就不能有操作。** 各实体的工厂方法（`Drawing.of` / `Order.place` / `Trade.fill` /
+   `AudioClip.record` / `Indicator.of` / `StrategyBot.start` / `TradeRecord.open`）拿不到账户 id 直接抛
+   `IllegalArgumentException`；`PropFirmAccountService#requireActive` 再拦「账户不存在 / 已经不是 ACTIVE」。
+   只有 `AuditEvent.of` 允许空账户 —— 流水账里有全局操作。
+2. **列上的 `account_id` 必须可空。** `NOT NULL` 和 `ON DELETE SET NULL` 不可能同时成立，
+   所以「必须属于某个账户」这条规则只能落在 Java 侧。这是这次改造最大的一个取舍，
+   换来的是「删账户绝不带走用户数据」这条硬保证。
 
 ### 五条贯穿全局的约定
 
@@ -152,7 +175,7 @@ PropFirmTemplate ──1:N──> PropFirmAccount ──1:N──> TradeRecord
 | `Indicator.Type` | 嵌套 | EMA / SMA / RMA / WMA / ATR | 常量名 |
 | `Indicator.Source` | 嵌套 | OPEN / HIGH / LOW / CLOSE / HL2 | 常量名 |
 | `StrategyBot.Status` | 嵌套 | RUNNING / STOPPED / FINISHED / FAILED | 常量名 |
-| `StrategyBot.StopReason` | 嵌套 | MANUAL / DATA_END / SESSION_CLOSED / ERROR | 常量名 |
+| `StrategyBot.StopReason` | 嵌套 | MANUAL / DATA_END / ACCOUNT_CLOSED / ERROR | 常量名 |
 | `PropFirmRules.DrawdownType` | 嵌套 | STATIC / TRAILING_INTRADAY / TRAILING_EOD | 常量名 |
 | `PropFirmAccount.Status` | 嵌套 | ACTIVE / PASSED / FAILED | 常量名 |
 | `CommissionSchedule.FeeType` | 嵌套 | PER_CONTRACT_PER_SIDE | 常量名 |
@@ -179,11 +202,14 @@ PropFirmTemplate ──1:N──> PropFirmAccount ──1:N──> TradeRecord
 | 测试 | 钉住什么 |
 | --- | --- |
 | `PersistenceSmokeTest` | 每类实体存一次读一次：schema 与映射一致、BigDecimal 一位不差、Instant 往返、派生方法名查询能用 |
+| `PropFirmAccountLifecycleTest` | 两条账户规则的验收：没有账户/账户已删就不能动手；删账户后八类子数据一行不少，只有归属列变成 NULL（`audit_event` 连归属都保留） |
+| `AccountRequiredTest` | 各实体工厂方法在没给账户时当场抛异常（纯单元测试，不起 Spring） |
 | `TradeLedgerTest` | 均价法与 FIFO 逐批的关系：全平时必须相等、部分平时必须不等、反手要重置均价 |
 | `CsvBarStoreTest` | 跳过表头、跳过坏行不炸、`folder` 不能带 `..` |
 | `VersionControllerTest` / `OpenApiDocsTest` / `ResponseEnvelopeTest` | 统一响应体与 Swagger 文档 |
 
-跑：`./mvnw test`（SQLite 用临时库，不碰 `./db/` 和 `./data/`）。
+跑：`./mvnw test`（SQLite 用临时库；`VersionControllerTest` / `OpenApiDocsTest` / `ResponseEnvelopeTest`
+仍用 `./db/` 那份真库，所以**改了表结构要先重建 `./db/`**，见文末）。
 
 ## 文件
 
@@ -192,8 +218,9 @@ PropFirmTemplate ──1:N──> PropFirmAccount ──1:N──> TradeRecord
 | `src/main/java/.../ServerApplication.java` | 入口，对应 Go 的 `main.go` |
 | `.../controller/VersionController.java` | `GET /api/version` |
 | `.../dto/` | 接口出入口对象（原来的 `entity/VersionResponse` 搬到这里） |
-| `.../entity/**` | 9 个聚合子包：market / session / drawing / trade / voice / audit / strategy / record / propfirm |
+| `.../entity/**` | 9 个聚合子包：market / propfirm / indicator / drawing / trade / voice / audit / strategy / record |
 | `.../repository/**` | 14 个 Spring Data JPA 接口 |
+| `.../service/PropFirmAccountService.java` | 开账户 / 删账户（只删一行，不级联）/ `requireActive` 开工闸门 |
 | `.../service/TradeLedger.java` | 成交流水 → 持仓 / 已实现盈亏 / 逐批归因，全书唯一一处这样算 |
 | `.../storage/CsvBarStore.java` | 读 `data/<folder>/<日期>.csv`（只读，不写） |
 | `.../storage/Bar.java` | K 线值对象，不入库 |
@@ -207,3 +234,18 @@ PropFirmTemplate ──1:N──> PropFirmAccount ──1:N──> TradeRecord
 **`spring.jpa.hibernate.ddl-auto` 是 `none`。** 表结构由 `schema.sql` 管：
 SQLite 的 `ALTER TABLE` 只支持很有限的形式，Hibernate 的 `update` 会生成它不支持的 DDL，
 而且这种失败只在「第二次启动且字段变了」时才出现 —— 属于最难查的一类问题。
+
+### 改表结构之后：`./db/` 要重建，没有迁移脚本
+
+`schema.sql` 全是 `CREATE ... IF NOT EXISTS`，对**已存在的旧表**它什么都不做，
+于是新加的列不存在、新加的外键也不存在，启动时报的是
+`Failed to execute SQL script statement #N ... CREATE INDEX ... no such column`。
+本项目没有写迁移脚本（单用户本机工具，`db/` 是运行期状态，不是资产），
+所以**改结构之后要先把旧库挪走**再启动：
+
+```bash
+mv db/tradingview-j.db db/tradingview-j.db.bak-$(date +%Y%m%d)
+```
+
+2026-10-29 这次「删掉会话、改用 PF 账户」就是这么处理的，旧库被改名为
+`db/tradingview-j.db.bak-20261029-pre-account-model`（当时各表都是 0 行，没有数据损失）。

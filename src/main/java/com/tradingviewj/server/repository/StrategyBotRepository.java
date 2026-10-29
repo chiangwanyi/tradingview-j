@@ -8,11 +8,11 @@ import java.util.Optional;
 
 public interface StrategyBotRepository extends JpaRepository<StrategyBot, String> {
 
-    List<StrategyBot> findBySessionIdOrderByStartedAtDesc(String sessionId);
+    List<StrategyBot> findByAccountIdOrderByStartedAtDesc(String accountId);
 
-    /** 这块盘面上还在跑的机器人（最多一个，但用 List 避免为了「最多一个」写唯一约束）。 */
-    List<StrategyBot> findBySessionIdAndStatus(String sessionId, StrategyBot.Status status);
+    /** 这个账户上还在跑的机器人（最多一个，但用 List 避免为了「最多一个」写唯一约束）。 */
+    List<StrategyBot> findByAccountIdAndStatus(String accountId, StrategyBot.Status status);
 
-    Optional<StrategyBot> findFirstBySessionIdAndStatusOrderByStartedAtDesc(String sessionId,
-                                                                           StrategyBot.Status status);
+    Optional<StrategyBot> findFirstByAccountIdAndStatusOrderByStartedAtDesc(String accountId,
+                                                                          StrategyBot.Status status);
 }

@@ -13,9 +13,9 @@ import java.util.List;
  */
 public interface TradeRepository extends JpaRepository<Trade, String> {
 
-    List<Trade> findBySessionIdOrderByBarTimeAscIdAsc(String sessionId);
+    List<Trade> findByAccountIdOrderByBarTimeAscIdAsc(String accountId);
 
     List<Trade> findByTradeRecordIdOrderByBarTimeAscIdAsc(String tradeRecordId);
 
-    long countBySessionId(String sessionId);
+    long countByAccountId(String accountId);
 }
