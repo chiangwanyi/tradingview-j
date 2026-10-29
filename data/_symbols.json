@@ -4,30 +4,26 @@
     "CME_MINI:MES1!": {
       "folder": "CME_MINI_MES1!",
       "tick": 0.25,
-      "tickValue": 1.25
+      "tickValue": 1.25,
+      "commission": 0.50
     },
     "CME_MINI:MNQ1!": {
       "folder": "CME_MINI_MNQ1!",
       "tick": 0.25,
-      "tickValue": 0.5
+      "tickValue": 0.5,
+      "commission": 0.50
     },
     "COMEX_MINI:MGC1!": {
       "folder": "COMEX_MINI_MGC1!",
       "tick": 0.1,
-      "tickValue": 1
+      "tickValue": 1,
+      "commission": 0.80
     },
     "NYMEX:CL1!": {
       "folder": "NYMEX_CL1!",
       "tick": 0.01,
-      "tickValue": 10
-    }
-  },
-  "commission": {
-    "type": "PER_CONTRACT_PER_SIDE",
-    "rates": {
-      "MES": 0.50,
-      "MNQ": 0.50,
-      "MGC": 0.80
+      "tickValue": 10,
+      "commission": 0
     }
   }
 }
