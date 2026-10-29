@@ -45,12 +45,13 @@ import java.util.List;
 public class Drawing extends BaseEntity {
 
     /**
-     * 画在哪个 PF 账户的盘面上；NULL = 所在账户已被删除。
+     * 画在哪个 PF 账户的盘面上。
      *
-     * <p>可空是<strong>故意的</strong>：图形与账户在归属上相互独立，删账户不删图形。
-     * 创建时必须有账户（{@link #of} 会拦），可空只用来承接「账户被删」这一个事实。
+     * <p><strong>NOT NULL 且不加外键</strong>：图形与账户在归属上相互独立，删账户不删图形。
+     * 账户被删掉之后这里仍然保留原来那个 id（指向一个已经不存在的账户），不置空、不改写。
+     * 创建时必须有账户，见 {@link #of}。
      */
-    @Column
+    @Column(nullable = false)
     private String accountId;
 
     @Enumerated(EnumType.STRING)

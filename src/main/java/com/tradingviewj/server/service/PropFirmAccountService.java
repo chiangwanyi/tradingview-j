@@ -24,7 +24,7 @@ import java.util.List;
  *       两件事都要有，前者防手滑，后者防脏 id（账户已被删、或状态已经 PASSED/FAILED）。</li>
  *   <li><strong>删账户不删数据。</strong> {@link #delete} 只删 {@code prop_firm_account}
  *       这一行。图形、挂单、成交、语音、操作记录、机器人、交易记录、指标<strong>全部保留</strong>，
- *       由数据库的外键 {@code ON DELETE SET NULL} 把它们的 {@code account_id} 置空。
+ *       它们的 {@code account_id} 原样留着（指向一个已经不存在的账户），既不置空也不级联删除。
  *       这里刻意<strong>不</strong>做「顺手清理」：账户是临时统计点，不是这些数据的所有者。</li>
  * </ol>
  *
@@ -81,7 +81,7 @@ public class PropFirmAccountService {
      * 删除账户 —— <strong>只删这一行</strong>。
      *
      * <p>它下面的成交、交易记录、语音、操作记录、图形、指标、机器人全部原地保留，
-     * 外键把它们指向账户的那一列置为 NULL。想删那些数据，只能由用户一条一条地显式删。
+     * 并且仍然记着原来那个 {@code account_id}。想删那些数据，只能由用户一条一条地显式删。
      *
      * <p>幂等：账户已经不在了就直接返回，不抛异常（删除一个已经删掉的东西，结果就是「它没了」）。
      */

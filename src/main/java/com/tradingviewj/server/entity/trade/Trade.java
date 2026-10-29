@@ -31,12 +31,13 @@ import java.math.BigDecimal;
 public class Trade extends BaseEntity {
 
     /**
-     * 这笔成交发生在哪个 PF 账户里；NULL = 所在账户已被删除。
+     * 这笔成交发生在哪个 PF 账户里。
      *
-     * <p>成交是<strong>盘面上的事实</strong>，不是账户的从属物：删账户不删成交。
+     * <p><strong>NOT NULL 且不加外键</strong>：成交是<strong>盘面上的事实</strong>，
+     * 不是账户的从属物。删账户不删成交，这里仍然保留原来那个 id（不置空）。
      * 创建时必须有账户，见 {@link #fill}。
      */
-    @Column
+    @Column(nullable = false)
     private String accountId;
 
     /** 触发这张成交的挂单。市价单也有，就是那张一次性存在的 MARKET 单。 */

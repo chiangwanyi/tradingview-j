@@ -23,9 +23,9 @@
  *       这样加载一个绘图不需要顺带把账户、标的都拉起来，也不会踩 LazyInitialization。</li>
  *   <li><strong>账户只是统计点，不是容器。</strong> 图形、挂单、成交、语音、操作记录、
  *       机器人、交易记录、指标都用 {@code accountId} 指向 {@code PropFirmAccount}，
- *       但删账户<strong>只清空归属、不删数据</strong>（外键 {@code ON DELETE SET NULL}）。
- *       所以这些 {@code accountId} 列必须可空——可空的是「账户被删后的历史残留」，
- *       不是「新建时可以不给账户」：后者由各实体的工厂方法当场拦掉。</li>
+ *       但删账户<strong>只删那一行、不动任何子数据</strong>。这些 {@code accountId} 列是
+ *       <strong>NOT NULL 且不加外键</strong>：账户删掉后保留原来那个 id（指向一个已不存在的
+ *       账户），既不置空也不级联删除。「新建时必须给账户」由各实体的工厂方法当场拦掉。</li>
  *   <li><strong>能做的不算，算的不存。</strong> 持仓、已实现盈亏、指标值、斐波那契线位置
  *       全部是派生的，一律现算（{@code service.TradeLedger}）。存副本迟早和事实对不上，
  *       而对不上的时候没有任何办法判断谁对。</li>

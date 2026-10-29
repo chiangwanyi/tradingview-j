@@ -46,8 +46,8 @@ import java.util.List;
  * 让用户记得点「开始/结束」的结果必然是「忘了开就没有记录」。所以没有「录制中」这个状态，
  * 也没有开关。
  *
- * <p>{@link #accountId} 只是<strong>统计归属</strong>，不是所有权：账户被删掉之后这里指向一个
- * 不存在的 id（外键把它置空），打开、回放、删除记录都不依赖账户 ——
+ * <p>{@link #accountId} 只是<strong>统计归属</strong>，不是所有权：账户被删掉之后这里仍然保留
+ * 原来那个 id（指向一个已经不存在的账户），打开、回放、删除记录都不依赖账户 ——
  * 记录是独立的一份数据，只有用户自己点删除才会消失。
  */
 @Getter
@@ -57,12 +57,13 @@ import java.util.List;
 public class TradeRecord extends BaseEntity {
 
     /**
-     * 属于哪个 PF 账户；NULL = 所在账户已被删除。
+     * 属于哪个 PF 账户。
      *
-     * <p>和成交、图形一样是<strong>弱引用</strong>：账户只是统计点，记录不归它所有。
-     * 删账户之后这条记录仍在，只是暂时没有账户可算；可以用 {@link #attachTo} 重新挂上。
+     * <p><strong>NOT NULL 且不加外键</strong>：和成交、图形一样是<strong>弱引用</strong>，
+     * 账户只是统计点，记录不归它所有。删账户之后这条记录仍在，这里保留原来那个 id；
+     * 想改归属用 {@link #attachTo} 显式挂到另一个账户上。
      */
-    @Column
+    @Column(nullable = false)
     private String accountId;
 
     /** 起点那一屏的 K 线时间（开仓**之前**）。 */

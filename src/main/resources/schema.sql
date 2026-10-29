@@ -12,11 +12,13 @@
 --      时间戳是 INTEGER，Unix 毫秒（InstantEpochConverter）。
 --   4. **PF 账户是唯一的操作归属点，但不是数据的所有者**。
 --      没有「会话」这张表了：图形、挂单、成交、语音、操作记录、机器人、交易记录、
---      指标全部用 account_id 指向 prop_firm_account。指向关系是
---      ON DELETE SET NULL —— 删账户只清空归属，一行子数据都不会被删。
+--      指标全部用 account_id 指向 prop_firm_account。
+--      这一列 **NOT NULL 且不加外键**：删账户只删 prop_firm_account 那一行，子表里
+--      仍然保留原来那个 account_id 字符串（指向一个已经不存在的账户），既不置空也不删行。
+--      为什么不加外键：SET NULL 会改写子表、CASCADE 会删数据、RESTRICT 会让账户
+--      一旦有数据就永远删不掉 —— 三种都不是想要的。一致性由 Java 侧的
+--      PropFirmAccountService#requireActive 把关，不用数据库的引用约束。
 --      想删数据只能显式删那一行（图形尤其如此：只有用户自己点删除才该消失）。
---      代价：这些 account_id 列必须可空。「创建时必须有账户」由 Java 侧工厂方法把关，
---      因为列上的 NOT NULL 和 ON DELETE SET NULL 不可能同时成立。
 --   5. 枚举列（actor / action / kind）存 **Java 常量名**（HUMAN / BAR_ADVANCED），
 --      没有任何转换器参与。Go 协议里的小写下划线串（human / bar_advanced）由输出侧
 --      按「常量名转小写」换算，库里不为客户端格式让步。
@@ -52,13 +54,13 @@ CREATE TABLE IF NOT EXISTS prop_firm_template (
 );
 
 -- PF 账户：唯一的「操作归属点」，也是统计考核期一切操作的那个点。
--- 它是一个临时统计点，不是容器：删掉这一行，下面的子数据全部原地保留（account_id 置空）。
+-- 它是一个临时统计点，不是容器：删掉这一行，下面的子数据全部原地保留（account_id 原样留着）。
 -- 规则在开出来那一刻从模板**复制**一份存进来（模板后续改动不影响已有账户）。
 CREATE TABLE IF NOT EXISTS prop_firm_account (
     id               TEXT PRIMARY KEY,
     name             TEXT NOT NULL,
     symbol_id        TEXT NOT NULL REFERENCES symbol (id),  -- 这个账户做哪个标的
-    template_id      TEXT REFERENCES prop_firm_template (id) ON DELETE SET NULL,
+    template_id      TEXT NOT NULL,  -- 从哪套模板开的；模板删了也保留原 id（不置空）
     account_size     TEXT,
     profit_target    TEXT,
     max_drawdown     TEXT,
@@ -83,7 +85,7 @@ CREATE INDEX IF NOT EXISTS idx_account_symbol ON prop_firm_account (symbol_id);
 -- 指标定义（值不入库：拿 OHLC 现算，口径只有一份）
 CREATE TABLE IF NOT EXISTS indicator (
     id          TEXT PRIMARY KEY,
-    account_id  TEXT REFERENCES prop_firm_account (id) ON DELETE SET NULL,
+    account_id  TEXT NOT NULL,       -- 保留原账户 id；账户删了也不置空
     type        TEXT NOT NULL,       -- EMA / SMA / RMA / WMA / ATR
     period      INTEGER NOT NULL,
     source      TEXT NOT NULL,       -- CLOSE / HIGH / LOW / HL2
@@ -96,10 +98,10 @@ CREATE TABLE IF NOT EXISTS indicator (
 CREATE INDEX IF NOT EXISTS idx_indicator_account ON indicator (account_id);
 
 -- 绘图图形：5 种图形共用「起点 + 终点」两个锚。
--- 只有用户手动删除才会消失：删账户不删图形，account_id 置空而已。
+-- 只有用户手动删除才会消失：删账户不删图形，account_id 原样留着。
 CREATE TABLE IF NOT EXISTS drawing (
     id            TEXT PRIMARY KEY,
-    account_id    TEXT REFERENCES prop_firm_account (id) ON DELETE SET NULL,
+    account_id    TEXT NOT NULL,     -- 保留原账户 id；账户删了也不置空
     kind          TEXT NOT NULL,     -- TREND / RAY / RECT / ARROW / FIB
     start_bar_time TEXT NOT NULL,
     start_price   TEXT NOT NULL,
@@ -132,7 +134,7 @@ CREATE TABLE IF NOT EXISTS drawing_fib_level (
 -- 录音：只存元数据，WAV 文件在磁盘上（storage 层管路径）
 CREATE TABLE IF NOT EXISTS audio_clip (
     id          TEXT PRIMARY KEY,
-    account_id  TEXT REFERENCES prop_firm_account (id) ON DELETE SET NULL,
+    account_id  TEXT NOT NULL,       -- 保留原账户 id；账户删了也不置空
     bar_time    TEXT NOT NULL,       -- 挂在哪根 K 线上
     seq         INTEGER NOT NULL,    -- 同一根上的第几段（上限 9）
     file_name   TEXT NOT NULL,       -- 相对路径，不存绝对路径
@@ -146,10 +148,10 @@ CREATE INDEX IF NOT EXISTS idx_audio_account ON audio_clip (account_id, bar_time
 
 -- 交易记录：一笔完整交易（开仓前那一屏 + 之后每一步操作）。
 -- 名字不叫 recording：它确实不是录像，是「操作流水 + 结算摘要」。
--- account_id 是统计归属，不是所有权：账户删了记录还在。
+-- account_id 是统计归属，不是所有权：账户删了记录还在，account_id 原样留着。
 CREATE TABLE IF NOT EXISTS trade_record (
     id             TEXT PRIMARY KEY,
-    account_id     TEXT REFERENCES prop_firm_account (id) ON DELETE SET NULL,
+    account_id     TEXT NOT NULL,    -- 保留原账户 id；账户删了也不置空
     anchor_bar_time TEXT NOT NULL,
     entry_bar_time TEXT,
     exit_bar_time  TEXT,
@@ -201,7 +203,7 @@ CREATE TABLE IF NOT EXISTS trade_record_tag (
 -- 挂单。表名不能叫 order（SQL 保留字，SQLite 会直接报错）
 CREATE TABLE IF NOT EXISTS trade_order (
     id            TEXT PRIMARY KEY,
-    account_id    TEXT REFERENCES prop_firm_account (id) ON DELETE SET NULL,
+    account_id    TEXT NOT NULL,     -- 保留原账户 id；账户删了也不置空
     side          TEXT NOT NULL,     -- BUY / SELL
     type          TEXT NOT NULL,     -- LIMIT / STOP / MARKET
     status        TEXT NOT NULL,     -- OPEN / FILLED / CANCELLED
@@ -219,10 +221,10 @@ CREATE TABLE IF NOT EXISTS trade_order (
 CREATE INDEX IF NOT EXISTS idx_order_account ON trade_order (account_id);
 
 -- 成交。持仓、已实现盈亏都是这张表的**派生结果**，不单独落库。
--- 成交是盘面上的事实：账户删了，成交还在。
+-- 成交是盘面上的事实：账户删了，成交还在，account_id 原样留着。
 CREATE TABLE IF NOT EXISTS trade (
     id              TEXT PRIMARY KEY,
-    account_id      TEXT REFERENCES prop_firm_account (id) ON DELETE SET NULL,
+    account_id      TEXT NOT NULL,   -- 保留原账户 id；账户删了也不置空
     order_id        TEXT NOT NULL,
     bar_time        TEXT NOT NULL,
     side            TEXT NOT NULL,
@@ -237,11 +239,11 @@ CREATE INDEX IF NOT EXISTS idx_trade_account ON trade (account_id, bar_time);
 CREATE INDEX IF NOT EXISTS idx_trade_record ON trade (trade_record_id);
 
 -- 操作记录：append-only 的审计流水。
--- account_id **故意不加外键**：ON DELETE SET NULL 会把一条审计流水改掉，而审计的
--- 全部价值就在于它没被改过。账户删了这里仍保留原 id，指向一个不存在的账户不丢信息。
+-- account_id **NOT NULL 且故意不加外键**：任何改写（包括 SET NULL）都会让这条流水
+-- 不再是「当时发生的事实」。账户删了这里仍保留原 id，指向一个不存在的账户不丢信息。
 CREATE TABLE IF NOT EXISTS audit_event (
     id           TEXT PRIMARY KEY,
-    account_id   TEXT,
+    account_id   TEXT NOT NULL,      -- 保留原账户 id，永不改写/置空
     seq          INTEGER NOT NULL,
     actor        TEXT NOT NULL,      -- JAVA 常量名：HUMAN / BOT / SYSTEM
     action       TEXT NOT NULL,      -- JAVA 常量名：BAR_ADVANCED / ORDER_PLACED …（见 ReplayAction）
@@ -266,7 +268,7 @@ CREATE TABLE IF NOT EXISTS strategy (
 -- 策略执行机器人：一次运行 = 一行。运行期的逐拍状态不落库
 CREATE TABLE IF NOT EXISTS strategy_bot (
     id          TEXT PRIMARY KEY,
-    account_id  TEXT REFERENCES prop_firm_account (id) ON DELETE SET NULL,
+    account_id  TEXT NOT NULL,       -- 保留原账户 id；账户删了也不置空
     strategy_id TEXT REFERENCES strategy (id),  -- NULL = 老式随机演示机器人
     quantity    TEXT NOT NULL,
     interval_ms INTEGER NOT NULL,

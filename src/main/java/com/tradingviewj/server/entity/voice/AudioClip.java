@@ -21,7 +21,7 @@ import lombok.NoArgsConstructor;
  * <p>为什么语音是<strong>账户下的一级实体</strong>而不是交易记录的子项：
  * 「只想在这根 K 线上讲两句」的人不该被迫先开一段录像。它和图形、挂单同级，
  * 交易记录只是它的一个下游消费者（录制期间录的语音同时被记进那笔记录的步骤里）。
- * 删掉账户<strong>不会</strong>带走语音：{@code account_id} 被置空，元数据与 WAV 都还在。
+ * 删掉账户<strong>不会</strong>带走语音：{@code account_id} 原样保留，元数据与 WAV 都还在。
  *
  * <p>额度是「<strong>同一根 K 线最多 9 段</strong>」，按 K 线时间数。
  * 整块盘面的语音总数不设上限 —— 这条限制的唯一用处是防止用户在同一根上反复重录。
@@ -33,8 +33,13 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class AudioClip extends BaseEntity {
 
-    /** 属于哪个 PF 账户；NULL = 所在账户已被删除（语音元数据保留，WAV 文件本来就在磁盘上）。 */
-    @Column
+    /**
+     * 属于哪个 PF 账户。
+     *
+     * <p><strong>NOT NULL 且不加外键</strong>：账户被删掉之后这里仍然保留原来那个 id，
+     * 语音元数据与 WAV 文件（本来就在磁盘上）都原样保留。
+     */
+    @Column(nullable = false)
     private String accountId;
 
     /** 挂在哪根 K 线上。 */

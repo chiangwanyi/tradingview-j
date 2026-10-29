@@ -34,8 +34,13 @@ import java.time.Instant;
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class StrategyBot extends BaseEntity {
 
-    /** 在哪个 PF 账户上跑；NULL = 所在账户已被删除（运行摘要保留）。 */
-    @Column
+    /**
+     * 在哪个 PF 账户上跑。
+     *
+     * <p><strong>NOT NULL 且不加外键</strong>：账户被删掉之后这里仍然保留原来那个 id，
+     * 运行摘要原样保留。
+     */
+    @Column(nullable = false)
     private String accountId;
 
     /** NULL = 老式的随机演示机器人（不下真单，只演示操作）。 */

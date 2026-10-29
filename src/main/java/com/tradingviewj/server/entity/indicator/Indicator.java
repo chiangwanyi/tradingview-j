@@ -32,8 +32,13 @@ import lombok.Setter;
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class Indicator extends BaseEntity {
 
-    /** 属于哪个账户；NULL = 所在账户已被删除（数据本身保留）。 */
-    @Column
+    /**
+     * 属于哪个账户。
+     *
+     * <p><strong>NOT NULL 且不加外键</strong>：账户被删掉之后这里仍然保留原来那个 id
+     * （指向一个已经不存在的账户），不置空、不改写，数据本身原样保留。
+     */
+    @Column(nullable = false)
     private String accountId;
 
     @Setter

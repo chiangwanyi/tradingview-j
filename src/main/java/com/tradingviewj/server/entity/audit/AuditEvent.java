@@ -37,14 +37,18 @@ import lombok.NoArgsConstructor;
 public class AuditEvent extends BaseEntity {
 
     /**
-     * 属于哪个 PF 账户；NULL = 全局操作（例如新建标的）。
+     * 属于哪个 PF 账户。<strong>必有值</strong>，没有「不属于任何账户的操作」。
      *
-     * <p><strong>这一列故意不加外键</strong>，和别的表不一样：账户被删之后这里仍然保留
-     * 原来的 id。理由是「只追加」—— 外键的 {@code ON DELETE SET NULL} 本质上是一次
-     * UPDATE，会改写一条审计流水，而审计流水的全部价值就在于它没被改过。
-     * 指向一个已经不存在的账户 id 不丢任何信息，反而记住了「当初算在谁头上」。
+     * <p><strong>故意不加外键</strong>，和别的表不一样：账户被删之后这里仍然保留
+     * 原来的 id。理由是「只追加」—— 任何 {@code ON DELETE} 动作都是一次改写
+     * （{@code SET NULL} 改归属、{@code CASCADE} 删行），而审计流水的全部价值
+     * 就在于它没被改过。指向一个已经不存在的账户 id 不丢任何信息，
+     * 反而记住了「当初算在谁头上」。
+     *
+     * <p>代价：原本用 NULL 表达的「全局操作」（例如新建标的）现在必须有归属。
+     * 需要这类操作时，应当新建一个专门的账户来承载，而不是把这一列放开。
      */
-    @Column
+    @Column(nullable = false)
     private String accountId;
 
     /** 账户内的自增序号，从 0 起。断档就说明某次广播没落库。 */
@@ -65,7 +69,16 @@ public class AuditEvent extends BaseEntity {
     @Column
     private String payloadJson;
 
+    /**
+     * 记一条操作流水。
+     *
+     * @param accountId 算在哪个 PF 账户头上，<strong>不能为空</strong>
+     * @throws IllegalArgumentException 没给账户
+     */
     public static AuditEvent of(String accountId, int seq, Actor actor, ReplayAction action, String payloadJson) {
+        if (accountId == null || accountId.isBlank()) {
+            throw new IllegalArgumentException("操作记录必须归属一个 PF 账户，收到: " + accountId);
+        }
         AuditEvent event = new AuditEvent();
         event.accountId = accountId;
         event.seq = seq;

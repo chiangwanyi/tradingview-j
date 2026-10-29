@@ -1,6 +1,7 @@
 package com.tradingviewj.server.entity.propfirm;
 
 import com.tradingviewj.server.entity.BaseEntity;
+import jakarta.persistence.Column;
 import jakarta.persistence.Embedded;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Table;
@@ -27,6 +28,7 @@ import lombok.Setter;
 public class PropFirmTemplate extends BaseEntity {
 
     @Setter
+    @Column(nullable = false)
     private String name;
 
     @Setter
@@ -37,6 +39,9 @@ public class PropFirmTemplate extends BaseEntity {
     private PropFirmRules rules;
 
     public static PropFirmTemplate define(String name, String description, PropFirmRules rules) {
+        if (name == null || name.isBlank()) {
+            throw new IllegalArgumentException("模板必须有名字，收到: " + name);
+        }
         PropFirmTemplate template = new PropFirmTemplate();
         template.name = name;
         template.description = description;

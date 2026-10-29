@@ -46,7 +46,6 @@ import java.nio.file.Files;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -57,10 +56,10 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  *   <li><strong>必须先有账户才能操作</strong> —— 没有账户、账户被删、账户已结束，
  *       都拿不到「可以往上挂操作」的账户。</li>
  *   <li><strong>删账户不删数据</strong> —— 图形、挂单、成交、语音、操作记录、机器人、
- *       交易记录、指标一条都不能少；外键只把归属列置空。</li>
+ *       交易记录、指标一条都不能少，{@code account_id} 也原样保留。</li>
  * </ol>
  *
- * <p>为什么必须真连库：这条规则的实现依赖于 {@code ON DELETE SET NULL} 这个数据库行为，
+ * <p>为什么必须真连库：删账户走的是 JPA delete + 子表没有外键这一整套真实行为，
  * 用 mock 测等于什么都没测 —— mock 永远会返回「没删」。
  */
 @SpringBootTest
@@ -139,21 +138,21 @@ class PropFirmAccountLifecycleTest {
         // 账户没了
         assertTrue(accounts.findById(accountId).isEmpty(), "账户这一行应该被删掉");
 
-        // 但账上的东西一件都不少，只是不再挂在任何账户上
-        assertNull(drawings.findById(drawing.getId()).orElseThrow().getAccountId(), "图形必须保留，只是失去归属");
-        assertNull(indicators.findById(indicator.getId()).orElseThrow().getAccountId());
-        assertNull(orders.findById(order.getId()).orElseThrow().getAccountId());
-        assertNull(trades.findById(trade.getId()).orElseThrow().getAccountId());
-        assertNull(audioClips.findById(clip.getId()).orElseThrow().getAccountId());
-        assertNull(bots.findById(bot.getId()).orElseThrow().getAccountId());
+        // 但账上的东西一件都不少，而且仍然记着原来那个 account_id（不置空、不改写）
+        assertEquals(accountId, drawings.findById(drawing.getId()).orElseThrow().getAccountId(),
+                "图形必须保留，并且保留原账户 id");
+        assertEquals(accountId, indicators.findById(indicator.getId()).orElseThrow().getAccountId());
+        assertEquals(accountId, orders.findById(order.getId()).orElseThrow().getAccountId());
+        assertEquals(accountId, trades.findById(trade.getId()).orElseThrow().getAccountId());
+        assertEquals(accountId, audioClips.findById(clip.getId()).orElseThrow().getAccountId());
+        assertEquals(accountId, bots.findById(bot.getId()).orElseThrow().getAccountId());
 
         TradeRecord keptRecord = records.findById(record.getId()).orElseThrow();
-        assertNull(keptRecord.getAccountId(), "交易记录必须保留，只是失去归属");
+        assertEquals(accountId, keptRecord.getAccountId(), "交易记录必须保留，并且保留原账户 id");
         assertEquals(new BigDecimal("20"), keptRecord.getRealizedPnl(), "记录内容一位都不能变");
         assertEquals(1, steps.findByRecordIdOrderByStepNoAsc(record.getId()).size(), "步骤属于记录，记录还在步骤就在");
 
-        // 审计流水相反：它保留原账户 id —— ON DELETE SET NULL 本质上是一次 UPDATE，
-        // 而一条被改过的审计流水就不叫审计流水了
+        // 操作记录同样保留原账户 id —— 它是 append-only 的流水，任何改写都等于伪造
         assertEquals(1, auditEvents.findByAccountIdOrderBySeqAsc(accountId).size(),
                 "操作记录必须保留原账户 id");
 

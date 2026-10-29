@@ -129,22 +129,24 @@ PropFirmTemplate ──1:N（规则副本）──> PropFirmAccount
 Strategy ──1:N──> StrategyBot
 ```
 
-外键写在 `schema.sql` 的 `REFERENCES` 上，由 SQLite 自己守（连接串里 `PRAGMA foreign_keys = ON`）。
+真正需要「数据库守着」的那几处外键（图形 → 斐波那契线、记录 → 步骤/标签、账户 → 标的）
+写在 `schema.sql` 的 `REFERENCES` 上，由 SQLite 自己守（连接串里 `PRAGMA foreign_keys = ON`）。
+`account_id` 这一列是例外，故意不加外键，理由见下一节。
 不在实体上写 `@ManyToOne` 的理由：聚合之间的引用本来就只是「知道对方 id」，
 用 ORM 关联换来的是一次懒加载异常和一堆 fetch join。
 
 ### 账户只是统计点：删账户不删数据
 
 原来是「会话」把图形、挂单、成交、语音、操作记录、指标、机器人、交易记录收在一起（`ON DELETE CASCADE`）。
-现在**会话这个概念整个不存在了**，归属改成 `accountId`，而且外键全部是 **`ON DELETE SET NULL`**：
+现在**会话这个概念整个不存在了**，归属改成 `accountId`，这一列 **`NOT NULL` 但不加外键**：
 
 | 被删的东西 | 会发生什么 |
 | --- | --- |
-| PF 账户（`prop_firm_account` 一行） | 只删这一行。另外七张表（指标 / 图形 / 语音 / 交易记录 / 挂单 / 成交 / 机器人）的 `account_id` 被置成 NULL，**一行子数据都不删** |
+| PF 账户（`prop_firm_account` 一行） | 只删这一行。另外七张表（指标 / 图形 / 语音 / 交易记录 / 挂单 / 成交 / 机器人）的 `account_id` **原样保留**（指向一个已经不存在的账户），**一行子数据都不删、一个字节都不改** |
 | 图形（`drawing`） | 只能由用户自己删；删图形会带走它的斐波那契水平线（真级联，那是图形的一部分） |
 | 交易记录（`trade_record`） | 只能由用户自己删；删记录会带走它的步骤和标签（真级联） |
-| 操作记录（`audit_event`） | **不走外键**，账户删了仍保留原 `account_id`。`SET NULL` 本质是一次 UPDATE，改过就不叫审计了 |
-| 挂单 / 成交 / 语音 / 指标 / 机器人 | 保留，`account_id` 置空 |
+| 操作记录（`audit_event`） | 不加外键，账户删了仍保留原 `account_id`。任何改写都等于伪造审计 |
+| 挂单 / 成交 / 语音 / 指标 / 机器人 | 保留，`account_id` 原样留着 |
 
 两条连锁规矩：
 
@@ -152,9 +154,11 @@ Strategy ──1:N──> StrategyBot
    `AudioClip.record` / `Indicator.of` / `StrategyBot.start` / `TradeRecord.open`）拿不到账户 id 直接抛
    `IllegalArgumentException`；`PropFirmAccountService#requireActive` 再拦「账户不存在 / 已经不是 ACTIVE」。
    只有 `AuditEvent.of` 允许空账户 —— 流水账里有全局操作。
-2. **列上的 `account_id` 必须可空。** `NOT NULL` 和 `ON DELETE SET NULL` 不可能同时成立，
-   所以「必须属于某个账户」这条规则只能落在 Java 侧。这是这次改造最大的一个取舍，
-   换来的是「删账户绝不带走用户数据」这条硬保证。
+2. **`account_id` 是 `NOT NULL` 且不加外键。** 三种级联策略都不合适：`SET NULL` 会把归属
+   抹掉、`CASCADE` 会连带删数据、`RESTRICT` 会让账户一旦有数据就永远删不掉。
+   所以「必须属于某个账户」这条规则落在 Java 侧（各实体工厂方法 +
+   `PropFirmAccountService#requireActive`），数据库不对这一列设引用约束。
+   换来的是「删账户绝不带走用户数据、也不篡改历史上归属」这条硬保证。
 
 ### 五条贯穿全局的约定
 

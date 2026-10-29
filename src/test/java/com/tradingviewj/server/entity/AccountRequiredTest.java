@@ -29,8 +29,9 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
  *   <li>服务层（{@code PropFirmAccountService#requireActive}）拦「给了一个不存在 / 已结束的账户」。</li>
  * </ul>
  *
- * <p>为什么列上不写 {@code NOT NULL}：账户可以被删除，而删除只允许把归属置空、不允许带走数据，
- * 所以 {@code account_id} 必须可空。可空的是<strong>历史残留</strong>，不是<strong>新建</strong>。
+ * <p>{@code account_id} 在库里是 {@code NOT NULL}，所以这一层拦的不是「数据库能不能存 null」，
+ * 而是「造对象时有没有给账户」—— 后者在编译期完全看不出来，只能靠工厂方法当场拦。
+ * 删账户不会把归属置空（保留原 id），所以「列上非空」和「删账户不删数据」并不冲突。
  */
 class AccountRequiredTest {
 
@@ -65,10 +66,13 @@ class AccountRequiredTest {
         assertThrows(IllegalArgumentException.class,
                 () -> TradeRecord.open(null, "2026-10-16 12:00", Actor.HUMAN, "jiang"));
 
+        // 操作记录也没有例外：审计流水同样必须归属一个账户
+        assertThrows(IllegalArgumentException.class,
+                () -> AuditEvent.of(null, 0, Actor.HUMAN, ReplayAction.BAR_ADVANCED, "{}"));
+
         // 有账户就能造出来，说明拦截的是「空」而不是「所有」
         assertDoesNotThrow(() -> Drawing.of(ACCOUNT, Drawing.Kind.TREND, a, a, "jiang"));
         assertDoesNotThrow(() -> TradeRecord.open(ACCOUNT, "2026-10-16 12:00", Actor.HUMAN, "jiang"));
-        // 审计流水是 append-only 的流水账，允许没有账户（全局操作）
-        assertDoesNotThrow(() -> AuditEvent.of(null, 0, Actor.HUMAN, ReplayAction.BAR_ADVANCED, "{}"));
+        assertDoesNotThrow(() -> AuditEvent.of(ACCOUNT, 0, Actor.HUMAN, ReplayAction.BAR_ADVANCED, "{}"));
     }
 }

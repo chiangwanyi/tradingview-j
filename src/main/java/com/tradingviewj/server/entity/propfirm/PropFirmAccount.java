@@ -27,14 +27,14 @@ import java.time.Instant;
  * <p><strong>它是一个「临时的统计点」，不是一个「容器」</strong>：统计考核期内的一切操作，
  * 但<strong>不拥有</strong>这些操作。删除账户只删这一行，下面的成交、交易记录、语音、
  * 操作记录、图形<strong>一条都不会被级联删除</strong>——它们与账户在数据归属上相互独立，
- * 只在「算在谁头上」这一点上引用账户。账户删掉之后，那些行的 {@code account_id} 被数据库
- * 置为 NULL（外键 {@code ON DELETE SET NULL}），数据本身原样保留，可以由用户手动删除，
- * 也可以将来重新挂到另一个账户上。
+ * 只在「算在谁头上」这一点上引用账户。账户删掉之后，那些行的 {@code account_id}
+ * <strong>原样保留</strong>（指向一个已经不存在的账户），数据本身一行不少，
+ * 可以由用户手动删除，也可以将来重新挂到另一个账户上。
  *
- * <p>⚠️ 由此产生一个<strong>必须知道的边界</strong>：表上的 {@code account_id} 是可空的
- * （只能是「账户被删了」这一种情况造成）。「创建时必须属于某个账户」这条规则由
- * 领域方法（各实体的工厂方法 + {@code service.PropFirmAccountService#requireActive}）把关，
- * 不由列上的 {@code NOT NULL} 把关 —— 因为两者不能同时成立。
+ * <p>{@code account_id} 因此是 <strong>NOT NULL 且不加外键</strong>：
+ * 三种级联策略都不合适 —— {@code SET NULL} 会把归属抹掉、{@code CASCADE} 会连带删数据、
+ * {@code RESTRICT} 会让账户一旦有数据就永远删不掉。「创建时必须属于某个账户」这条规则
+ * 只由领域方法（各实体的工厂方法 + {@code service.PropFirmAccountService#requireActive}）把关。
  *
  * <p>{@link #symbolId} 是<strong>账户开在哪个标的上</strong>。会话被移除之后，它是
  * 「这块盘面是哪个品种」的唯一落点：图形和成交只存 K 线时间与价格，没有标的就找不到
@@ -60,14 +60,20 @@ import java.time.Instant;
 public class PropFirmAccount extends BaseEntity {
 
     @Setter
+    @Column(nullable = false)
     private String name;
 
     /** 这个账户做的是哪个标的（外键指向 {@code symbol.id}），图形和成交靠它找到时间轴。 */
     @Column(nullable = false)
     private String symbolId;
 
-    /** 从哪套模板开的（只用于追溯，模板删了就置 NULL）。 */
-    @Column
+    /**
+     * 从哪套模板开的（只用于追溯）。
+     *
+     * <p><strong>NOT NULL 且不加外键</strong>：模板被删掉之后这里仍然保留原来那个 id，
+     * 不置空 —— 账户上真正生效的是 {@link #rules} 那份快照，这一列只是用来回答「当初从哪套开的」。
+     */
+    @Column(nullable = false)
     private String templateId;
 
     /** 规则快照。 */
@@ -107,6 +113,9 @@ public class PropFirmAccount extends BaseEntity {
     public static PropFirmAccount open(PropFirmTemplate template, String name, String symbolId) {
         if (symbolId == null || symbolId.isBlank()) {
             throw new IllegalArgumentException("账户必须绑定一个标的，收到: " + symbolId);
+        }
+        if (name == null || name.isBlank()) {
+            throw new IllegalArgumentException("账户必须有名字，收到: " + name);
         }
         PropFirmAccount account = new PropFirmAccount();
         account.name = name;

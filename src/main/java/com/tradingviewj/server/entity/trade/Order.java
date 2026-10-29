@@ -35,11 +35,12 @@ import java.math.BigDecimal;
 public class Order extends BaseEntity {
 
     /**
-     * 挂在哪个 PF 账户的盘面上；NULL = 所在账户已被删除（挂单本身保留）。
+     * 挂在哪个 PF 账户的盘面上。
      *
-     * <p>创建时必须有账户，见 {@link #place}。
+     * <p><strong>NOT NULL 且不加外键</strong>：账户被删掉之后这里仍然保留原来那个 id，
+     * 挂单本身原样保留。创建时必须有账户，见 {@link #place}。
      */
-    @Column
+    @Column(nullable = false)
     private String accountId;
 
     @Column(nullable = false)
