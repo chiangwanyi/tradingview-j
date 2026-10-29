@@ -130,7 +130,7 @@ CREATE TABLE IF NOT EXISTS audio_clip (
     file_name   TEXT NOT NULL,       -- 相对路径，不存绝对路径
     duration_ms INTEGER NOT NULL,
     size_bytes  INTEGER NOT NULL,
-    recorded_by TEXT,
+    actor       TEXT,                -- human / bot / system
     created_at  INTEGER NOT NULL,
     updated_at  INTEGER NOT NULL
 );
@@ -142,7 +142,7 @@ CREATE TABLE IF NOT EXISTS audit_event (
     session_id   TEXT REFERENCES replay_session (id) ON DELETE CASCADE,
     seq          INTEGER NOT NULL,
     actor        TEXT NOT NULL,      -- human / bot / system
-    action       TEXT NOT NULL,      -- bar_advanced / order_placed / ...
+    action       TEXT NOT NULL,      -- bar_advanced / order_placed / ...（见 ReplayAction）
     payload_json TEXT,               -- 原始广播负载，原样留存
     created_at   INTEGER NOT NULL,
     updated_at   INTEGER NOT NULL
@@ -235,8 +235,8 @@ CREATE TABLE IF NOT EXISTS trade_record (
     bars_held      INTEGER NOT NULL DEFAULT 0,
     fill_count     INTEGER NOT NULL DEFAULT 0,
     closed         INTEGER NOT NULL DEFAULT 0,
-    source         TEXT NOT NULL,    -- HUMAN / BOT
-    source_name    TEXT,
+    actor          TEXT NOT NULL,    -- human / bot（SYSTEM 不是一笔交易的来源）
+    actor_name     TEXT,
     ended_at       INTEGER,
     created_at     INTEGER NOT NULL,
     updated_at     INTEGER NOT NULL
@@ -249,10 +249,10 @@ CREATE TABLE IF NOT EXISTS trade_record_step (
     id            TEXT PRIMARY KEY,
     record_id     TEXT NOT NULL REFERENCES trade_record (id) ON DELETE CASCADE,
     step_no       INTEGER NOT NULL,  -- 0 = 起点（开仓前那一屏）
-    kind          TEXT NOT NULL,     -- base / 动作名 / recording_audio
+    kind          TEXT NOT NULL,     -- base / 动作名 / recording_audio（见 ReplayAction）
     bar_time      TEXT NOT NULL,
     cursor_index  INTEGER NOT NULL,
-    actor         TEXT,
+    actor         TEXT,              -- human / bot / system
     audio_clip_id TEXT REFERENCES audio_clip (id) ON DELETE SET NULL,
     payload_json  TEXT,
     created_at    INTEGER NOT NULL,

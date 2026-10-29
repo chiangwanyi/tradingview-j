@@ -1,6 +1,8 @@
 package com.tradingviewj.server.entity.audit;
 
+import com.tradingviewj.server.enums.Actor;
 import com.tradingviewj.server.entity.BaseEntity;
+import com.tradingviewj.server.enums.ReplayAction;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Table;
@@ -20,12 +22,10 @@ import lombok.NoArgsConstructor;
  * <p>{@link #payloadJson} 存原始广播负载的 JSON 文本，而不是像 Go 版那样用
  * {@code any}（Java 里是 {@code Object}）。用 {@code Object} 的代价是：反序列化时
  * 不知道该还原成哪个类，只能全存成 {@code Map}，读的时候到处强转、到处判空。
- * 存字符串 + 一个 {@link #action} 判别字段，读的一方按 action 自己挑 DTO 解析，
- * 类型是明确的。
+ * 存字符串 + 一个类型化的 {@link #action}，读的一方按 action 自己挑 DTO 解析。
  *
- * <p>{@link #action} 是 String 而不是枚举：动作类型会持续增加（每加一个操作就多一种），
- * 用枚举意味着加一个操作要改一次实体 + 一次 DDL。用 String + 常量，
- * 老数据永远可读，新动作随时能加。
+ * <p>两个枚举字段（{@link #actor} / {@link #action}）在库里存的是<strong>小写线值</strong>
+ * （{@code "human"} / {@code "bar_advanced"}），不是 Java 常量名 —— 见各自的枚举说明。
  */
 @Getter
 @Entity
@@ -41,19 +41,19 @@ public class AuditEvent extends BaseEntity {
     @Column(nullable = false)
     private int seq;
 
-    /** 谁做的：human / bot / system。 */
+    /** 谁做的。 */
     @Column(nullable = false)
-    private String actor;
+    private Actor actor;
 
-    /** 做了什么，例如 {@code bar_advanced} / {@code order_placed}。 */
+    /** 做了什么。 */
     @Column(nullable = false)
-    private String action;
+    private ReplayAction action;
 
     /** 这次操作的原始负载（JSON 文本）。 */
     @Column
     private String payloadJson;
 
-    public static AuditEvent of(String sessionId, int seq, String actor, String action, String payloadJson) {
+    public static AuditEvent of(String sessionId, int seq, Actor actor, ReplayAction action, String payloadJson) {
         AuditEvent event = new AuditEvent();
         event.sessionId = sessionId;
         event.seq = seq;

@@ -1,5 +1,7 @@
 package com.tradingviewj.server.entity;
 
+import com.tradingviewj.server.enums.Actor;
+import com.tradingviewj.server.enums.ReplayAction;
 import com.tradingviewj.server.entity.audit.AuditEvent;
 import com.tradingviewj.server.entity.drawing.Anchor;
 import com.tradingviewj.server.entity.drawing.Drawing;
@@ -37,6 +39,7 @@ import com.tradingviewj.server.repository.TradeRepository;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 
@@ -92,6 +95,7 @@ class PersistenceSmokeTest {
     @Autowired private TradeRecordStepRepository steps;
     @Autowired private PropFirmTemplateRepository templates;
     @Autowired private PropFirmAccountRepository accounts;
+    @Autowired private JdbcTemplate jdbc;
 
     @Test
     void everyAggregateRoundTrips() {
@@ -147,19 +151,26 @@ class PersistenceSmokeTest {
 
         // ---- 语音 ----
         audioClips.save(AudioClip.record(session.getId(), "2026-10-16 12:00", 0,
-                session.getId() + "/voice-0.wav", 3200, 65536, "jiang"));
+                session.getId() + "/voice-0.wav", 3200, 65536, Actor.HUMAN));
         assertEquals(1, audioClips.countBySessionIdAndBarTime(session.getId(), "2026-10-16 12:00"));
 
         // ---- 操作记录：会话内 seq 连续 ----
-        auditEvents.save(AuditEvent.of(session.getId(), 0, "human", "bar_advanced", "{\"cursor\":1}"));
-        auditEvents.save(AuditEvent.of(session.getId(), 1, "human", "order_placed", "{}"));
+        auditEvents.save(AuditEvent.of(session.getId(), 0, Actor.HUMAN, ReplayAction.BAR_ADVANCED, "{\"cursor\":1}"));
+        auditEvents.save(AuditEvent.of(session.getId(), 1, Actor.HUMAN, ReplayAction.ORDER_PLACED, "{}"));
         assertEquals(1, auditEvents.findTopBySessionIdOrderBySeqDesc(session.getId()).orElseThrow().getSeq());
+
+        // 枚举字段落库的是**小写线值**，不是 Java 常量名 —— 这一条是协议兼容性的全部依据，
+        // 谁把 @Convert 换成 @Enumerated，库里就会变成 BAR_ADVANCED，回放当场挑不到分支。
+        assertEquals(ReplayAction.ORDER_PLACED,
+                auditEvents.findTopBySessionIdOrderBySeqDesc(session.getId()).orElseThrow().getAction());
+        assertEquals("bar_advanced", jdbc.queryForObject(
+                "select action from audit_event where session_id = ? and seq = 0", String.class, session.getId()));
 
         // ---- 策略 + 机器人 ----
         Strategy strategy = strategies.save(Strategy.register("caveman", "Caveman", "野人", "{}"));
         StrategyBot bot = bots.save(StrategyBot.start(session.getId(), strategy.getId(),
                 new BigDecimal("1"), 300));
-        bot.stop(StrategyBot.Status.FINISHED, "数据到头", 4);
+        bot.stop(StrategyBot.Status.FINISHED, StrategyBot.StopReason.DATA_END, 4);
         bots.save(bot);
         assertEquals(4, bots.findBySessionIdOrderByStartedAtDesc(session.getId()).get(0).getEntryCount());
 
@@ -182,17 +193,17 @@ class PersistenceSmokeTest {
 
         // ---- 交易记录 + 步骤 + 标签 ----
         TradeRecord record = TradeRecord.open(session.getId(), "2026-10-16 12:00",
-                TradeRecord.Source.HUMAN, "jiang");
+                Actor.HUMAN, "jiang");
         record.setAccountId(account.getId());
         record.openPosition(Side.BUY, "2026-10-16 12:05", new BigDecimal("21250"), new BigDecimal("1"));
         record.closeAt("2026-10-16 13:00", new BigDecimal("21260"), new BigDecimal("20"));
         record.setTags(List.of(new RecordTag("追单", "#ef4444")));
         records.save(record);
 
-        steps.save(TradeRecordStep.of(record.getId(), 0, "base", "2026-10-16 12:00", 0,
-                "human", null, "{\"events\":[]}"));
-        steps.save(TradeRecordStep.of(record.getId(), 1, "order_filled", "2026-10-16 12:05", 1,
-                "human", null, "{\"events\":[]}"));
+        steps.save(TradeRecordStep.of(record.getId(), 0, ReplayAction.BASE, "2026-10-16 12:00", 0,
+                Actor.HUMAN, null, "{\"events\":[]}"));
+        steps.save(TradeRecordStep.of(record.getId(), 1, ReplayAction.ORDER_FILLED, "2026-10-16 12:05", 1,
+                Actor.HUMAN, null, "{\"events\":[]}"));
 
         TradeRecord reloadedRecord = records.findById(record.getId()).orElseThrow();
         assertTrue(reloadedRecord.isClosed());

@@ -125,6 +125,43 @@ PropFirmTemplate ──1:N──> PropFirmAccount ──1:N──> TradeRecord
 5. **主键是 UUID 字符串。** 对象先有 id 再落库（图形画下去那一刻 id 就广播出去了），
    合并/导入不撞号。`Symbol` 除外，它的主键就是标的代码。
 
+## 枚举清单
+
+**凡是取值域封闭的东西一律是枚举，不写成 `String`。** 当前 13 个：
+
+| 枚举 | 位置 | 取值 | 落库值 |
+| --- | --- | --- | --- |
+| `Actor` | `entity/`（4 处共用） | HUMAN / BOT / SYSTEM | 小写线值 `human` `bot` `system` |
+| `ReplayAction` | `entity/`（2 处共用） | 19 个动作 + BASE | Go 协议原串 `bar_advanced` … |
+| `Side` | `entity.trade` | BUY / SELL | `BUY` `SELL` |
+| `Order.Type` | 嵌套 | LIMIT / STOP / MARKET | 常量名 |
+| `Order.Status` | 嵌套 | OPEN / FILLED / CANCELLED | 常量名 |
+| `Drawing.Kind` | 嵌套 | TREND / RAY / RECT / ARROW / FIB | 常量名 |
+| `DrawingStyle.Dash` | 嵌套 | SOLID / DASHED | 常量名 |
+| `Indicator.Type` | 嵌套 | EMA / SMA / RMA / WMA / ATR | 常量名 |
+| `Indicator.Source` | 嵌套 | OPEN / HIGH / LOW / CLOSE / HL2 | 常量名 |
+| `StrategyBot.Status` | 嵌套 | RUNNING / STOPPED / FINISHED / FAILED | 常量名 |
+| `StrategyBot.StopReason` | 嵌套 | MANUAL / DATA_END / SESSION_CLOSED / ERROR | 常量名 |
+| `PropFirmRules.DrawdownType` | 嵌套 | STATIC / TRAILING_INTRADAY / TRAILING_EOD | 常量名 |
+| `PropFirmAccount.Status` | 嵌套 | ACTIVE / PASSED / FAILED | 常量名 |
+
+三条约定：
+
+1. **只有两个枚举需要保留「线值」（落库/上协议的字符串）**：`Actor` 和 `ReplayAction`。
+   Go 那边的 `by`、`action`、`step.kind` 一直用 `"human"` / `"bar_advanced"` 这种小写，
+   而 Java 常量名是大写。所以这两个枚举带 `wire()` 字段，配 `ActorConverter` /
+   `ReplayActionConverter`（`autoApply = true`）在边界上转，**库里存的是原串**。
+   `PersistenceSmokeTest` 直接查 `select action from audit_event` 断言拿到的是
+   `bar_advanced` —— 谁把 converter 换成 `@Enumerated(STRING)`，测试当场红。
+2. **其余枚举直接用 `@Enumerated(EnumType.STRING)`**，存常量名。它们不出现在协议里，
+   没有兼容负担。（注意 `@Enumerated` 和 `@Convert` 不能同时用在同一个字段上。）
+3. **`TradeRecord` 没有自己的来源枚举**：它的「这些操作是谁做的」就是 `Actor`，
+   Go 里那两个看起来不同的概念（`CreatedBy` = 谁开的盘面 / `Source` = 谁动的）在
+   业务上问的是后一个问题。`SYSTEM` 不是一笔交易的来源，由 `TradeRecord.open()` 拦掉。
+
+自由文本的取值域一个都没留：`stopReason` 曾经是 `String`，
+第一次做筛选就会写成「数据到头 / 跑到末尾 / EOF」三种口径，所以它是枚举。
+
 ## 测试
 
 | 测试 | 钉住什么 |

@@ -1,5 +1,6 @@
 package com.tradingviewj.server.entity.voice;
 
+import com.tradingviewj.server.enums.Actor;
 import com.tradingviewj.server.entity.BaseEntity;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -50,11 +51,12 @@ public class AudioClip extends BaseEntity {
     @Column(nullable = false)
     private long sizeBytes;
 
-    /** 谁录的：human / bot / system。多人共用一块盘面时要能看出来。 */
-    private String recordedBy;
+    /** 谁录的。多人共用一块盘面时要能看出来。 */
+    @Column
+    private Actor actor;
 
     public static AudioClip record(String sessionId, String barTime, int seq, String fileName,
-                                   int durationMs, long sizeBytes, String recordedBy) {
+                                   int durationMs, long sizeBytes, Actor actor) {
         AudioClip clip = new AudioClip();
         clip.sessionId = sessionId;
         clip.barTime = barTime;
@@ -62,7 +64,7 @@ public class AudioClip extends BaseEntity {
         clip.fileName = fileName;
         clip.durationMs = durationMs;
         clip.sizeBytes = sizeBytes;
-        clip.recordedBy = recordedBy;
+        clip.actor = actor;
         return clip;
     }
 }

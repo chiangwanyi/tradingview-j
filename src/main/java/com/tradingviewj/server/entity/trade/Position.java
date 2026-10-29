@@ -16,6 +16,13 @@ public record Position(BigDecimal quantity, BigDecimal averagePrice) {
 
     public static final Position FLAT = new Position(BigDecimal.ZERO, BigDecimal.ZERO);
 
+    /**
+     * 持仓方向。
+     *
+     * <p>空仓返回 {@code null}。没有为「多 / 空 / 平」再造一个 {@code PositionSide} 枚举：
+     * 那会是整个世界里的第三个方向枚举（前两个是 {@link Side} 和订单状态），
+     * 三者互相映射只会制造一堆转换代码。调用方拿 {@link #isFlat()} 判空仓更直接。
+     */
     public Side side() {
         int sign = quantity.signum();
         if (sign > 0) {

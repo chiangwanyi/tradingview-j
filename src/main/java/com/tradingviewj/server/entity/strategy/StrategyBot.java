@@ -62,8 +62,9 @@ public class StrategyBot extends BaseEntity {
     @Column(nullable = false)
     private int entryCount;
 
-    /** 停止原因（数据到头 / 手动 / 异常信息）。 */
-    private String stopReason;
+    /** 停止原因。 */
+    @Enumerated(EnumType.STRING)
+    private StopReason stopReason;
 
     public static StrategyBot start(String sessionId, String strategyId, BigDecimal quantity, int intervalMs) {
         StrategyBot bot = new StrategyBot();
@@ -76,8 +77,8 @@ public class StrategyBot extends BaseEntity {
         return bot;
     }
 
-    /** 正常收工（数据跑完 / 用户点停）。重复调用无副作用。 */
-    public void stop(Status finalStatus, String reason, int entryCount) {
+    /** 正常收工。重复调用无副作用（第一次之后状态已经不在 RUNNING 了）。 */
+    public void stop(Status finalStatus, StopReason reason, int entryCount) {
         if (status != Status.RUNNING) {
             return;
         }
@@ -89,5 +90,26 @@ public class StrategyBot extends BaseEntity {
 
     public enum Status {
         RUNNING, STOPPED, FINISHED, FAILED
+    }
+
+    /**
+     * 为什么停。
+     *
+     * <p>用枚举而不是自由文本：这一列将来要用来做筛选和统计（「数据跑到头的有几次、
+     * 报错的有几次」），自由文本第一天就会写成「数据到头」「跑到末尾了」「EOF」三种。
+     *
+     * <p>注意它和 {@link Status} 是<strong>两个维度</strong>：Status 是「怎么结束的」，
+     * StopReason 是「因为什么结束的」。一次 {@code FINISHED} 可能是跑完数据，
+     * 也可能是用户点停前刚好平掉了最后一仓 —— 只看 Status 分不出来。
+     */
+    public enum StopReason {
+        /** 用户点了停止。 */
+        MANUAL,
+        /** 数据跑到末尾（没有更多 K 线了）。 */
+        DATA_END,
+        /** 盘面被删 / 会话关闭，机器人被动停。 */
+        SESSION_CLOSED,
+        /** 撮合或下单过程抛了异常。 */
+        ERROR
     }
 }

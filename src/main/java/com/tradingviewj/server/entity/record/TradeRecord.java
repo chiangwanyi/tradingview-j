@@ -1,5 +1,6 @@
 package com.tradingviewj.server.entity.record;
 
+import com.tradingviewj.server.enums.Actor;
 import com.tradingviewj.server.entity.BaseEntity;
 import com.tradingviewj.server.entity.trade.Side;
 import jakarta.persistence.CollectionTable;
@@ -119,14 +120,19 @@ public class TradeRecord extends BaseEntity {
     @Column(nullable = false)
     private boolean closed;
 
-    /** 这些操作是谁做的。在<strong>开仓那一刻</strong>就定下来存好 —— 事后按 createdBy 猜不准。 */
+    /**
+     * 这些操作是谁做的。在<strong>开仓那一刻</strong>就定下来存好 —— 事后按 createdBy 猜不准：
+     * 真人开的盘面被机器人接管之后开出来的那一笔，来源就是机器人。
+     *
+     * <p>取值只可能是 {@link Actor#HUMAN} 或 {@link Actor#BOT}，这一点由
+     * {@link #open} 把关（{@code SYSTEM} 用来描述系统自动收尾，不是一笔交易的来源）。
+     */
     @Column(nullable = false)
-    @Enumerated(EnumType.STRING)
-    private Source source;
+    private Actor actor;
 
     /** 给人看的细分：真人是操作者名字，机器人是策略名。改名不该让筛选分组裂开。 */
     @Setter
-    private String sourceName;
+    private String actorName;
 
     @Setter
     private Instant endedAt;
@@ -138,12 +144,22 @@ public class TradeRecord extends BaseEntity {
     @OrderColumn(name = "tag_index")
     private List<RecordTag> tags = new ArrayList<>();
 
-    public static TradeRecord open(String sessionId, String anchorBarTime, Source source, String sourceName) {
+    /**
+     * 开一条记录。
+     *
+     * @param actor 只能是 {@link Actor#HUMAN} 或 {@link Actor#BOT}
+     * @throws IllegalArgumentException 传了 {@code SYSTEM}（它不是一笔交易的来源，而是
+     *                                  「系统自己动的手」这类操作的操作者）
+     */
+    public static TradeRecord open(String sessionId, String anchorBarTime, Actor actor, String actorName) {
+        if (actor != Actor.HUMAN && actor != Actor.BOT) {
+            throw new IllegalArgumentException("交易记录的来源只能是 HUMAN 或 BOT，收到: " + actor);
+        }
         TradeRecord record = new TradeRecord();
         record.sessionId = sessionId;
         record.anchorBarTime = anchorBarTime;
-        record.source = source;
-        record.sourceName = sourceName;
+        record.actor = actor;
+        record.actorName = actorName;
         return record;
     }
 
@@ -163,13 +179,5 @@ public class TradeRecord extends BaseEntity {
         this.realizedPnl = realizedPnl;
         this.closed = true;
         this.endedAt = Instant.now();
-    }
-
-    /** 操作来源。 */
-    public enum Source {
-        /** 真人手动下的单。 */
-        HUMAN,
-        /** 机器人（策略或随机演示）下的单。 */
-        BOT
     }
 }
