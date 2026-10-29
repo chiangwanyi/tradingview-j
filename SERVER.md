@@ -78,14 +78,13 @@ controller  →  service  →  repository  →  SQLite（./db/tradingview-j.db�
 **为什么业务事实进库**：图形、挂单、成交、语音、交易记录、PF 账户这些东西的**一致性要求**远高于
 K 线，而且需要按条件查（这个账户的记录、这条记录的步骤、这个账户还挂着的单）。CSV 做不到这些。
 
-## 实体设计（13 个业务概念，PF 账户是唯一聚合根）
+## 实体设计（12 个业务概念，PF 账户是唯一聚合根）
 
 | 概念 | 实体 | 包 | 关键设计 |
 | --- | --- | --- | --- |
 | 标的 | `Symbol` | `entity.market` | 主键就是标的代码；`folder` 是 CSV 目录的锚；tick/tickValue/commission 只存在这一处 |
 | PF 模板 | `PropFirmTemplate` | `entity.propfirm` | 只是价目表；不做版本化 |
 | PF 账户 | `PropFirmAccount` | `entity.propfirm` | **一切操作的唯一归属点**；规则是开账户那一刻的副本；删它不删任何子数据 |
-| 指标 | `Indicator` | `entity.indicator` | 只存**定义**（类型+周期+来源），值靠 OHLC 现算 |
 | 绘图图形 | `Drawing` | `entity.drawing` | 五种图形共用「起点+终点」；样式是**画下去那一刻的快照**；只有用户手动删除才消失 |
 | 下单 | `Order` | `entity.trade` | 没有「止损单/止盈单」类型；`ocoGroup` 保证同根不双触发 |
 | 交易 | `Trade` | `entity.trade` | **整个交易域的唯一真相**；持仓和盈亏由它重放得出 |
@@ -122,7 +121,7 @@ Java 侧就是 `symbol.commission` 一列，跟着标的一起读写。计费口
 
 ```
 Symbol ──1:N──> PropFirmAccount ──1:N──> Drawing / Order / Trade / AudioClip / AuditEvent
-                              │            / Indicator / StrategyBot / TradeRecord
+                              │            / StrategyBot / TradeRecord
                               └─1:N──> TradeRecord ──1:N──> TradeRecordStep
                                                      └── Trade（反向引用 trade_record_id）
 PropFirmTemplate ──1:N（规则副本）──> PropFirmAccount
@@ -137,21 +136,21 @@ Strategy ──1:N──> StrategyBot
 
 ### 账户只是统计点：删账户不删数据
 
-原来是「会话」把图形、挂单、成交、语音、操作记录、指标、机器人、交易记录收在一起（`ON DELETE CASCADE`）。
+原来是「会话」把图形、挂单、成交、语音、操作记录、机器人、交易记录收在一起（`ON DELETE CASCADE`）。
 现在**会话这个概念整个不存在了**，归属改成 `accountId`，这一列 **`NOT NULL` 但不加外键**：
 
 | 被删的东西 | 会发生什么 |
 | --- | --- |
-| PF 账户（`prop_firm_account` 一行） | 只删这一行。另外七张表（指标 / 图形 / 语音 / 交易记录 / 挂单 / 成交 / 机器人）的 `account_id` **原样保留**（指向一个已经不存在的账户），**一行子数据都不删、一个字节都不改** |
+| PF 账户（`prop_firm_account` 一行） | 只删这一行。另外六张表（图形 / 语音 / 交易记录 / 挂单 / 成交 / 机器人）的 `account_id` **原样保留**（指向一个已经不存在的账户），**一行子数据都不删、一个字节都不改** |
 | 图形（`drawing`） | 只能由用户自己删；删图形会带走它的斐波那契水平线（真级联，那是图形的一部分） |
 | 交易记录（`trade_record`） | 只能由用户自己删；删记录会带走它的步骤和标签（真级联） |
 | 操作记录（`audit_event`） | 不加外键，账户删了仍保留原 `account_id`。任何改写都等于伪造审计 |
-| 挂单 / 成交 / 语音 / 指标 / 机器人 | 保留，`account_id` 原样留着 |
+| 挂单 / 成交 / 语音 / 机器人 | 保留，`account_id` 原样留着 |
 
 两条连锁规矩：
 
 1. **没有账户就不能有操作。** 各实体的工厂方法（`Drawing.of` / `Order.place` / `Trade.fill` /
-   `AudioClip.record` / `Indicator.of` / `StrategyBot.start` / `TradeRecord.open`）拿不到账户 id 直接抛
+   `AudioClip.record` / `StrategyBot.start` / `TradeRecord.open`）拿不到账户 id 直接抛
    `IllegalArgumentException`；`PropFirmAccountService#requireActive` 再拦「账户不存在 / 已经不是 ACTIVE」。
    只有 `AuditEvent.of` 允许空账户 —— 流水账里有全局操作。
 2. **`account_id` 是 `NOT NULL` 且不加外键。** 三种级联策略都不合适：`SET NULL` 会把归属
@@ -166,7 +165,7 @@ Strategy ──1:N──> StrategyBot
    转成 REAL 丢精度。由 `BigDecimalTextConverter` 在边界上用字符串往返。
 2. **时间和价格都用「明文 / 毫秒整数」。** K 线时间是 CSV 里那一列的原文（`"2026-10-16 12:00"`），
    转成时间戳就再也对不上协议；其它时间戳走 `InstantEpochConverter` 存 Unix 毫秒。
-3. **能算的不存。** 持仓、已实现盈亏、指标值、斐波那契四条线的价格，全部现算。
+3. **能算的不存。** 持仓、已实现盈亏、斐波那契四条线的价格，全部现算。
    存副本迟早和事实对不上，而对不上时没有任何办法判断谁对。
 4. **快照优于引用。** 图形样式从模板复制、账户规则从模板复制。
    模板是「我常用的那套」，改了不该回头改动已经存在的东西。
@@ -175,7 +174,7 @@ Strategy ──1:N──> StrategyBot
 
 ## 枚举清单
 
-**凡是取值域封闭的东西一律是枚举，不写成 `String`。** 当前 13 个：
+**凡是取值域封闭的东西一律是枚举，不写成 `String`。** 当前 11 个：
 
 | 枚举 | 位置 | 取值 | 落库值 |
 | --- | --- | --- | --- |
@@ -186,8 +185,6 @@ Strategy ──1:N──> StrategyBot
 | `Order.Status` | 嵌套 | OPEN / FILLED / CANCELLED | 常量名 |
 | `Drawing.Kind` | 嵌套 | TREND / RAY / RECT / ARROW / FIB | 常量名 |
 | `DrawingStyle.Dash` | 嵌套 | SOLID / DASHED | 常量名 |
-| `Indicator.Type` | 嵌套 | EMA / SMA / RMA / WMA / ATR | 常量名 |
-| `Indicator.Source` | 嵌套 | OPEN / HIGH / LOW / CLOSE / HL2 | 常量名 |
 | `StrategyBot.Status` | 嵌套 | RUNNING / STOPPED / FINISHED / FAILED | 常量名 |
 | `StrategyBot.StopReason` | 嵌套 | MANUAL / DATA_END / ACCOUNT_CLOSED / ERROR | 常量名 |
 | `PropFirmRules.DrawdownType` | 嵌套 | STATIC / TRAILING_INTRADAY / TRAILING_EOD | 常量名 |
@@ -231,7 +228,7 @@ Strategy ──1:N──> StrategyBot
 | `src/main/java/.../ServerApplication.java` | 入口，对应 Go 的 `main.go` |
 | `.../controller/VersionController.java` | `GET /api/version` |
 | `.../dto/` | 接口出入口对象（原来的 `entity/VersionResponse` 搬到这里） |
-| `.../entity/**` | 9 个聚合子包：market / propfirm / indicator / drawing / trade / voice / audit / strategy / record |
+| `.../entity/**` | 8 个聚合子包：market / propfirm / drawing / trade / voice / audit / strategy / record |
 | `.../repository/**` | 13 个 Spring Data JPA 接口 |
 | `.../service/PropFirmAccountService.java` | 开账户 / 删账户（只删一行，不级联）/ `requireActive` 开工闸门 |
 | `.../service/TradeLedger.java` | 成交流水 → 持仓 / 已实现盈亏 / 逐批归因，全书唯一一处这样算 |

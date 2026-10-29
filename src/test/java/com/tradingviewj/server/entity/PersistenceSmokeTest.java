@@ -7,7 +7,6 @@ import com.tradingviewj.server.entity.drawing.Anchor;
 import com.tradingviewj.server.entity.drawing.Drawing;
 import com.tradingviewj.server.entity.drawing.DrawingStyle;
 import com.tradingviewj.server.entity.drawing.FibLevel;
-import com.tradingviewj.server.entity.indicator.Indicator;
 import com.tradingviewj.server.entity.market.Symbol;
 import com.tradingviewj.server.entity.propfirm.PositionTier;
 import com.tradingviewj.server.entity.propfirm.PropFirmAccount;
@@ -27,7 +26,6 @@ import com.tradingviewj.server.entity.voice.AudioClip;
 import com.tradingviewj.server.repository.AudioClipRepository;
 import com.tradingviewj.server.repository.AuditEventRepository;
 import com.tradingviewj.server.repository.DrawingRepository;
-import com.tradingviewj.server.repository.IndicatorRepository;
 import com.tradingviewj.server.repository.OrderRepository;
 import com.tradingviewj.server.repository.PropFirmAccountRepository;
 import com.tradingviewj.server.repository.PropFirmStageLogRepository;
@@ -88,7 +86,6 @@ class PersistenceSmokeTest {
     }
 
     @Autowired private SymbolRepository symbols;
-    @Autowired private IndicatorRepository indicators;
     @Autowired private DrawingRepository drawings;
     @Autowired private OrderRepository orders;
     @Autowired private TradeRepository trades;
@@ -161,11 +158,6 @@ class PersistenceSmokeTest {
         assertEquals(PropFirmStageLog.EndReason.FAILED, reloadedLog.getEndReason());
         assertEquals(new BigDecimal("-2100.00"), reloadedLog.getNetPnl(), "净额 = 结束余额 − 起点余额");
         assertEquals(3, reloadedLog.getProfitDays());
-
-        // ---- 指标 ----
-        indicators.save(Indicator.of(account.getId(), symbol.getId(),
-                Indicator.Type.EMA, 20, Indicator.Source.CLOSE));
-        assertEquals(1, indicators.findByAccountIdOrderBySortOrderAsc(account.getId()).size());
 
         // ---- 图形：两个 @Embedded 锚点靠 @AttributeOverride 分列 + 斐波那契从表 ----
         Drawing drawing = Drawing.of(account.getId(), symbol.getId(), Drawing.Kind.FIB,

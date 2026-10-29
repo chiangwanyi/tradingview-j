@@ -11,10 +11,10 @@
 --      由 BigDecimalTextConverter 在 Java 侧还原成 BigDecimal。
 --      时间戳是 INTEGER，Unix 毫秒（InstantEpochConverter）。
 --   4. **PF 账户是唯一的操作归属点，但不是数据的所有者**。
---      没有「会话」这张表了：图形、挂单、成交、语音、操作记录、机器人、交易记录、
---      指标全部用 account_id 指向 prop_firm_account。
+--      没有「会话」这张表了：图形、挂单、成交、语音、操作记录、机器人、交易记录
+--      全部用 account_id 指向 prop_firm_account。
 --      **账户不再是"一个标的"**：它是可以同时做 MES / MNQ / MGC 的考核账户，
---      所以凡是"挂在一根 K 线上"的数据（图形、指标、语音、挂单、成交、交易记录、
+--      所以凡是"挂在一根 K 线上"的数据（图形、语音、挂单、成交、交易记录、
 --      机器人）都另有 symbol_id —— 只有 account_id 就没有时间轴，只有 symbol_id
 --      就不知道算在谁头上，两个都要。
 --      这一列 **NOT NULL 且不加外键**：删账户只删 prop_firm_account 那一行，子表里
@@ -128,21 +128,9 @@ CREATE UNIQUE INDEX IF NOT EXISTS ux_stage_account_seq ON prop_firm_stage_log (a
 -- 每手每边多少美元，跟着品种走。以前那两张 commission_schedule / commission_rate
 -- 已删除 —— 「一套全局口径 + 一张价目表」这层结构对一只标的只说一次就够了。
 
--- 指标定义（值不入库：拿 OHLC 现算，口径只有一份）
-CREATE TABLE IF NOT EXISTS indicator (
-    id          TEXT PRIMARY KEY,
-    account_id  TEXT NOT NULL,       -- 保留原账户 id；账户删了也不置空
-    symbol_id   TEXT NOT NULL REFERENCES symbol (id),  -- 算在哪个品种的 K 线上
-    type        TEXT NOT NULL,       -- EMA / SMA / RMA / WMA / ATR
-    period      INTEGER NOT NULL,
-    source      TEXT NOT NULL,       -- CLOSE / HIGH / LOW / HL2
-    params_json TEXT,                -- 其余参数，前端自定义
-    visible     INTEGER NOT NULL DEFAULT 1,
-    sort_order  INTEGER NOT NULL DEFAULT 0,
-    created_at  INTEGER NOT NULL,
-    updated_at  INTEGER NOT NULL
-);
-CREATE INDEX IF NOT EXISTS idx_indicator_account ON indicator (account_id);
+-- 指标：暂时没有表。
+-- 「指标怎么存」还没定（定义表 / 参数 JSON / 前端本地），在决定之前不建半张表。
+-- 旧库里的 indicator 表要手动删：DROP TABLE indicator;（本脚本只管建，不管删）
 
 -- 绘图图形：5 种图形共用「起点 + 终点」两个锚。
 -- 只有用户手动删除才会消失：删账户不删图形，account_id 原样留着。

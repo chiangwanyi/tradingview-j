@@ -3,7 +3,6 @@ package com.tradingviewj.server.service;
 import com.tradingviewj.server.entity.audit.AuditEvent;
 import com.tradingviewj.server.entity.drawing.Anchor;
 import com.tradingviewj.server.entity.drawing.Drawing;
-import com.tradingviewj.server.entity.indicator.Indicator;
 import com.tradingviewj.server.entity.market.Symbol;
 import com.tradingviewj.server.entity.propfirm.PositionTier;
 import com.tradingviewj.server.entity.propfirm.PropFirmAccount;
@@ -25,7 +24,6 @@ import com.tradingviewj.server.exception.BusinessException;
 import com.tradingviewj.server.repository.AudioClipRepository;
 import com.tradingviewj.server.repository.AuditEventRepository;
 import com.tradingviewj.server.repository.DrawingRepository;
-import com.tradingviewj.server.repository.IndicatorRepository;
 import com.tradingviewj.server.repository.OrderRepository;
 import com.tradingviewj.server.repository.PropFirmAccountRepository;
 import com.tradingviewj.server.repository.PropFirmStageLogRepository;
@@ -89,7 +87,6 @@ class PropFirmAccountLifecycleTest {
     @Autowired private PropFirmTemplateRepository templates;
     @Autowired private PropFirmStageLogRepository stageLogs;
     @Autowired private SymbolRepository symbols;
-    @Autowired private IndicatorRepository indicators;
     @Autowired private DrawingRepository drawings;
     @Autowired private OrderRepository orders;
     @Autowired private TradeRepository trades;
@@ -135,8 +132,6 @@ class PropFirmAccountLifecycleTest {
         String accountId = account.getId();
 
         // 账户里干了一整套活
-        Indicator indicator = indicators.save(
-                Indicator.of(accountId, symbol.getId(), Indicator.Type.EMA, 20, Indicator.Source.CLOSE));
         Drawing drawing = drawings.save(Drawing.of(accountId, symbol.getId(), Drawing.Kind.TREND,
                 new Anchor("2026-10-16 12:00", new BigDecimal("21250.25"), 0),
                 new Anchor("2026-10-16 15:00", new BigDecimal("21300.50"), 40), "jiang"));
@@ -171,7 +166,6 @@ class PropFirmAccountLifecycleTest {
                 "图形必须保留，并且保留原账户 id");
         assertEquals(symbol.getId(), drawings.findById(drawing.getId()).orElseThrow().getSymbolId(),
                 "图形还必须记着自己属于哪个品种 —— 账户已经不记得了");
-        assertEquals(accountId, indicators.findById(indicator.getId()).orElseThrow().getAccountId());
         assertEquals(accountId, orders.findById(order.getId()).orElseThrow().getAccountId());
         assertEquals(accountId, trades.findById(trade.getId()).orElseThrow().getAccountId());
         assertEquals(accountId, audioClips.findById(clip.getId()).orElseThrow().getAccountId());

@@ -3,7 +3,6 @@ package com.tradingviewj.server.entity;
 import com.tradingviewj.server.entity.audit.AuditEvent;
 import com.tradingviewj.server.entity.drawing.Anchor;
 import com.tradingviewj.server.entity.drawing.Drawing;
-import com.tradingviewj.server.entity.indicator.Indicator;
 import com.tradingviewj.server.entity.record.TradeRecord;
 import com.tradingviewj.server.entity.strategy.StrategyBot;
 import com.tradingviewj.server.entity.trade.Order;
@@ -59,9 +58,6 @@ class AccountRequiredTest {
                 () -> AudioClip.record(null, SYMBOL, "2026-10-16 12:00", 0, "x.wav", 1000, 1024, Actor.HUMAN));
 
         assertThrows(IllegalArgumentException.class,
-                () -> Indicator.of(null, SYMBOL, Indicator.Type.EMA, 20, Indicator.Source.CLOSE));
-
-        assertThrows(IllegalArgumentException.class,
                 () -> StrategyBot.start(null, SYMBOL, "strategy-1", BigDecimal.ONE, 300));
 
         assertThrows(IllegalArgumentException.class,
@@ -98,8 +94,6 @@ class AccountRequiredTest {
                         Side.BUY, new BigDecimal("21250"), BigDecimal.ONE, BigDecimal.ZERO, BigDecimal.ZERO));
         assertThrows(IllegalArgumentException.class,
                 () -> AudioClip.record(ACCOUNT, null, "2026-10-16 12:00", 0, "x.wav", 1000, 1024, Actor.HUMAN));
-        assertThrows(IllegalArgumentException.class,
-                () -> Indicator.of(ACCOUNT, null, Indicator.Type.EMA, 20, Indicator.Source.CLOSE));
         assertThrows(IllegalArgumentException.class,
                 () -> StrategyBot.start(ACCOUNT, null, "strategy-1", BigDecimal.ONE, 300));
         assertThrows(IllegalArgumentException.class,
