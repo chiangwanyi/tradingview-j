@@ -11,8 +11,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
- * 钉住两件事：接口能返回 1.0.0，且版本号来自 pom 而不是硬编码在 Java 里
- * （Maven 资源过滤失效时这里会变成 "@project.version@" 当场失败）。
+ * 钉住三件事：接口能返回 1.0.0；版本号来自 pom 而不是硬编码在 Java 里
+ * （Maven 资源过滤失效时这里会变成 "@project.version@" 当场失败）；
+ * 业务数据被统一响应体包在 data 里。
  */
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -25,7 +26,9 @@ class VersionControllerTest {
     void versionEndpointReturnsProjectVersion() throws Exception {
         mockMvc.perform(get("/api/version"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.version").value("1.0.0"))
-                .andExpect(jsonPath("$.application").value("tradingview-j-server"));
+                .andExpect(jsonPath("$.code").value(0))
+                .andExpect(jsonPath("$.msg").value("ok"))
+                .andExpect(jsonPath("$.data.version").value("1.0.0"))
+                .andExpect(jsonPath("$.data.application").value("tradingview-j-server"));
     }
 }

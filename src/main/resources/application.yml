@@ -8,12 +8,37 @@ spring:
   application:
     name: tradingview-j-server
   jackson:
+    # 全局丢掉 null 字段；统一响应体里的 data 字段例外，见 api/R.java 的 @JsonInclude
     default-property-inclusion: non_null
+  mvc:
+    # 路径不存在时抛 NoHandlerFoundException 交给 GlobalExceptionHandler，
+    # 否则请求会转到 /error 端点，返回结构和成功响应不一样
+    throw-exception-if-no-handler-found: true
 
 app:
   # 由 Maven 资源过滤把 pom.xml 的 project.version 填进来（@..@ 是 Spring Boot 父 pom 约定的分隔符）
   version: '@project.version@'
   name: tradingview-j-server
+
+# Swagger / OpenAPI 文档（springdoc）
+# 页面地址：http://127.0.0.1:8791/swagger-ui.html
+# JSON 地址：http://127.0.0.1:8791/v3/api-docs
+springdoc:
+  api-docs:
+    enabled: true
+    path: /v3/api-docs
+  swagger-ui:
+    enabled: true
+    # 访问 /swagger-ui.html 会 302 到 /swagger-ui/index.html，记住短地址就行
+    path: /swagger-ui.html
+    operations-sorter: method
+    tags-sorter: alpha
+    # 允许在页面上直接点 Send 发真实请求（服务只绑 127.0.0.1，外部访问不到）
+    try-it-out-enabled: true
+    display-request-duration: true
+  # 只收录 /api 下的业务接口。springdoc 自己的端点、/error 都不会出现在文档里。
+  # 注意：这里不要同时配 packages-to-scan，两者是「与」关系，包名写错会得到一份空文档。
+  paths-to-match: /api/**
 
 logging:
   # 具体格式与滚动策略见 logback-spring.xml，这里只放级别

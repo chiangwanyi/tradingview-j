@@ -129,6 +129,20 @@
 | 手动开启/结束录制 | v0.18.0 | 改为按仓位自动开始/结束；旧消息仅作兼容别名 |
 | 后端下发固定 ATR14 | v0.23.0 | 改为前端可调参数（见 ADR-011） |
 
+## ADR-015 HTTP 接口统一返回 `{code,msg,data}`，包裹在过滤器层做
+
+- 状态：已生效
+- 背景：`/api/version` 最初直接返回业务对象；一旦加入异常、参数校验、404，各路径的 JSON 结构就会各不相同，
+  前端每个调用点都得判断「这次拿到的是数据还是错误体」。
+- 决策：Controller 只返回业务对象，外层由 `GlobalResponseAdvice`（`ResponseBodyAdvice`）统一包裹；
+  异常由 `GlobalExceptionHandler`（`@RestControllerAdvice`）转成同一结构。
+  业务异常一律 HTTP 200 + `code >= 10000`；协议层错误（400/404/405/415/500）HTTP 状态码照实返回，body 结构不变。
+  `data` 字段单独标 `@JsonInclude(ALWAYS)`，抵消 `default-property-inclusion: non_null` 把 null 字段吞掉的行为。
+- 后果：新增接口不会漏包，`Controller` 签名保持干净；`String` 与 `void` 返回值需要特殊处理；
+  返回 `R` 的方法会被幂等放行，不会套两层。
+- 证据：`api/R.java`、`api/ResultCode.java`、`web/GlobalResponseAdvice.java`、`web/GlobalExceptionHandler.java`、
+  `ResponseEnvelopeTest`（成功/业务异常/500/400/404 五种结构一致）。
+
 ---
 
 ## 待决策

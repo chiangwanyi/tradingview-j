@@ -20,6 +20,14 @@
     <properties>
         <java.version>21</java.version>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <!-- Hutool 5.x 是 Java 8+ 的稳定分支；6.x 仍在 alpha，不引入 -->
+        <hutool.version>5.8.47</hutool.version>
+        <!--
+          springdoc 的版本线要和 Spring Boot 大版本对齐，不能随便升：
+          2.8.x → Spring Boot 3.4/3.5；3.x → Spring Boot 4（Spring Framework 7）。
+          本工程是 Boot 3.5.11，用 3.x 会在启动阶段就报类找不到。
+        -->
+        <springdoc.version>2.8.16</springdoc.version>
     </properties>
 
     <dependencies>
@@ -42,10 +50,29 @@
             <optional>true</optional>
         </dependency>
 
+        <!-- 工具类：判空(StrUtil/CollUtil)、对象转换(BeanUtil)、JSON(JSONUtil)、异常信息(ExceptionUtil) -->
+        <!-- hutool-all 是全量包，省事但体积大；只想要这几个能力可换成 hutool-core + hutool-json -->
+        <dependency>
+            <groupId>cn.hutool</groupId>
+            <artifactId>hutool-all</artifactId>
+            <version>${hutool.version}</version>
+        </dependency>
+
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-test</artifactId>
             <scope>test</scope>
+        </dependency>
+
+        <!--
+          Swagger / OpenAPI 文档：springdoc-openapi（Spring Boot 3 起的事实标准）。
+          -starter-webmvc-ui 同时带来两样东西：/v3/api-docs（JSON 描述）和 /swagger-ui.html（可视化页面）。
+          注意不是 springfox：那个项目 2020 年就停更了，和 Boot 3 的 Jakarta 命名空间完全不兼容。
+        -->
+        <dependency>
+            <groupId>org.springdoc</groupId>
+            <artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
+            <version>${springdoc.version}</version>
         </dependency>
     </dependencies>
 
