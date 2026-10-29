@@ -1,0 +1,22 @@
+server:
+  # 只绑本机回环地址，和 Go 版本一致：不对外暴露
+  address: 127.0.0.1
+  # Go 版本的复盘服务占 8790，这里让开
+  port: 8791
+
+spring:
+  application:
+    name: tradingview-j-server
+  jackson:
+    default-property-inclusion: non_null
+
+app:
+  # 由 Maven 资源过滤把 pom.xml 的 project.version 填进来（@..@ 是 Spring Boot 父 pom 约定的分隔符）
+  version: '@project.version@'
+  name: tradingview-j-server
+
+logging:
+  # 具体格式与滚动策略见 logback-spring.xml，这里只放级别
+  level:
+    root: INFO
+    com.tradingviewj: DEBUG
