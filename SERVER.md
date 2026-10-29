@@ -1,7 +1,7 @@
 # tradingview-j-server
 
 Go 版 `tradingview-j` 的 Java / Spring Boot 迁移目标。当前有两条链路：版本号接口（用来确认服务起得来），
-以及**领域层 + SQLite 持久化**（14 个业务概念的实体、仓储与交易账本）。复盘/抓取的 HTTP 与 WS 接口还没搬。
+以及**领域层 + SQLite 持久化**（13 个业务概念的实体、仓储与交易账本）。复盘/抓取的 HTTP 与 WS 接口还没搬。
 
 工程文件（`pom.xml`、`src/`、`mvnw`）就在**仓库根目录**，和 Go 模块共用同一个根：
 
@@ -78,12 +78,11 @@ controller  →  service  →  repository  →  SQLite（./db/tradingview-j.db�
 **为什么业务事实进库**：图形、挂单、成交、语音、交易记录、PF 账户这些东西的**一致性要求**远高于
 K 线，而且需要按条件查（这个账户的记录、这条记录的步骤、这个账户还挂着的单）。CSV 做不到这些。
 
-## 实体设计（14 个业务概念，PF 账户是唯一聚合根）
+## 实体设计（13 个业务概念，PF 账户是唯一聚合根）
 
 | 概念 | 实体 | 包 | 关键设计 |
 | --- | --- | --- | --- |
-| 标的 | `Symbol` | `entity.market` | 主键就是标的代码；`folder` 是 CSV 目录的锚；tick/tickValue 只存在这一处 |
-| 手续费价目表 | `CommissionSchedule` | `entity.market` | **全库只有一行**（id 固定 `commission`）；口径一份、费率按品种根名一张表 |
+| 标的 | `Symbol` | `entity.market` | 主键就是标的代码；`folder` 是 CSV 目录的锚；tick/tickValue/commission 只存在这一处 |
 | PF 模板 | `PropFirmTemplate` | `entity.propfirm` | 只是价目表；不做版本化 |
 | PF 账户 | `PropFirmAccount` | `entity.propfirm` | **一切操作的唯一归属点**；规则是开账户那一刻的副本；删它不删任何子数据 |
 | 指标 | `Indicator` | `entity.indicator` | 只存**定义**（类型+周期+来源），值靠 OHLC 现算 |
@@ -98,15 +97,26 @@ K 线，而且需要按条件查（这个账户的记录、这条记录的步骤
 | 交易记录 | `TradeRecord` | `entity.record` | 一笔完整交易：起点 + 步骤 + 结算摘要；生命周期自动 |
 | （步骤） | `TradeRecordStep` | `entity.record` | 一步 = 一次真实操作，第 0 步是「开仓前那一屏」 |
 
-### 手续费：JSON 只是初始值，库里那张表才是落点
+### 手续费：标的自己的一个参数，没有价目表
 
-`data/_symbols.json` 顶层多了一个 `commission` 段（`type` + `rates`，键是品种根名 `MES` / `MNQ` / `MGC`）。
-Java 侧对应 `entity.market.CommissionSchedule`：一张全局行存口径、一张 `commission_rate` 从表存费率，
-`rateFor("CME_MINI:MES1!")` 会把代码归约成根名再查，查不到返回 `null`（不是 0 —— 「漏配」和「免手续费」必须能分开）。
+`data/_symbols.json` 里每个标的自己带一个 `commission`（**每手每边**多少美元，和 `tick` / `tickValue` 并列）：
 
-**⚠️ 这个 JSON 段不是可靠存储**：Go 抓取侧不读它（多一个未知键直接忽略），但它在分配新标的文件夹时
-会按自己的结构重写整个 `_symbols.json`（只写 `version` + `symbols`），`commission` 段会被静默抹掉。
-所以费率的权威副本在 `commission_schedule` / `commission_rate` 两张表里。
+```json
+"CME_MINI:MES1!": { "folder": "CME_MINI_MES1!", "tick": 0.25, "tickValue": 1.25, "commission": 0.50 }
+```
+
+Java 侧就是 `symbol.commission` 一列，跟着标的一起读写。计费口径是**内建**的：按手数、**单边收费** ——
+一笔完整的交易开仓收一次、平仓再收一次，所以 `Symbol#roundTripCommission(手数)` = 单边 × 2，
+`Symbol#perSideCommission(手数)` 只算一次。「往返乘不乘 2」只有这一个地方回答，
+散到调用方迟早一处乘了、一处忘了，而这种错不抛异常，只是安静地少算一半成本。
+
+`null` 和 `0` 必须分开：`null` = 这只标的还没配，`0` = 明确写了 `"commission": 0`，也就是免手续费
+（`NYMEX:CL1!` 就是这样）。方法在没配时返回 `null` 而不是 0，否则漏配会按免费结算。
+
+**JSON 和库的关系**：Go 抓取侧不算账，但它会按自己的结构**整个重写** `_symbols.json`
+（`internal/store/store.go: saveIndexLocked`）。从 0.31.0 起它把这个 `commission` 原样带回去
+（`symRec.Commission` 是 `*float64`，所以 `0` 不会被 `omitempty` 连同「没配」一起省掉），
+在此之前它会在分配新标的文件夹的那一刻被静默抹掉。
 
 ### 关系（全部按 id 引用，不写 `@ManyToOne`）
 
@@ -161,7 +171,7 @@ Strategy ──1:N──> StrategyBot
 
 ## 枚举清单
 
-**凡是取值域封闭的东西一律是枚举，不写成 `String`。** 当前 14 个：
+**凡是取值域封闭的东西一律是枚举，不写成 `String`。** 当前 13 个：
 
 | 枚举 | 位置 | 取值 | 落库值 |
 | --- | --- | --- | --- |
@@ -178,7 +188,6 @@ Strategy ──1:N──> StrategyBot
 | `StrategyBot.StopReason` | 嵌套 | MANUAL / DATA_END / ACCOUNT_CLOSED / ERROR | 常量名 |
 | `PropFirmRules.DrawdownType` | 嵌套 | STATIC / TRAILING_INTRADAY / TRAILING_EOD | 常量名 |
 | `PropFirmAccount.Status` | 嵌套 | ACTIVE / PASSED / FAILED | 常量名 |
-| `CommissionSchedule.FeeType` | 嵌套 | PER_CONTRACT_PER_SIDE | 常量名 |
 
 三条约定：
 
@@ -219,7 +228,7 @@ Strategy ──1:N──> StrategyBot
 | `.../controller/VersionController.java` | `GET /api/version` |
 | `.../dto/` | 接口出入口对象（原来的 `entity/VersionResponse` 搬到这里） |
 | `.../entity/**` | 9 个聚合子包：market / propfirm / indicator / drawing / trade / voice / audit / strategy / record |
-| `.../repository/**` | 14 个 Spring Data JPA 接口 |
+| `.../repository/**` | 13 个 Spring Data JPA 接口 |
 | `.../service/PropFirmAccountService.java` | 开账户 / 删账户（只删一行，不级联）/ `requireActive` 开工闸门 |
 | `.../service/TradeLedger.java` | 成交流水 → 持仓 / 已实现盈亏 / 逐批归因，全书唯一一处这样算 |
 | `.../storage/CsvBarStore.java` | 读 `data/<folder>/<日期>.csv`（只读，不写） |

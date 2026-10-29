@@ -30,6 +30,7 @@ CREATE TABLE IF NOT EXISTS symbol (
     folder     TEXT NOT NULL UNIQUE, -- data/ 下的目录名，K 线靠它定位
     tick       TEXT,                 -- 最小跳动
     tick_value TEXT,                 -- 一跳值多少美元
+    commission TEXT,                 -- 每手每边的手续费（美元）；NULL = 没配，0 = 免手续费
     created_at INTEGER NOT NULL,
     updated_at INTEGER NOT NULL
 );
@@ -75,23 +76,9 @@ CREATE TABLE IF NOT EXISTS prop_firm_account (
 );
 CREATE INDEX IF NOT EXISTS idx_account_symbol ON prop_firm_account (symbol_id);
 
--- 手续费价目表：全库只有一行（id 固定为 'commission'）。
--- 口径（type）只有一份，费率（commission_rate）按品种根名查——
--- 这和 data/_symbols.json 里 commission 段的结构一一对应。
-CREATE TABLE IF NOT EXISTS commission_schedule (
-    id         TEXT PRIMARY KEY,     -- 固定 'commission'
-    type       TEXT NOT NULL,        -- PER_CONTRACT_PER_SIDE
-    created_at INTEGER NOT NULL,
-    updated_at INTEGER NOT NULL
-);
-
--- 每手每边的手续费（美元）。键是品种根名（MES / MNQ / MGC），不是完整标的代码
-CREATE TABLE IF NOT EXISTS commission_rate (
-    schedule_id TEXT NOT NULL REFERENCES commission_schedule (id) ON DELETE CASCADE,
-    symbol_root TEXT NOT NULL,
-    rate        TEXT NOT NULL,       -- 金额一律 TEXT，走 BigDecimalTextConverter
-    PRIMARY KEY (schedule_id, symbol_root)
-);
+-- 手续费不单独建表：它是标的自己的一个参数（symbol.commission），
+-- 每手每边多少美元，跟着品种走。以前那两张 commission_schedule / commission_rate
+-- 已删除 —— 「一套全局口径 + 一张价目表」这层结构对一只标的只说一次就够了。
 
 -- 指标定义（值不入库：拿 OHLC 现算，口径只有一份）
 CREATE TABLE IF NOT EXISTS indicator (
