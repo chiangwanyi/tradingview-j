@@ -53,15 +53,29 @@ Controller 返回的是裸 `VersionResponse`，`code/msg/data` 是运行期补�
 ## 实体层（Go 数据结构的 Java 镜像）
 
 Java 侧**不负责抓 K 线**（那是 Go 的活：CDP 接入、WS 帧解码、CSV 落盘全留在 `internal/`）。
-所以实体层只镜像「读已有数据 + 复盘 + 报告」用得上的那部分，按 Go 的包一一对应分子包，
-类名、字段名、JSON 键全部照抄，**只看类名就能回去搜 Go**：
+所以实体层只镜像「读已有数据 + 复盘 + 报告」用得上的那部分，按 Go 的包分子包，
+类名、字段名、JSON 键全部照抄，**只看类名就能回去搜 Go**。
+
+Go 那边 `internal/replay` 是一个包塞了七十来个类型，Java 平铺一个包会翻不动，所以在 Go 包下面
+**再按业务概念分一层**：包名比 Go 多一段，类名不变。分包只影响 `import`，不影响 JSON——
+线上形状由 `EntityJsonTest` 钉住，搬包不需要动前端。
 
 | Java 包 | 对应 Go | 内容 |
 | --- | --- | --- |
-| `entity.store` | `internal/store` | 只读侧：`TimeBar` / `RowStat`（读 CSV）、`DayStat` / `FolderStat` / `ScanResult`（扫描摘要）、`CatalogEntry` / `SymRec` / `SymbolIndex`（`_symbols.json`）、`DateTotal` / `BarCount` / `Gap` / `WeekExpect` |
-| `entity.report` | `internal/webreport` | 网页报告的 `Report` 及 `meta/totals/folders/byDate` |
-| `entity.replay` | `internal/replay` | 复盘协议全部消息、负载、录像与存档格式 |
-| `entity.strategy` | `internal/strategy` | 策略输入 `StrategyContext`、`Signal`、参数描述 |
+| `entity.store.scan` | `internal/store` | 扫描算出来的：`ScanResult` / `FolderStat` / `DayStat` / `RowStat` / `Gap` / `DateTotal` / `BarCount` / `WeekExpect` |
+| `entity.store.catalog` | `internal/store` | 磁盘格式：`SymbolIndex` / `SymRec`（`_symbols.json`）、`CatalogEntry`（选标的名录）、`TimeBar`（读回的 CSV 行） |
+| `entity.report.summary` | `internal/webreport` | 整份快照的骨架：`Report` / `Meta` / `Totals` / `Span` |
+| `entity.report.detail` | `internal/webreport` | 明细层：`Folder` 与它下面的 `Day` |
+| `entity.replay.market` | `internal/replay` | 行情：`Bar` / `Point` / `Timeframe` / `SymbolInfo`，以及推进 K 线的两个负载 |
+| `entity.replay.trade` | `internal/replay` | 订单 / 成交 / 持仓 / 盈亏统计，与下单、改单、全平的负载 |
+| `entity.replay.annotation` | `internal/replay` | 标注、样式快照、斐波那契、全局模板 |
+| `entity.replay.voice` | `internal/replay` | `AudioClip` / `VoiceState` / 语音负载 / `StepContext` |
+| `entity.replay.recording` | `internal/replay` | 录像本体、步骤、事件、摘要、索引、打标 |
+| `entity.replay.instance` | `internal/replay` | 实例快照、元信息、存档格式（含 `Legacy*`）、操作日志 `Event` |
+| `entity.replay.protocol` | `internal/replay` | 连接与上行：`Request`、`Welcome` / `Pong` / `Left` / `Error` / `Deleted`、成员与控制权 |
+| `entity.replay.strategy` | `internal/replay` | 「有哪些策略可以跑」的协议形态 |
+| `entity.strategy.input` | `internal/strategy` | 策略输入：`StrategyBar` / `StrategyPosition` / `StrategyContext` |
+| `entity.strategy.output` | `internal/strategy` | 策略输出：`Signal` 与描述 `StrategyInfo` / `StrategyParam` |
 
 **没有搬的（抓取侧，别往回加）**：`internal/config`（config.json 全是抓取/端口配置，Java 用 `application.yml`）、
 `internal/cdp`、`internal/tvproto`、`internal/ingest`、`internal/capture`，以及 `store` 里只服务抓取的
@@ -75,6 +89,9 @@ Java 侧**不负责抓 K 线**（那是 Go 的活：CDP 接入、WS 帧解码、
 
 1. **重名类靠子包区分**。Go 里 `store.TimeBar` 与 `replay.Bar` 是两个不同的东西
    （读文件的中间态 / 送前端的 K 线），Java 里就是两个包下的两个类，不要合并。
+   同理 `strategy.Info` 与 `replay.StrategyInfo` 也是两个类型：`entity.strategy.output.StrategyInfo`
+   是策略层描述，`entity.replay.strategy.StrategyInfo` 是协议形态（多 `desc` 字段和 Jackson 注解）。
+   目前两份都在，**合并属于业务模型变更，得先确认**。
 2. **类上都有 `@JsonInclude(ALWAYS)`**。`application.yml` 全局是 `non_null`，但 Go 的协议里
    数组字段没写 omitempty 时是 **`null` 而不是消失**——前端拿 `msg.orders.length` 会当场抛错。
    所以实体类一律 ALWAYS，Go 里带 `omitempty` 的字段在**字段上**单独标 `NON_DEFAULT`（字段级优先于类级）。
@@ -88,7 +105,7 @@ Java 侧**不负责抓 K 线**（那是 Go 的活：CDP 接入、WS 帧解码、
 | `src/main/java/.../ServerApplication.java` | 入口，对应 Go 的 `main.go` |
 | `.../controller/VersionController.java` | `GET /api/version` |
 | `.../entity/VersionResponse.java` | 响应体（Lombok `@Data`/`@Builder`） |
-| `.../entity/**` | 94 个数据类，Go 侧「读数据 / 复盘 / 报告」那部分结构的镜像，见上面「实体层」一节（抓取侧的 cdp / tvproto / ingest / capture / config 一概没有） |
+| `.../entity/**` | 95 个数据类分布在 14 个子包，Go 侧「读数据 / 复盘 / 报告」那部分结构的镜像，见上面「实体层」一节（抓取侧的 cdp / tvproto / ingest / capture / config 一概没有） |
 | `src/test/java/.../entity/EntityJsonTest.java` | 钉住 `ema20:null`、`offset` 省略、`filledIndex:-1`、录像字段扁平 |
 | `.../config/AppProperties.java` | 绑定 `app.*`，对应 Go 的 `config.json` |
 | `.../config/OpenApiConfig.java` | Swagger 文档定义 + 把 `code/msg/data` 还原进文档 |

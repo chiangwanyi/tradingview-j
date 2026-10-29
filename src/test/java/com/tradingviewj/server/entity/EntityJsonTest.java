@@ -3,11 +3,11 @@ package com.tradingviewj.server.entity;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.tradingviewj.server.entity.replay.Bar;
-import com.tradingviewj.server.entity.replay.Order;
-import com.tradingviewj.server.entity.replay.Point;
-import com.tradingviewj.server.entity.replay.Recording;
-import com.tradingviewj.server.entity.replay.RecordingBase;
+import com.tradingviewj.server.entity.replay.market.Bar;
+import com.tradingviewj.server.entity.replay.trade.Order;
+import com.tradingviewj.server.entity.replay.market.Point;
+import com.tradingviewj.server.entity.replay.recording.Recording;
+import com.tradingviewj.server.entity.replay.recording.RecordingBase;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
