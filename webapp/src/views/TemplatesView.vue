@@ -155,21 +155,24 @@ function goPage(i: number): void {
         </button>
       </template>
 
+      <!-- 卡片不足一屏时整排居中（mx-auto + w-max）；超出时 w-max 撑开、auto 边距归零，照旧从左侧滚 -->
       <div
         ref="track"
-        class="flex snap-x snap-mandatory gap-3 overflow-x-auto px-12 pb-3"
+        class="snap-x snap-mandatory overflow-x-auto px-12 pb-3"
         @scroll="onScroll"
       >
-        <PlanCard
-          v-for="t in list"
-          :key="t.id"
-          :t="t"
-          :next-name="nameOf(t.nextTemplateId)"
-          @edit="openEdit(t)"
-          @remove="onRemove(t)"
-        />
+        <div v-if="list.length" class="mx-auto flex w-max gap-3">
+          <PlanCard
+            v-for="t in list"
+            :key="t.id"
+            :t="t"
+            :next-name="nameOf(t.nextTemplateId)"
+            @edit="openEdit(t)"
+            @remove="onRemove(t)"
+          />
+        </div>
 
-        <p v-if="!list.length" class="w-full py-16 text-center text-[13px] text-faint">
+        <p v-else class="py-16 text-center text-[13px] text-faint">
           {{ loading ? '加载中…' : '这个阶段还没有模板。' }}
         </p>
       </div>

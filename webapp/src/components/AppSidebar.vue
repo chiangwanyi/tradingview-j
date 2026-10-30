@@ -14,13 +14,6 @@ const NAV = [
 
 defineProps<{ active: string }>()
 const emit = defineEmits<{ select: [key: string]; add: [] }>()
-
-/** 底部那一排照参考图画出来，但没接线 —— 不假装能点。 */
-const INERT = [
-  { label: 'Discord', icon: 'chat' },
-  { label: '支持', icon: 'life' },
-  { label: 'FAQ', icon: 'doc' },
-] as const
 </script>
 
 <template>
@@ -65,29 +58,8 @@ const INERT = [
       </button>
     </div>
 
-    <div class="mt-auto space-y-2 px-3 pb-4">
-      <div class="grid grid-cols-3 gap-1.5">
-        <div
-          v-for="item in INERT"
-          :key="item.label"
-          aria-disabled="true"
-          title="未接入"
-          class="flex cursor-default flex-col items-center gap-1 rounded-md border border-line py-2 text-[9px] tracking-wider text-faint uppercase"
-        >
-          <Icon :name="item.icon" :size="14" />
-          {{ item.label }}
-        </div>
-      </div>
-
-      <div class="grid grid-cols-2 gap-1.5 text-[10px] tracking-wider text-faint uppercase">
-        <div aria-disabled="true" class="flex cursor-default items-center gap-1.5" title="未接入">
-          <Icon name="moon" :size="13" />背景
-        </div>
-        <div aria-disabled="true" class="flex cursor-default items-center gap-1.5" title="未接入">
-          <Icon name="panel" :size="13" />收起
-        </div>
-      </div>
-
+    <!-- 底部只留「退出」；Discord / 支持 / FAQ / 背景 / 收起 已按需求删掉 -->
+    <div class="mt-auto px-3 pb-4">
       <div
         aria-disabled="true"
         title="未接入"
