@@ -15,7 +15,8 @@ import { errorText } from '@/data/store'
  * 数据自己拉（`GET /api/pf-accounts/{id}` + `/{id}/stages`），不吃列表里那份拷件 ——
  * 从列表点进来时它可能已经是几十秒前的余额。
  *
- * 「继续交易」不在这里：交易界面还没做，见 `AccountCard.vue` 的占位提示。
+ * 「继续交易」在卡片和这里都有：它开一个新标签页（`/trade/:id`），不改变本页状态 ——
+ * 详情页留着不动，交易页在另一个标签里跑，两边都刷新也不会互相打断。
  */
 const props = defineProps<{ id: string }>()
 const emit = defineEmits<{ back: [] }>()
@@ -94,6 +95,12 @@ function doRemove(): void {
   if (!a.value) return
   if (!confirm(`删掉「${a.value.name}」？成交、流水、图形都不会被删，只是这个账户不再列出。`)) return
   run(() => api.remove(a.value!.id).then(() => emit('back')))
+}
+
+/** 新标签页打开交易页（和卡片上那颗按钮同一个行为，两处入口一个目的）。 */
+function openTrade(): void {
+  if (!a.value) return
+  window.open(`/trade/${encodeURIComponent(a.value.id)}`, '_blank', 'noopener')
 }
 </script>
 
@@ -276,11 +283,19 @@ function doRemove(): void {
         <p v-else class="mt-2 text-[12px] text-faint">没有阶段流水。</p>
       </div>
 
-      <!-- 动作：卡片上收过来的三个 -->
+      <!-- 动作：继续交易 + 卡片上收过来的三个 -->
       <div class="mt-3 flex flex-wrap gap-2">
         <button
           type="button"
-          class="flex items-center gap-1.5 rounded-md bg-accent px-4 py-2 text-[13px] font-medium text-white transition-colors hover:bg-accent-ink disabled:cursor-not-allowed disabled:bg-elev disabled:text-faint"
+          class="flex items-center gap-1.5 rounded-md bg-accent px-4 py-2 text-[13px] font-medium text-white transition-colors hover:bg-accent-ink"
+          title="在新标签页打开这个账户的 K 线画布"
+          @click="openTrade"
+        >
+          <Icon name="right" :size="14" />继续交易
+        </button>
+        <button
+          type="button"
+          class="flex items-center gap-1.5 rounded-md border border-line px-4 py-2 text-[13px] text-dim transition-colors hover:border-line-strong hover:text-ink disabled:cursor-not-allowed disabled:opacity-40"
           :disabled="busy || a.status === 'FAILED' || a.stage === 'PAYOUT'"
           :title="a.stage === 'PAYOUT' ? '已是最后阶段' : 'EVAL → FUNDED → PAYOUT'"
           @click="doPromote"
@@ -311,7 +326,7 @@ function doRemove(): void {
         <ul class="mt-1.5 list-disc space-y-1 pl-5 text-[12px] text-faint">
           <li>成交记录与逐笔盈亏 <span class="text-faint">（`audit_event` 已落库，接口还没做）</span></li>
           <li>当前规则快照的完整字段（单笔手数上限、日亏损上限等）</li>
-          <li>从「继续交易」进来的盘面：交易界面本身还没做</li>
+          <li>交易页里的下单 / 撤单 / 逐根推进 <span class="text-faint">（撮合后端还没接通，见 `TRADING-ENGINE-DESIGN.md`）</span></li>
         </ul>
       </div>
     </div>

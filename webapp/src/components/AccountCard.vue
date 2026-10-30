@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed } from 'vue'
 
 import Icon from './Icon.vue'
 import { shortInstant, shortTime, targetProgress } from '@/data/accounts'
@@ -13,7 +13,7 @@ import { drawdownLabel, pct, stageLabel, usd } from '@/data/rules'
  * 卡片是「一眼看进度」的地方，写操作不该跟数字抢位置。
  */
 const props = defineProps<{ a: Account }>()
-const emit = defineEmits<{ trade: [id: string]; detail: [id: string] }>()
+const emit = defineEmits<{ detail: [id: string] }>()
 
 const progress = computed(() => targetProgress(props.a))
 const gained = computed(() => props.a.balance - props.a.baseBalance)
@@ -22,18 +22,16 @@ const lossLine = computed(() =>
   props.a.rules.maxDrawdown == null ? null : props.a.eodPeakBalance - props.a.rules.maxDrawdown,
 )
 
-// ---- 继续交易（占位）----
-/** 交易界面还没做：点了就在本卡浮一行说明，不弹窗、不跳走，免得以为点坏了。 */
-const notice = ref('')
-let noticeTimer: ReturnType<typeof setTimeout> | undefined
-
+// ---- 继续交易 ----
+/**
+ * 开一个**新标签页**去交易（`/trade/:id`）。
+ *
+ * 为什么不跳转当前页：一人可能同时盯两三个账户，浏览器标签天然支持并排、各自记住
+ * 缩放和手上的工具；关掉一个也不影响另一个。URL 里带账户 id，所以刷新、收藏、
+ * 粘给别人都能回到同一个账户。
+ */
 function onTrade(): void {
-  emit('trade', props.a.id)
-  notice.value = '交易界面还没做好，这里先占个位。'
-  clearTimeout(noticeTimer)
-  noticeTimer = setTimeout(() => {
-    notice.value = ''
-  }, 2600)
+  window.open(`/trade/${encodeURIComponent(props.a.id)}`, '_blank', 'noopener')
 }
 </script>
 
@@ -120,17 +118,11 @@ function onTrade(): void {
       </div>
     </div>
 
-    <p
-      v-if="notice"
-      class="mx-4 mb-2 rounded border border-line bg-elev px-2 py-1 text-[12px] text-dim"
-    >
-      {{ notice }}
-    </p>
-
     <div class="mt-auto grid grid-cols-2 gap-1.5 px-4 pb-4">
       <button
         type="button"
         class="flex items-center justify-center gap-1 rounded-md bg-accent py-2 text-[13px] font-medium text-white transition-colors hover:bg-accent-ink"
+        title="在新标签页打开这个账户的 K 线画布"
         @click="onTrade"
       >
         <Icon name="right" :size="13" />继续交易

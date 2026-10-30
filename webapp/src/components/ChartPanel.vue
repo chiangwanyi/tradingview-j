@@ -1,0 +1,2111 @@
+<script setup lang="ts">
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+
+import { buildFigure, resolveStyle, type Figure, type FigureView } from '@/components/chart/annotations'
+import { atrSeries } from '@/components/chart/atr'
+import { orderKindFor, orderKindLabel } from '@/components/chart/orders'
+import { ORDER_RESERVE_RIGHT, CHART_THEME, drawChart, type HoverState } from '@/components/chart/render'
+import {
+  ChartScale,
+  MAX_FORWARD_OFFSET,
+  TIME_AXIS_HEIGHT,
+  clamp,
+  formatAxisTime,
+  formatPrice,
+  snapToTick,
+} from '@/components/chart/scale'
+import { nearestOHLC, snapAtCursor, OHLC_LABEL } from '@/components/chart/snap'
+import { type ClosedTrade } from '@/components/chart/trades'
+import { chartNav, chartViewport } from '@/components/chart/viewport'
+import TradeTipCard from '@/components/TradeTipCard.vue'
+import { TOOL_LABEL, isDrawTool, useTradeStore, type DrawTool } from '@/stores/trade'
+import type { Order, OrderKind, Point, Side } from '@/types/protocol'
+
+/**
+ * 画布 = Canvas（K 线/指标/挂单价线/十字光标）+ SVG（标注图形）。
+ *
+ * 为什么要分两层：
+ *   - K 线一次几百根、每帧重画，Canvas 最快；
+ *   - 标注要能被指针命中、能拖、能选中，SVG 元素天然有 hit-test，不用自己写拾取算法。
+ *
+ * 状态只有一层：`store.tool` 要么是**指针**（默认），要么是**五种绘图工具之一**。
+ * **没有「修改模式」这个开关** —— 点中图形就是编辑它，点空白/点 K 线就退出：
+ *
+ *   - 指针 `select`：
+ *       · 按下落在**某个图形**上 → 那一个成为唯一的编辑对象（拖端点改端点、拖线身整体移动、
+ *         Del 删除），按下位置同时决定这次是拖整体还是拖某个端点；
+ *       · 按下落在**别的地方**（空白 / K 线 / 坐标轴）→ 立刻清掉选中，回到纯指针：
+ *         滚动缩放、拖动平移、拖挂单线改价都照旧。
+ *     这两条就是全部规则，切换编辑对象只是「把 id 换成新的那个」，没有中间态。
+ *   - 射线 `ray`：**单击即完成**，画出一条水平朝右的射线（预览跟着鼠标走，落下之前就看得见）。
+ *     金融工具里「水平线 + 价位」是最常用的一笔，两次单击 + Shift 水平纯属多余步骤。
+ *     按住 **Shift** 退回两次单击，需要斜射线时才用；
+ *   - 其余四种绘图工具：**两次单击** —— 第 1 次定起点进入预览，移动鼠标找终点，第 2 次定稿。
+ *     （不再是按住拖动：拖动手势在触控板和大图上都容易画歪，两次单击可以慢慢找位置。）
+ *     终点可以越过最后一根 K 线往右画：横坐标存成「锚点 K 线 + 向右几根」（见 scale.ts 的 barRefAt），
+ *     所以它既在右侧空白区里，又仍然严格落在时间-价格坐标系上。
+ *     **定稿后工具自动交回指针**（见 commitPending），下一次按下回到平移/缩放/选图形。
+ *     手里拿着笔时图形**不接点击**（SVG 那一层 pointer-events 关掉），否则没法在已有的线上
+ *     再画一条 —— 想改图形先把笔放下（画完自动放下，或者再点一次工具、按 Esc）。
+ *
+ * 「前端预览、后端定稿」没变：绘制过程只更新本地的预览（`pending` / `rayHover`），
+ * 定稿那一刻才把 **时间 + 价格 + 样式**发往后端；后端校验、编号后广播回来，
+ * 界面上的正式图形永远来自广播。所以后端拒绝时幽灵图形一消失，界面上什么都不会留下。
+ */
+
+const store = useTradeStore()
+
+/** 画布配色：只有一套（浅色），和页面同一套方向语义（绿涨红跌） */
+const theme = CHART_THEME
+
+const host = ref<HTMLDivElement | null>(null)
+const canvas = ref<HTMLCanvasElement | null>(null)
+const scale = new ChartScale()
+
+const size = ref({ width: 0, height: 0 })
+/** 视图变化（缩放/平移/尺寸）时自增，用来让依赖坐标的 computed 重新计算 */
+const viewTick = ref(0)
+const hover = ref<HoverState | null>(null)
+const ctrlDown = ref(false)
+const shiftDown = ref(false)
+
+/**
+ * 右键小菜单：位置（画布内的本地像素）+ **已经吸附到最小跳动**的价格 + **右键落点那根 K 线的时间**。
+ *
+ * 菜单里的动作都基于打开那一刻定死的这两个值：
+ *   - 价格 → 买入 / 卖出 / 复制价格（手一抖价格就变了，所以不能等点击时再算一遍）；
+ *   - 时间 → 复制时间（格式就是数据里的 `time` 字段，`2026-10-16 09:35` 这一种，
+ *     直接贴进 CSV / 表格 / 别处的过滤条件都能用）。
+ * 「移除 N 个绘图」不看价格也不看时间，按的是整个画布的绘图总数。
+ *
+ * 单型（限价/止损）也不让用户选：由**这个价格相对现价的方向**算出来
+ * （见 `chart/orders.ts` 的 `orderKindFor`）。现有价才有方向，所以菜单里先把现价写出来，
+ * 用户一眼就能看出「我这一下是在现价上方还是下方、买到的是哪种单」。
+ */
+const menu = ref<{ x: number; y: number; price: number; time: string } | null>(null)
+/**
+ * 「移除 N 个绘图」按下一次之后的上膛状态：**第二次单击才真的删**。
+ *
+ * 这个动作删的是当前实例上**所有人**画的图，而且没有撤销 —— 手滑一下代价太大，
+ * 所以用「同一行变红再点一次」代替弹窗：不打断操作，也不用再解释一遍。
+ * 菜单一关就复位（见 onContextMenu / 各条关闭路径）。
+ */
+const clearArmed = ref(false)
+/** 复制价格/挂单成功后的一句轻提示（1.4 秒自己消失） */
+const toast = ref('')
+let toastTimer = 0
+
+interface ChartPoint {
+  /** 锚点 K 线的时间（一定是已揭示数据里真实存在的一根） */
+  time: string
+  /** 从锚点往右延伸的根数：0 = 就在这根 K 线上，>0 = 越过最后一根、画在右侧空白区 */
+  offset: number
+  price: number
+}
+
+/** 两次单击绘制的中间状态：第 1 次单击已定起点，`end` 跟着鼠标走。 */
+interface PendingShape {
+  kind: DrawTool
+  start: ChartPoint
+  end: ChartPoint
+  snap: boolean
+  /** 最近一次移动/单击时按没按 Shift（线类工具 = 强制水平） */
+  shift: boolean
+}
+
+/** 拖动中的标注：这一份只在本机显示，松手才发给后端 */
+interface MovingShape {
+  id: string
+  start: ChartPoint
+  end: ChartPoint
+}
+
+const pending = ref<PendingShape | null>(null)
+/**
+ * 射线工具的**悬停起点**：单击即定稿，所以它没有「第 1 次单击」这一步 ——
+ * 预览直接跟着鼠标走，落点/价位在按之前就看得见（金融工具里价格是命脉，
+ * 不该让人先点下去才发现落错了几毛钱）。
+ * 只在【射线】工具下有值，切工具 / 鼠标移出画布 / 真的画完就清掉。
+ */
+const rayHover = ref<ChartPoint | null>(null)
+const moving = ref<MovingShape | null>(null)
+
+/**
+ * 拖动中的挂单：这一份只在本机显示，松手才发给后端。
+ *
+ * 为什么不在拖动过程中就发：鼠标每移动 1px 就是一条 WS 消息，后端会广播回来，
+ * 多人演示时其他人看到的挂单线会一路抖。拖动期间本机按这个价格画，松手一次定稿。
+ */
+const orderDrag = ref<{ id: string; price: number } | null>(null)
+/** 指针停在挂单线上：换光标、把那条线画粗（挂单是 Canvas 画的，得自己拾取） */
+const hoverOrderId = ref<string | null>(null)
+
+/**
+ * 平仓虚线的悬停信息卡。
+ *
+ * 三种状态，缺一不可：
+ *   - `tip`：跟随鼠标，鼠标一离开这条线就销毁（指针离开画布同理）；
+ *   - `pinned`：鼠标 3 秒没动就把它钉在画布上 —— 这时可以拖动、可以点 × 关掉；
+ *   - 都没有：什么都不显示。
+ *
+ * `x/y` 在 `tip` 里是**鼠标位置**（渲染时算偏移），在 `pinned` 里是**卡片左上角**（拖动直接改它）。
+ */
+interface TradeTip {
+  index: number
+  trade: ClosedTrade
+  x: number
+  y: number
+}
+
+const tip = ref<TradeTip | null>(null)
+const pinned = ref<TradeTip | null>(null)
+/** 钉住的等待时间：鼠标不动满这么久才固定 */
+const PIN_DELAY = 3000
+let pinTimer = 0
+/** 卡片尺寸（用来做边缘翻转与拖动边界，和 TradeTipCard 的实际大小是同一档） */
+const TIP_W = 196
+const TIP_H = 132
+
+const drawMode = computed(() => isDrawTool(store.tool))
+/**
+ * 指针模式：手里没拿笔。**编辑态是它的子状态**，不是另一个模式 ——
+ * 所以「点图形进入修改」只是给 `selectedAnnotation` 赋了个 id，
+ * 「点空白退出」就是把它清成 null，两者不会各自留存、事后还要对齐。
+ */
+const pointerMode = computed(() => store.pointerMode)
+/** 当前有没有图形在编辑态（= 指针模式 + 选中了某一个） */
+const editing = computed(() => store.editing)
+/** 线类工具（趋势线 / 射线 / 箭头线）：只有它们支持 Shift 画水平线 */
+const isLineTool = computed(
+  () => store.tool === 'trend' || store.tool === 'ray' || store.tool === 'arrow',
+)
+
+// ---------------- 尺寸与重绘 ----------------
+
+let rafId = 0
+let observer: ResizeObserver | null = null
+
+/**
+ * 把当前的视口几何同步给 `chartViewport`（横轴对齐的界面靠它）。
+ *
+ * 只写四个数：缩放在哪（barWidth）、平移了多少（scroll）、行情区左右边界。
+ * 横轴下方的录音条拿它们和 `xOf` 算出**同一个** x —— 语音标记因此永远在
+ * 它所挂的那根 K 线正下方，缩放、平移、换实例都不用单独通知它。
+ *
+ * 放在 `requestDraw` 里（而不是重绘之后）：请求重绘时视图已经改完了，
+ * 此时推出去的值就是这一帧要画的值，界面不会晚一帧。
+ */
+function publishViewport(): void {
+  const { plot } = scale.layout
+  chartViewport.width = scale.width
+  chartViewport.left = plot.left
+  chartViewport.right = plot.right
+  chartViewport.barWidth = scale.barWidth
+  chartViewport.scroll = scale.scroll
+}
+
+function requestDraw(): void {
+  viewTick.value += 1
+  publishViewport()
+  if (rafId) return
+  rafId = requestAnimationFrame(() => {
+    rafId = 0
+    draw()
+  })
+}
+
+function draw(): void {
+  const el = canvas.value
+  const box = host.value
+  if (!el || !box) return
+  const dpr = window.devicePixelRatio || 1
+  const w = Math.max(1, box.clientWidth)
+  const h = Math.max(1, box.clientHeight)
+  if (el.width !== Math.round(w * dpr) || el.height !== Math.round(h * dpr)) {
+    el.width = Math.round(w * dpr)
+    el.height = Math.round(h * dpr)
+  }
+  if (size.value.width !== w || size.value.height !== h) {
+    size.value = { width: w, height: h }
+    scale.setSize(w, h)
+    scale.clampScroll()
+    // 只有**自动价格轴**才重新贴合。手动缩过价格轴的人（滚过右轴、或者拖动时带过
+    // 纵向位移）已经用 `setSize` 把那份取景原样搬到新高度上了（见 scale.setSize）；
+    // 这里再 `fitPrice(true)` 就是把它抹掉 —— 「点一下图形，画布缩放被重置」正是
+    // 这么来的：选中图形 → 工具条多出编辑模板条 → 画布矮 27px → 强制贴合一次。
+    if (scale.autoPrice) scale.fitPrice(true)
+    // 尺寸变了 left/right 也变（右下角的价格轴宽度是固定的），再同步一次
+    publishViewport()
+  }
+  const ctx = el.getContext('2d')
+  if (!ctx) return
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
+  const inst = store.instance
+  const trades = inst?.trades ?? []
+  // ATR 序列：每帧都过一遍 `atrSeries`（内部按「数组 + 参数」缓存，没变就直接吐上一份），
+  // 这样「多了一根 K 线」「改了 Length / Smoothing」两条路都只有这里一处要管。
+  // 必须和 scale.bars 是**同一个数组**：两头都按下标对齐，错一格整条线就平移一格。
+  scale.setAtrSeries(atrSeries(scale.bars, store.atr.length, store.atr.smoothing))
+  drawChart({
+    ctx,
+    scale,
+    theme,
+    hover: hover.value,
+    symbol: inst?.symbol ?? '',
+    orders: effectiveOrders(),
+    trades,
+    closed: closed.value,
+    position: inst?.position ?? { quantity: 0, side: 'flat', averagePrice: 0 },
+    unrealizedPnl: inst?.unrealizedPnl ?? 0,
+    pointValue: store.pointValue,
+    showEma: store.showEma,
+    atr: store.atr,
+    indicator: store.indicator,
+    barCount: store.barCount,
+    tick: store.tick,
+    activeOrderId: activeOrderId.value,
+    activeClosed: activeClosed.value,
+  })
+}
+
+/** 画布上的挂单：拖动中的那一张换成**本机价格**，其余原样 */
+function effectiveOrders(): Order[] {
+  const inst = store.instance
+  if (!inst) return []
+  const d = orderDrag.value
+  return d ? inst.orders.map((o) => (o.id === d.id ? { ...o, price: d.price } : o)) : inst.orders
+}
+
+/** 已配好对的「开仓 → 平仓」，画线、命中、信息卡用的是同一份（数据与盈亏都来自后端） */
+const closed = computed(() => store.instance?.closedLots ?? [])
+/** 加粗哪一条挂单：拖动优先于悬停（拖动时鼠标其实一直在线上） */
+const activeOrderId = computed(() => orderDrag.value?.id ?? hoverOrderId.value)
+/** 加粗哪一条平仓线：跟随卡优先，其次是钉住的卡 */
+const activeClosed = computed(() => tip.value?.index ?? pinned.value?.index ?? null)
+
+onMounted(() => {
+  scale.setBars(store.displayBars)
+  // 先定副图开关再量尺寸：setSize 会按这个标志算 layout，
+  // 反过来的话第一帧会按「没有副图」铺一次，开了 ATR 的人会看到 K 线跳一下。
+  scale.setAtrPane(store.atr.show)
+  scale.setSize(host.value?.clientWidth ?? 0, host.value?.clientHeight ?? 0)
+  scale.resetView()
+  requestDraw()
+
+  /**
+   * 让横轴下方的录音条能把某一根 K 线「拉回视野中间」。
+   *
+   * 只动横向（scroll），不动缩放、不动光标、不动价格轴的手动状态 ——
+   * 它是个「找位置」的辅助动作，不是一次视图重置。价格轴走 fitPrice()，
+   * 和 panBy 一样：自动贴合时跟着重新贴合，用户手动缩放过就不碰。
+   */
+  chartNav.centerOn = (index: number) => {
+    scale.scroll = index - scale.visibleBarSpan / 2
+    scale.clampScroll()
+    scale.fitPrice()
+    requestDraw()
+  }
+
+  observer = new ResizeObserver(() => {
+    scale.setSize(host.value?.clientWidth ?? 0, host.value?.clientHeight ?? 0)
+    if (scale.autoPrice) scale.fitPrice(true)
+    requestDraw()
+  })
+  if (host.value) observer.observe(host.value)
+  window.addEventListener('keydown', onKeyDown)
+  window.addEventListener('keyup', onKeyUp)
+})
+
+onBeforeUnmount(() => {
+  observer?.disconnect()
+  // 画布没了，录音条再点「移到那根」也没有意义；留着会闭包住一个已经卸掉的 scale
+  chartNav.centerOn = () => {}
+  window.removeEventListener('keydown', onKeyDown)
+  window.removeEventListener('keyup', onKeyUp)
+  window.removeEventListener('pointermove', onWindowPointerMove)
+  window.removeEventListener('pointerup', onWindowPointerUp)
+  window.removeEventListener('pointermove', onPinMove)
+  window.removeEventListener('pointerup', onPinUp)
+  if (rafId) cancelAnimationFrame(rafId)
+  if (toastTimer) window.clearTimeout(toastTimer)
+  if (pinTimer) window.clearTimeout(pinTimer)
+})
+
+// 实例换了：重置视图（否则会拿着上一个标的的缩放去画新标的）
+watch(
+  () => store.instance?.id,
+  () => {
+    scale.setBars(store.displayBars)
+    scale.resetView()
+    hover.value = null
+    pending.value = null
+    rayHover.value = null
+    moving.value = null
+    orderDrag.value = null
+    hoverOrderId.value = null
+    clearTip()
+    pinned.value = null
+    requestDraw()
+  },
+)
+
+/*
+ * 换工具 = 放弃手里那次没画完的图形，并退出编辑态。
+ *
+ * 拿起笔（`select` → 某个绘图工具）时必须清选中：编辑和绘制是两套手势，
+ * 而且图形在绘图工具下不再接指针事件，留着一个「编辑中」的 id 只会让手柄悬空。
+ * 放下笔（绘图工具 → `select`）时这个值本来就是 null（见 commitPending / Esc），
+ * 这里清一次也不算多余 —— 无论从哪条路换工具，都不会带着旧选中进新工具。
+ */
+watch(
+  () => store.tool,
+  () => {
+    pending.value = null
+    rayHover.value = null
+    moving.value = null
+    store.selectAnnotation(null)
+    requestDraw()
+  },
+)
+
+// 画布上那份序列变了：多了一根（步进）、整体换了（换实例 / 重连）、或者换了周期。
+//
+// 盯的是 `displayBars` 而不是 `bars`：换周期时 5 分钟序列一根都没变，
+// 变的是「画布该画哪一份」—— 只看 `bars.length` 的话按钮点了图不动。
+//
+// **只换数据，不动视图**。旧版这里调了 scrollToTail() + fitPrice(true)，于是每点一次
+// 「下一根」整屏 K 线就向左滑一格，正在看的那段历史、画在上面的标注全都跟着跑掉：
+// scroll / barWidth / priceMin / priceMax 一概不碰。已有 K 线的下标没变、scroll 没变，
+// xOf() 算出来的像素位置就逐点相同；新 K 线只是按自己的下标画在右侧
+// （落在可见区外就先看不见，等用户自己拖过去）。
+watch(
+  () => store.displayBars,
+  () => {
+    scale.setBars(store.displayBars)
+    // 追加时 maxScroll 只会变大，clampScroll 不会动到现有位置；
+    // 但数据被整体替换（重连后重新对齐 / 换到更大的周期，根数少得多）时，
+    // 越界的 scroll 得拉回来，否则会停在「最右一根之外」看着一片空白。
+    scale.clampScroll()
+    requestDraw()
+  },
+)
+
+watch(
+  () => store.instance?.orders,
+  () => requestDraw(),
+)
+
+// 成交/平仓会改变画布上的三角与连线，也要立刻重画
+watch(
+  () => store.instance?.trades,
+  () => requestDraw(),
+)
+watch(
+  () => store.instance?.position,
+  () => requestDraw(),
+)
+// 浮盈只在步进时变（按新 K 线收盘价重算），成本线标签要跟着更新
+watch(
+  () => store.instance?.unrealizedPnl,
+  () => requestDraw(),
+)
+
+// 指标开关 / 参数都是纯显示状态，改了就重画（没有主题要跟了：v0.20.0 只剩浅色）
+watch(() => store.showEma, () => requestDraw())
+// ATR 副图：开关要**重算布局**（它占的是价格区的地盘，见 scale.setAtrPane），
+// 只改 Length / Smoothing 就不用动布局，重画即可（序列在绘制前统一算，见 draw()）。
+watch(
+  () => store.atr.show,
+  (on) => {
+    scale.setAtrPane(on)
+    requestDraw()
+  },
+)
+watch(
+  () => [store.atr.length, store.atr.smoothing],
+  () => requestDraw(),
+)
+// 指标设置：开关和两个参数都会整份换新对象，watch 一次就够（见 store.setIndicator）
+watch(() => store.indicator, () => requestDraw())
+// Bar Count：开关 / 颜色同样是整份换新对象，改了就重画（编号按数组本身缓存，不重算）
+watch(() => store.barCount, () => requestDraw())
+
+/**
+ * 指针是不是落在 ATR 副图里。
+ *
+ * 副图不是行情区：那里**没有价格**（ATR 的纵轴和报价的纵轴不是一回事），
+ * 所以右键下单、单击画图这些动作都不能在那儿发生 —— 否则会按 `priceAtY` 外推出一个
+ * 远在屏幕外的价格，挂上一张谁都看不见（也永远不会成交）的单。
+ * 平移、缩放、十字光标不受限制：那些只关心横向位置。
+ */
+function inAtrPane(y: number): boolean {
+  const atr = scale.layout.atr
+  return !!atr && y > atr.top
+}
+
+// ---------------- 坐标换算 ----------------
+
+/**
+ * 指针位置 -> 数据坐标（锚点 K 线时间 + 向右偏移 + 价格）。Ctrl 按下时价格吸附到该 K 线的 OHLC。
+ *
+ * 横向**不再夹到最后一根 K 线**：x 只夹在价格区左右两条边上（右边是价格轴，不是行情区），
+ * 夹完交给 `barRefAt` 换算 —— 越过末尾的部分会自动变成「最后一根 + N 根」。
+ * 所以「往右拖到未来」和「拖到某根历史上的 K 线」走的是同一套换算，不会偏移。
+ *
+ * 换算走 `scale.barAtCursor`，和十字光标用的是同一份 —— 预览里那个吸住的点，
+ * 就是这一下单击会落下的位置（以前两处各算一遍，差半根也看不出来）。
+ */
+function pointAt(x: number, y: number, snap: boolean): ChartPoint | null {
+  const hit = scale.barAtCursor(x)
+  if (!hit) return null
+  // 吸附用的是**锚点**那根 K 线：偏移出去的地方一根 K 线都没有，没有 OHLC 可吸。
+  // 后端 resolvePoint 也是拿锚点那根吸的，所以预览和定稿结果一致。
+  //
+  // `nearestOHLC` 返回的是**数字本身**，不是 SnapResult（那是 `snapAtCursor` 的返回形状）。
+  // 这里曾经写成 `nearestOHLC(...).price` —— 结果是 undefined，ChartPoint.price 是可选字段，
+  // TS 不报错，于是「按 Ctrl 单击画射线」画出来的是**价格缺失**的端点，后端再一吸附就歪了。
+  // 返回值上现在有显式类型（见 snap.ts），这类错误会当场被 TS 挡住。
+  const price = snap ? nearestOHLC(hit.bar, scale.priceAtY(y)) : scale.priceAtY(y)
+  return { time: hit.ref.time, offset: hit.ref.offset, price }
+}
+
+/** 画图形用的坐标换算（chart/annotations.ts 只认这一份接口，不认识缩放对象） */
+function figureView(): FigureView {
+  return {
+    plot: scale.layout.plot,
+    // 端点 = 锚点时间 + 向右偏移；virtualIndexOf 允许越过最后一根，所以右侧空白区里
+    // 的端点用得和 K 线完全相同的 x 公式（缩放/平移一起动，不会有半根线的错位）。
+    xOf: (point) => {
+      const idx = scale.virtualIndexOf(point)
+      return idx === undefined ? undefined : scale.xOf(idx)
+    },
+    yOfPrice: (price) => scale.yOf(price),
+    priceText: (price) => formatPrice(price, store.priceDecimals),
+  }
+}
+
+// ---------------- 指针交互 ----------------
+
+interface DragState {
+  mode: 'none' | 'pan' | 'move' | 'order'
+  startX: number
+  startY: number
+  lastX: number
+  lastY: number
+  moved: boolean
+  snap: boolean
+  /** 正在拖的标注 */
+  moveId: string
+  /** 拖的是哪个位置：-1 = 整体，0 = 起点，1 = 终点 */
+  anchor: -1 | 0 | 1
+  baseStart: Point
+  baseEnd: Point
+  /** 端点锚定的 K 线下标 */
+  baseIndex: number
+  baseIndexEnd: number
+  /** 端点从锚点往右延伸的根数（>0 = 在最后一根 K 线的右侧） */
+  baseOffset: number
+  baseOffsetEnd: number
+  basePrice: number
+  basePriceEnd: number
+  /** 指针按下那一刻的价格：拖动时的位移基准（不能用标注自己的价格，否则一按就跳） */
+  downPrice: number
+}
+
+function emptyDrag(): DragState {
+  return {
+    mode: 'none',
+    startX: 0,
+    startY: 0,
+    lastX: 0,
+    lastY: 0,
+    moved: false,
+    snap: false,
+    moveId: '',
+    anchor: -1,
+    baseStart: { time: '', price: 0 },
+    baseEnd: { time: '', price: 0 },
+    baseIndex: 0,
+    baseIndexEnd: 0,
+    baseOffset: 0,
+    baseOffsetEnd: 0,
+    basePrice: 0,
+    basePriceEnd: 0,
+    downPrice: 0,
+  }
+}
+
+let drag: DragState = emptyDrag()
+
+function localPoint(ev: { clientX: number; clientY: number }): { x: number; y: number } | null {
+  const box = host.value
+  if (!box) return null
+  const rect = box.getBoundingClientRect()
+  return { x: ev.clientX - rect.left, y: ev.clientY - rect.top }
+}
+
+function onPointerDown(ev: PointerEvent): void {
+  closeMenu()
+  // 按下 = 要开始拖东西了：跟随卡先收掉（否则它会留在原地，看着像没跟上手）
+  clearTip()
+  if (!store.instance) return
+  const p = localPoint(ev)
+  if (!p) return
+
+  // 中键：任何模式下都平移
+  if (ev.button === 1) {
+    ev.preventDefault()
+    drag = { ...emptyDrag(), mode: 'pan', startX: p.x, startY: p.y, lastX: p.x, lastY: p.y }
+    beginPointerCapture()
+    return
+  }
+  if (ev.button !== 0) return
+
+  // 绘图工具：两次单击。第 1 次定起点，第 2 次定终点。
+  // ATR 副图里不接：那里没有价格坐标可言（见 inAtrPane）。
+  if (drawMode.value) {
+    if (inAtrPane(p.y)) return
+    clickToDraw(p, ev)
+    return
+  }
+
+  /*
+   * 能走到这里，说明这一下**没有落在任何图形上** —— 图形自己的 pointerdown 都 stopPropagation 了
+   * （见 beginAnnotationDrag / 端点手柄上的 .stop）。空白、K 线、坐标轴、画在 Canvas 上的
+   * 挂单线都算「非图形」：一律先退出编辑态。
+   *
+   * 为什么放在**按下**而不是松手：按下的那一刻用户已经决定了「我要动视图 / 我要改这张单」，
+   * 图形的手柄留着会挡住这一下要拖的东西；而且中途拖了一屏平移再松手，选中还挂着的话，
+   * 下一次 Del 删掉的会是那个早就不在视线里的图形。
+   */
+  store.selectAnnotation(null)
+
+  // 指针模式：先看有没有按在**挂单线**上（画在 Canvas 上，没有 DOM 命中测试）。
+  // 挂单在网格、K 线之上，视觉上就是可以抓的东西，所以优先于平移。
+  const hitOrder = orderAt(p.x, p.y)
+  if (hitOrder) {
+    if (!store.canOperate) {
+      showToast('现在只能看：先「接管」操作权再改挂单')
+      return
+    }
+    const target = store.instance?.orders.find((o) => o.id === hitOrder)
+    if (!target) return
+    drag = {
+      ...emptyDrag(),
+      mode: 'order',
+      startX: p.x,
+      startY: p.y,
+      lastX: p.x,
+      lastY: p.y,
+      moveId: target.id,
+      basePrice: target.price,
+      downPrice: scale.priceAtY(p.y),
+    }
+    orderDrag.value = { id: target.id, price: target.price }
+    beginPointerCapture()
+    return
+  }
+
+  // 剩下的位置 = 平移（按在图形上的事件被 SVG 拦掉了，不会走到这里）
+  drag = { ...emptyDrag(), mode: 'pan', startX: p.x, startY: p.y, lastX: p.x, lastY: p.y, snap: ev.ctrlKey }
+  beginPointerCapture()
+}
+
+/**
+ * 绘图工具的单击。
+ *
+ * 五种工具里只有【射线】是**单击即完成**：一次单击画出一条水平朝右的射线。
+ * 其余四种仍然是两次单击（第 1 次定起点，第 2 次定终点并提交）。
+ */
+function clickToDraw(p: { x: number; y: number }, ev: PointerEvent): void {
+  const tool = store.tool
+  if (!isDrawTool(tool)) return
+  if (!store.canOperate) {
+    // 后端会拒（没有操作权），但在画布上静默失败最难排查 —— 直接说清楚
+    showToast('现在只能看：先「接管」操作权再画')
+    return
+  }
+  const hit = pointAt(p.x, p.y, ev.ctrlKey)
+  if (!hit) return
+  shiftDown.value = ev.shiftKey
+
+  // 射线：一击成线。按住 Shift 仍然走两次单击 —— 想画斜射线（不水平）时用得上。
+  if (tool === 'ray' && !ev.shiftKey) {
+    commitPending({ kind: 'ray', start: hit, end: rayEndAt(hit), snap: ev.ctrlKey, shift: false })
+    return
+  }
+
+  const cur = pending.value
+  if (!cur || cur.kind !== tool) {
+    pending.value = { kind: tool, start: hit, end: hit, snap: ev.ctrlKey, shift: ev.shiftKey }
+    requestDraw()
+    return
+  }
+
+  const end = constrainEnd(tool, cur.start, hit, ev.shiftKey, ev.ctrlKey)
+  if (degenerate(cur.start, end)) {
+    // 两次点在同一根 K 线的同一个价位：当成「重新开始」，不产生一个看不见的零长度图形
+    pending.value = { kind: tool, start: hit, end: hit, snap: ev.ctrlKey, shift: ev.shiftKey }
+    requestDraw()
+    return
+  }
+  commitPending({ ...cur, end, snap: ev.ctrlKey, shift: ev.shiftKey })
+}
+
+/**
+ * 水平朝右的射线，终点落在哪。
+ *
+ * 射线是「从起点穿过终点一直延伸」，所以终点只决定**方向**，不决定画多长 ——
+ * 真正画到哪儿由 `clipRay` 按当前视图裁到价格区右边缘。因此这里只要保证
+ * 「终点严格在起点右边、且价格与起点相同」，画出来就是一条通到底的水平线。
+ *
+ * **两个端点必须锚在同一根 K 线上**（终点 = 起点的锚点 + 往右 `rayForwardBars` 根）。
+ * 这不是为了省事，是按 Ctrl 时不歪的唯一办法：后端 `resolvePoint` 对**每个端点各自**
+ * 做一次 OHLC 吸附，用的是**该端点自己锚定的那根 K 线**（见 instance.go）。
+ * 起点锚在用户点的那根、终点锚在视口右边缘那根（多半是另一根），按下 Ctrl 之后
+ * 起点吸到 A 根的某个 OHLC、终点吸到 B 根的某个 OHLC —— 两个价不再相等，线就歪了。
+ * 锚同一根则两次吸的是同一组 OHLC，**结果必然相同**，横线在任何缩放下都是水平的。
+ *
+ * 往右多少根：够越过整个可视区就行（`visibleBarSpan` 是当前屏幕上能放多少根）。
+ * 为什么不写死一个根数（比方说 50 根）—— 用户放大到 barWidth=40 时 50 根只有
+ * 2000px，射线会被裁在一个莫名其妙的位置；按当前视口算则在任何缩放下
+ * 都至少越过整个可视区。上限按 `MAX_FORWARD_OFFSET` 夹住，与后端一致。
+ */
+const RAY_EXTRA_BARS = 8
+
+function rayEndAt(start: ChartPoint): ChartPoint {
+  const span = Math.ceil(scale.visibleBarSpan) + RAY_EXTRA_BARS
+  const offset = Math.min(start.offset + span, MAX_FORWARD_OFFSET)
+  // 起点已经在偏移上限（理论上不可能：可视区再宽也放不下 5000 根）时，
+  // 宁可给一个「差一根」的方向，也不能让 dx = 0 退化成零长度。
+  return { time: start.time, offset: Math.max(offset, start.offset + 1), price: start.price }
+}
+
+/**
+ * Shift 约束：趋势线/射线/箭头线按住 Shift 就是水平线（两个端点同一个价格）。
+ * 矩形和斐波那契不受影响 —— 它们的语义本来就是「一个区间」。
+ *
+ * 横向（锚点 + 偏移）**原样保留终点那一项**，只把价格改成起点的价格 —— 这样
+ * 往左画的线不会被拽回起点那根 K 线上。
+ *
+ * 但光改价格还不够：按住 Ctrl 时后端 `resolvePoint` 会拿**每个端点自己锚定的那根**
+ * K 线的 OHLC 各吸一遍（见 instance.go）。起点锚在用户点的那根、终点锚在鼠标所在的
+ * 另一根，两次吸附的结果不同，**落成正式图形就歪了** —— 而用户按住 Shift 看到的预览是平的。
+ *
+ * 所以这里把终点**预先吸到起点那根 K 线的 OHLC 上**，并且必须吸到**与后端会选中的那一个
+ * 完全相同**的值：后端拿 `nearestOHLC(终点那根 bar, 这个价)` 再吸一次，如果这个价已经
+ * 精确等于终点那根 bar 的某个 OHLC，第二次吸附是**幂等**的（距离 0，严格更小才替换，
+ * 见 snap.ts 的逐字约定），结果不会再变。两个端点于是落在同一个价上。
+ *
+ * 吸附成「最近的那个 OHLC」而不是碰运气：起点已经按 Ctrl 吸过了（见 `pointAt`），
+ * 它的价精确等于起点那根的某个 OHLC；对终点那根来说它只是个普通价格，取最近的即可。
+ */
+function constrainEnd(
+  kind: DrawTool,
+  start: ChartPoint,
+  end: ChartPoint,
+  shift: boolean,
+  snap: boolean,
+): ChartPoint {
+  const lineLike = kind === 'trend' || kind === 'ray' || kind === 'arrow'
+  if (!shift || !lineLike) return end
+  const price = start.price
+  if (!snap) return { time: end.time, offset: end.offset, price }
+  // 吸附用的是**锚点**那根 K 线：偏移出去的地方一根 K 线都没有，没有 OHLC 可吸。
+  // 和 `pointAt` / 后端 `resolvePoint` 同一个口径，所以吸完的值后端不会再改。
+  // 取不到那根（锚点不在已揭示数据里）就原样返回 price —— 宁可水平线在 Ctrl 下偏一点，
+  // 也不要把图形弄丢。
+  // `nearestOHLC` 返回的是**数字本身**（不是 SnapResult 对象 —— 那是 `snapAtCursor` 的形状），
+  // 所以这里直接用返回值，不要再取 `.price`（那会得到 undefined，把吸附变成「价格被抹掉」）。
+  const idx = scale.indexOfTime(end.time)
+  const bar = idx === undefined ? undefined : scale.bars[idx]
+  return { time: end.time, offset: end.offset, price: bar ? nearestOHLC(bar, price) : price }
+}
+
+/** 两个端点完全重合 = 没画出东西（横坐标和时间都相同、价格也相同） */
+function degenerate(start: ChartPoint, end: ChartPoint): boolean {
+  // 横坐标要比「锚点 + 偏移」两项：同一根 K 线上的 offset=0 和 offset=3 是两个位置
+  return start.time === end.time && start.offset === end.offset && Math.abs(start.price - end.price) < 1e-9
+}
+
+function beginPointerCapture(): void {
+  window.addEventListener('pointermove', onWindowPointerMove)
+  window.addEventListener('pointerup', onWindowPointerUp)
+}
+
+function endPointerCapture(): void {
+  window.removeEventListener('pointermove', onWindowPointerMove)
+  window.removeEventListener('pointerup', onWindowPointerUp)
+}
+
+function onWindowPointerMove(ev: PointerEvent): void {
+  const p = localPoint(ev)
+  if (!p) return
+  ctrlDown.value = ev.ctrlKey
+  shiftDown.value = ev.shiftKey
+
+  // 拖动期间十字线一律退出吸附形态。
+  //
+  // 拖动中「要落在哪儿」由图形自己表达（标端点被吸在 OHLC 上、挂单线跟着走），
+  // 不必再靠十字线提示；更重要的是拖端点时端点可能停在最后一根的右侧（offset > 0），
+  // 那一段没有 K 线 —— 十字线一吸就会被夹回最后一根、离开端点，看着像吸附坏了。
+  if (drag.mode !== 'none' && hover.value?.snap) {
+    hover.value = { ...hover.value, snap: false }
+  }
+
+  if (drag.mode === 'pan') {
+    const dx = p.x - drag.lastX
+    const dy = p.y - drag.lastY
+    drag.lastX = p.x
+    drag.lastY = p.y
+    if (Math.abs(p.x - drag.startX) + Math.abs(p.y - drag.startY) > 2) drag.moved = true
+    scale.panBy(dx, dy)
+    requestDraw()
+    return
+  }
+
+  if (drag.mode === 'order') {
+    // 拖动改价：价格吸附到 tick（和十字光标、右键菜单同一把尺子），
+    // 所以拖到哪儿都是这个标的上真实存在的报价
+    if (Math.abs(p.y - drag.startY) > 1) drag.moved = true
+    orderDrag.value = { id: drag.moveId, price: snapToTick(scale.priceAtY(p.y), store.tick) }
+    requestDraw()
+    return
+  }
+
+  if (drag.mode === 'move' && moving.value) {
+    drag.snap = ev.ctrlKey
+    const deltaBars = Math.round((p.x - drag.startX) / scale.barWidth)
+    const deltaPrice = scale.priceAtY(p.y) - drag.downPrice
+
+    // 整体移动：两个端点一起走；拖端点：只动那一个（另一个原样留着）
+    const moveStart = drag.anchor === -1 || drag.anchor === 0
+    const moveEnd = drag.anchor === -1 || drag.anchor === 1
+
+    // 端点先化成**连续下标**（锚点下标 + 向右偏移）再平移，于是「越过最后一根」的端点
+    // 和历史里的端点走的是同一条算术；barRefAt 负责把结果重新表达成
+    // 「真实 K 线 + 根数」，并把下标夹在 [第一根, 最后一根 + 上限] 里。
+    const refStart = scale.barRefAt(drag.baseIndex + drag.baseOffset + (moveStart ? deltaBars : 0))
+    const refEnd = scale.barRefAt(drag.baseIndexEnd + drag.baseOffsetEnd + (moveEnd ? deltaBars : 0))
+    if (!refStart || !refEnd) return
+    const idxStart = scale.indexOfTime(refStart.time)
+    const idxEnd = scale.indexOfTime(refEnd.time)
+    if (idxStart === undefined || idxEnd === undefined) return
+    const barStart = scale.bars[idxStart]
+    const barEnd = scale.bars[idxEnd]
+    if (!barStart || !barEnd) return
+    const rawStart = drag.basePrice + (moveStart ? deltaPrice : 0)
+    const rawEnd = drag.basePriceEnd + (moveEnd ? deltaPrice : 0)
+    moving.value = {
+      id: drag.moveId,
+      start: {
+        time: refStart.time,
+        offset: refStart.offset,
+        price: drag.snap ? nearestOHLC(barStart, rawStart) : rawStart,
+      },
+      end: {
+        time: refEnd.time,
+        offset: refEnd.offset,
+        price: drag.snap ? nearestOHLC(barEnd, rawEnd) : rawEnd,
+      },
+    }
+    drag.moved = true
+    requestDraw()
+  }
+}
+
+function onWindowPointerUp(): void {
+  if (drag.mode === 'order') {
+    const moved = orderDrag.value
+    // 只在真的换了价格时才发：点一下（没拖）等于什么都没发生，
+    // 否则操作记录里会多出一条「改价 6484.00 → 6484.00」的噪音
+    if (moved && drag.moved && Math.abs(moved.price - drag.basePrice) > 1e-9) {
+      store.moveOrder(moved.id, moved.price)
+    }
+    orderDrag.value = null
+  } else if (drag.mode === 'move' && moving.value && drag.moved) {
+    const m = moving.value
+    // 整个端点对象发过去（含 offset）：只发 time+price 的话，服务端会把「越过最后一根」
+    // 的端点吸回锚点那根 K 线上，松手即跳。只动一个端点时另一个原样发回。
+    store.moveAnnotation(
+      m.id,
+      { ...m.start, price: round(m.start.price) },
+      { ...m.end, price: round(m.end.price) },
+      drag.snap,
+    )
+  }
+  // 平移之后不需要再补一次「取消选中」：空白处按下时就已经退出了编辑态
+  // （见 onPointerDown）。留在这里的话，拖完一屏还会多清一次，
+  // 而且让「点空白退出」的时机出现两处，改起来容易只改到一半。
+  moving.value = null
+  drag = emptyDrag()
+  endPointerCapture()
+  requestDraw()
+}
+
+function onPointerMove(ev: PointerEvent): void {
+  if (!store.instance) return
+  const p = localPoint(ev)
+  if (!p) return
+  ctrlDown.value = ev.ctrlKey
+  shiftDown.value = ev.shiftKey
+  if (drag.mode !== 'none') return
+
+  // 两次单击绘制的中间态：终点跟着鼠标走（不需要按住任何键）
+  if (pending.value) {
+    const aim = pointAt(p.x, p.y, ev.ctrlKey)
+    if (aim) {
+      pending.value = {
+        ...pending.value,
+        end: constrainEnd(pending.value.kind, pending.value.start, aim, ev.shiftKey, ev.ctrlKey),
+        snap: ev.ctrlKey,
+        shift: ev.shiftKey,
+      }
+    }
+  } else if (store.tool === 'ray' && !ev.shiftKey) {
+    // 射线是单击即完成，所以预览得在**还没点**的时候就跟着鼠标走 ——
+    // 否则用户按下鼠标之前完全不知道这条线会落在哪个价位。
+    rayHover.value = pointAt(p.x, p.y, ev.ctrlKey)
+  } else {
+    rayHover.value = null
+  }
+
+  const idx = scale.nearestIndex(p.x)
+  // 只传「按没按 Ctrl」：吸附本身由十字光标每帧现算（见 render.ts 的 drawCrosshair），
+  // 缩放/平移之后就不会过期。这里只需要把键位状态记进悬停对象里。
+  hover.value = { index: idx, x: p.x, y: p.y, inside: true, snap: ev.ctrlKey }
+
+  // 挂单线：换光标 + 画粗（拖拽改价的入口）
+  hoverOrderId.value = orderAt(p.x, p.y)
+  // 平仓虚线：悬停出信息卡（绘图工具下不抢：那条线会挡住「找终点」）
+  if (drawMode.value) clearTip()
+  else updateTradeTip(p.x, p.y)
+
+  requestDraw()
+}
+
+function onPointerLeave(): void {
+  hover.value = null
+  hoverOrderId.value = null
+  rayHover.value = null
+  // 键位状态一起清掉：鼠标都出去了，提示和吸附圈不该留在画布上
+  ctrlDown.value = false
+  shiftDown.value = false
+  // 鼠标移出画布 = 离开那条线：跟随卡销毁（钉住的卡是用户自己固定下来的，留着）
+  clearTip()
+  requestDraw()
+}
+
+function onWheel(ev: WheelEvent): void {
+  closeMenu()
+  if (!store.instance) return
+  ev.preventDefault()
+  const p = localPoint(ev)
+  if (!p) return
+  const factor = ev.deltaY > 0 ? 1 / 1.12 : 1.12
+  // 右侧价格轴 = 价格区的旋钮：指针在那儿滚轮就缩价格，在行情区滚轮就缩时间。
+  // （以前是 Shift+滚轮缩价格 —— 但「在价格轴上一滚就能缩」是看图时的本能，
+  //   而且不用先找准 Shift。Shift 现在在画布上不再有缩放含义。）
+  //
+  // 注意价格轴的系数要取倒数：`zoomTime` 的 factor 是乘在 **barWidth** 上（大 = 放大），
+  // 而 `zoomPrice` 的 factor 是乘在 **离锚点的距离** 上（大 = 缩小）。同一个滚轮方向
+  // 两边必须给出相反的系数，否则「往上滚」在时间轴是放大、在价格轴却成了缩小。
+  // ATR 副图里的滚轮一律缩时间：副图纵轴是自动的、没有手动缩放这回事，
+  // 在它右边的刻度上滚一下就改变价格轴会更让人迷惑。
+  if (p.x >= scale.layout.plot.right && !inAtrPane(p.y)) scale.zoomPrice(1 / factor, p.y)
+  else scale.zoomTime(factor, p.x)
+  requestDraw()
+}
+
+function onDoubleClick(ev: MouseEvent): void {
+  // 绘图时双击是「两次单击」，不能顺手把价格轴重置了
+  if (drawMode.value) return
+  // 双击**图形**（手快的人选一个图形会连点两下）也不是「双击空白」：
+  // 那一下的意图是选中它，不该顺手把价格轴重置掉。图形的 pointerdown 会
+  // stopPropagation，但 dblclick 照样冒上来 —— 这里按事件源再挡一次。
+  if ((ev.target as Element | null)?.closest?.('svg')) return
+  scale.resetPrice()
+  requestDraw()
+}
+
+// ---------------- 画布上的拾取：挂单线 / 平仓虚线 ----------------
+
+/** 挂单线的命中容差：线只有 1px，光标得有点容错，但不能大到「隔着两条线也能抓」 */
+const ORDER_HIT_PX = 6
+/**
+ * 平仓虚线的命中容差。
+ *
+ * 6px 是折中量出来的：3px 以下时，1.2px 的虚线得瞄准着放才碰得到；10px 以上时，
+ * 鼠标只是从线旁边经过就会弹出卡片挡住 K 线，而且两条线挨得近时分不清指的是哪条。
+ */
+const TRADE_HIT_PX = 6
+
+/**
+ * 指针下面的挂单 id（只认还挂着的、画在可见区里的）。
+ *
+ * 挂单是 Canvas 画的，没有 DOM 元素可点，命中测试只能自己算：把价格换成 y 坐标取最近的一条。
+ * 多条挨在一起时取**最近**的，不是数组里最后一条 —— 否则两张价格几乎相同的单里，
+ * 永远只能抓到后面挂的那张。
+ */
+function orderAt(x: number, y: number): string | null {
+  const plot = scale.layout.plot
+  if (x < plot.left || x > plot.right || y < plot.top || y > plot.bottom) return null
+  let bestId: string | null = null
+  let bestDist = ORDER_HIT_PX + 1
+  for (const o of effectiveOrders()) {
+    if (o.status !== 'open') continue
+    const oy = scale.yOf(o.price)
+    if (oy < plot.top || oy > plot.bottom) continue
+    const d = Math.abs(oy - y)
+    if (d < bestDist) {
+      bestId = o.id
+      bestDist = d
+    }
+  }
+  return bestId
+}
+
+/** 指针下面的平仓虚线（取最近的一条） */
+function closedAt(x: number, y: number): TradeTip | null {
+  const plot = scale.layout.plot
+  if (x < plot.left || x > plot.right || y < plot.top || y > plot.bottom) return null
+  const list = closed.value
+  let best: { index: number; trade: ClosedTrade; d: number } | null = null
+  for (let i = 0; i < list.length; i += 1) {
+    const c = list[i]
+    const i1 = scale.indexOfTime(c.openTime)
+    const i2 = scale.indexOfTime(c.closeTime)
+    if (i1 === undefined || i2 === undefined) continue
+    const d = distanceToSegment(
+      x,
+      y,
+      scale.xOf(i1),
+      scale.yOf(c.openPrice),
+      scale.xOf(i2),
+      scale.yOf(c.closePrice),
+    )
+    if (d <= TRADE_HIT_PX && (!best || d < best.d)) best = { index: i, trade: c, d }
+  }
+  return best ? { index: best.index, trade: best.trade, x, y } : null
+}
+
+/** 点到线段的距离：判断「悬浮在平仓线上」的全部几何都在这里 */
+function distanceToSegment(
+  px: number,
+  py: number,
+  x1: number,
+  y1: number,
+  x2: number,
+  y2: number,
+): number {
+  const dx = x2 - x1
+  const dy = y2 - y1
+  const len2 = dx * dx + dy * dy
+  if (len2 <= 1e-9) return Math.hypot(px - x1, py - y1)
+  // 投影参数夹到 [0,1]：落在线段外时，距离算到最近的那个端点（不会有无限延伸的命中区）
+  const t = clamp(((px - x1) * dx + (py - y1) * dy) / len2, 0, 1)
+  return Math.hypot(px - (x1 + t * dx), py - (y1 + t * dy))
+}
+
+// ---------------- 平仓线的信息卡 ----------------
+
+/**
+ * 鼠标每动一次就更新跟随卡并**重新计时**：
+ * 「3 秒没动」是从最后一次移动算起的，不是从第一次悬浮算起的。
+ */
+function updateTradeTip(x: number, y: number): void {
+  // 已经钉住时不再出跟随卡：否则屏幕上同时两张卡说同一件事
+  if (pinned.value) return
+  const hit = closedAt(x, y)
+  if (!hit) {
+    clearTip()
+    return
+  }
+  tip.value = hit
+  armPinTimer()
+}
+
+/** 销毁跟随卡（鼠标移出那条线、移出画布、开始拖东西时都走它） */
+function clearTip(): void {
+  if (pinTimer) {
+    window.clearTimeout(pinTimer)
+    pinTimer = 0
+  }
+  tip.value = null
+}
+
+function armPinTimer(): void {
+  if (pinTimer) window.clearTimeout(pinTimer)
+  pinTimer = window.setTimeout(() => {
+    pinTimer = 0
+    const t = tip.value
+    if (!t) return
+    // 固定在它**此刻所在的位置**（而不是鼠标位置）：否则卡片会从右下角突然跳到左上角
+    const box = tipBox.value
+    pinned.value = { ...t, x: box.left, y: box.top }
+    tip.value = null
+    requestDraw()
+  }, PIN_DELAY)
+}
+
+/** 跟随卡的左上角：默认在鼠标右下方 16px，贴近边缘时翻到另一侧，并夹在画布内 */
+const tipBox = computed(() => {
+  const t = tip.value
+  if (!t) return { left: 0, top: 0 }
+  let left = t.x + 16
+  let top = t.y + 16
+  if (left + TIP_W > size.value.width - 8) left = t.x - TIP_W - 16
+  if (top + TIP_H > size.value.height - 8) top = t.y - TIP_H - 16
+  return {
+    left: clamp(left, 8, Math.max(8, size.value.width - TIP_W - 8)),
+    top: clamp(top, 8, Math.max(8, size.value.height - TIP_H - 8)),
+  }
+})
+
+const tipStyle = computed(() => ({
+  left: `${tipBox.value.left}px`,
+  top: `${tipBox.value.top}px`,
+  width: `${TIP_W}px`,
+}))
+
+const pinnedStyle = computed(() => {
+  const p = pinned.value
+  if (!p) return {}
+  return { left: `${p.x}px`, top: `${p.y}px`, width: `${TIP_W}px` }
+})
+
+/** 钉住之后拖着走：按下卡片（× 除外）就在画布内平移它 */
+let pinDrag: { dx: number; dy: number } | null = null
+
+function beginPinDrag(ev: PointerEvent): void {
+  const p = pinned.value
+  if (!p) return
+  // 卡片长在画布里：不 stop 的话按下会冒到画布的 pointerdown，顺手把整个视图也拖了
+  ev.stopPropagation()
+  ev.preventDefault()
+  const pt = localPoint(ev)
+  if (!pt) return
+  pinDrag = { dx: pt.x - p.x, dy: pt.y - p.y }
+  window.addEventListener('pointermove', onPinMove)
+  window.addEventListener('pointerup', onPinUp)
+}
+
+function onPinMove(ev: PointerEvent): void {
+  const p = pinned.value
+  const pt = localPoint(ev)
+  if (!pinDrag || !p || !pt) return
+  pinned.value = {
+    ...p,
+    x: clamp(pt.x - pinDrag.dx, 4, Math.max(4, size.value.width - TIP_W - 4)),
+    y: clamp(pt.y - pinDrag.dy, 4, Math.max(4, size.value.height - TIP_H - 4)),
+  }
+}
+
+function onPinUp(): void {
+  pinDrag = null
+  window.removeEventListener('pointermove', onPinMove)
+  window.removeEventListener('pointerup', onPinUp)
+}
+
+function closePinned(): void {
+  pinned.value = null
+  requestDraw()
+}
+
+// ---------------- 挂单的「×」按钮（HTML 叠在画布上） ----------------
+
+interface AxisOrder {
+  id: string
+  side: Side
+  left: number
+  top: number
+  title: string
+}
+
+/**
+ * 每张挂单右侧的撤单按钮位置。
+ *
+ * 为什么用 HTML 而不是画在 Canvas 上：按钮需要 hover 反馈、title 提示、禁用态，
+ * 这些 Canvas 全要手写；HTML 一个 button 就都有了。位置仍然由 `ChartScale` 算，
+ * 和画布上那条线严格对齐（同一个 yOf）。
+ */
+const axisOrders = computed<AxisOrder[]>(() => {
+  void viewTick.value
+  const plot = scale.layout.plot
+  const out: AxisOrder[] = []
+  for (const o of effectiveOrders()) {
+    if (o.status !== 'open') continue
+    const y = scale.yOf(o.price)
+    if (y < plot.top || y > plot.bottom) continue
+    out.push({
+      id: o.id,
+      side: o.side,
+      left: plot.right - ORDER_RESERVE_RIGHT + 4,
+      top: y - 8,
+      title: `撤单：${o.side === 'buy' ? '买' : '卖'} ${o.quantity} 手 @ ${formatPrice(o.price, store.priceDecimals)}`,
+    })
+  }
+  return out
+})
+
+function cancelFromCanvas(id: string): void {
+  if (!store.canOperate) {
+    showToast('现在只能看：先「接管」操作权再撤单')
+    return
+  }
+  store.cancelOrder(id)
+}
+
+// ---------------- 提交 ----------------
+
+function round(v: number): number {
+  return Math.round(v * 100) / 100
+}
+
+/**
+ * 第 2 次单击：把时间 + 价格 + **当前模板的样式快照**发往后端，
+ * 然后把工具交回**指针**。
+ *
+ * 用 `...p.start` 而不是逐字段重建：offset 也是端点的一部分，漏掉它后端就会把端点
+ * 落回锚点那根 K 线 —— 预览明明伸到了右边，一松手却缩回去（这里踩过一次）。
+ *
+ * 为什么画完就退回指针：图形一旦定稿，接下来的单击就该回到「平移 / 缩放 / 改价」的
+ * 常规手势，而不是接着画下一个 —— 指针模式下单击空白是平移，也是「取消选中」，
+ * 在绘图工具下同一个动作会画出一条看不见的零长度线。想画下一个，重新点一次工具即可
+ * （一次「选工具 → 画两下」本来就是个完整动作，留着工具只会让下一次误触）。
+ */
+function commitPending(p: PendingShape): void {
+  const template = store.templateFor(p.kind)
+  store.addAnnotation({
+    kind: p.kind,
+    start: { ...p.start, price: round(p.start.price) },
+    end: { ...p.end, price: round(p.end.price) },
+    style: resolveStyle({ kind: p.kind, style: template?.style }),
+    snap: p.snap,
+  })
+  pending.value = null
+  // 定稿即交回指针：工具条的高亮、光标（十字 → 默认）、底部提示语一起复位，
+  // 不留在绘图工具上等人再按一次 Esc。watch(store.tool) 会顺手把 pending 清干净。
+  store.tool = 'select'
+  requestDraw()
+}
+
+// ---------------- 标注的命中、选中与拖动 ----------------
+
+/**
+ * 按下图形本体（线身 / 矩形内部 / 斐波那契的某条线）：它成为唯一的编辑对象，
+ * 有操作权时同一手势继续拖动整体。
+ *
+ * **按下即选中**是新交互的全部实现：点哪个图形就只有哪个进入编辑态（手柄 + 虚线框），
+ * 点另一个就切过去。旧版是「pointerdown 起拖、click 再切换选中」，两件事分开写，
+ * 拖完松手浏览器补的那个 click 还会把选中翻掉，于是要靠 `lastDragMoved` 挡一下 ——
+ * 现在按下就定选中，那套补丁连同 click 处理一起删了。
+ */
+function beginBodyDrag(ev: PointerEvent, id: string): void {
+  beginAnnotationDrag(ev, id, -1)
+}
+
+/** 按下端点手柄：只移动这一个端点（手柄只在已选中时存在，所以这里不必再选一次） */
+function beginAnchorDrag(ev: PointerEvent, id: string, anchor: 0 | 1): void {
+  beginAnnotationDrag(ev, id, anchor)
+}
+
+function beginAnnotationDrag(ev: PointerEvent, id: string, anchor: -1 | 0 | 1): void {
+  // 绘图工具下图形这一层根本不接指针事件（模板里 pointer-events 关掉了），这里只是兜底
+  if (!pointerMode.value) return
+  const a = (store.instance?.annotations ?? []).find((item) => item.id === id)
+  if (!a) return
+  // 选中先做、且不受操作权限制：只读观众也应该能点开一个图形看端点，只是拖不动、Del 删不掉
+  store.selectAnnotation(id)
+  /*
+   * 必须 stopPropagation：这一下按在**图形**上，不是「点空白」。
+   * 放行的话会冒到画布的 onPointerDown，而那里对「非图形区域」的第一步就是退出编辑态 ——
+   * 刚设好的选中会立刻被自己抹掉，图形永远选不上。
+   */
+  ev.stopPropagation()
+  if (!store.canOperate) return
+  ev.preventDefault()
+  const p = localPoint(ev)
+  if (!p) return
+  const idxStart = scale.indexOfTime(a.start.time)
+  if (idxStart === undefined) return
+  const idxEnd = scale.indexOfTime(a.end.time)
+  drag = {
+    ...emptyDrag(),
+    mode: 'move',
+    startX: p.x,
+    startY: p.y,
+    lastX: p.x,
+    lastY: p.y,
+    snap: ev.ctrlKey,
+    moveId: a.id,
+    anchor,
+    baseStart: a.start,
+    baseEnd: a.end,
+    baseIndex: idxStart,
+    baseIndexEnd: idxEnd ?? idxStart,
+    // 端点可能停在最后一根右侧（offset > 0）：拖动的起点必须把它算进去，
+    // 否则一按下整条线就会往左跳 offset 根。
+    baseOffset: a.start.offset ?? 0,
+    baseOffsetEnd: a.end.offset ?? 0,
+    basePrice: a.start.price,
+    basePriceEnd: a.end.price,
+    downPrice: scale.priceAtY(p.y),
+  }
+  moving.value = {
+    id: a.id,
+    start: { time: a.start.time, offset: a.start.offset ?? 0, price: a.start.price },
+    end: { time: a.end.time, offset: a.end.offset ?? 0, price: a.end.price },
+  }
+  beginPointerCapture()
+}
+
+// ---------------- 右键小菜单 ----------------
+
+/**
+ * 现价 = 游标所在（最后一根已揭示）K 线的收盘价。
+ *
+ * 为什么是它、而不是鼠标下面那根 K 线的收盘价：挂单类型是按「挂单价相对**下单那一刻的市价**」
+ * 定的，而复盘里「下单那一刻」永远是游标那根（后端 `placeOrder` 也拿 `currentBar()` 做基准）。
+ * 鼠标可以停在一百根之前的历史价位上，那个价格不是现在的市价。
+ */
+const lastPrice = computed(() => store.currentBar?.close ?? 0)
+
+const lastPriceText = computed(() =>
+  lastPrice.value > 0 ? formatPrice(lastPrice.value, store.priceDecimals) : '—',
+)
+
+/** 菜单里那句价格：三位小数（BTCUSDT 0.1 一跳）也不会被截成两位 */
+const menuPriceText = computed(() => (menu.value ? formatPrice(menu.value.price, store.priceDecimals) : ''))
+
+/** 菜单价格在现价的哪一侧 —— 只用来给菜单写一句话，判定本身在 orderKindFor 里 */
+const menuSideText = computed(() => {
+  const m = menu.value
+  if (!m || !(lastPrice.value > 0)) return ''
+  if (m.price > lastPrice.value) return '高于现价'
+  if (m.price < lastPrice.value) return '低于现价'
+  return '等于现价'
+})
+
+/**
+ * 两个按钮各自的单型。菜单价格在打开那一刻就固定了，所以这两个值也是固定的：
+ * 现价下方 → 买限价 / 卖止损；现价上方 → 买止损 / 卖限价。
+ */
+const buyKind = computed<OrderKind>(() =>
+  menu.value ? orderKindFor('buy', menu.value.price, lastPrice.value) : 'limit',
+)
+const sellKind = computed<OrderKind>(() =>
+  menu.value ? orderKindFor('sell', menu.value.price, lastPrice.value) : 'limit',
+)
+
+/**
+ * 靠边右键时把菜单挪回画布内，别一半露在窗口外面。
+ *
+ * 画布矮的时候（底边抽屉展开、窗口很窄）菜单会比画布还高 —— 宿主是 `overflow-hidden`，
+ * 超出去的那几项就点不到了（「移除绘图」正好在最下面）。所以这里同时给一个
+ * **max-height** 让菜单自己滚，而不是硬塞。
+ */
+const menuStyle = computed(() => {
+  const m = menu.value
+  if (!m) return {}
+  const w = 276
+  /** 菜单整块大约多高（只用来算「能不能整个塞下」，不是精确排版值） */
+  const h = 300
+  const top = Math.max(4, Math.min(m.y, size.value.height - h - 4))
+  return {
+    left: `${Math.max(4, Math.min(m.x, size.value.width - w - 4))}px`,
+    top: `${top}px`,
+    width: `${w}px`,
+    maxHeight: `${Math.max(120, size.value.height - top - 4)}px`,
+  }
+})
+
+/** 关菜单 = 顺手把「移除绘图」的上膛状态也退掉（关掉再打开不该还是一点就删） */
+function closeMenu(): void {
+  menu.value = null
+  clearArmed.value = false
+}
+
+function onContextMenu(ev: MouseEvent): void {
+  ev.preventDefault()
+  if (!store.instance) return
+  const p = localPoint(ev)
+  if (!p) return
+  // 右键菜单的每一项都要一个**价格**（挂单 / 复制价）。ATR 副图里没有价格，
+  // `priceAtY` 只会外推出一个屏幕外的数 —— 挂上去的单看不见、也永远不会成交。
+  if (inAtrPane(p.y)) return
+  // 每次打开都从「没上膛」开始：上一次按了一半就走开，不该让下一次一点就删
+  clearArmed.value = false
+  // 时间取**右键落点那一根**（横向就近取整，和十字光标/吸附同一把尺子）。
+  // 落到右侧空白区时 nearestIndex 会夹到最后一根 —— 那里没有 K 线，只能给最后一根的时间。
+  const idx = scale.bars.length > 0 ? scale.nearestIndex(p.x) : -1
+  const time = (idx >= 0 ? scale.bars[idx]?.time : '') || store.currentBar?.time || ''
+  menu.value = { x: p.x, y: p.y, price: snapToTick(scale.priceAtY(p.y), store.tick), time }
+}
+
+/** 当前画布上有几个绘图 —— 菜单里那个 n，也是「一次会删掉几个」 */
+const annotationCount = computed(() => store.instance?.annotations.length ?? 0)
+
+/**
+ * 移除全部绘图。
+ *
+ * 第一下只是上膛（文案变红、写明不可撤销），第二下才发消息。发出去之后**本地不做
+ * 乐观清空**：后端广播 `annotation_cleared` 回来才算数，被拒时画布保持原样。
+ *
+ * 手里那些「指向某个图形」的临时状态必须一起丢掉：画到一半的预览、正在拖的图形、
+ * 选中的那个 id —— 它们指向的图形马上就要不存在了，留着会让下一次按键打到空气上。
+ */
+function menuClearAnnotations(): void {
+  if (annotationCount.value === 0) return
+  if (!store.canOperate) {
+    showToast('现在只能看：先「接管」操作权再移除绘图')
+    closeMenu()
+    return
+  }
+  if (!clearArmed.value) {
+    clearArmed.value = true
+    return
+  }
+  const n = annotationCount.value
+  store.clearAnnotations()
+  pending.value = null
+  moving.value = null
+  store.selectAnnotation(null)
+  clearArmed.value = false
+  closeMenu()
+  requestDraw()
+  showToast(`已移除 ${n} 个绘图`)
+}
+
+function showToast(text: string): void {
+  toast.value = text
+  if (toastTimer) window.clearTimeout(toastTimer)
+  toastTimer = window.setTimeout(() => {
+    toast.value = ''
+  }, 1400)
+}
+
+/**
+ * 下单。单型**在这里再算一次**（不是从模板传进来）：按钮文案和执行必须是同一个判定，
+ * 否则将来改文案时很容易出现「写着限价、发出去是止损」。
+ */
+/**
+ * 菜单里那一对手数的「另一种口径」：nATR 定手数（见 `lib/natr.ts` 与 store 的 `natrPlan`）。
+ *
+ * 菜单上并排放两组挂单按钮，不是让用户二选一，而是「两个手数来源各自都要能一键下单」：
+ *   - 上一对 = 下单框里手填的 `orderQuantity`（老动作，一直是这个数）；
+ *   - 下一对 = 按 `n × ATR` 止损距离和最大亏损倒推出来的手数。
+ * 后者算不出来（ATR 还没到 length 根 / 没配 tickValue）时给 0，按钮置灰，
+ * 而不是拿 1 手冒充 —— 那样用户会以为「nATR 算出来就是 1 手」。
+ */
+const natrLots = computed(() => store.natrPlan?.lots ?? 0)
+
+function menuOrder(side: Side, quantity = store.orderQuantity): void {
+  const m = menu.value
+  if (!m) return
+  if (!store.canOperate) {
+    showToast('现在只能看：先「接管」操作权再下单')
+    closeMenu()
+    return
+  }
+  const kind = orderKindFor(side, m.price, lastPrice.value)
+  store.placeOrder(side, kind, m.price, quantity)
+  closeMenu()
+  showToast(
+    `已挂 ${side === 'buy' ? '买入' : '卖出'}${orderKindLabel(kind)} ${quantity} 手 ${formatPrice(m.price, store.priceDecimals)}`,
+  )
+}
+
+async function menuCopy(): Promise<void> {
+  const m = menu.value
+  if (!m) return
+  const text = formatPrice(m.price, store.priceDecimals)
+  const ok = await copyText(text)
+  closeMenu()
+  showToast(ok ? `已复制 ${text}` : '复制失败：浏览器不允许访问剪贴板')
+}
+
+/**
+ * 复制当前（右键落点那根）K 线的时间。
+ *
+ * 原样复制协议 / CSV 里的 `time` 字段，**不加星期、不换格式**：
+ * 这个字符串的用途是贴进表格、过滤条件、脚本里按时间对齐，
+ * 而 `formatAxisTime` 那种「周五 2026-10-16 09:35」是给人看的，贴过去就对不上了。
+ */
+async function menuCopyTime(): Promise<void> {
+  const m = menu.value
+  if (!m || !m.time) return
+  const text = m.time
+  const ok = await copyText(text)
+  closeMenu()
+  showToast(ok ? `已复制 ${text}` : '复制失败：浏览器不允许访问剪贴板')
+}
+
+/** 剪贴板：优先 Clipboard API，非安全上下文（http + 非 localhost）退回老办法 */
+async function copyText(text: string): Promise<boolean> {
+  try {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(text)
+      return true
+    }
+  } catch {
+    // 落到下面的兜底
+  }
+  try {
+    const ta = document.createElement('textarea')
+    ta.value = text
+    ta.style.position = 'fixed'
+    ta.style.top = '-1000px'
+    ta.style.opacity = '0'
+    document.body.appendChild(ta)
+    ta.select()
+    const ok = document.execCommand('copy')
+    document.body.removeChild(ta)
+    return ok
+  } catch {
+    return false
+  }
+}
+
+// ---------------- 键盘 ----------------
+
+function isTypingTarget(target: EventTarget | null): boolean {
+  const el = target as HTMLElement | null
+  if (!el) return false
+  const tag = el.tagName
+  return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || el.isContentEditable
+}
+
+/**
+ * Ctrl 按下/松开时，让光标立刻重画一次。
+ *
+ * 场景：**鼠标停着不动、只按一下 Ctrl** —— 这时不会触发 pointermove，
+ * 不补这一下十字线要等用户动一下鼠标才跳，按了 Ctrl 却看不见任何反应。
+ * 按下的那一下必须立刻吸：这是这个功能的全部意义（先看见落点，再单击）。
+ *
+ * 只置 `hover.snap` 这个开关，吸附值不动手算 —— 十字光标每帧自己算
+ * （见 render.ts 的 `drawCrosshair`），这里算一遍反而会多出一份可能不一致的口径。
+ */
+function refreshHoverSnap(): void {
+  const h = hover.value
+  if (!h || !h.inside || drag.mode !== 'none') return
+  hover.value = { ...h, snap: ctrlDown.value }
+  requestDraw()
+}
+
+function onKeyDown(ev: KeyboardEvent): void {
+  const wasCtrl = ctrlDown.value
+  ctrlDown.value = ev.ctrlKey
+  shiftDown.value = ev.shiftKey
+  // 在输入框里按 Ctrl（复制粘贴之类）不该让画布上的十字线闪一下
+  if (ev.ctrlKey && !wasCtrl && !isTypingTarget(ev.target)) refreshHoverSnap()
+  if (isTypingTarget(ev.target)) return
+
+  if (ev.key === 'Escape') {
+    // Esc 的含义是「退掉最上面那一层」，一次退一层：
+    //   ① 手里没画完的图形 → ② 正在编辑的图形 → ③ 画笔（回到指针）
+    // （点击空白也能退出编辑，Esc 只是不用把手从键盘上移开的那条路。）
+    if (pending.value) {
+      pending.value = null
+    } else if (store.editing) {
+      store.selectAnnotation(null)
+    } else if (drawMode.value) {
+      store.tool = 'select'
+    }
+    moving.value = null
+    drag = emptyDrag()
+    endPointerCapture()
+    closeMenu()
+    // 钉住的信息卡也一起收掉：Esc 在这个画布上的含义是「退掉最上面那一层」
+    pinned.value = null
+    clearTip()
+    requestDraw()
+    return
+  }
+  /*
+   * →（方向键右键）= 【下一根】（v0.20.0）。
+   *
+   * 和工具条上那个按钮**同一套开关条件**：有操作权、进了实例、至少有一根 K 线。
+   * 三件都不满足时什么都不做、也不 preventDefault —— 让方向键在该滚的地方照常滚。
+   *
+   * 两个细节：
+   *   - 先 preventDefault 再判断 repeat：焦点停在某个按钮上时，方向键会被浏览器
+   *     当成一次点击 / 一次横向滚动，不拦住就会「步进一根 + 顺手点了别的按钮」；
+   *   - **忽略长按重复**（ev.repeat）。每重复一次都是一条广播、一根 K 线，
+   *     按住不放会在半秒内跑过几十根行情，而且退不回来 —— 一次按键只走一根。
+   */
+  if (ev.key === 'ArrowRight') {
+    if (ev.ctrlKey || ev.metaKey || ev.altKey) return
+    if (!store.canOperate || !store.instance || store.bars.length === 0) return
+    ev.preventDefault()
+    if (ev.repeat) return
+    store.step()
+    return
+  }
+
+  // 回放是只读的：Delete 不能把「录像里的图形」发一条删除请求出去。
+  //
+  // 判定用 selectedId（= 真的画出来、带手柄的那一个），不是 store.selectedAnnotation：
+  // 图形因为锚点不在已揭示数据里而暂时没画出来时，选中不该还能删掉一个看不见的东西。
+  if ((ev.key === 'Delete' || ev.key === 'Backspace') && selectedId.value && store.canOperate) {
+    ev.preventDefault()
+    store.deleteAnnotation(selectedId.value)
+    store.selectAnnotation(null)
+  }
+}
+
+function onKeyUp(ev: KeyboardEvent): void {
+  const wasCtrl = ctrlDown.value
+  ctrlDown.value = ev.ctrlKey
+  shiftDown.value = ev.shiftKey
+  // 松开 Ctrl：十字线立刻回到跟着指针走（不用等鼠标动一下）
+  if (wasCtrl && !ev.ctrlKey) refreshHoverSnap()
+}
+
+// ---------------- SVG 图层 ----------------
+
+/**
+ * 已画好的图形。拖动中的那一个用 `moving` 里的端点代替 —— 所以拖的时候图形是
+ * 跟着手指动的（不是另画一个幽灵），松手后才由后端广播定稿。
+ */
+const figures = computed<Figure[]>(() => {
+  void viewTick.value
+  const inst = store.instance
+  if (!inst) return []
+  const view = figureView()
+  const out: Figure[] = []
+  for (const a of inst.annotations) {
+    const over = moving.value?.id === a.id ? moving.value : null
+    const f = buildFigure(
+      {
+        id: a.id,
+        kind: a.kind,
+        start: over ? over.start : a.start,
+        end: over ? over.end : a.end,
+        style: a.style,
+        color: a.color,
+      },
+      view,
+    )
+    if (f) out.push(f)
+  }
+  return out
+})
+
+/**
+ * 跟着鼠标走的预览图形（用当前模板的样式，所以选模板时就所见即所得）。
+ *
+ * 两个来源：其余四种工具的「两次单击之间」的 pending，和射线工具的**悬停起点** rayHover
+ * （单击即完成，没有中间态，所以预览在按下之前就得出现）。
+ */
+const ghost = computed<Figure | null>(() => {
+  void viewTick.value
+  const p = pending.value
+  if (p) {
+    return buildFigure(
+      { id: 'ghost', kind: p.kind, start: p.start, end: p.end, style: store.templateFor(p.kind)?.style },
+      figureView(),
+    )
+  }
+  const h = rayHover.value
+  if (h) {
+    return buildFigure(
+      { id: 'ghost', kind: 'ray', start: h, end: rayEndAt(h), style: store.templateFor('ray')?.style },
+      figureView(),
+    )
+  }
+  return null
+})
+
+/**
+ * 正在编辑的图形 id —— 手柄、虚线框、「当前可编辑的是哪一个」全靠它。
+ *
+ * 三层收窄，缺一层就会露出「残留选中」：
+ *   1. `store.editingId`：绘图工具在手时必然是 null（拿起笔 = 放下编辑）；
+ *   2. 这个 id 必须**真的被画出来了**（`figures` 里找得到）：端点所在的 K 线被换掉、
+ *      或者图形已被别人删掉时，手柄不会挂在一个不存在的图形上；
+ *   3. 拿到它之后界面上所有「编辑中」的表现都只读这一个值，没有第二份状态。
+ */
+const selectedId = computed(() => {
+  const id = store.editingId
+  if (!id) return null
+  return figures.value.some((f) => f.id === id) ? id : null
+})
+
+const hint = computed(() => {
+  if (drawMode.value) {
+    const name = TOOL_LABEL[store.tool]
+    // 「可以画过最后一根」值得写在提示里：以前终点会被吸回最后一根，用户会以为工具坏了
+    const beyond = ' · 可画过最后一根'
+    // Ctrl 也写进去：这个功能是「按住就能看见落点」，不写用户不会知道
+    const snap = ' · Ctrl 吸附 OHLC'
+    // 射线是单击即完成，没有「找终点」这一步，提示语得跟别的工具分开写
+    if (store.tool === 'ray') {
+      return `射线：单击一下就画出一条水平朝右的射线${snap} · Shift 两次单击画斜射线 · 滚轮缩放 · 中键拖动平移`
+    }
+    const extra = store.tool === 'trend' || store.tool === 'arrow' ? ' · Shift 水平' : ''
+    return pending.value
+      ? `${name}：移动鼠标找终点，再单击一下定稿${extra}${beyond}${snap} · Esc 取消`
+      : `${name}：单击定起点${extra}${beyond}${snap} · 滚轮缩放 · 中键拖动平移`
+  }
+  // 指针模式下的两句话：编辑中说什么能做，没编辑时说什么能点
+  if (editing.value) {
+    return '拖端点改端点 · 拖线身整体移动 · Ctrl 吸附 OHLC · Del 删除 · 点空白退出编辑'
+  }
+  return '点图形即可编辑 · 滚轮缩放 · 右轴滚轮缩价格 · 拖动平移 · 拖挂单线改价 · 双击重置价格 · 右键挂单'
+})
+
+/**
+ * 画布光标：把「这里能做什么」写在指针上。
+ *
+ * 挂单线可以上下拖（ns-resize）、平仓虚线有信息卡（help）—— 这两种都是画在 Canvas 上的，
+ * 没有 DOM 能自动给出 cursor，只能按命中结果自己切。
+ */
+const cursorStyle = computed(() => {
+  if (drawMode.value) return 'crosshair'
+  if (orderDrag.value) return 'grabbing'
+  if (hoverOrderId.value) return 'ns-resize'
+  if (tip.value) return 'help'
+  return 'default'
+})
+
+/**
+ * 按住 Ctrl 时左上角那一句：说清「吸到了哪一根 K 线的哪个价」。
+ *
+ * 走的是十字光标同一个 `snapAtCursor`，所以这句话和画布上的圈、横线永远指同一个价
+ * —— 用户按着 Ctrl 慢慢找位置时，靠这句话就能把数读出来，不必盯着价格轴上的标签眯眼。
+ */
+const ctrlHint = computed(() => {
+  if (!ctrlDown.value) return ''
+  const h = hover.value
+  if (!h) return ''
+  const hit = snapAtCursor(scale, h.x, h.y)
+  if (!hit) return 'Ctrl：吸附 OHLC'
+  const bar = scale.bars[hit.index]
+  if (!bar) return 'Ctrl：吸附 OHLC'
+  return `Ctrl 吸附：${OHLC_LABEL[hit.item]} ${formatPrice(hit.price, store.priceDecimals)} · ${formatAxisTime(bar.time)}`
+})
+
+/**
+ * 按住 Shift 时左上角的那一句。
+ *
+ * Shift 在三个工具上含义不同：趋势线/箭头线是「强制水平」，射线是「回到两次单击、
+ * 画一条不水平的斜射线」—— 射线单击即出的默认形态本来就是水平，Shift 反而是退出它。
+ */
+const shiftHint = computed(() => {
+  if (!shiftDown.value || !drawMode.value) return ''
+  if (store.tool === 'ray') return 'Shift：两次单击画斜射线'
+  return isLineTool.value ? 'Shift：水平线' : ''
+})
+
+const modifierLabel = computed(() => {
+  if (ctrlHint.value) return ctrlHint.value
+  if (pending.value?.snap) return '已吸附 OHLC'
+  return shiftHint.value
+})
+
+const priceHint = computed(() => {
+  const h = hover.value
+  if (!h) return ''
+  // 按住 Ctrl 时显示**吸住的那个 OHLC 价**（十字线就画在那儿）；没吸时才显示光标价。
+  // 走的是十字光标同一个函数，所以这行文字和线永远说的是同一件事。
+  const hit = h.snap ? snapAtCursor(scale, h.x, h.y) : null
+  const bar = hit ? scale.bars[hit.index] : scale.bars[h.index]
+  if (!bar) return ''
+  const p = hit ? hit.price : snapToTick(scale.priceAtY(h.y), store.tick)
+  return `${formatAxisTime(bar.time)}   ${formatPrice(p, store.priceDecimals)}`
+})
+
+defineExpose({ requestDraw })
+</script>
+
+<template>
+  <div
+    ref="host"
+    class="relative h-full w-full select-none overflow-hidden"
+    :style="{ cursor: cursorStyle }"
+    @wheel="onWheel"
+    @pointerdown="onPointerDown"
+    @pointermove="onPointerMove"
+    @pointerleave="onPointerLeave"
+    @dblclick="onDoubleClick"
+    @contextmenu="onContextMenu"
+  >
+    <canvas ref="canvas" class="absolute inset-0 block h-full w-full" />
+
+    <svg
+      class="absolute inset-0 h-full w-full"
+      :viewBox="`0 0 ${size.width} ${size.height}`"
+      preserveAspectRatio="none"
+      style="pointer-events: none"
+    >
+      <!--
+        已画好的图形。
+
+        指针模式下这一层**始终**接指针事件 —— 这是「点一下图形就进入编辑」的前提：
+        点中哪条线/哪个框，那一个就成为编辑对象。反过来，手里拿着绘图工具时，
+        图形必须让位（pointer-events: none），鼠标事件要落到下面的画布上定起点，
+        否则在已有的线附近根本落不下笔。
+      -->
+      <g
+        v-for="f in figures"
+        :key="f.id"
+        :style="{ pointerEvents: pointerMode ? 'auto' : 'none' }"
+        :class="pointerMode ? 'cursor-move' : ''"
+        @pointerdown="beginBodyDrag($event, f.id)"
+      >
+        <!-- 矩形：填充 + 边框 -->
+        <rect
+          v-if="f.box"
+          :x="f.box.x"
+          :y="f.box.y"
+          :width="f.box.w"
+          :height="f.box.h"
+          :stroke="f.box.color"
+          :stroke-width="f.box.width"
+          :stroke-dasharray="f.box.dash"
+          :fill="f.box.fill"
+          :fill-opacity="f.box.fillOpacity"
+        />
+        <!-- 线段：一条可见的 + 一条加粗透明的（命中区，否则 1px 的线根本点不中） -->
+        <template v-for="(s, i) in f.segs" :key="i">
+          <line
+            :x1="s.x1"
+            :y1="s.y1"
+            :x2="s.x2"
+            :y2="s.y2"
+            :stroke="s.color"
+            :stroke-width="s.width"
+            :stroke-dasharray="s.dash"
+            :opacity="s.opacity"
+          />
+          <!--
+            12px 的透明命中区：只在指针模式下有意义（绘图工具下整组 pointer-events: none，
+            它跟着不接事件），但**渲染上不再按模式增删** —— 一条线的 DOM 节点数量
+            不随模式变化，点下去时不会有「这一下算哪一层」的歧义。
+          -->
+          <line
+            :x1="s.x1"
+            :y1="s.y1"
+            :x2="s.x2"
+            :y2="s.y2"
+            stroke="rgba(0,0,0,0)"
+            stroke-width="12"
+          />
+        </template>
+        <!-- 箭头 -->
+        <polygon v-if="f.head" :points="f.head.points" :fill="f.head.color" />
+        <!-- 斐波那契的水平标签：比例 + 价格，贴在每条线的右端 -->
+        <text
+          v-for="(c, i) in f.chips"
+          :key="`t${i}`"
+          :x="c.x"
+          :y="c.y"
+          :fill="c.color"
+          :text-anchor="c.anchor"
+          font-size="11"
+          font-family='"Segoe UI", system-ui, "Microsoft YaHei", sans-serif'
+          class="tnum"
+        >
+          {{ c.text }}
+        </text>
+        <!-- 选中：虚线包围框 + 两个端点手柄 -->
+        <template v-if="selectedId === f.id">
+          <rect
+            :x="Math.min(f.anchors[0].x, f.anchors[1].x) - 6"
+            :y="Math.min(f.anchors[0].y, f.anchors[1].y) - 6"
+            :width="Math.abs(f.anchors[1].x - f.anchors[0].x) + 12"
+            :height="Math.abs(f.anchors[1].y - f.anchors[0].y) + 12"
+            fill="none"
+            :stroke="theme.selection"
+            stroke-width="1"
+            stroke-dasharray="3 3"
+            opacity="0.7"
+          />
+          <circle
+            v-for="(a, i) in f.anchors"
+            :key="`h${i}`"
+            :cx="a.x"
+            :cy="a.y"
+            r="4.5"
+            :fill="theme.bg"
+            :stroke="theme.selection"
+            stroke-width="1.5"
+            style="cursor: grab"
+            @pointerdown.stop="beginAnchorDrag($event, f.id, i === 0 ? 0 : 1)"
+          />
+        </template>
+      </g>
+
+      <!-- 预览图形：只在本机显示，第 2 次单击后由后端广播的正式图形替换 -->
+      <g v-if="ghost" style="pointer-events: none" opacity="0.92">
+        <rect
+          v-if="ghost.box"
+          :x="ghost.box.x"
+          :y="ghost.box.y"
+          :width="ghost.box.w"
+          :height="ghost.box.h"
+          :stroke="ghost.box.color"
+          :stroke-width="ghost.box.width"
+          :stroke-dasharray="ghost.box.dash"
+          :fill="ghost.box.fill"
+          :fill-opacity="ghost.box.fillOpacity"
+        />
+        <line
+          v-for="(s, i) in ghost.segs"
+          :key="i"
+          :x1="s.x1"
+          :y1="s.y1"
+          :x2="s.x2"
+          :y2="s.y2"
+          :stroke="s.color"
+          :stroke-width="s.width"
+          :stroke-dasharray="s.dash"
+        />
+        <polygon v-if="ghost.head" :points="ghost.head.points" :fill="ghost.head.color" />
+        <text
+          v-for="(c, i) in ghost.chips"
+          :key="`t${i}`"
+          :x="c.x"
+          :y="c.y"
+          :fill="c.color"
+          :text-anchor="c.anchor"
+          font-size="11"
+          font-family='"Segoe UI", system-ui, "Microsoft YaHei", sans-serif'
+          class="tnum"
+        >
+          {{ c.text }}
+        </text>
+        <!-- 起点标记：一眼看出「第 1 次单击落在哪儿了」（射线的悬停预览不需要，它就是落点本身） -->
+        <circle
+          v-if="pending"
+          :cx="ghost.anchors[0].x"
+          :cy="ghost.anchors[0].y"
+          r="3.5"
+          fill="none"
+          :stroke="theme.selection"
+          stroke-width="1.5"
+        />
+      </g>
+    </svg>
+
+    <!--
+      每张挂单一个「×」：位置由 ChartScale 算（和画布上那条线同一个 yOf），
+      横向让在挂单标签的右边 —— 标签绘制时已经用 ORDER_RESERVE_RIGHT 让出了这块地方。
+      pointerdown.stop 是必须的：不拦住就会冒到画布的 pointerdown，顺手把视图也拖一下。
+      没有操作权时保留按钮但禁用（灰掉）：直接藏起来会让人以为「这些单撤不了」。
+    -->
+    <button
+      v-for="o in axisOrders"
+      :key="`cancel-${o.id}`"
+      type="button"
+      class="absolute z-20 flex h-4 w-4 items-center justify-center rounded-[3px] text-[13px] leading-none ring-1 transition disabled:cursor-not-allowed disabled:opacity-30"
+      :class="
+        o.side === 'buy'
+          ? 'bg-panel text-up ring-up/60 hover:bg-up hover:text-white'
+          : 'bg-panel text-down ring-down/60 hover:bg-down hover:text-white'
+      "
+      :style="{ left: `${o.left}px`, top: `${o.top}px` }"
+      :title="o.title"
+      :disabled="!store.canOperate"
+      @pointerdown.stop
+      @click.stop="cancelFromCanvas(o.id)"
+      @contextmenu.stop.prevent
+    >
+      ×
+    </button>
+
+    <!--
+      平仓线的跟随卡：pointer-events-none 是硬要求 —— 卡片一旦能接指针，
+      鼠标「停在卡片上」就不再落在虚线上，「移出线就销毁」永远触发不了。
+    -->
+    <div v-if="tip" class="pointer-events-none absolute z-30" :style="tipStyle">
+      <TradeTipCard :trade="tip.trade" />
+    </div>
+
+    <!-- 3 秒没动就固定下来的那张：可以拖（整个卡是把手），右上角 × 关闭 -->
+    <div
+      v-if="pinned"
+      class="absolute z-30 cursor-move select-none"
+      :style="pinnedStyle"
+      @pointerdown="beginPinDrag"
+      @contextmenu.stop.prevent
+    >
+      <TradeTipCard :trade="pinned.trade" pinned @close="closePinned" />
+    </div>
+
+    <!--
+      提示文字放在时间轴**上方**（bottom = 时间轴高度 + 4px）。
+      以前贴在 bottom-1，正好压在时间标签上，一眼全是重影。
+    -->
+    <div
+      class="pointer-events-none absolute right-2 flex items-baseline gap-3 text-[13px] text-faint"
+      :style="{ bottom: `${TIME_AXIS_HEIGHT + 4}px` }"
+    >
+      <span v-if="priceHint" class="tnum text-dim">{{ priceHint }}</span>
+      <span>{{ hint }}</span>
+    </div>
+    <div
+      v-if="modifierLabel"
+      class="pointer-events-none absolute top-2 left-2 rounded bg-elev px-2 py-1 text-[13px] text-amber-600 ring-1 ring-line"
+    >
+      {{ modifierLabel }}
+    </div>
+    <div
+      v-if="store.instance && !store.instance.bars.length"
+      class="absolute inset-0 flex items-center justify-center text-[15px] text-dim"
+    >
+      这一天还没有 K 线
+    </div>
+
+    <!--
+      右键小菜单：价格和时间在打开那一刻就算好（价格吸附到最小跳动、时间取落点那一根），
+      前四项动作都基于这个价格（两组买入/卖出），后两项复制这个价格 / 这根 K 线的时间；
+      最后一项「移除 N 个绘图」与价格无关，按的是整个画布的绘图总数。
+      菜单自身要 stop 掉 pointerdown —— 否则画布的 pointerdown 会先把菜单关掉，
+      click 就永远到不了按钮上。
+      单型跟着「价格在现价的哪一侧」走：下方 = 买限价 / 卖止损，上方 = 买止损 / 卖限价。
+      两组挂单只差手数：上一对是手填的 orderQuantity，下一对是 nATR 倒推出来的手数。
+    -->
+    <div
+      v-if="menu"
+      class="absolute z-40 overflow-y-auto overflow-x-hidden rounded border border-line bg-panel py-1 text-[13px] text-ink shadow-2xl"
+      :style="menuStyle"
+      @pointerdown.stop
+      @contextmenu.stop.prevent
+    >
+      <div class="flex items-center justify-between gap-2 border-b border-line px-3 pb-1 text-[12px] text-faint">
+        <span>现价 <span class="tnum text-dim">{{ lastPriceText }}</span></span>
+        <span>{{ menuSideText }}</span>
+      </div>
+      <button
+        type="button"
+        class="mt-1 flex w-full items-center gap-2 px-3 py-1.5 text-left hover:bg-elev disabled:cursor-not-allowed disabled:opacity-40"
+        :disabled="!store.canOperate"
+        :title="
+          buyKind === 'limit'
+            ? '价格低于现价：等回落到这个价位才买（限价买）'
+            : '价格高于现价：涨到这个价位才追多（止损买）'
+        "
+        @click="menuOrder('buy')"
+      >
+        <span class="h-0 w-0 border-x-[4px] border-b-[6px] border-x-transparent border-b-up" />
+        买入 {{ store.orderQuantity }} 手 {{ menuPriceText }} {{ orderKindLabel(buyKind) }}
+      </button>
+      <button
+        type="button"
+        class="flex w-full items-center gap-2 px-3 py-1.5 text-left hover:bg-elev disabled:cursor-not-allowed disabled:opacity-40"
+        :disabled="!store.canOperate"
+        :title="
+          sellKind === 'limit'
+            ? '价格高于现价：等涨到这个价位才卖（限价卖）'
+            : '价格低于现价：跌破这个价位才卖（止损卖）'
+        "
+        @click="menuOrder('sell')"
+      >
+        <span class="h-0 w-0 border-x-[4px] border-t-[6px] border-x-transparent border-t-down" />
+        卖出 {{ store.orderQuantity }} 手 {{ menuPriceText }} {{ orderKindLabel(sellKind) }}
+      </button>
+
+      <!--
+        nATR 手数那一对：手数按「n × ATR 止损距离 / 最大亏损」倒推（同一份 natrPlan），
+        和上面那对的区别**只在手数**，价格、单型、下单动作完全一样。
+        nATR 是每个人自己的习惯参数，所以文案把 n 和 ATR 一起写出来，避免
+        「同一个价位点两次买，手数怎么不一样」的困惑。
+      -->
+      <button
+        type="button"
+        class="flex w-full items-center gap-2 px-3 py-1.5 text-left hover:bg-elev disabled:cursor-not-allowed disabled:opacity-40"
+        :disabled="!store.canOperate || natrLots <= 0"
+        :title="
+          natrLots <= 0
+            ? '算不出 nATR 手数：ATR 还没出值（Length 根之后才有），或标的没配 tickValue'
+            : `按 nATR 定手数（${store.natr.n} × ATR → 最多亏 $${store.natr.maxLoss}）得出的 ${natrLots} 手`
+        "
+        @click="menuOrder('buy', natrLots)"
+      >
+        <span class="h-0 w-0 border-x-[4px] border-b-[6px] border-x-transparent border-b-up" />
+        买入 {{ natrLots > 0 ? natrLots : '—' }} 手
+        <span class="text-[11px] text-faint">nATR</span>
+        {{ menuPriceText }} {{ orderKindLabel(buyKind) }}
+      </button>
+      <button
+        type="button"
+        class="flex w-full items-center gap-2 px-3 py-1.5 text-left hover:bg-elev disabled:cursor-not-allowed disabled:opacity-40"
+        :disabled="!store.canOperate || natrLots <= 0"
+        :title="
+          natrLots <= 0
+            ? '算不出 nATR 手数：ATR 还没出值（Length 根之后才有），或标的没配 tickValue'
+            : `按 nATR 定手数（${store.natr.n} × ATR → 最多亏 $${store.natr.maxLoss}）得出的 ${natrLots} 手`
+        "
+        @click="menuOrder('sell', natrLots)"
+      >
+        <span class="h-0 w-0 border-x-[4px] border-t-[6px] border-x-transparent border-t-down" />
+        卖出 {{ natrLots > 0 ? natrLots : '—' }} 手
+        <span class="text-[11px] text-faint">nATR</span>
+        {{ menuPriceText }} {{ orderKindLabel(sellKind) }}
+      </button>
+      <div class="my-1 h-px bg-line" />
+      <button
+        type="button"
+        class="flex w-full items-center gap-2 px-3 py-1.5 text-left hover:bg-elev"
+        @click="menuCopy"
+      >
+        <span class="h-2 w-2 shrink-0 rounded-[2px] border border-current opacity-60" />
+        复制价格 {{ menuPriceText }}
+      </button>
+      <!-- 时间用等宽字：这一项要拿去和表格/日志逐字对齐，字体跳来跳去很难核对 -->
+      <button
+        type="button"
+        class="flex w-full items-center gap-2 px-3 py-1.5 text-left hover:bg-elev disabled:cursor-not-allowed disabled:opacity-40"
+        :disabled="!menu.time"
+        :title="menu.time ? '复制这根 K 线的时间（和数据里的 time 字段一模一样）' : '这个位置没有 K 线'"
+        @click="menuCopyTime"
+      >
+        <span class="h-2 w-2 shrink-0 rounded-[2px] border border-current opacity-60" />
+        复制时间 <span class="tnum text-dim">{{ menu.time || '—' }}</span>
+      </button>
+
+      <!--
+        「移除 N 个绘图」：N 是当前画布上的绘图总数（= 这一下会删掉几个）。
+        第一次单击只是上膛（变红 + 写明不可撤销），第二次才真删 —— 一次删光所有人
+        画的图且不能撤销，值得多问一遍。灰掉的理由只有两个：没有绘图、没有操作权。
+      -->
+      <div class="my-1 h-px bg-line" />
+      <button
+        type="button"
+        class="flex w-full items-center gap-2 px-3 py-1.5 text-left disabled:cursor-not-allowed disabled:opacity-40"
+        :class="
+          clearArmed
+            ? 'bg-down-soft text-down hover:bg-down-soft'
+            : 'hover:bg-elev'
+        "
+        :disabled="annotationCount === 0 || !store.canOperate"
+        :title="
+          annotationCount === 0
+            ? '当前画布上还没有绘图'
+            : !store.canOperate
+              ? '现在只能看：先拿到操作权再移除绘图'
+              : '删掉当前画布上全部绘图（只影响这个标签页，不能撤销）'
+        "
+        @click="menuClearAnnotations"
+      >
+        <span class="h-2 w-2 shrink-0 rounded-[2px] border border-current opacity-60" />
+        {{
+          annotationCount === 0
+            ? '移除 0 个绘图'
+            : clearArmed
+              ? `确认移除 ${annotationCount} 个绘图（不可撤销）`
+              : `移除 ${annotationCount} 个绘图`
+        }}
+      </button>
+    </div>
+
+    <div
+      v-if="toast"
+      class="pointer-events-none absolute top-2 left-1/2 -translate-x-1/2 rounded bg-elev px-3 py-1 text-[13px] text-ink shadow-lg ring-1 ring-line"
+    >
+      {{ toast }}
+    </div>
+  </div>
+</template>

@@ -20,6 +20,11 @@
   --color-accent: var(--c-accent);
   --color-accent-ink: var(--c-accent-ink);
   --color-accent-soft: var(--c-accent-soft);
+  /* 方向语义色：交易页的画布/持仓/成交流水用它（绿=涨/多/盈，红=跌/空/亏，美股口径） */
+  --color-up: var(--c-up);
+  --color-down: var(--c-down);
+  --color-up-soft: var(--c-up-soft);
+  --color-down-soft: var(--c-down-soft);
 }
 
 :root {
@@ -35,6 +40,11 @@
   --c-accent: #16a34a;
   --c-accent-ink: #15803d;
   --c-accent-soft: #e8f8ed;
+  /* 和画布 render.ts 的 LIGHT_THEME 同一组语义：改一边就要改另一边 */
+  --c-up: #15803d;
+  --c-down: #b91c1c;
+  --c-up-soft: #dcfce7;
+  --c-down-soft: #fee2e2;
 }
 
 html,
