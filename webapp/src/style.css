@@ -1,0 +1,67 @@
+@import 'tailwindcss';
+
+/*
+ * 只有一套配色：浅色。参考图是深色，这里按同一套版式换成浅底 ——
+ * 绿色仍是品牌色（Lucid 的主色），在浅底上压暗一档当文字色（--c-accent-ink），
+ * 块状填充用 --c-accent-soft，不然白底上的亮绿读不出来。
+ *
+ * 组件里只写语义色（bg-panel / text-dim / border-line / text-accent-ink），不出现 slate-100 这种色号。
+ */
+
+@theme {
+  --color-surface: var(--c-surface);
+  --color-panel: var(--c-panel);
+  --color-elev: var(--c-elev);
+  --color-line: var(--c-line);
+  --color-line-strong: var(--c-line-strong);
+  --color-ink: var(--c-ink);
+  --color-dim: var(--c-dim);
+  --color-faint: var(--c-faint);
+  --color-accent: var(--c-accent);
+  --color-accent-ink: var(--c-accent-ink);
+  --color-accent-soft: var(--c-accent-soft);
+}
+
+:root {
+  color-scheme: light;
+  --c-surface: #f4f6f8;
+  --c-panel: #ffffff;
+  --c-elev: #f1f4f7;
+  --c-line: #e4e9ef;
+  --c-line-strong: #cfd8e3;
+  --c-ink: #0b1220;
+  --c-dim: #4a5568;
+  --c-faint: #8b98a8;
+  --c-accent: #16a34a;
+  --c-accent-ink: #15803d;
+  --c-accent-soft: #e8f8ed;
+}
+
+html,
+body,
+#app {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--c-surface);
+  color: var(--c-ink);
+  font-family:
+    'Segoe UI', 'Inter', system-ui, -apple-system, 'PingFang SC', 'HarmonyOS Sans SC', 'Microsoft YaHei',
+    sans-serif;
+  font-size: 14px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--c-line-strong) transparent;
+}
+
+/* 金额、比例这类数字用等宽并排对齐 */
+.tnum {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-variant-numeric: tabular-nums;
+}
