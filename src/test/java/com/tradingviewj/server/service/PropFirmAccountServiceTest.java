@@ -358,22 +358,34 @@ class PropFirmAccountServiceTest {
                 () -> service.advanceCursor(account.getId(), "2024-03-04 09:05"));
     }
 
-    /** 删账户只删这一行：阶段流水和（将来的）成交都保留，account_id 原样留着。 */
+    /** 删账户 = 删账户行 + 删它自己的阶段流水（流水是账户的时间轴，账户没了读不到）。 */
     @Test
-    void deleteRemovesOnlyTheAccountRow() {
+    void deleteAlsoRemovesItsStageLogs() {
         PropFirmTemplate funded = fundedTemplate();
         PropFirmAccount account = service.open(evalTemplate(funded.getId()).getId(), SYMBOL, "要删的");
         service.promote(account.getId(), null);
         String id = account.getId();
+        assertEquals(2, logs.count(), "先确认它真有两行流水可删");
+
+        // 另一个账户的流水不能被误伤
+        PropFirmAccount other = service.open(evalTemplate(null).getId(), SYMBOL, "留着的");
+        long before = logs.count();
 
         service.delete(id);
 
         assertTrue(accounts.findById(id).isEmpty());
-        assertEquals(2, logs.count(), "阶段流水是「这个账户存在过」的记录，删账户不连带删");
-        assertEquals(id, service.stageHistory(id).get(0).getAccountId());
+        assertEquals(before - 2, logs.count(), "这个账户的两行流水要被删掉，别人的不动");
+        assertTrue(service.stageHistory(id).isEmpty(), "删完再查历史就是空的");
 
-        service.delete(id); // 幂等
+        service.delete(id); // 幂等：账户和流水都没了，也不报错
         assertFalse(accounts.existsById(id));
+        assertEquals(before - 2, logs.count());
+
+        // 老版本删账户时留下的孤立流水：再删一次同一个 id 要能顺手清理干净
+        logs.save(PropFirmStageLog.begin(id, 0, PropFirmStage.EVAL, new BigDecimal("50000"),
+                java.time.Instant.now(), PropFirmStageLog.Reason.CREATED));
+        service.delete(id);
+        assertTrue(service.stageHistory(id).isEmpty(), "账户行不在也要清掉孤儿流水");
     }
 
     /** 读接口：不存在 → 业务异常；列表默认全部、可以按状态筛，新建的在前。 */

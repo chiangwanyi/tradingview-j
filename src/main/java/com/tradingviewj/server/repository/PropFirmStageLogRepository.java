@@ -12,6 +12,17 @@ public interface PropFirmStageLogRepository extends JpaRepository<PropFirmStageL
     /** 这个账户当过的所有阶段，按进入顺序。 */
     List<PropFirmStageLog> findByAccountIdOrderBySeqAsc(String accountId);
 
+    /**
+     * 删掉这个账户的全部流水，返回删了几行。
+     *
+     * <p>只有 {@code PropFirmAccountService#delete} 会调它 —— <strong>流水跟着账户走</strong>，
+     * 不单独提供「删某条流水」的入口（时间轴中间挖一个洞，行数就不再说明身份了）。
+     *
+     * <p>返回行数是为了让调用方能区分「这个 id 本来就没有流水」和「清了 2 行」，
+     * 顺带让重复删除天然幂等（第二次删 0 行）。
+     */
+    long deleteByAccountId(String accountId);
+
     /** 最后一次进入的阶段 = 当前阶段。 */
     Optional<PropFirmStageLog> findTopByAccountIdOrderBySeqDesc(String accountId);
 

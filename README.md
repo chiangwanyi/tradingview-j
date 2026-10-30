@@ -112,8 +112,11 @@ append-only、每行带 `symbol_id` + `bar_time`）→ 快照层（当前值）�
 `end_seq` 区间 + 独立摘要）**。`Trade` 是账务唯一真相（持仓/盈亏由它重放），`trade.seq` 定同一根内先后；
 `Drawing`/`AudioClip` 只挂 K 线、**不带 `account_id`**，不参与账户统计。
 
-- **删账户不删数据**：子表 `account_id` **NOT NULL 但不加外键**（SET NULL 抹归属、CASCADE 连带删、
-  RESTRICT 让账户永远删不掉），闸门在实体工厂 + `requireActive`/`requireTradable`。
+- **删账户删「账户本身」，不删盘面数据**：子表 `account_id` **NOT NULL 但不加外键**（SET NULL 抹归属、
+  CASCADE 连带删、RESTRICT 让账户永远删不掉），闸门在实体工厂 + `requireActive`/`requireTradable`。
+  **唯一的连带删除是 `prop_firm_stage_log`**（由 `PropFirmAccountService#delete` 显式按 `account_id` 删）：
+  它描述的是账户自己的时间轴，账户没了既无归属也读不到；成交/挂单/交易记录是盘面事实，删了等于篡改复盘，
+  必须留。代价：**删账户就没有「考出来的还是直接开的」这条痕迹了**，要留档先 `GET /{id}/stages` 导出。
 - **进度不单独存**：= 该(账户,品种)最后一条 `audit_event.bar_time`。**不做撤销**（append-only 只能补偿）。
 - **全库没有「K 线下标」字段**：**下标是位置，时间是标识** —— 重抓/补一根/删坏行会让下标悄悄指向另一根
   且不报错。保留的只有序号 `*.seq` 和 `Anchor.offset`（「延伸 40 根」是意图）。**别加回来。**

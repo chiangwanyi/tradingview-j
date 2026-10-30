@@ -93,7 +93,7 @@ function doPromote(): void {
 
 function doRemove(): void {
   if (!a.value) return
-  if (!confirm(`删掉「${a.value.name}」？成交、流水、图形都不会被删，只是这个账户不再列出。`)) return
+  if (!confirm(`删掉「${a.value.name}」？它的阶段流水会一起删掉（不可恢复），成交和图形保留。`)) return
   run(() => api.remove(a.value!.id).then(() => emit('back')))
 }
 

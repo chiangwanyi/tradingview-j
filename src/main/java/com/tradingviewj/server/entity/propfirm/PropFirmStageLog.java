@@ -33,8 +33,13 @@ import java.time.Instant;
  * <p><strong>结束原因和进入原因分开记</strong>：{@code PROMOTED} 这两个字在两头都成立
  * （这一行是被升上来的 vs 这一行是被升走的），塞进一列会让「谁升谁」变得要靠猜。
  *
- * <p>{@code accountId} 按本文件同类约定不加外键：它是这个账户的生命记录，
- * 删账户时保留可以审计（和成交、图形一样，删的是统计点，不是数据）。
+ * <p>{@code accountId} <strong>不加外键，但跟着账户一起删</strong>（{@code PropFirmAccountService#delete}）：
+ * 它记的是<strong>这个账户自己</strong>的时间轴，不像成交/图形那样记「盘面上发生过什么」。
+ * 账户行一没，这些行就既没有归属、也没有任何入口能读到（{@code /api/pf-accounts/{id}/stages}
+ * 要的就是那个 id），留着只会变成一堆查不到的孤儿行。
+ *
+ * <p>代价要说清楚：<strong>删账户就没有审计痕迹了</strong>。所以「这个账户是考出来的还是
+ * 直接开的」只在账户还在的时候可查；要留档，删之前先导出。
  */
 @Getter
 @Entity

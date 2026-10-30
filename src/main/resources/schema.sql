@@ -22,11 +22,16 @@
 --      两者的附体是 K 线（symbol_id + bar_time），不参与任何账户统计 —— 既不进余额、
 --      也不算回撤/一致性/盈利日。给它们挂账户只会让「同一条线换个账户就消失」
 --      变成一种需要解释的行为。谁画的/谁录的仍有 created_by / actor 记着。
---      这些 account_id 列 **NOT NULL 且不加外键**：删账户只删 prop_firm_account 那一行，
---      子表里仍然保留原来那个 account_id 字符串（指向一个已经不存在的账户），既不置空也不删行。
+--      这些 account_id 列 **NOT NULL 且不加外键**：子表里保留原来那个 account_id 字符串
+--      （指向一个已经不存在的账户），既不置空也不删行。
+--      **唯一例外是 prop_firm_stage_log**：它随账户一起删（Java 侧显式删，见
+--      PropFirmAccountService#delete）。分界线是「这行描述的是账户本身，还是盘面上发生的事」——
+--      阶段流水是账户自己的时间轴，账户没了它没有归属、也没有入口能读到；
+--      成交/挂单/交易记录是盘面事实，删了就是篡改复盘，必须留。
 --      为什么不加外键：SET NULL 会改写子表、CASCADE 会删数据、RESTRICT 会让账户
 --      一旦有数据就永远删不掉 —— 三种都不是想要的。一致性由 Java 侧的
---      PropFirmAccountService#requireActive 把关，不用数据库的引用约束。
+--      PropFirmAccountService#requireActive 把关，不用数据库的引用约束；
+--      「什么跟着删」也由 Java 侧显式表达，不用 ON DELETE CASCADE。
 --      想删数据只能显式删那一行（图形尤其如此：只有用户自己点删除才该消失）。
 --   5. 枚举列（actor / action / kind）存 **Java 常量名**（HUMAN / BAR_ADVANCED），
 --      没有任何转换器参与。Go 协议里的小写下划线串（human / bar_advanced）由输出侧
@@ -71,7 +76,9 @@ CREATE TABLE IF NOT EXISTS prop_firm_template (
 );
 
 -- PF 账户：唯一的「操作归属点」，也是统计考核期一切操作的那个点。
--- 它是一个临时统计点，不是容器：删掉这一行，下面的子数据全部原地保留（account_id 原样留着）。
+-- 它是一个临时统计点，不是容器：删掉这一行，盘面子数据（成交/挂单/交易记录/机器人）全部原地保留
+-- （account_id 原样留着）；**只有 prop_firm_stage_log 跟着删** —— 它是账户自己的时间轴，
+-- 不是盘面上发生的事，账户没了就没人能读到。
 -- 规则在开出来那一刻从模板**复制**一份存进来（模板后续改动不影响已有账户）。
 --
 -- **阶段是逐行升级的，不是一次判定**：EVAL 达标 → 同一行切成 FUNDED（规则换成下一套、
@@ -131,7 +138,8 @@ CREATE TABLE IF NOT EXISTS prop_firm_account (
 
 -- 阶段流水：这个账户"当过哪几个阶段的什么身份"。
 -- 建户时无条件写一行（reason=CREATED），所以建户即 FUNDED 也有记录。
--- account_id 按本文件第 4 条约定：不加外键、删账户也保留 —— 它是这个账户的生命记录。
+-- account_id 见本文件第 4 条的例外：**不加外键，但随账户一起删**
+-- （PropFirmAccountService#delete 按 account_id 显式删）—— 账户没了，这段时间轴就没人能读到。
 CREATE TABLE IF NOT EXISTS prop_firm_stage_log (
     id               TEXT PRIMARY KEY,
     account_id       TEXT NOT NULL,

@@ -81,8 +81,11 @@ public class PropFirmAccountController {
     }
 
     @Operation(summary = "删账户", description = """
-            幂等。只删 prop_firm_account 这一行：成交、交易记录、图形、语音、阶段流水全部保留，
+            幂等。删 prop_firm_account 这一行，**并且删掉它自己的 prop_firm_stage_log 流水**
+            （流水是这个账户的时间轴，账户没了它就既没归属也读不到）。
+            其余数据全部保留：成交、交易记录、图形、语音、操作记录，
             它们的 account_id 原样留着（指向一个已经不存在的账户）。
+            不可逆 —— 想留审计痕迹请先 GET /{id}/stages 导出再删。
             """)
     @DeleteMapping("/{id}")
     public R<Void> delete(@PathVariable String id) {

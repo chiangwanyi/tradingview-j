@@ -25,16 +25,20 @@ import java.util.List;
  *   <li><strong>必须先有账户才能操作。</strong> 任何下单、画图、录音、启动机器人的入口，
  *       第一步都该调 {@link #requireActive}。领域方法（各实体的工厂方法）保证「不给账户就
  *       造不出对象」，这个方法保证「给的那个账户真的存在、真的还在考核中」。</li>
- *   <li><strong>删账户不删数据。</strong> {@link #delete} 只删 {@code prop_firm_account}
- *       这一行。图形、挂单、成交、语音、操作记录、机器人、交易记录、指标<strong>全部保留</strong>，
+ *   <li><strong>删账户只删「账户本身」，盘面数据不删。</strong> {@link #delete} 删的是
+ *       {@code prop_firm_account} 这一行 + 属于它的 {@code prop_firm_stage_log} 流水。
+ *       图形、挂单、成交、语音、操作记录、机器人、交易记录、指标<strong>全部保留</strong>，
  *       它们的 {@code account_id} 原样留着（指向一个已经不存在的账户），既不置空也不级联删除。</li>
  *   <li><strong>阶段迁移要留痕。</strong> 每次 {@code EVAL → FUNDED → PAYOUT} 都写一行
  *       {@link PropFirmStageLog}，所以「账户是考出来的还是直接开的」事后可以查。</li>
  * </ol>
  *
  * <p>为什么删除要过一层 service 而不是直接调 {@code repository.deleteById}：
- * 「不级联」是这个产品的明确规则，不是数据库的默认行为。把这条规则写在一个有名字的方法上，
- * 下一个想加「删账户顺便删策略」的人会在改这里时先看到这段注释。
+ * 「什么跟着账户走、什么留下来」是这个产品的明确规则，不是数据库的默认行为。
+ * 分界线是<strong>「这行数据描述的是账户本身，还是盘面上发生的事」</strong>：
+ * 阶段流水描述的是账户自己的时间轴（账户没了，它就没有归属，也再没有任何入口能读到），
+ * 跟着删；成交/挂单/交易记录是盘面上发生过的事实，删掉就等于篡改复盘，必须留。
+ * 把这条规则写在一个有名字的方法上，下一个想加「删账户顺便删策略」的人会在改这里时先看到这段注释。
  */
 @Service
 @RequiredArgsConstructor
@@ -115,21 +119,31 @@ public class PropFirmAccountService {
     }
 
     /**
-     * 删除账户 —— <strong>只删这一行</strong>。
+     * 删除账户 —— <strong>删这一行 + 它的阶段流水</strong>。
      *
-     * <p>它下面的成交、交易记录、语音、操作记录、图形、指标、机器人全部原地保留，
-     * 并且仍然记着原来那个 {@code account_id}。想删那些数据，只能由用户一条一条地显式删。
+     * <p>阶段流水（{@code prop_firm_stage_log}）<strong>跟着账户一起删</strong>：
+     * 它记的是「这个账户自己当过哪几个阶段」，账户行一没，它就既没有归属、
+     * 也没有任何入口能读到（{@code GET /{id}/stages} 要的就是这个 id）。
      *
-     * <p>阶段流水同样保留（它不是盘面数据，是「这个账户存在过」的记录）。
+     * <p>除此之外的东西<strong>原地保留</strong>：成交、交易记录、语音、操作记录、图形、
+     * 指标、机器人，仍然记着原来那个 {@code account_id}。想删那些数据，只能由用户一条一条地
+     * 显式删 —— 它们记录的是盘面上发生过什么，删掉就是篡改复盘。
      *
-     * <p>幂等：账户已经不在了就直接返回，不抛异常（删除一个已经删掉的东西，结果就是「它没了」）。
+     * <p><strong>不可逆</strong>：流水删了就没有审计痕迹，事后无法再回答「这个账户是考出来的
+     * 还是直接开的」。要留档就先导出（{@code GET /api/pf-accounts/{id}/stages}）再删。
+     *
+     * <p>幂等：账户已经不在了也不报错；流水仍然试着清一次，这样老版本删过的账户
+     * （当时留下了孤立流水）再删一次同一个 id 时能顺手收拾干净。
      */
     @Transactional
     public void delete(String accountId) {
-        if (!accounts.existsById(accountId)) {
-            return;
+        boolean exists = accounts.existsById(accountId);
+        // 顺序：先流水后账户。反过来的话中途失败会留下「账户没了、流水还在」的孤儿行，
+        // 而那个 id 已经没有任何入口能再触发一次清理。
+        stageLogs.deleteByAccountId(accountId);
+        if (exists) {
+            accounts.deleteById(accountId);
         }
-        accounts.deleteById(accountId);
     }
 
     /**
