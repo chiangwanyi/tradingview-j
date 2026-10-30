@@ -35,11 +35,17 @@ public record Position(BigDecimal quantity, BigDecimal averagePrice) {
         return quantity.signum() == 0;
     }
 
-    /** 浮盈（美元）：按给定价格算。空仓返回 0。 */
+    /**
+     * 浮盈（美元）：按给定价格算。空仓返回 0。
+     *
+     * <p>过 {@link Money#round} 是必须的：{@code averagePrice} 可能是除不尽的循环小数
+     * （见 {@code TradeLedger} 的均价除法），不收敛就会让「余额 = 起点 + 已实现 + 浮动」
+     * 这个等式带上无穷尾数，而 PF 判定里用的是<strong>等于即失败</strong>的比较。
+     */
     public BigDecimal unrealizedPnl(BigDecimal price, BigDecimal pointValue) {
         if (isFlat()) {
             return BigDecimal.ZERO;
         }
-        return price.subtract(averagePrice).multiply(quantity).multiply(pointValue);
+        return Money.round(price.subtract(averagePrice).multiply(quantity).multiply(pointValue));
     }
 }

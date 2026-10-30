@@ -7,6 +7,7 @@ import com.tradingviewj.server.entity.propfirm.PropFirmAccount;
 import com.tradingviewj.server.entity.propfirm.PropFirmRules;
 import com.tradingviewj.server.entity.propfirm.PropFirmStage;
 import com.tradingviewj.server.entity.propfirm.PropFirmTemplate;
+import com.tradingviewj.server.entity.record.TradeRecord;
 import com.tradingviewj.server.entity.trade.Order;
 import com.tradingviewj.server.entity.trade.Side;
 import com.tradingviewj.server.entity.trade.Trade;
@@ -15,6 +16,7 @@ import com.tradingviewj.server.repository.AuditEventRepository;
 import com.tradingviewj.server.repository.OrderRepository;
 import com.tradingviewj.server.repository.PropFirmAccountRepository;
 import com.tradingviewj.server.repository.PropFirmTemplateRepository;
+import com.tradingviewj.server.repository.TradeRecordRepository;
 import com.tradingviewj.server.repository.TradeRepository;
 import com.tradingviewj.server.ws.TradeDeskService;
 import org.junit.jupiter.api.BeforeEach;
@@ -30,9 +32,11 @@ import java.io.UncheckedIOException;
 import java.math.BigDecimal;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Comparator;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -86,6 +90,7 @@ class TradingServiceTest {
     @Autowired private com.tradingviewj.server.repository.SymbolRepository symbolRepo;
     @Autowired private OrderRepository orderRepo;
     @Autowired private TradeRepository tradeRepo;
+    @Autowired private TradeRecordRepository recordRepo;
     @Autowired private AuditEventRepository auditRepo;
 
     private String accountId;
@@ -94,7 +99,8 @@ class TradingServiceTest {
     @BeforeEach
     void clean() {
         auditRepo.deleteAll();
-        tradeRepo.deleteAll();
+        tradeRepo.deleteAll();   // trade.trade_record_id 指向 trade_record，先删成交
+        recordRepo.deleteAll();
         orderRepo.deleteAll();
         accountRepo.deleteAll();
         templateRepo.deleteAll();
@@ -271,6 +277,101 @@ class TradingServiceTest {
         assertEquals("flat", book.position().side());
         assertEquals(1, book.closedLots().size());
         assertMoney("12", book.closedLots().get(0).realizedPnl()); // 逐批归因按这一批自己的开仓价
+    }
+
+    // ---------------- 交易记录的开 / 闭 ----------------
+
+    /**
+     * 空仓 → 有仓开记录，仓位回到 0 封口。<strong>归零不新开一条</strong>。
+     *
+     * <p>{@code realizedPnl} 记的是<strong>毛利</strong>（Σ 每笔成交的 {@code trade.realizedPnl}），
+     * 手续费不在这个字段里 —— 它和 {@code Trade} 是一个口径，净额仍然是
+     * {@code TradingService.Portfolio.realizedPnl} 的职责。
+     */
+    @Test
+    void recordOpensOnFirstFillAndSealsAtFlat() {
+        trading.market(accountId, "buy", BigDecimal.valueOf(2), null);
+        List<TradeRecord> afterOpen = recordRepo.findAll();
+        assertEquals(1, afterOpen.size(), "开仓就有一条未闭合记录");
+        TradeRecord rec = afterOpen.get(0);
+        assertFalse(rec.isClosed());
+        assertEquals(1, rec.getStartSeq(), "起点是开仓那一笔成交的 seq");
+        assertEquals(-1, rec.getEndSeq());
+        assertEquals(Side.BUY, rec.getSide());
+        assertMoney("2", rec.getQuantity());
+        assertMoney("4001.00", rec.getEntryPrice());
+        assertEquals(1, rec.getFillCount());
+
+        desk.step(accountId);
+        trading.market(accountId, "sell", BigDecimal.valueOf(2), null);
+
+        TradeRecord sealed = recordRepo.findById(rec.getId()).orElseThrow();
+        assertTrue(sealed.isClosed());
+        assertEquals(2, sealed.getEndSeq(), "终点是平仓那一笔成交的 seq");
+        assertMoney("4004.00", sealed.getExitPrice());
+        assertMoney("12", sealed.getRealizedPnl());
+        assertEquals(2, sealed.getFillCount());
+        assertEquals(1, recordRepo.count(), "归零之后不开新记录");
+    }
+
+    /** 一键退仓的平仓是同一笔反向成交，所以封口走的是同一条判据，不需要第二条分支。 */
+    @Test
+    void flatAllSealsTheRecord() {
+        trading.market(accountId, "buy", BigDecimal.valueOf(2), null);
+        trading.flatAll(accountId);
+
+        assertEquals(1, recordRepo.count());
+        assertTrue(recordRepo.findAll().get(0).isClosed());
+        assertTrue(recordRepo
+                .findFirstByAccountIdAndClosedFalseOrderByStartSeqAsc(accountId).isEmpty());
+    }
+
+    /** 同向的加仓和部分平仓都<strong>不</strong>断记录：手数跟着走，峰值单独记。 */
+    @Test
+    void recordFollowsQuantityWhileDirectionUnchanged() {
+        trading.market(accountId, "buy", BigDecimal.valueOf(2), null);
+        trading.market(accountId, "buy", BigDecimal.ONE, null);
+        desk.step(accountId);
+        trading.market(accountId, "sell", BigDecimal.ONE, null);
+
+        assertEquals(1, recordRepo.count(), "同向加减仓不开新记录");
+        TradeRecord rec = recordRepo.findAll().get(0);
+        assertFalse(rec.isClosed());
+        assertMoney("2", rec.getQuantity(), "3 手减掉 1 手");
+        assertMoney("3", rec.getMaxQuantity(), "峰值是 3 手，不跟着回头");
+        assertEquals(3, rec.getFillCount(), "三次成交：开 2、加 1、平 1");
+    }
+
+    /**
+     * 反手：穿零是<strong>中间态</strong>，一笔成交要闭旧开新，两条记录共享这一个 seq。
+     *
+     * <p>买 2 @4001 → 卖 5 @4004，净 −3。旧记录 {start 1, end 2}、盈亏 (4004−4001)×2×2 = 12
+     * 只算平掉的那 2 手；新记录从 seq 2 起，做空 3 手 @4004。
+     */
+    @Test
+    void reversalSealsOldRecordAndOpensNewOnTheSameFill() {
+        trading.market(accountId, "buy", BigDecimal.valueOf(2), null);
+        desk.step(accountId);
+        trading.market(accountId, "sell", BigDecimal.valueOf(5), null);
+
+        List<TradeRecord> all = recordRepo.findAll().stream()
+                .sorted(Comparator.comparingInt(TradeRecord::getStartSeq)).toList();
+        assertEquals(2, all.size(), "反手是两条记录，不是一条");
+
+        TradeRecord old = all.get(0);
+        assertTrue(old.isClosed());
+        assertEquals(1, old.getStartSeq());
+        assertEquals(2, old.getEndSeq());
+        assertMoney("12", old.getRealizedPnl(), "只有平掉的 2 手产生盈亏");
+
+        TradeRecord fresh = all.get(1);
+        assertFalse(fresh.isClosed());
+        assertEquals(2, fresh.getStartSeq(), "新记录与旧记录共享这笔成交的 seq");
+        assertEquals(-1, fresh.getEndSeq());
+        assertEquals(Side.SELL, fresh.getSide());
+        assertMoney("3", fresh.getQuantity());
+        assertMoney("4004.00", fresh.getEntryPrice());
+        assertEquals(1, fresh.getFillCount());
     }
 
     /**

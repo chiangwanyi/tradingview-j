@@ -108,8 +108,8 @@ ASCII + CRLF**、**菜单只能有一个 stdin reader**（都有测试拦）。
   （小写方向、`realizedPnl` 毛利 / `commission` / `netPnl` 三笔账），**发空数组不发 null**。
 
 **数据模型**：**PF 账户是记账数据的唯一聚合根**，K 线不进库。三层 = **日志层 `audit_event`（唯一写入点、
-append-only、每行带 `symbol_id` + `bar_time`）→ 快照层（当前值）→ 投影层 `TradeRecord`（`start_seq`~
-`end_seq` 区间 + 独立摘要）**。`Trade` 是账务唯一真相（持仓/盈亏由它重放），`trade.seq` 定同一根内先后；
+append-only、每行带 `symbol_id` + `bar_time`）→ 快照层（当前值）→ 投影层 `TradeRecord`（`trade.seq`
+区间 + 独立摘要）**。`Trade` 是账务唯一真相（持仓/盈亏由它重放），`trade.seq` 定同一根内先后；
 `Drawing`/`AudioClip` 只挂 K 线、**不带 `account_id`**，不参与账户统计。
 
 - **删账户删「账户本身」，不删盘面数据**：子表 `account_id` **NOT NULL 但不加外键**（SET NULL 抹归属、
@@ -117,6 +117,13 @@ append-only、每行带 `symbol_id` + `bar_time`）→ 快照层（当前值）�
   **唯一的连带删除是 `prop_firm_stage_log`**（由 `PropFirmAccountService#delete` 显式按 `account_id` 删）：
   它描述的是账户自己的时间轴，账户没了既无归属也读不到；成交/挂单/交易记录是盘面事实，删了等于篡改复盘，
   必须留。代价：**删账户就没有「考出来的还是直接开的」这条痕迹了**，要留档先 `GET /{id}/stages` 导出。
+- **交易记录的开 / 闭只有一条判据：成交后净头寸穿越 0**（`TradingService.keepRecord`）。一键退仓的平仓
+  就是一笔反向市价成交，走的是同一条路，**没有「主动退仓」这个第二分支**；同向加仓 / 部分平仓只刷手数，
+  不动起点和开仓价。区间锚在 `trade.seq` 而不是 `audit_event.seq` —— 撮合成交并进 `bar_advanced`、
+  没有自己的事件行，两个序号序列本来就不对齐。**反手是「闭旧 + 开新」，两条记录共享那一个 seq**
+  （一笔成交在事实上就是平掉旧仓 + 开新仓两条腿，`realizedFor` 只把平仓那半算盈亏）。
+  一账户最多一条未闭合，由 `ux_record_open`（`WHERE closed = 0` 的 partial unique index）兜住；
+  **闭合时必须 `saveAndFlush`** —— Hibernate 同一次 flush 里 insert 排在 update 之前，不先落库新记录会撞索引。
 - **进度不单独存**：= 该(账户,品种)最后一条 `audit_event.bar_time`。**不做撤销**（append-only 只能补偿）。
 - **全库没有「K 线下标」字段**：**下标是位置，时间是标识** —— 重抓/补一根/删坏行会让下标悄悄指向另一根
   且不报错。保留的只有序号 `*.seq` 和 `Anchor.offset`（「延伸 40 根」是意图）。**别加回来。**
@@ -174,6 +181,13 @@ append-only、每行带 `symbol_id` + `bar_time`）→ 快照层（当前值）�
   （每手每边 × 手数，**开仓也收**），`netPnl = 毛利 − 手续费`；广播里的 `realizedPnl` 是**净额**；
 - 逐批归因（`ClosedLot`）用**这一批自己的开仓价**算毛利，手续费不摊到批次上（一笔成交可能
   同时平掉几批，没有可靠的摊法）；账户口径一律以净额为准。
+- **金额只到分**（`entity.trade.Money`）：均价可能除不尽（六个价位均价 = 174586/6），
+  所以均价除法用 `DECIMAL128`，而 `realizedPnl` / 浮盈 / `netPnl` / 落库手续费一律
+  `Money.round` 收敛到两位小数。**别把均价精度改回 10 位** —— 那会让 835 变成 `834.99996`
+  （误差 ×手数×每点价值放大），回归测试见 `TradeLedgerTest`。
+  **闸门在实体工厂上**（`Trade.fill` / `TradeRecord.closeAt` / `PropFirmStageLog.close` /
+  `PropFirmAccount.syncComputed`），以后新增记账路径绕不过去；`PositionView` 把**均价**
+  也收敛到两位，但那只是展示 —— 算账仍用全精度 `Position`，否则乘回去又会偏。
 - 手数必须是 1~10000 的整数；价格吸到 `tick` 上（没配 tick 按两位小数）。
 
 **状态与并发**：订单只有 `OPEN → FILLED | CANCELLED`（实体方法 `markFilled` / `cancel` 把关，

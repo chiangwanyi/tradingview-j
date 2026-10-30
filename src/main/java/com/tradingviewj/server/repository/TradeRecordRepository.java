@@ -4,6 +4,7 @@ import com.tradingviewj.server.entity.record.TradeRecord;
 import org.springframework.data.jpa.repository.JpaRepository;
 
 import java.util.List;
+import java.util.Optional;
 
 /**
  * 交易记录仓库。
@@ -44,4 +45,17 @@ public interface TradeRecordRepository extends JpaRepository<TradeRecord, String
 
     /** 「还在持仓中」的那些（进程崩溃留下的草稿），列表里要单独标出来。 */
     List<TradeRecord> findByClosedFalse();
+
+    /**
+     * 这个账户<strong>当前那条未闭合</strong>的记录。
+     *
+     * <p>一个账户同一时刻最多一条：账户绑定唯一标的，净头寸也就只有一个符号。
+     * 反手的「闭合旧记录 + 开新记录」在同一个事务里完成，中间不会出现两条。
+     * 数据库侧由 {@code ux_record_open}（{@code WHERE closed = 0} 的 partial unique index）
+     * 兜住 —— 这条查询和那条索引是同一件事的两面，别只留一个。
+     *
+     * <p>返回 {@link java.util.Optional} 而不是 List：调用方要的是「有没有」，
+     * 拿到 List 还得自己判长度、自己挑一个，那正好是「两条都保留，行为随机」的来源。
+     */
+    Optional<TradeRecord> findFirstByAccountIdAndClosedFalseOrderByStartSeqAsc(String accountId);
 }

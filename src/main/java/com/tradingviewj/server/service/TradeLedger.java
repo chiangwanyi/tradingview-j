@@ -1,6 +1,7 @@
 package com.tradingviewj.server.service;
 
 import com.tradingviewj.server.entity.trade.ClosedLot;
+import com.tradingviewj.server.entity.trade.Money;
 import com.tradingviewj.server.entity.trade.Position;
 import com.tradingviewj.server.entity.trade.Side;
 import com.tradingviewj.server.entity.trade.Trade;
@@ -34,8 +35,29 @@ import java.util.List;
 @Slf4j
 public final class TradeLedger {
 
-    /** 均价除法的精度。8 位足够：价格本身只有两位小数，手数最多四位。 */
-    private static final MathContext AVG_CONTEXT = new MathContext(10, RoundingMode.HALF_UP);
+    /**
+     * 均价除法的精度。
+     *
+     * <p><strong>必须是 34 位（DECIMAL128），不能是 10 位。</strong> 这个数字踩过坑：六个价位的均价
+     * 是循环小数（174586 / 6 = 29097.6666…），10 位有效数字把它截成 {@code 29097.66667}，
+     * 看起来只差 3e-6，但 {@link #realizedFor} 会把它<strong>乘回手数和每点价值</strong>——
+     * 6 手 × 2.0 点值后误差变成 0.00004，库里就出现了 {@code 834.99996} 这种
+     * 「差一点就是整数」的脏数。手数越大、点值越大，放大倍数越高（CL 40 手 × 1000 点值 → 0.2 美元）。
+     *
+     * <p>用 34 位后剩余误差在 1e-30 量级，配合 {@link #money} 的取整，结果与精确值一致。
+     */
+    private static final MathContext AVG_CONTEXT = MathContext.DECIMAL128;
+
+    /**
+     * 把任意中间结果收敛成「可记账的钱」：见 {@link Money#round}。
+     *
+     * <p>所有落库、广播、余额累加的金额都必须过这一道 —— {@code trade.realized_pnl}、
+     * {@code trade_record.realized_pnl}、账户余额、PF 判定用的是同一个数，
+     * 谁都不能带着 {@code 834.99996} 这样的尾数往下走。
+     */
+    public static BigDecimal money(BigDecimal value) {
+        return Money.round(value);
+    }
 
     private TradeLedger() {
     }
@@ -82,8 +104,8 @@ public final class TradeLedger {
         }
         BigDecimal closeQty = held.abs().min(signedQuantity.abs());
         BigDecimal dir = BigDecimal.valueOf(held.signum());
-        return fillPrice.subtract(position.averagePrice())
-                .multiply(closeQty).multiply(dir).multiply(pointValue);
+        return money(fillPrice.subtract(position.averagePrice())
+                .multiply(closeQty).multiply(dir).multiply(pointValue));
     }
 
     /**
@@ -136,7 +158,8 @@ public final class TradeLedger {
                         lot.barTime, lot.price,
                         trade.getBarTime(), trade.getPrice(),
                         lotSide, take,
-                        trade.getPrice().subtract(lot.price).multiply(take).multiply(dirs).multiply(pointValue)));
+                        money(trade.getPrice().subtract(lot.price)
+                                .multiply(take).multiply(dirs).multiply(pointValue))));
                 lot.remaining = lot.remaining.subtract(take);
                 left = left.subtract(take);
                 if (lot.remaining.signum() <= 0) {

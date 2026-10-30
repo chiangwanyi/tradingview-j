@@ -1,6 +1,7 @@
 package com.tradingviewj.server.entity.propfirm;
 
 import com.tradingviewj.server.entity.BaseEntity;
+import com.tradingviewj.server.entity.trade.Money;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -125,10 +126,12 @@ public class PropFirmStageLog extends BaseEntity {
         }
         this.endedAt = at;
         this.endReason = endReason;
-        this.balanceAtEnd = balanceAtEnd;
-        this.maxDailyProfit = maxDailyProfit;
+        // 三个都是钱：余额、当日最大盈利、净额。都收敛到分 —— 这一行是「历史账」，
+        // 一旦落库就再也改不动了（阶段流水只增不改），留尾数等于永久留脏。
+        this.balanceAtEnd = balanceAtEnd == null ? null : Money.round(balanceAtEnd);
+        this.maxDailyProfit = maxDailyProfit == null ? null : Money.round(maxDailyProfit);
         this.profitDays = profitDays;
-        this.netPnl = balanceAtEnd == null ? null : balanceAtEnd.subtract(baseBalance);
+        this.netPnl = balanceAtEnd == null ? null : Money.round(balanceAtEnd.subtract(baseBalance));
     }
 
     /** 这一行为什么存在。 */

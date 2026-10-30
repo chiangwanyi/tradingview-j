@@ -1,6 +1,7 @@
 package com.tradingviewj.server.entity.propfirm;
 
 import com.tradingviewj.server.entity.BaseEntity;
+import com.tradingviewj.server.entity.trade.Money;
 import jakarta.persistence.Column;
 import jakarta.persistence.Embedded;
 import jakarta.persistence.Entity;
@@ -309,10 +310,10 @@ public class PropFirmAccount extends BaseEntity {
      */
     public void syncComputed(BigDecimal balance, BigDecimal eodPeak) {
         if (balance != null) {
-            this.balance = balance;
+            this.balance = Money.round(balance);
         }
         if (eodPeak != null) {
-            this.eodPeakBalance = eodPeak;
+            this.eodPeakBalance = Money.round(eodPeak);
         }
     }
 

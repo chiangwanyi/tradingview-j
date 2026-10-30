@@ -11,6 +11,7 @@ import com.tradingviewj.server.entity.audit.payload.OrderFilledPayload;
 import com.tradingviewj.server.entity.audit.payload.OrderMovedPayload;
 import com.tradingviewj.server.entity.audit.payload.OrderPlacedPayload;
 import com.tradingviewj.server.entity.propfirm.PropFirmAccount;
+import com.tradingviewj.server.entity.record.TradeRecord;
 import com.tradingviewj.server.entity.trade.Order;
 import com.tradingviewj.server.entity.trade.Position;
 import com.tradingviewj.server.entity.trade.Side;
@@ -19,6 +20,7 @@ import com.tradingviewj.server.enums.Actor;
 import com.tradingviewj.server.enums.ReplayAction;
 import com.tradingviewj.server.exception.BusinessException;
 import com.tradingviewj.server.repository.OrderRepository;
+import com.tradingviewj.server.repository.TradeRecordRepository;
 import com.tradingviewj.server.repository.TradeRepository;
 import com.tradingviewj.server.storage.Bar;
 import com.tradingviewj.server.storage.CsvBarStore;
@@ -78,6 +80,7 @@ public class TradingService {
     private final CsvBarStore bars;
     private final OrderRepository orderRepo;
     private final TradeRepository tradeRepo;
+    private final TradeRecordRepository recordRepo;
     private final AuditLogService audit;
 
     /**
@@ -472,12 +475,77 @@ public class TradingService {
             seq = Math.max(seq, trade.getSeq());
         }
         // 手续费 = 每手每边 × 手数；开仓和平仓各收一次，往返就是两次本字段（不是这里乘 2）。
-        BigDecimal commission = spec.commission().multiply(order.getQuantity());
+        // 过 Money.round：手数有四位小数时 0.5 × 0.3333 = 0.16665 会算出亚分，落库前收敛到分。
+        BigDecimal commission = TradeLedger.money(spec.commission().multiply(order.getQuantity()));
         Trade trade = Trade.fill(account.getId(), spec.code(), order.getId(), barTime, seq + 1,
                 order.getSide(), price, order.getQuantity(), realized, commission);
         Trade saved = tradeRepo.save(trade);
         history.add(saved);
+        keepRecord(account, before, signed, saved);
         return saved;
+    }
+
+    /**
+     * 把交易记录的<strong>开 / 闭</strong>对齐到「这笔成交之后的净头寸」。
+     *
+     * <p>唯一的判据是<strong>成交后净头寸有没有穿越 0</strong>，不是「哪个按钮被点了」——
+     * 一键退仓（{@link #flatAll}）的平仓和手动市价平仓是同一笔反向成交，走的就是这里，
+     * 所以「主动退仓归零」不需要单独一条分支。多一条分支就多一个分叉点。
+     *
+     * <p>四种情形：
+     *
+     * <ul>
+     *   <li><strong>空仓 → 有仓</strong>：开一条新记录，起点是这笔成交的 {@code seq}；</li>
+     *   <li><strong>同号</strong>（加仓 / 部分平仓）：只刷新手数，起点和开仓价不动；</li>
+     *   <li><strong>净归零</strong>：旧记录在这笔成交上封口；</li>
+     *   <li><strong>反手</strong>：穿零是中间态，旧记录封口 + 新记录开盘，两条记录的区间在这
+     *       一笔成交的 {@code seq} 上<strong>相邻共享</strong>——一笔成交在事实上就是
+     *       「平掉旧仓 + 开新仓」两条腿，旧腿的盈亏 {@code realizedFor} 已经只算平仓那部分，
+     *       所以整笔的 {@code realizedPnl} 全额归旧记录是对的。</li>
+     * </ul>
+     *
+     * <p>区间锚在 {@code trade.seq}（成交流水号）而不是 {@code audit_event.seq}：撮合成交并进
+     * {@code bar_advanced}、没有自己的流水行，两个 seq 序列本来就不对齐，用事件 seq 切不到
+     * 成交粒度。{@code trade.seq} 每笔成交必有且账户内单调递增，正是「第几笔」的答案。
+     *
+     * <p>{@code Actor} 一律记 HUMAN：本类所有入口都是真人操作（机器人路径不走这里）。
+     */
+    private void keepRecord(PropFirmAccount account, Position before, BigDecimal signed, Trade trade) {
+        BigDecimal after = before.quantity().add(signed);
+        TradeRecord open = recordRepo
+                .findFirstByAccountIdAndClosedFalseOrderByStartSeqAsc(account.getId())
+                .orElse(null);
+        if (open != null) {
+            open.setFillCount(open.getFillCount() + 1);
+        }
+        if (open != null && !before.isFlat() && after.signum() != before.quantity().signum()) {
+            // 反手时这笔成交的一半是平仓、一半是开仓；realizedFor 只算平仓那半，整笔全额归旧记录
+            BigDecimal booked = open.getRealizedPnl() == null ? BigDecimal.ZERO : open.getRealizedPnl();
+            open.closeAt(trade.getBarTime(), trade.getPrice(),
+                    booked.add(trade.getRealizedPnl()), trade.getSeq());
+            // 必须在这里落库：Hibernate 同一次 flush 里 insert 排在 update 之前，
+            // 不先写下去，下面新插的那条会撞上 ux_record_open（那一刻旧记录还是 closed=0）
+            recordRepo.saveAndFlush(open);
+            open = null;
+        }
+        if (after.signum() == 0) {
+            // 归零且原本就没有未闭合记录（手工删过 / 旧数据）：不补一条空记录。
+            // 记录是统计视图，不是账 —— 账永远以 trade 表重放为准。
+            return;
+        }
+        if (open == null) {
+            open = TradeRecord.open(account.getId(), account.getName(), trade.getSymbolId(),
+                    trade.getBarTime(), trade.getSeq(), Actor.HUMAN, account.getName());
+            open.openPosition(after.signum() > 0 ? Side.BUY : Side.SELL,
+                    trade.getBarTime(), trade.getPrice(), after.abs());
+            open.setFillCount(1);
+        } else {
+            open.setQuantity(after.abs());
+            if (open.getMaxQuantity() == null || after.abs().compareTo(open.getMaxQuantity()) > 0) {
+                open.setMaxQuantity(after.abs());
+            }
+        }
+        recordRepo.saveAndFlush(open);
     }
 
     /** 一条「成交了」的广播负载（市价单用）。 */

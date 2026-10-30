@@ -150,6 +150,9 @@ public class Trade extends BaseEntity {
         if (commission == null) {
             throw new IllegalArgumentException("成交必须带手续费（可以为 0，但不能没有）");
         }
+        if (realizedPnl == null) {
+            throw new IllegalArgumentException("成交必须带已实现盈亏（开仓写 0，不能没有）");
+        }
         Trade trade = new Trade();
         trade.accountId = accountId;
         trade.symbolId = symbolId;
@@ -159,8 +162,11 @@ public class Trade extends BaseEntity {
         trade.side = side;
         trade.price = price;
         trade.quantity = quantity;
-        trade.realizedPnl = realizedPnl;
-        trade.commission = commission;
+        // 金额在这里收敛到分，是**落库前的最后一道闸**：调用方（recordFill）已经算过一遍，
+        // 但成交是唯一真相，宁可多舍一次也不能让 834.99996 这种尾数进库 —— 进去之后
+        // 余额、考核、验证、导出全都跟着脏，而且无从判断哪些是有意为之。
+        trade.realizedPnl = Money.round(realizedPnl);
+        trade.commission = Money.round(commission);
         return trade;
     }
 
@@ -180,9 +186,13 @@ public class Trade extends BaseEntity {
      * <p>开仓那一笔的 {@code realizedPnl} 是 0，所以它返回的是<strong>负数</strong>
      * （只扣了进场费）—— 这是对的，钱确实在开仓时就已经付了。
      * 账户余额、一致性、盈利日全部用这个口径，画平仓虚线用 {@code realizedPnl}。
+     *
+     * <p>再收敛一次 {@link Money#round}：{@code realizedPnl} 已经是分，但手续费是
+     * 「费率 × 手数」，手数有四位小数时可能算出亚分的数（0.5 × 0.3333 = 0.16665），
+     * 不归整就会让净额把尾数带回余额里。
      */
     public BigDecimal netPnl() {
-        return realizedPnl.subtract(commission);
+        return Money.round(realizedPnl.subtract(commission));
     }
 
     /** 带符号的数量：买为正、卖为负。持仓计算全靠它。 */

@@ -260,6 +260,14 @@ CREATE TABLE IF NOT EXISTS trade_record (
 );
 CREATE INDEX IF NOT EXISTS idx_record_account ON trade_record (account_id);
 
+-- 一个账户同一时刻最多一条未闭合记录。
+-- 反手的「闭合旧记录 + 开新记录」在同一个事务里完成，正常情况下不会有两条；
+-- 这条索引管的是异常：程序崩在成交落库和记录封口之间时，重启后「有未闭合 + 又开新的」
+-- 会让后面每一笔开仓都挂到一条早就该关掉的记录上，而且不报错。
+-- 注意：旧库里如果已经有两条以上未闭合记录，这里会建失败并让整个启动挂掉 ——
+-- 那正是要暴露的问题（本表 2026-10-30 前零引用，正常库是空的）。
+CREATE UNIQUE INDEX IF NOT EXISTS ux_record_open ON trade_record (account_id) WHERE closed = 0;
+
 -- 用户给交易记录打的自定义标签（标签是记录的一部分 → 真级联）
 CREATE TABLE IF NOT EXISTS trade_record_tag (
     record_id  TEXT NOT NULL REFERENCES trade_record (id) ON DELETE CASCADE,
