@@ -20,9 +20,8 @@ import { useTradeStore } from '@/stores/trade'
  *
  * ## 这一页现在能做什么、不能做什么
  *
- * 能：看那一天的真 K 线（**只到账户记住的那一根**，按 → / 【下一根】往后放）、
- *     缩放 / 平移 / 指标 / 周期切换、画线（趋势线/射线/矩形/箭头/斐波那契 + 模板）、
- *     按 nATR 算手数、把下单面板填好。
+ * 能：看真实的 K 线（**上一交易日整天 + 当天到账户记住的那一根**），缩放 / 平移 / 指标 / 周期切换、
+ *     画线（趋势线/射线/矩形/箭头/斐波那契 + 模板）、按 nATR 算手数、把下单面板填好。
  *
  * **标的只有一个**：它在建账户时选定、写死在账户上，所以这一页没有标的选择器 ——
  * 只显示「已锁定」和是哪个品种（要换标的就新建账户）。
@@ -30,7 +29,7 @@ import { useTradeStore } from '@/stores/trade'
  * **打开时停在哪一根**：账户的 `lastBarTime`（建户 = 起点，每步进一根就往后推一格）。
  * 这一步是「继续交易」的全部含义 —— 不是从头再来一遍，而是接着上次的位置。
  *
- * 不能：**下单、撤单、平仓**。撮合还在设计阶段（`TRADING-ENGINE-DESIGN.md`），
+ * 不能：**下单、撤单、平仓**。撮合还在设计阶段（`README.md` §三），
  *     后端没有这些接口。所以那些按钮点下去只给一句明确提示，不产生假数据 ——
  *     账由后端算，前端先造一笔成交会让界面立刻和余额对不上。
  *
@@ -81,17 +80,18 @@ onMounted(async () => {
 
   /*
    * 停在哪一根：优先用账户的 lastBarTime（旧库里这一列可能空着 → 退到起点）。
+   * 交给后端的就是这一个时刻 —— 它会把上一个交易日的整天接在前面当隔夜参照。
    * 那一天的日文件可能已经不在了（被清理 / 该标的只抓到更早的日期），
-   * 这时退到磁盘上最新的一天并整天全揭示 —— 宁可多给，也不要给一块空盘面。
+   * 这时退到磁盘上最新的一天并整天全给 —— 宁可多给，也不要给一块空盘面。
    */
   const cursor = account.value?.lastBarTime || account.value?.startBarTime || ''
   const cursorDay = cursor.slice(0, 10)
   const inside =
     cursorDay && meta.firstDay && meta.lastDay && cursorDay >= meta.firstDay && cursorDay <= meta.lastDay
   if (inside) {
-    await store.load(code, cursorDay, cursor.slice(0, 16))
+    await store.load(code, cursor.slice(0, 16))
   } else {
-    await store.load(code, meta.lastDay)
+    await store.load(code, meta.lastDay ? `${meta.lastDay} 23:59` : undefined)
   }
 })
 </script>

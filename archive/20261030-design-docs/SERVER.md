@@ -29,10 +29,11 @@ PF 账户的入口（`PropFirmAccountController`）：`GET /api/pf-accounts?stat
 包成 `{code,msg,data}`、页面**白屏**；响应结构也要补外壳（springdoc 只看方法签名），由 `OpenApiConfig` 做。
 
 行情（`BarController`，**只读，没有任何写入口**）：`GET /api/bars/symbols` 返回清单文件里的标的
-+ 每个标的磁盘上的日文件个数与首尾日期；`GET /api/bars?code=CME_MINI:MES1!&day=2024-07-08` 返回那一天
-的 5 分钟 K 线（`day` 不传就是最新一天，休市日返回空数组而不是错误）。数据全部来自
-`CsvBarStore` + `SymbolCatalog`，**不落库、不缓存**；`code → folder` 的映射和「默认最新一天」只在
-`BarQueryService` 一处。webapp 的交易页就是靠这两个接口画图 —— 这也是为什么那边不用 WebSocket：
++ 每个标的磁盘上的日文件个数与首尾日期；`GET /api/bars?code=CME_MINI:MES1!&time=2024-07-08 09:00` 返回
+**上一个交易日整天 + 截止那天到 `time` 为止**的 5 分钟 K 线（上一交易日按 `data/` 里的 CSV 文件算，不是
+日历减一天；`time` 不传就是最新一天整天；休市日返回空数组而不是错误）。数据全部来自
+`CsvBarStore` + `SymbolCatalog`，**不落库、不缓存**；`code → folder` 的映射、「上一个交易日是哪个文件」
+和「默认最新一天」只在 `BarQueryService` 一处。webapp 的交易页就是靠这两个接口画图 —— 这也是为什么那边不用 WebSocket：
 单用户看自己账户的图，一问一答已经够了。交易页的标的**不由用户选**，读账户上的 `symbolId`。
 
 版本号只有一处：`pom.xml` 的 `<version>` → 资源过滤 → `app.version` → `AppProperties`。

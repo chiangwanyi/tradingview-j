@@ -321,7 +321,7 @@ CREATE INDEX IF NOT EXISTS idx_trade_record ON trade (trade_record_id);
 --
 -- 旧库里的表不会自动消失（本脚本只管建，不管删）。要清掉它，手工执行：
 --   DROP TABLE IF EXISTS replay_cursor;
--- 旧库还需要重建才能拿到 audit_event / trade_record 的新列，见 SERVER.md。
+-- 旧库还需要重建才能拿到 audit_event / trade_record 的新列，见 README.md 的 Spring 侧「改表」一节。
 
 -- 操作记录：append-only 的审计流水。**它是整个「记录 / 回放」的唯一日志层。**
 -- account_id **NOT NULL 且故意不加外键**：任何改写（包括 SET NULL）都会让这条流水

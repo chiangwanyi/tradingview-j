@@ -26,7 +26,9 @@ npm run build   # 类型检查 + 生成 dist/
 - `/api/pf-accounts`（`PropFirmAccountController`，表 `prop_firm_account`）—— 账户列表在
   `views/AccountsView.vue` 里，卡片自己再按需拉 `/stages`。
 - `/api/bars`（`BarController`，**只读**）—— 交易页的 K 线：`/api/bars/symbols` 取标的清单，
-  `/api/bars?code=&day=` 取某一天的 5 分钟 K 线。数据来自 `data/<folder>/<yyyy-MM-dd>.csv`，不进库。
+  `/api/bars?code=&time=` 取「上一交易日整天 → `time` 那一刻」的 5 分钟 K 线
+  （`time` 形如 `2025-12-04 09:00`；上一交易日按磁盘上的日文件算，不是日历减一天）。
+  数据来自 `data/<folder>/<yyyy-MM-dd>.csv`，不进库。
 
 任何写操作之后重新拉一遍 —— 服务端是唯一事实来源。余额、阶段、规则快照都由后端给，
 前端**不**用成交自己算一遍（两处算法必然分叉）。
@@ -61,7 +63,7 @@ src/
   stores/trade.ts            交易页状态（web/ 的 replay store 的本地版，见下）
   data/rules.ts              类型 + validate + 金额/比例格式化 —— **校验口径的唯一实现**
   data/accounts.ts           调 /api/pf-accounts：增删改查、升级/判失败、阶段流水、进度算给人看
-  data/bars.ts               调 /api/bars：标的清单 + 某一天的 K 线
+  data/bars.ts               调 /api/bars：标的清单 + 上一交易日到指定时刻的 K 线
   data/store.ts              调 /api/pf-templates：列表缓存、建/改/删、删后断链
   data/api.ts                统一响应体拆包 + JSON 请求体 + 错误文案（两份 store 共用）
 scripts/rules-check.mts      validate 的自检，node --experimental-strip-types 直接跑
@@ -82,7 +84,7 @@ scripts/rules-check.mts      validate 的自检，node --experimental-strip-type
 
 **没接通的三个动作**（点了会给一句明确提示，不产生任何假数据）：
 
-- 下单 / 撤单 / 改价 / 一键平仓 —— 撮合还在设计阶段（`TRADING-ENGINE-DESIGN.md`），后端没有交易接口。
+- 下单 / 撤单 / 改价 / 一键平仓 —— 撮合还在设计阶段（`README.md` §三），后端没有交易接口。
 - 逐根推进（「下一根」）—— 同上，K 线现在一次给一整天、全部揭示。
 - 画线与模板**只存在这个标签页的内存里**，刷新即失。它们不改余额、不改持仓，所以允许本地生效；
   但页面上有一条常驻说明写着这件事，别让人以为画完就存住了。

@@ -333,7 +333,7 @@ function openTrade(): void {
         <ul class="mt-1.5 list-disc space-y-1 pl-5 text-[12px] text-faint">
           <li>成交记录与逐笔盈亏 <span class="text-faint">（`audit_event` 已落库，接口还没做）</span></li>
           <li>当前规则快照的完整字段（单笔手数上限、日亏损上限等）</li>
-          <li>交易页里的下单 / 撤单 / 逐根推进 <span class="text-faint">（撮合后端还没接通，见 `TRADING-ENGINE-DESIGN.md`）</span></li>
+          <li>交易页里的下单 / 撤单 / 逐根推进 <span class="text-faint">（撮合后端还没接通，见 `README.md` §三）</span></li>
         </ul>
       </div>
     </div>

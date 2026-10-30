@@ -46,7 +46,7 @@ import type {
  *
  * ## 为什么不假装「下单成功」
  *
- * 撮合、挂单状态、逐批平仓盈亏全在后端（见 `TRADING-ENGINE-DESIGN.md`）。
+ * 撮合、挂单状态、逐批平仓盈亏全在后端（见 `README.md` §三）。
  * 前端先本地生成一笔成交，界面会立刻和账户余额对不上 —— 而余额是后端算的。
  * 那比「按下去没反应」更糟：人以为自己开了仓。所以这些动作只写一条提示，
  * 说清楚「后端没接通」，不产生任何假数据。
@@ -89,20 +89,6 @@ function seedTemplates(): Template[] {
     style: defaultStyle(kind),
     createdAt: i,
   }))
-}
-
-/**
- * 序列里「时间 ≤ t」的最后一根的下标；一根都没有时返回 -1。
- *
- * 时间列是定长明文 `yyyy-MM-dd HH:mm`（字典序 = 时间序），所以直接比字符串。
- * 找不到精确相等是**正常情况**：账户记的那一根可能因为日文件重抓而不在了，
- * 那就停在它之前最后一根已存在的 K 线上，而不是「一根都不给」。
- */
-function lastIndexAtOrBefore(list: Bar[], t: string): number {
-  for (let i = list.length - 1; i >= 0; i -= 1) {
-    if (list[i].time <= t) return i
-  }
-  return -1
 }
 
 /** `"2024-03-04 09:35"` → 当天第几分钟。解析不了返回 NaN（聚合时整根丢掉）。 */
@@ -173,8 +159,8 @@ export const useTradeStore = defineStore('trade', () => {
   // ---------------- 数据 ----------------
   const symbols = ref<SymbolBrief[]>([])
   const instance = ref<InstanceDetail | null>(null)
-  /** 当前标的代码（`_symbols.json` 的键）与日期。**标的由账户锁定**，页头只有日期选择器；
-   *  `setSymbol` 留着是给「换一个账户 / 换一份数据」用的，界面上没有入口。 */
+  /** 当前标的代码（`_symbols.json` 的键）与**截止那天**（后端回的 `day`，可能跨两个日文件）。
+   *  **标的由账户锁定**；`setSymbol` 留着是给「换一个账户 / 换一份数据」用的，界面上没有入口。 */
   const symbolCode = ref('')
   const day = ref('')
   const loading = ref(false)
@@ -323,28 +309,29 @@ export const useTradeStore = defineStore('trade', () => {
   }
 
   /**
-   * 读某个标的某一天的 K 线，并把它装成一块「盘面」。
+   * 读某个标的「上一交易日整天 → `time` 那一刻」的 K 线，并把它装成一块「盘面」。
    *
    * `instance` 是照 `InstanceDetail` 造的：画布只认这几个字段（bars / annotations /
    * orders / trades / position / tick / tickValue），给它一份形状完整的空盘面，
    * 那些分支就都不用改。
    *
-   * `until` 是「揭示到哪一根」（账户的 `lastBarTime`）：只把这一天里时间 ≤ 它的那一段
-   * 装进 `instance.bars`，后面的留在 {@link dayBars} 里等 step。不传 = 整天全揭示
-   * （找不到账户起点时的退路，和以前一样）。
+   * `time` 是截止时刻（`yyyy-MM-dd HH:mm`，账户的 `lastBarTime`）：截断由**后端**做，
+   * 它会把上一个交易日的整天接在前面当隔夜参照，只留当天的到 `time` 那一根。
+   * 不传 = 磁盘上最新的一天整天（找不到账户起点时的退路，和以前一样）。
    */
-  async function load(code: string, date?: string, until?: string): Promise<void> {
+  async function load(code: string, time?: string): Promise<void> {
     if (!code) return
     loading.value = true
     try {
-      const res = await barsApi.day(code, date || undefined)
+      const res = await barsApi.series(code, time)
       symbolCode.value = res.code
       day.value = res.day
       const list = withEma(
         res.bars.map((b) => ({ ...b, ema20: null as number | null })),
       )
       dayBars.value = list
-      revealIndex.value = until ? lastIndexAtOrBefore(list, until) : list.length - 1
+      // 数据已经在后端截断到 time，这里全给：`revealIndex` 仍留着，是因为 step 还要用它
+      revealIndex.value = list.length - 1
       const shown = list.slice(0, revealIndex.value + 1)
       instance.value = {
         id: `${res.code}|${res.day}`,
@@ -588,16 +575,16 @@ export const useTradeStore = defineStore('trade', () => {
   /**
    * 步进一根（ChartPanel 的 → 键、状态条上的【下一根】）。
    *
-   * 一天的数据已经全在本页（`dayBars`），所以这里只是「多放一根出来」并把它存回账户 ——
-   * 下次「继续交易」就停在这儿。走到这一天最后一根时给一句提示，不跨日：
-   * 跨日要换日文件，那是另一件事（换日 = 换整张图，会重置缩放和标注）。
+   * 后端只给到「账户记住的那一根」为止（`time` 就是它），所以正常进来就已经是最后一根 ——
+   * 这里给一句明确提示，不造一根出来的假 K 线。要继续往后放，得让接口拿到更晚的 `time`
+   * （`load(code, 更晚的时刻)`），那属于「重新取一段」而不是步进。
    */
   function step(): void {
     if (!instance.value) return
     const next = dayBars.value[revealIndex.value + 1]
     if (!next) {
       noteNotice(
-        `${day.value} 已经是最后一根（${currentTime.value || '—'}）：后面的行情要等换了日文件才接得上。`,
+        `${currentTime.value || '—'} 已经是这一段数据的最后一根：后面的行情要等再取一次（截止时刻往后挪）才接得上。`,
       )
       return
     }
