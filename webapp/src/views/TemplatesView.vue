@@ -1,10 +1,10 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 
 import Icon from '@/components/Icon.vue'
 import PlanCard from '@/components/PlanCard.vue'
 import TemplateDialog from '@/components/TemplateDialog.vue'
-import { blank, remove, save, store } from '@/data/store'
+import { blank, errorText, refresh, remove, save, store } from '@/data/store'
 import type { Template } from '@/data/rules'
 
 /** 参考图顶部的四段切换，这里当作阶段筛选（模板本身只有阶段这一个分类）。 */
@@ -25,6 +25,20 @@ const list = computed(() =>
 const nameOf = (id: string | null): string | null =>
   id ? (store.list.find((t) => t.id === id)?.name ?? null) : null
 
+// 数据在后端，进页面先拉一遍；失败时把原因摊在页面上，不要只剩一张空列表
+const loading = ref(true)
+const error = ref('')
+
+onMounted(() => {
+  refresh()
+    .catch((e: unknown) => {
+      error.value = errorText(e)
+    })
+    .finally(() => {
+      loading.value = false
+    })
+})
+
 // ---- 编辑 ----
 const draft = ref<Template | null>(null)
 const stageEditable = ref(false)
@@ -33,20 +47,31 @@ function openNew(): void {
   filter.value = 'ALL'
   draft.value = blank()
   stageEditable.value = true
+  error.value = ''
 }
 
 function openEdit(t: Template): void {
   draft.value = { ...t, rules: { ...t.rules } }
   stageEditable.value = false
+  error.value = ''
 }
 
 function onSave(t: Template): void {
   save(t)
-  draft.value = null
+    .then(() => {
+      draft.value = null
+      error.value = ''
+    })
+    .catch((e: unknown) => {
+      error.value = errorText(e)
+    })
 }
 
 function onRemove(t: Template): void {
-  if (confirm(`删掉「${t.name}」？已用它的规则开出来的账户不受影响。`)) remove(t.id)
+  if (!confirm(`删掉「${t.name}」？已用它的规则开出来的账户不受影响。`)) return
+  remove(t.id).catch((e: unknown) => {
+    error.value = errorText(e)
+  })
 }
 
 defineExpose({ openNew })
@@ -103,6 +128,13 @@ function goPage(i: number): void {
       </ul>
     </header>
 
+    <p
+      v-if="error"
+      class="mx-8 mt-4 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-[12px] text-red-700"
+    >
+      {{ error }}
+    </p>
+
     <div class="relative flex flex-1 flex-col justify-center pt-6 pb-6">
       <template v-if="list.length">
         <button
@@ -138,7 +170,7 @@ function goPage(i: number): void {
         />
 
         <p v-if="!list.length" class="w-full py-16 text-center text-[13px] text-faint">
-          这个阶段还没有模板。
+          {{ loading ? '加载中…' : '这个阶段还没有模板。' }}
         </p>
       </div>
 
@@ -160,6 +192,7 @@ function goPage(i: number): void {
       :draft="draft"
       :stage-editable="stageEditable"
       :others="store.list.filter((t) => t.id !== draft!.id)"
+      :error="error"
       @save="onSave"
       @close="draft = null"
     />

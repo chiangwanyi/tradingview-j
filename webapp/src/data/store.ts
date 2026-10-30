@@ -3,117 +3,80 @@ import { reactive } from 'vue'
 import type { Template } from './rules'
 
 /*
- * 模板存在 localStorage —— 后端目前只有 PropFirmTemplateService，没有 REST 接口。
- * 换成真接口时只改这个文件：load/save 换成 fetch，其余组件不用动。
+ * 模板走后端 `PropFirmTemplateController`（/api/pf-templates）。
+ *
+ * 服务端是唯一事实来源：每次写完都重新拉一遍列表，不在前端「自己拼一个结果」——
+ * 那样界面看着对、库里对不上，最难查。
+ *
+ * 开发时靠 vite.config.ts 的 proxy 把 /api 转到 127.0.0.1:8791。
  */
 
-const KEY = 'webapp.pf-templates.v1'
+const BASE = '/api/pf-templates'
 
-/** 20 个字符够当 id 了，不引入 uuid 依赖。 */
-function newId(): string {
-  return Math.random().toString(36).slice(2, 12)
+interface Envelope<T> {
+  code: number
+  msg: string
+  data: T
 }
 
-/** 一组 LucidFlex 的样例：EVAL 有目标、FUNDED 没目标，两条串成一条链。 */
-function seed(): Template[] {
-  const sizes: Array<[number, number, number, number]> = [
-    // [规模, 盈利目标, 最大回撤, EVAL 手数上限]
-    [25000, 1250, 1000, 20],
-    [50000, 3000, 2000, 40],
-    [100000, 6000, 4000, 60],
-  ]
-  const now = Date.now()
-  const out: Template[] = []
-
-  sizes.forEach(([size, target, drawdown, maxContracts], i) => {
-    // 冻结水位只有 50K 有出处（PropFirmRules 的注释里写着 52100），其他档留空，不编。
-    const lock = size === 50000 ? 52100 : null
-    const k = size / 1000
-    const fundedTiers = [{ fromProfit: 0, maxContracts }]
-
-    out.push({
-      id: `seed-eval-${k}`,
-      name: `LucidFlex ${k}K EVAL`,
-      description: '考试阶段：打到盈利目标即进下一套',
-      stage: 'EVAL',
-      nextTemplateId: `seed-funded-${k}`,
-      rules: {
-        accountSize: size,
-        profitTarget: target,
-        maxDrawdown: drawdown,
-        drawdownType: 'TRAILING_EOD',
-        trailingLockLevel: lock,
-        consistencyRatio: 0.4,
-        minProfitDays: null,
-        profitDayThreshold: null,
-        positionTiers: [{ fromProfit: 0, maxContracts }],
-      },
-      createdAt: now + i,
-    })
-
-    out.push({
-      id: `seed-funded-${k}`,
-      name: `LucidFlex ${k}K FUNDED`,
-      description: '出金号：没有目标，攒够盈利日即可出金',
-      stage: 'FUNDED',
-      nextTemplateId: null,
-      rules: {
-        accountSize: size,
-        profitTarget: null,
-        maxDrawdown: drawdown,
-        drawdownType: 'TRAILING_EOD',
-        trailingLockLevel: lock,
-        consistencyRatio: null,
-        minProfitDays: 5,
-        profitDayThreshold: 150,
-        positionTiers: fundedTiers,
-      },
-      createdAt: now + i + 100,
-    })
-  })
-
-  return out
+/** 统一响应体（见后端 api/R.java）：code 0 才算成功，其余都是业务错误。 */
+async function call<T>(url: string, init?: RequestInit): Promise<T> {
+  const res = await fetch(url, init)
+  const body = (await res.json().catch(() => null)) as Envelope<T> | null
+  if (!body || body.code !== 0) throw new Error(body?.msg || `HTTP ${res.status}`)
+  return body.data
 }
 
-function load(): Template[] {
-  try {
-    const raw = localStorage.getItem(KEY)
-    if (raw) return JSON.parse(raw) as Template[]
-  } catch {
-    // 存的东西坏了就当没有，下面重新播种 —— 前端只有这一份数据，不给修复 UI
+const send = (method: 'POST' | 'PUT', body: unknown): RequestInit => ({
+  method,
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify(body),
+})
+
+/** 建和改共用一个请求体；update 时后端会忽略 stage（阶段建出来之后不能改）。 */
+const payload = (t: Template) => ({
+  name: t.name,
+  description: t.description,
+  stage: t.stage,
+  nextTemplateId: t.nextTemplateId,
+  rules: t.rules,
+})
+
+/** 补回被后端 non_null 省掉的 null，组件才能照 Template 的类型用。 */
+const normalize = (t: Template): Template => ({
+  ...t,
+  nextTemplateId: t.nextTemplateId ?? null,
+  rules: { ...t.rules, positionTiers: t.rules.positionTiers ?? [] },
+})
+
+export const store = reactive({ list: [] as Template[] })
+
+/** 拉全量列表（按创建时间升序）。 */
+export async function refresh(): Promise<void> {
+  store.list = (await call<Template[]>(BASE)).map(normalize)
+}
+
+/** 建或改，按 id 是否存在判断 —— 新建的空白模板 id 是空串，一律走 POST。 */
+export async function save(t: Template): Promise<void> {
+  const exists = store.list.some((x) => x.id === t.id)
+  await call(exists ? `${BASE}/${t.id}` : BASE, send(exists ? 'PUT' : 'POST', payload(t)))
+  await refresh()
+}
+
+/** 删一套；顺手断链 —— 后端不级联，留着指向已删模板的 id 会让升级路径指向空气。 */
+export async function remove(id: string): Promise<void> {
+  const broken = store.list.filter((t) => t.nextTemplateId === id)
+  await call(`${BASE}/${id}`, { method: 'DELETE' })
+  for (const t of broken) {
+    await call(`${BASE}/${t.id}`, send('PUT', payload({ ...t, nextTemplateId: null })))
   }
-  const fresh = seed()
-  persist(fresh)
-  return fresh
+  await refresh()
 }
 
-function persist(list: Template[]): void {
-  localStorage.setItem(KEY, JSON.stringify(list))
-}
-
-export const store = reactive({ list: load() })
-
-/** 建或改，按 id 是否存在判断。 */
-export function save(t: Template): void {
-  const i = store.list.findIndex((x) => x.id === t.id)
-  if (i >= 0) store.list[i] = t
-  else store.list.push(t)
-  persist(store.list)
-}
-
-export function remove(id: string): void {
-  store.list = store.list.filter((x) => x.id !== id)
-  // 断链要一起修：留着指向已删模板的 id，升级路径就指向空气了
-  store.list.forEach((t) => {
-    if (t.nextTemplateId === id) t.nextTemplateId = null
-  })
-  persist(store.list)
-}
-
-/** 空白模板，给「新建」用。建出来先落在 EVAL —— 那是链的第一环。 */
+/** 空白模板，给「新建」用。建出来先落在 EVAL —— 那是链的第一环。id 由后端发。 */
 export function blank(): Template {
   return {
-    id: newId(),
+    id: '',
     name: '',
     description: '',
     stage: 'EVAL',
@@ -129,6 +92,10 @@ export function blank(): Template {
       profitDayThreshold: null,
       positionTiers: [],
     },
-    createdAt: Date.now(),
   }
+}
+
+/** 把 catch 到的东西变成一句能给用户看的话。 */
+export function errorText(e: unknown): string {
+  return e instanceof Error ? e.message : String(e)
 }

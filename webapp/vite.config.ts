@@ -18,5 +18,9 @@ export default defineConfig({
     // 端口错开 web/ 的 5173。
     host: '127.0.0.1',
     port: 5174,
+    // 后端 Spring Boot 在 8791。同样写 127.0.0.1 而不是 localhost。
+    proxy: {
+      '/api': { target: 'http://127.0.0.1:8791', changeOrigin: true },
+    },
   },
 })

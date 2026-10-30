@@ -42,10 +42,14 @@ export interface Template {
   name: string
   description: string
   stage: Stage
-  /** 达标后接哪套模板；null = 升到尽头。 */
+  /**
+   * 达标后接哪套模板；null = 升到尽头。
+   *
+   * 提示：后端 `default-property-inclusion: non_null` 会把取值为 null 的字段整个省掉，
+   * fetch 回来的对象里读到的是 `undefined`。所以判断一律写 `== null`，别写 `=== null`。
+   */
   nextTemplateId: string | null
   rules: Rules
-  createdAt: number
 }
 
 /**

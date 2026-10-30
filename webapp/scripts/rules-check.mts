@@ -29,7 +29,6 @@ const tpl = (stage: Template['stage'], rules: Rules): Template => ({
   stage,
   nextTemplateId: null,
   rules,
-  createdAt: 0,
 })
 
 // 自洽的 EVAL 能过

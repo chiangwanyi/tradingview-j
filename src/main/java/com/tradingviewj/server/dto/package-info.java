@@ -6,6 +6,10 @@
  * 列名变成对外的 API 契约 —— 之后想改一个列名、拆一张表，都会变成一个破坏性变更。
  *
  * <p>本包只允许 import JDK、Lombok 和 Swagger 注解；<strong>不 import entity</strong>
- * 是理想状态，需要转换时在 service 里做。当前只有版本号一个 DTO，还没有这个约束的压力。
+ * 是理想状态，需要转换时在 service 里做。
+ *
+ * <p>已有一处例外：{@link com.tradingviewj.server.dto.PropFirmTemplateRequest} 直接复用
+ * {@code PropFirmRules} / {@code PropFirmStage} —— 规则的字段名本身就是对外契约（前端
+ * {@code webapp/src/data/rules.ts} 对着它写），镜像一份出来只会立刻漂移。
  */
 package com.tradingviewj.server.dto;

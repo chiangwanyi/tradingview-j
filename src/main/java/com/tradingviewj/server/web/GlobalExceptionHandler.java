@@ -60,6 +60,18 @@ public class GlobalExceptionHandler {
         return badRequest(detail);
     }
 
+    /**
+     * 实体工厂方法抛的 {@link IllegalArgumentException}：缺名字、缺规模、EVAL 没目标……
+     *
+     * <p>这类异常的 message 本来就是写给用户看的，必须原样回给前端；否则会掉进下面的兜底，
+     * 变成一个只有「服务内部错误」的 500 ——「建不出来」的原因就丢了。
+     */
+    @ExceptionHandler(IllegalArgumentException.class)
+    public ResponseEntity<R<Void>> handleIllegalArgument(IllegalArgumentException ex, HttpServletRequest request) {
+        log.warn("invalid argument, uri={}, msg={}", request.getRequestURI(), ex.getMessage());
+        return badRequest(ex.getMessage());
+    }
+
     /** 参数类型不对（路径上写了字母但方法要 int）、请求体读不出来、漏了必填 query 参数。 */
     @ExceptionHandler({
             MethodArgumentTypeMismatchException.class,

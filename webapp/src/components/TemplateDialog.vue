@@ -12,6 +12,8 @@ const props = defineProps<{
   stageEditable: boolean
   /** 可选的「下一套」—— 不能指向自己。 */
   others: Template[]
+  /** 后端拒绝的原因：前端校验过了也可能被拒（同一条规则两个落点，必然对不齐）。 */
+  error: string
 }>()
 const emit = defineEmits<{ save: [Template]; close: [] }>()
 
@@ -134,10 +136,11 @@ function submit(): void {
       </div>
 
       <ul
-        v-if="errors.length"
+        v-if="errors.length || error"
         class="mb-4 space-y-1 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-[12px] text-red-700"
       >
         <li v-for="e in errors" :key="e">· {{ e }}</li>
+        <li v-if="error">· {{ error }}</li>
       </ul>
 
       <div class="grid grid-cols-2 gap-4">

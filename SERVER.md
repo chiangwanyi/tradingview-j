@@ -1,13 +1,18 @@
 # tradingview-j-server
 
 Go 版 `tradingview-j` 的 Java / Spring Boot 迁移目标，工程文件（`pom.xml` / `src/` / `mvnw`）在**仓库根**，
-与 Go 模块共用一个根、**互不引用**。已有版本号接口 + 领域层与 SQLite 持久化；复盘/抓取的接口还没搬。
+与 Go 模块共用一个根、**互不引用**。已有版本号 + PF 模板接口和领域层与 SQLite 持久化；复盘/抓取的接口还没搬。
 
 ## 跑
 
 `./mvnw spring-boot:run`（Windows 用 `mvnw.cmd`）。端口 **8791**、只绑本机。
 `GET /api/version` → `{"code":0,"msg":"ok","data":{...}}`；Swagger 在 `/swagger-ui.html`，用
 **springdoc-openapi 2.8.x**（配 Boot 3.4/3.5；`3.x` 给 Boot 4）。首次启动自动建 `./db/tradingview-j.db`。
+
+PF 模板的五个入口（前端 `webapp/` 就在用这几个）：`GET|POST /api/pf-templates`、
+`GET|PUT|DELETE /api/pf-templates/{id}`。建/改共用 `PropFirmTemplateRequest`；`PUT` 忽略 `stage`
+（阶段在链上，改不了）；实体抛的 `IllegalArgumentException` 由 `GlobalExceptionHandler` 转成
+400 + 原始中文原因，别再让它掉进 500。
 
 **Swagger 两个坑**（`OpenApiDocsTest` 钉住）：`UNWRAPPED_PACKAGES` 必须含 `org.springdoc`，否则文档端点也被
 包成 `{code,msg,data}`、页面**白屏**；响应结构也要补外壳（springdoc 只看方法签名），由 `OpenApiConfig` 做。

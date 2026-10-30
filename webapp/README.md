@@ -11,12 +11,15 @@ npm run build   # 类型检查 + 生成 dist/
 
 ## 数据在哪
 
-**在浏览器 localStorage 里**，key 是 `webapp.pf-templates.v1`。后端目前只有
-`PropFirmTemplateService`，**没有 REST 接口**（`src/main/java/.../controller/` 里只有
-`VersionController`）。接真接口时只改 `src/data/store.ts` 的 `load/persist`，组件不用动。
+**在后端**：`/api/pf-templates`（后端 `controller/PropFirmTemplateController.java`，
+表 `prop_firm_template`）。前端只缓存一份列表在 `src/data/store.ts` 的 `store.list` 里，
+任何写操作之后重新拉一遍 —— 服务端是唯一事实来源。
 
-首次打开会种 6 条 LucidFlex 样例（25K/50K/100K 各一条 EVAL + 一条 FUNDED，串成两条链）。
-想回到初始状态：浏览器控制台 `localStorage.removeItem('webapp.pf-templates.v1')` 后刷新。
+开发前先把后端跑起来（`./mvnw spring-boot:run`，127.0.0.1:8791）；
+`vite.config.ts` 里配了 `/api` → 8791 的 proxy，所以前端只写相对路径 `/api/...`。
+
+库是空的也不会自己长样例：页面会显示「这个阶段还没有模板」，从左边栏的「+」新建。
+后端返回里 null 字段会被 `non_null` 整个省掉（读到 `undefined`），所以判断一律用 `== null`。
 
 ## 目录
 
@@ -29,7 +32,7 @@ src/
   components/PlanCard.vue    一张模板卡
   components/TemplateDialog.vue 建 / 改（表单里全是字符串，提交时才转成数字）
   data/rules.ts              类型 + validate + 金额/比例格式化 —— **校验口径的唯一实现**
-  data/store.ts              localStorage 读写、种数据、删模板时顺手断链
+  data/store.ts              调 /api/pf-templates：列表缓存、建/改/删、删后断链、错误文案
 scripts/rules-check.mts      validate 的自检，node --experimental-strip-types 直接跑
 ```
 
