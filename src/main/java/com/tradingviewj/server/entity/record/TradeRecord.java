@@ -170,7 +170,16 @@ public class TradeRecord extends BaseEntity {
     @Setter
     private BigDecimal exitPrice;
 
-    @Setter
+    /**
+     * 这一笔交易的已实现盈亏（<strong>毛利</strong>，Σ 区间内每笔成交的 {@code realizedPnl}）。
+     *
+     * <p><strong>没有 setter，只能由 {@link #closeAt} 写。</strong> 这不是洁癖：金额一旦能被
+     * 随手改，就会有第二条记账路径，而两条路径迟早分叉，且分叉时不抛异常。{@code closeAt}
+     * 里还负责 {@code Money.round}（美元只到分）—— 绕过它就等于绕过「金额只到分」这条口径。
+     *
+     * <p>反手时这个值<strong>全额</strong>归旧记录：那笔成交一半平旧仓、一半开新仓，
+     * 而 {@code realizedFor} 只算平仓那半，所以整笔记在这里是对的。
+     */
     private BigDecimal realizedPnl;
 
     /** 最大有利波动（美元）。 */
