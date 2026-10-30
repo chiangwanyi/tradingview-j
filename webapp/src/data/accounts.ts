@@ -59,6 +59,9 @@ export interface StageLog {
 export const list = (status?: AccountStatus): Promise<Account[]> =>
   call(`${BASE}${status ? `?status=${status}` : ''}`)
 
+/** 取单个账户。详情页用它自己拉一份，不依赖列表里那份可能已经过期的拷件。 */
+export const get = (id: string): Promise<Account> => call(`${BASE}/${id}`)
+
 export const open = (templateId: string, name: string): Promise<Account> =>
   call(BASE, send('POST', { templateId, name }))
 

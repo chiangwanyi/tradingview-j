@@ -2,24 +2,18 @@
 import { computed, ref } from 'vue'
 
 import Icon from './Icon.vue'
-import {
-  promote as promoteApi,
-  shortInstant,
-  shortTime,
-  stages as stagesApi,
-  targetProgress,
-} from '@/data/accounts'
-import type { Account, StageLog } from '@/data/accounts'
+import { shortInstant, shortTime, targetProgress } from '@/data/accounts'
+import type { Account } from '@/data/accounts'
 import { drawdownLabel, pct, stageLabel, usd } from '@/data/rules'
 
 /**
  * 一张考核卡。版式照参考图的账户卡：身份 → 三个状态小标签 → 四个数字 → 进度条 → 动作。
  *
- * 卡片自己拉阶段流水（只有点开才拉）：它只属于这一个账户，放到列表层统一管理会让
- * 每一张卡的展开状态和一份全局缓存互相追。
+ * 卡片只留两个入口：继续交易 / 详情。升级、改名、删除、阶段流水全在详情页 ——
+ * 卡片是「一眼看进度」的地方，写操作不该跟数字抢位置。
  */
 const props = defineProps<{ a: Account }>()
-const emit = defineEmits<{ rename: [id: string, name: string]; remove: [id: string]; changed: [] }>()
+const emit = defineEmits<{ trade: [id: string]; detail: [id: string] }>()
 
 const progress = computed(() => targetProgress(props.a))
 const gained = computed(() => props.a.balance - props.a.baseBalance)
@@ -28,75 +22,18 @@ const lossLine = computed(() =>
   props.a.rules.maxDrawdown == null ? null : props.a.eodPeakBalance - props.a.rules.maxDrawdown,
 )
 
-// ---- 改名 ----
-const editing = ref(false)
-const draftName = ref('')
-const err = ref('')
+// ---- 继续交易（占位）----
+/** 交易界面还没做：点了就在本卡浮一行说明，不弹窗、不跳走，免得以为点坏了。 */
+const notice = ref('')
+let noticeTimer: ReturnType<typeof setTimeout> | undefined
 
-function startRename(): void {
-  draftName.value = props.a.name
-  editing.value = true
-  err.value = ''
-}
-
-function submitRename(): void {
-  emit('rename', props.a.id, draftName.value.trim())
-  editing.value = false
-}
-
-function stopRename(): void {
-  editing.value = false
-  err.value = ''
-}
-
-// ---- 阶段流水 ----
-const logs = ref<StageLog[] | null>(null)
-const loadingLogs = ref(false)
-
-function toggleLogs(): void {
-  if (logs.value) {
-    logs.value = null
-    return
-  }
-  loadingLogs.value = true
-  err.value = ''
-  stagesApi(props.a.id)
-    .then((l) => {
-      logs.value = l
-    })
-    .catch((e: unknown) => {
-      err.value = e instanceof Error ? e.message : String(e)
-    })
-    .finally(() => {
-      loadingLogs.value = false
-    })
-}
-
-// ---- 动作 ----
-const busy = ref(false)
-
-function run(fn: () => Promise<unknown>): void {
-  busy.value = true
-  err.value = ''
-  fn()
-    .then(() => emit('changed'))
-    .catch((e: unknown) => {
-      err.value = e instanceof Error ? e.message : String(e)
-    })
-    .finally(() => {
-      busy.value = false
-    })
-}
-
-function doRemove(): void {
-  if (confirm(`删掉「${props.a.name}」？成交、流水、图形都不会被删，只是这个账户不再列出。`)) {
-    emit('remove', props.a.id)
-  }
-}
-
-function doPromote(): void {
-  if (!confirm(`把「${props.a.name}」升到下一阶段？余额会重置回新阶段的账户规模。`)) return
-  run(() => promoteApi(props.a.id))
+function onTrade(): void {
+  emit('trade', props.a.id)
+  notice.value = '交易界面还没做好，这里先占个位。'
+  clearTimeout(noticeTimer)
+  noticeTimer = setTimeout(() => {
+    notice.value = ''
+  }, 2600)
 }
 </script>
 
@@ -104,14 +41,7 @@ function doPromote(): void {
   <article class="flex flex-col rounded-xl border border-line bg-panel shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
     <header class="flex items-start justify-between gap-2 px-4 pt-4">
       <div class="min-w-0">
-        <input
-          v-if="editing"
-          v-model="draftName"
-          class="w-full rounded-md border border-line bg-panel px-2 py-1 text-[15px] font-semibold text-ink outline-none focus:border-accent/60"
-          @keyup.enter="submitRename"
-          @keyup.esc="stopRename"
-        />
-        <h3 v-else class="truncate text-[15px] font-semibold tracking-wide text-ink">
+        <h3 class="truncate text-[15px] font-semibold tracking-wide text-ink">
           {{ a.name }}
         </h3>
         <p class="mt-0.5 truncate text-[12px] text-faint tnum">起点 {{ shortTime(a.startBarTime) }}</p>
@@ -190,74 +120,28 @@ function doPromote(): void {
       </div>
     </div>
 
-    <p v-if="err" class="mx-4 mb-2 rounded border border-red-200 bg-red-50 px-2 py-1 text-[12px] text-red-700">
-      {{ err }}
+    <p
+      v-if="notice"
+      class="mx-4 mb-2 rounded border border-line bg-elev px-2 py-1 text-[12px] text-dim"
+    >
+      {{ notice }}
     </p>
 
-    <!-- 阶段流水：行数就是身份（1 行 = 建户时就在这个阶段，2 行 = 考过来的） -->
-    <ul v-if="logs" class="mx-4 mb-3 space-y-1 rounded-lg border border-line bg-elev px-3 py-2">
-      <li v-for="l in logs" :key="l.id" class="flex items-baseline justify-between gap-2 text-[12px]">
-        <span class="text-dim">
-          {{ stageLabel(l.stage) }}
-          <span class="text-faint">{{ shortInstant(l.startedAt) }}</span>
-        </span>
-        <span class="tnum text-faint">
-          {{ l.endedAt ? (l.netPnl == null ? '—' : `净额 ${usd(l.netPnl)}`) : '进行中' }}
-        </span>
-      </li>
-    </ul>
-    <p v-else-if="loadingLogs" class="mx-4 mb-3 text-[12px] text-faint">读取流水…</p>
-
     <div class="mt-auto grid grid-cols-2 gap-1.5 px-4 pb-4">
-      <template v-if="editing">
-        <button
-          type="button"
-          class="rounded-md border border-accent/40 py-2 text-[13px] font-medium text-accent-ink hover:bg-accent-soft"
-          @click="submitRename"
-        >
-          保存
-        </button>
-        <button
-          type="button"
-          class="rounded-md border border-line py-2 text-[13px] text-dim hover:border-line-strong"
-          @click="stopRename"
-        >
-          取消
-        </button>
-      </template>
-      <template v-else>
-        <button
-          type="button"
-          class="flex items-center justify-center gap-1 rounded-md border border-accent/40 py-2 text-[13px] font-medium text-accent-ink transition-colors hover:bg-accent-soft disabled:cursor-not-allowed disabled:border-line disabled:text-faint disabled:hover:bg-transparent"
-          :disabled="busy || a.status === 'FAILED' || a.stage === 'PAYOUT'"
-          :title="a.stage === 'PAYOUT' ? '已是最后阶段' : 'EVAL → FUNDED → PAYOUT'"
-          @click="doPromote"
-        >
-          <Icon name="check" :size="13" />升级
-        </button>
-        <button
-          type="button"
-          class="rounded-md border border-line py-2 text-[13px] text-dim transition-colors hover:border-line-strong"
-          @click="toggleLogs"
-        >
-          {{ logs ? '收起流水' : '阶段流水' }}
-        </button>
-        <button
-          type="button"
-          class="rounded-md border border-line py-2 text-[13px] text-dim transition-colors hover:border-line-strong"
-          @click="startRename"
-        >
-          改名
-        </button>
-        <button
-          type="button"
-          class="flex items-center justify-center gap-1 rounded-md border border-line py-2 text-[13px] text-faint transition-colors hover:border-red-200 hover:text-red-700"
-          :disabled="busy"
-          @click="doRemove"
-        >
-          <Icon name="trash" :size="13" />删除
-        </button>
-      </template>
+      <button
+        type="button"
+        class="flex items-center justify-center gap-1 rounded-md bg-accent py-2 text-[13px] font-medium text-white transition-colors hover:bg-accent-ink"
+        @click="onTrade"
+      >
+        <Icon name="right" :size="13" />继续交易
+      </button>
+      <button
+        type="button"
+        class="rounded-md border border-line py-2 text-[13px] text-dim transition-colors hover:border-line-strong hover:text-ink"
+        @click="emit('detail', a.id)"
+      >
+        详情
+      </button>
     </div>
   </article>
 </template>

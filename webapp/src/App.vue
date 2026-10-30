@@ -2,12 +2,21 @@
 import { nextTick, ref } from 'vue'
 
 import AppSidebar from '@/components/AppSidebar.vue'
+import AccountDetailView from '@/views/AccountDetailView.vue'
 import AccountsView from '@/views/AccountsView.vue'
 import PlaceholderView from '@/views/PlaceholderView.vue'
 import TemplatesView from '@/views/TemplatesView.vue'
 
 /** 进应用先看账户：模板是配置，账户才是每天要看的东西。 */
 const active = ref('accounts')
+
+/** 详情是账户页里的一层（整页替换列表，不弹窗），存 id 不存对象 —— 切走再回来要重新拉最新余额。 */
+const detailId = ref<string | null>(null)
+
+function select(key: string): void {
+  active.value = key
+  detailId.value = null
+}
 
 /** 有页面的两项接了 view，其余导航项给个占位。 */
 const LABEL: Record<string, string> = {
@@ -27,8 +36,10 @@ async function add(): Promise<void> {
     templates.value?.openNew()
     return
   }
-  if (active.value !== 'accounts') {
+  // 从详情页点「+」要先退回列表，否则弹窗开在详情页下面看不见
+  if (active.value !== 'accounts' || detailId.value) {
     active.value = 'accounts'
+    detailId.value = null
     await nextTick()
   }
   accounts.value?.openNew()
@@ -37,8 +48,14 @@ async function add(): Promise<void> {
 
 <template>
   <div class="flex h-full min-h-0">
-    <AppSidebar :active="active" @select="active = $event" @add="add" />
-    <AccountsView v-if="active === 'accounts'" ref="accounts" />
+    <AppSidebar :active="active" @select="select" @add="add" />
+    <AccountsView v-if="active === 'accounts' && !detailId" ref="accounts" @detail="detailId = $event" />
+    <AccountDetailView
+      v-else-if="active === 'accounts' && detailId"
+      :key="detailId"
+      :id="detailId"
+      @back="detailId = null"
+    />
     <TemplatesView v-else-if="active === 'templates'" ref="templates" />
     <PlaceholderView v-else :title="LABEL[active] ?? active" />
   </div>

@@ -76,19 +76,9 @@ function onCreate(payload: { templateId: string; name: string }): void {
     })
 }
 
-// ---- 卡片上的两个写操作 ----
-function onRename(id: string, name: string): void {
-  if (!name) return
-  api.rename(id, name).then(reload).catch((e: unknown) => {
-    error.value = errorText(e)
-  })
-}
-
-function onRemove(id: string): void {
-  api.remove(id).then(reload).catch((e: unknown) => {
-    error.value = errorText(e)
-  })
-}
+// ---- 卡片上的入口 ----
+/** 详情是整页切换，交给 App 管；这里只把 id 往上递。 */
+const emit = defineEmits<{ detail: [id: string] }>()
 
 defineExpose({ openNew })
 </script>
@@ -134,14 +124,7 @@ defineExpose({ openNew })
 
     <div class="px-8 pb-10">
       <div v-if="list.length" class="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-        <AccountCard
-          v-for="a in list"
-          :key="a.id"
-          :a="a"
-          @rename="onRename"
-          @remove="onRemove"
-          @changed="reload"
-        />
+        <AccountCard v-for="a in list" :key="a.id" :a="a" @detail="emit('detail', $event)" />
       </div>
 
       <p v-else class="py-16 text-center text-[13px] text-faint">
