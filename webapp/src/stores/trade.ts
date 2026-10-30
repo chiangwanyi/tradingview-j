@@ -2,13 +2,19 @@ import { defineStore } from 'pinia'
 import { computed, ref, watch } from 'vue'
 
 import { defaultStyle, resolveStyle } from '@/components/chart/annotations'
-import { atrSeries, DEFAULT_ATR, sanitizeAtr, type AtrSettings } from '@/components/chart/atr'
-import { DEFAULT_BAR_COUNT, sanitizeBarCount, type BarCountSettings } from '@/components/chart/barcount'
-import { DEFAULT_INDICATOR, sanitizeIndicator, type IndicatorSettings } from '@/components/chart/indicators'
-import * as barsApi from '@/data/bars'
-import type { SymbolBrief } from '@/data/bars'
-import * as accountsApi from '@/data/accounts'
+import { atrSeries, sanitizeAtr, type AtrSettings } from '@/components/chart/atr'
+import { sanitizeBarCount, type BarCountSettings } from '@/components/chart/barcount'
+import { sanitizeIndicator, type IndicatorSettings } from '@/components/chart/indicators'
+import { DEFAULT_INDICATOR_PREFS, loadPrefs, savePrefs } from '@/lib/indicatorPrefs'
 import { DEFAULT_NATR, planNatr, sanitizeNatr, type NatrSettings } from '@/lib/natr'
+import {
+  openDesk,
+  type BarAdvancedPayload,
+  type DeskConnection,
+  type DeskEvent,
+  type DeskSnapshot,
+  type DeskState,
+} from '@/data/socket'
 import { TIMEFRAMES } from '@/types/protocol'
 import type {
   Annotation,
@@ -32,30 +38,35 @@ import type {
  *
  * | | web/（复盘） | 这里 |
  * |---|---|---|
- * | K 线 | Go 服务的 WS 快照 + 逐根 step | 一次 HTTP 取一整天，**只揭示到账户记住的那一根**，再逐根 step |
+ * | K 线 | Go 服务的 WS 快照 + 逐根 step | Spring 的 `/ws`：连上给一份快照，之后每次 step 收一条广播 |
  * | 画线 / 模板 | 发消息给后端，后端编号后广播 | 只在本页内存 |
- * | 下单 / 撤单 / 平仓 | 后端撮合、落库、广播 | 没有后端，点了给一句明确提示 |
+ * | 下单 / 撤单 / 平仓 | 后端撮合、落库、广播 | 还没接通，点了给一句明确提示 |
  *
- * ## 「揭示到哪一根」为什么是账户的状态
+ * ## 为什么所有动作都走 WebSocket，而不是「读用 HTTP、写用 WS」
  *
- * 账户上有一个 `lastBarTime`（最新 K 线时间）：建户时等于起点，每步进一根就往后推一格，
- * 由后端落库。交易页打开时就按它截断 —— 否则每次「继续交易」都整天全揭示，
+ * 因为**写完之后盘面是什么样，只有后端知道**：下一根要读 CSV、账户的 `lastBarTime`
+ * 要落库、操作记录要写 `audit_event`。前端若能自己算出同一份结果，就等于把这个算法实现了两遍 ——
+ * 两边只要差一根，用户看到的就是「按了一下，图上跳了两格」。
+ *
+ * 所以这条链路是单向的：**发意图 → 后端算 → 广播结果 → 前端照抄**。
+ * {@link connect} 里的 `onSnapshot` / `onEvent` 是唯一改 `instance` 的入口。
+ *
+ * ## 「停在哪一根」为什么是账户的状态
+ *
+ * 账户上有一个 `lastBarTime`：建户时等于起点，每步进一根就往后推一格，由后端落库。
+ * 交易页打开时后端按它截断 —— 否则每次「继续交易」都整天全揭示，
  * 等于每次回来都提前看到未来，训练就没了。
- * 一天的数据仍然一次取全，只是**画布上只给到那一根**：后面的 K 线不消失，
- * 只是还没到（`hiddenBars`），step 一次放一根出来。
  *
  * ## 为什么不假装「下单成功」
  *
  * 撮合、挂单状态、逐批平仓盈亏全在后端（见 `README.md` §三）。
  * 前端先本地生成一笔成交，界面会立刻和账户余额对不上 —— 而余额是后端算的。
- * 那比「按下去没反应」更糟：人以为自己开了仓。所以这些动作只写一条提示，
- * 说清楚「后端没接通」，不产生任何假数据。
+ * 那比「按下去没反应」更糟：人以为自己开了仓。
  *
- * ## 画线为什么允许在本地生效
+ * ## 画线为什么仍然允许在本地生效
  *
- * 画线是纯视觉的：它不改余额、不改持仓、不改考核判定。让它在本页生效，
- * 工具链（工具 → 模板 → 拖动 → 删除）就能完整走一遍；
- * 代价是刷新即失，页面顶部有一条常驻说明写着这件事。
+ * 画线是纯视觉的：它不改余额、不改持仓、不改考核判定。后端还没接 `annotation_*`
+ * （消息会被明确拒绝），所以图形暂时只活在这个标签页里，刷新即失。
  */
 
 /** 画布上当前手里的工具：指针 + 五种绘图工具（和 web/ 完全一致）。 */
@@ -157,30 +168,40 @@ function withEma(bars: Bar[], length = 20): Bar[] {
 
 export const useTradeStore = defineStore('trade', () => {
   // ---------------- 数据 ----------------
-  const symbols = ref<SymbolBrief[]>([])
   const instance = ref<InstanceDetail | null>(null)
   /** 当前标的代码（`_symbols.json` 的键）与**截止那天**（后端回的 `day`，可能跨两个日文件）。
-   *  **标的由账户锁定**；`setSymbol` 留着是给「换一个账户 / 换一份数据」用的，界面上没有入口。 */
+   *  **标的由账户锁定**：这一页没有标的选择器。 */
   const symbolCode = ref('')
   const day = ref('')
+  /** 账户名（快照里带回来的，用来写标签页标题）。 */
+  const accountName = ref('')
   const loading = ref(false)
   /**
-   * 这一天的**全部** K 线（含还没揭示的）。`instance.bars` 只是它的前缀 ——
-   * 步进一次就多放一根出来，不用重新取数。
+   * 盘面上**已经揭示**的 K 线。快照给到账户记住的那一根，之后每步进一根就追加一根
+   * —— 和旧的「先拿一整天再截断」不同，这里手上没有「还没到的那些」，所以没有隐藏区。
    */
   const dayBars = ref<Bar[]>([])
-  /** `dayBars` 里已揭示到第几根（含）；-1 = 一根都不给（这一天没数据）。 */
-  const revealIndex = ref(-1)
-  /** 步进要落库的那个账户；为空时 step 只在本页生效。 */
+  /** 步进要落库的那个账户。由交易页在 {@link connect} 时给出。 */
   const accountId = ref('')
-  /** 账户上记着的「最新 K 线时间」（载入时的那个，落库成功后跟着更新）。 */
+  /** 账户上记着的「最新 K 线时间」（快照带回来的那个，每步进一根跟着更新）。 */
   const accountBarTime = ref('')
+  /** 磁盘上还有没有下一根 —— 【下一根】按钮的可用性。 */
+  const hasNext = ref(false)
+  /** 这一天（这个日文件）还剩几根没放出来。只用来写提示，不决定按钮能不能按。 */
+  const restOfDay = ref(0)
+  /** 一条 step 已经发出去、还没等到广播（防连点）。 */
+  const pendingStep = ref(false)
+  /** 和交易服务的连接状态：connecting / open / closed。 */
+  const socketState = ref<DeskState>('connecting')
   const lastError = ref('')
   const errorKey = ref(0)
   /** 一句会自己消失的轻提示（本地动作的结果都走这里）。 */
   const notice = ref('')
   const noticeKey = ref(0)
   let noticeTimer = 0
+  /** 连接对象与「等广播」的兜底计时器（连上了但一直没回，不能让按钮永远转）。 */
+  let desk: DeskConnection | null = null
+  let stepTimer = 0
 
   // ---------------- 界面状态（只影响显示） ----------------
   const tool = ref<ChartTool>('select')
@@ -206,10 +227,18 @@ export const useTradeStore = defineStore('trade', () => {
   let templateSeq = 0
   let annotationSeq = 0
 
-  const showEma = ref(true)
-  const atr = ref<AtrSettings>({ ...DEFAULT_ATR })
-  const indicator = ref<IndicatorSettings>({ ...DEFAULT_INDICATOR })
-  const barCount = ref<BarCountSettings>({ ...DEFAULT_BAR_COUNT })
+  /**
+   * 指标设置（EMA / ATR / Doji X + ZigZag / Bar Count）。
+   *
+   * 初值**从本机存档读**（`lib/indicatorPrefs.ts`），不是写死的出厂值 ——
+   * 「上次调到的那一套」和缩放、下单浮窗的位置一样属于这台电脑的偏好，刷新该还在。
+   * 读出来的东西已经过 sanitize：存档被手改坏了只会让**那一个**字段回默认。
+   */
+  const savedPrefs = loadPrefs()
+  const showEma = ref(savedPrefs.showEma)
+  const atr = ref<AtrSettings>(savedPrefs.atr)
+  const indicator = ref<IndicatorSettings>(savedPrefs.indicator)
+  const barCount = ref<BarCountSettings>(savedPrefs.barCount)
   const natr = ref<NatrSettings>({ ...DEFAULT_NATR })
 
   const orderQuantityRaw = ref(1)
@@ -225,10 +254,8 @@ export const useTradeStore = defineStore('trade', () => {
   const bars = computed(() => instance.value?.bars ?? [])
   const cursor = computed(() => instance.value?.cursor ?? 0)
   const currentBar = computed(() => bars.value[bars.value.length - 1] ?? null)
-  /** 盘面现在停在哪一根（已揭示的最后一根的时间）—— 也是要落库的那个值。 */
+  /** 盘面现在停在哪一根（已揭示的最后一根的时间）—— 也就是账户上那个 lastBarTime。 */
   const currentTime = computed(() => currentBar.value?.time ?? '')
-  /** 这一天还有多少根没揭示。 */
-  const hiddenBars = computed(() => Math.max(0, dayBars.value.length - revealIndex.value - 1))
   const tick = computed(() => instance.value?.tick ?? 0)
   const priceDecimals = computed(() => {
     const t = tick.value
@@ -297,135 +324,171 @@ export const useTradeStore = defineStore('trade', () => {
     noteError(`${what}要等交易后端（撮合 / 挂单 / 成交）接通：现在这一步不会产生任何数据。`)
   }
 
-  // ---------------- 取数 ----------------
-
-  /** 拉标的清单。清单为空（还没抓行情）时不是错误，页面会写明「先跑抓取」。 */
-  async function loadSymbols(): Promise<void> {
-    try {
-      symbols.value = await barsApi.symbols()
-    } catch (e) {
-      noteError(`标的清单读取失败：${String(e instanceof Error ? e.message : e)}`)
-    }
-  }
+  // ---------------- 连上交易服务（唯一的取数与写入入口） ----------------
 
   /**
-   * 读某个标的「上一交易日整天 → `time` 那一刻」的 K 线，并把它装成一块「盘面」。
+   * 进入一个账户的盘面：开 WebSocket、自报 `accountId`、等后端回快照。
    *
-   * `instance` 是照 `InstanceDetail` 造的：画布只认这几个字段（bars / annotations /
-   * orders / trades / position / tick / tickValue），给它一份形状完整的空盘面，
-   * 那些分支就都不用改。
+   * **这一页不再调任何 HTTP 接口**。账户名、标的、K 线窗口、「还有没有下一根」
+   * 全部来自快照 ── 它们互相之间有约束（窗口截止到 `barTime`、`hasNext` 是从
+   * `barTime` 往后找的），分成几个接口去取就会出现「A 接口的结果配 B 接口的参数」。
    *
-   * `time` 是截止时刻（`yyyy-MM-dd HH:mm`，账户的 `lastBarTime`）：截断由**后端**做，
-   * 它会把上一个交易日的整天接在前面当隔夜参照，只留当天的到 `time` 那一根。
-   * 不传 = 磁盘上最新的一天整天（找不到账户起点时的退路，和以前一样）。
+   * 断线后连接层会自动重连并重新 `hello`，后端重发快照 —— 所以这里只负责开局，
+   * 不用管重连：{@link applySnapshot} 是幂等的，重连就是「把盘面按后端的样子重建一遍」。
    */
-  async function load(code: string, time?: string): Promise<void> {
-    if (!code) return
-    loading.value = true
-    try {
-      const res = await barsApi.series(code, time)
-      symbolCode.value = res.code
-      day.value = res.day
-      const list = withEma(
-        res.bars.map((b) => ({ ...b, ema20: null as number | null })),
-      )
-      dayBars.value = list
-      // 数据已经在后端截断到 time，这里全给：`revealIndex` 仍留着，是因为 step 还要用它
-      revealIndex.value = list.length - 1
-      const shown = list.slice(0, revealIndex.value + 1)
-      instance.value = {
-        id: `${res.code}|${res.day}`,
-        symbol: res.code,
-        folder: res.folder,
-        anchor: list[0]?.time ?? `${res.day} 00:00`,
-        cursor: Math.max(0, shown.length - 1),
-        tick: res.tick ?? 0,
-        tickValue: res.tickValue ?? 0,
-        bars: shown,
-        // 这一天剩下的根数：它们不在画布上，但不是没有 —— step 一次放一根出来
-        hiddenBars: list.length - shown.length,
-        hasMore: false,
-        annotations: [],
-        orders: [],
-        trades: [],
-        closedLots: [],
-        position: { quantity: 0, side: 'flat', averagePrice: 0 },
-        realizedPnl: 0,
-        unrealizedPnl: 0,
-        operator: '',
-        members: [],
-        bot: false,
-        seq: 0,
-        events: [],
-        notes: [],
-        createdBy: '',
-        createdAt: Date.now(),
-        voice: { barTime: '', clips: [], total: 0, max: 9 },
-        voiceAll: [],
-      }
-      // 换了标的 / 换了日子 = 换了图：旧图上的选中必须一起丢掉
-      selectedAnnotation.value = null
-      clearError()
-      if (list.length === 0) noteNotice(`${res.code} 在 ${res.day} 没有 K 线（休市或那一天还没抓）`)
-    } catch (e) {
-      noteError(`K 线读取失败：${String(e instanceof Error ? e.message : e)}`)
-    } finally {
-      loading.value = false
+  function connect(id: string): void {
+    if (!id) {
+      noteError('没有账户 id，打不开盘面')
+      return
     }
-  }
-
-  /**
-   * 记下「步进要落库到哪个账户」。由交易页在读完账户之后调 —— 不在这里读账户，
-   * 因为 store 只该知道「有这么一个 id」，账户本身是页面的数据。
-   */
-  function bindAccount(id: string, barTime?: string): void {
+    desk?.close()
     accountId.value = id
-    accountBarTime.value = barTime ?? ''
+    loading.value = true
+    socketState.value = 'connecting'
+
+    desk = openDesk(id, {
+      onSnapshot: (snapshot) => applySnapshot(snapshot),
+      onEvent: (event) => applyEvent(event),
+      onError: (message) => {
+        pendingStep.value = false
+        clearStepTimer()
+        loading.value = false
+        noteError(message)
+      },
+      onState: (state) => {
+        socketState.value = state
+        if (state === 'closed') {
+          // 断线时不能让人以为按钮还灵：pending 一起清掉，按钮会立刻变灰
+          pendingStep.value = false
+          clearStepTimer()
+        }
+      },
+    })
+  }
+
+  /** 关页面时收尾：主动断开，别让连接层在后台一直重连。 */
+  function disconnect(): void {
+    desk?.close()
+    desk = null
+    clearStepTimer()
+    pendingStep.value = false
   }
 
   /**
-   * 只改「揭示到哪」：把 `instance.bars` 换成 `dayBars` 的前缀。
+   * 装上一份盘面。**幂等**：重连后重发快照就是重建，不叠加。
    *
-   * 别的字段（标注、挂单、持仓…）一概不碰 —— 步进只是多一根 K 线，
-   * 不是换了一张图（换了图就得走 {@link load}，`instance.id` 会变、视图会重置）。
+   * `bars` 已经在后端截断到账户的 `lastBarTime`（他自己那一根），所以这里全给，
+   * 不需要前端再截一次 —— 截断的规则只有后端一份。
    */
-  function applyReveal(): void {
+  function applySnapshot(snapshot: DeskSnapshot): void {
+    const list = withEma(
+      snapshot.bars.map((b) => ({ ...b, ema20: null as number | null })),
+    )
+    symbolCode.value = snapshot.symbolId
+    day.value = snapshot.day
+    accountName.value = snapshot.accountName ?? ''
+    lastBarTime = snapshot.barTime ?? ''
+    accountBarTime.value = lastBarTime
+    hasNext.value = snapshot.hasNext
+    dayBars.value = list
+    restOfDay.value = 0
+    pendingStep.value = false
+    clearStepTimer()
+
+    instance.value = {
+      id: `${snapshot.symbolId}|${snapshot.day}`,
+      symbol: snapshot.symbolId,
+      folder: snapshot.folder,
+      anchor: list[0]?.time ?? `${snapshot.day} 00:00`,
+      cursor: Math.max(0, list.length - 1),
+      tick: snapshot.tick ?? 0,
+      tickValue: snapshot.tickValue ?? 0,
+      bars: list,
+      hiddenBars: 0,
+      hasMore: snapshot.hasNext,
+      annotations: [],
+      orders: [],
+      trades: [],
+      closedLots: [],
+      position: { quantity: 0, side: 'flat', averagePrice: 0 },
+      realizedPnl: 0,
+      unrealizedPnl: 0,
+      operator: '',
+      members: [],
+      bot: false,
+      seq: 0,
+      events: [],
+      notes: [],
+      createdBy: '',
+      createdAt: Date.now(),
+      voice: { barTime: '', clips: [], total: 0, max: 9 },
+      voiceAll: [],
+    }
+    // 换了标的 / 换了日子 = 换了图：旧图上的选中必须一起丢掉
+    selectedAnnotation.value = null
+    loading.value = false
+    clearError()
+    if (list.length === 0) {
+      noteNotice(
+        `${snapshot.symbolId} 在 ${snapshot.day} 这一屏还没有 K 线（休市、没抓，或者账户的位置还在这一天之前）`,
+      )
+    }
+  }
+
+  /** 后端广播的一条动作。目前只有 `bar_advanced`。 */
+  function applyEvent(event: DeskEvent): void {
+    switch (event.action) {
+      case 'bar_advanced':
+        applyAdvanced(event.payload as BarAdvancedPayload)
+        return
+      default:
+        // 别的动作后端还没接（下单 / 画线）。收到就说明协议变了，得说出来，不能装作没事
+        noteError(`收到一个还不认识的动作「${event.action}」`)
+    }
+  }
+
+  /**
+   * 【下一根】的广播：把那一根接到盘面末尾。
+   *
+   * 三个细节：
+   *
+   * - **同一根只接一次**：重连后如果没有更晚的 K 线，后端不会重播旧事件，但同一时间戳
+   *   重复到达仍然是不该发生的 —— 真发生了，宁可忽略也不要插入一根重复的 K 线（图会崩）。
+   * - **EMA 要重算**：新收盘价会改变最后几个 EMA。重算整列的代价是一天几百个数，
+   *   比「维护一个增量公式」便宜得多，也不会和 `withEma` 的口径分叉。
+   * - **`day` 跟着走**：跨日以后盘面还是同一块（后续的 K 线接在后面），
+   *   所以 `instance.id` 不动 —— 动一下画布会当成「换了张图」把缩放重置掉。
+   */
+  function applyAdvanced(payload: BarAdvancedPayload): void {
+    pendingStep.value = false
+    clearStepTimer()
+    const bar: Bar = { ...payload.bar, ema20: null }
+    hasNext.value = payload.hasMore
+
+    if (dayBars.value.some((b) => b.time === bar.time)) return
+
+    dayBars.value = withEma([...dayBars.value, bar])
+    restOfDay.value = payload.hiddenBars
+    accountBarTime.value = bar.time
+    if (bar.time.length >= 10) day.value = bar.time.slice(0, 10)
+
     const inst = instance.value
     if (!inst) return
-    const shown = dayBars.value.slice(0, revealIndex.value + 1)
     instance.value = {
       ...inst,
-      bars: shown,
-      cursor: Math.max(0, shown.length - 1),
-      hiddenBars: Math.max(0, dayBars.value.length - shown.length),
+      bars: dayBars.value,
+      cursor: Math.max(0, dayBars.value.length - 1),
+      hiddenBars: payload.hiddenBars,
+      hasMore: payload.hasMore,
     }
   }
 
-  /**
-   * 把新的「最新 K 线时间」存回账户。
-   *
-   * 存不下也**不收回这一根**：K 线已经画出来了，收回去会让人以为自己没按成功；
-   * 但必须明说「没存下」，否则下次打开会退回上一根，而人不会记得是哪一步丢的。
-   */
-  async function persistCursor(time: string): Promise<void> {
-    const id = accountId.value
-    if (!id || !time) return
-    try {
-      const saved = await accountsApi.advanceCursor(id, time)
-      accountBarTime.value = saved.lastBarTime ?? time
-    } catch (e) {
-      noteError(
-        `这一根已经画出来了，但「最新时间 ${time}」没存下：${String(e instanceof Error ? e.message : e)}`,
-      )
-    }
-  }
+  /** 快照里那个「最新 K 线时间」，用来判断「是不是已经走到最后」。 */
+  let lastBarTime = ''
 
-  function setSymbol(code: string): void {
-    if (code && code !== symbolCode.value) void load(code)
-  }
-
-  function setDay(date: string): void {
-    if (date && date !== day.value) void load(symbolCode.value, date)
+  function clearStepTimer(): void {
+    if (stepTimer) window.clearTimeout(stepTimer)
+    stepTimer = 0
   }
 
   // ---------------- 指标设置（改完立刻重画：整份换新对象） ----------------
@@ -447,6 +510,21 @@ export const useTradeStore = defineStore('trade', () => {
 
   function setTimeframe(tf: Timeframe): void {
     timeframe.value = tf
+  }
+
+  /**
+   * 指标恢复出厂（【指标 ▾】底部的「恢复默认」）。
+   *
+   * 四项**一起**打回默认，而不是逐项清 —— 用户点这个的意思就是「这套调乱了，重来」。
+   * 存档不用手动删：下面那个 `watch` 看到引用变了就会重写一遍。
+   */
+  function resetIndicators(): void {
+    const d = DEFAULT_INDICATOR_PREFS
+    showEma.value = d.showEma
+    atr.value = { ...d.atr }
+    indicator.value = { ...d.indicator }
+    barCount.value = { ...d.barCount }
+    noteNotice('指标已恢复默认（存到这台电脑的浏览器里）')
   }
 
   // ---------------- 标注模板 ----------------
@@ -573,50 +651,96 @@ export const useTradeStore = defineStore('trade', () => {
   }
 
   /**
-   * 步进一根（ChartPanel 的 → 键、状态条上的【下一根】）。
+   * 【下一根】：把盘面往后放一根（工具栏的按钮、画布上的 → 键都走这里）。
    *
-   * 后端只给到「账户记住的那一根」为止（`time` 就是它），所以正常进来就已经是最后一根 ——
-   * 这里给一句明确提示，不造一根出来的假 K 线。要继续往后放，得让接口拿到更晚的 `time`
-   * （`load(code, 更晚的时刻)`），那属于「重新取一段」而不是步进。
+   * 这是一条**意图**，不是一次本地推进：
+   *
+   * 1. 先看连接在不在。断了就明说 —— 连接层正在重连，这时候按下去什么都不会发生，
+   *    不给提示的话人只会以为按钮坏了；
+   * 2. 再看后端说还有没有下一根（`hasNext` 来自快照和上一次广播）。没有了就说明白等什么；
+   * 3. 发出去之后**就地等广播**：真正把 K 线接上去的是 {@link applyAdvanced}，
+   *    连发起方也等那条广播 —— 一份数据一个来源，慢一个往返换来永远对得上。
+   *
+   * 兜底计时器是为了「连上了但后端一直没回」这种半死状态：8 秒后把 pending 清掉，
+   * 否则按钮会永远转着，人只会反复点、越堆越多。
    */
   function step(): void {
     if (!instance.value) return
-    const next = dayBars.value[revealIndex.value + 1]
-    if (!next) {
+    if (pendingStep.value) return
+
+    if (socketState.value !== 'open' || !desk) {
+      noteError('和交易服务的连接断了，正在重连：连上之后再按【下一根】')
+      return
+    }
+    if (!hasNext.value) {
       noteNotice(
-        `${currentTime.value || '—'} 已经是这一段数据的最后一根：后面的行情要等再取一次（截止时刻往后挪）才接得上。`,
+        `${currentTime.value || '—'} 已经是磁盘上最后一根 K 线了：等抓取程序再录一段行情才能继续。`,
       )
       return
     }
-    revealIndex.value += 1
-    applyReveal()
-    void persistCursor(next.time)
+    if (!desk.send({ type: 'step', accountId: accountId.value })) {
+      noteError('这一条消息没发出去（连接刚断），稍后重试')
+      return
+    }
+
+    pendingStep.value = true
+    clearStepTimer()
+    stepTimer = window.setTimeout(() => {
+      pendingStep.value = false
+      stepTimer = 0
+      noteError('交易服务 8 秒没有回应，已放弃这一步：请确认后端还在运行')
+    }, 8000)
   }
 
   // 换周期不需要请求，聚合是 computed 现算的；这里保留 watch 只为清掉「上一份」的选中态。
   watch(timeframe, () => selectAnnotation(null))
 
+  /**
+   * 指标一改就写回本机存档。
+   *
+   * 挂在**四个 ref 的组合**上而不是各个 setter 里，是因为 EMA 的开关走的是模板里的
+   * `v-model="store.showEma"`（直接改 ref，不过 setter），而那一条恰恰是最常被点的。
+   * `deep: true` 兜住「原地改字段」这种改法（现在没有，但将来加一个就别忘了这里）。
+   *
+   * 每次改动整份重写：存档只有百来字节，比维护「哪几个字段脏了」便宜得多，也不会
+   * 出现「改了 A 忘了写 A」这种漏项（写漏一个，下次刷新就回到旧值，最难查）。
+   */
+  watch(
+    [showEma, atr, indicator, barCount],
+    () => {
+      savePrefs({
+        showEma: showEma.value,
+        atr: atr.value,
+        indicator: indicator.value,
+        barCount: barCount.value,
+      })
+    },
+    { deep: true },
+  )
+
   return {
+    // 连接
+    connect,
+    disconnect,
+    socketState,
+    accountId,
     // 数据
-    symbols,
     instance,
     symbolCode,
+    accountName,
     day,
     loading,
     bars,
     cursor,
     currentBar,
     currentTime,
-    hiddenBars,
+    restOfDay,
+    hasNext,
+    pendingStep,
     accountBarTime,
-    bindAccount,
     displayBars,
     timeframe,
     setTimeframe,
-    loadSymbols,
-    load,
-    setSymbol,
-    setDay,
     // 提示
     lastError,
     errorKey,
@@ -644,6 +768,7 @@ export const useTradeStore = defineStore('trade', () => {
     setIndicator,
     barCount,
     setBarCount,
+    resetIndicators,
     natr,
     setNatr,
     atrValue,

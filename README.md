@@ -81,6 +81,23 @@ ASCII + CRLF**、**菜单只能有一个 stdin reader**（都有测试拦）。
   按磁盘 CSV 算不是日历减一；**不落库不缓存**）· 实体抛的 `IllegalArgumentException` 转 400 · Swagger 的
   `UNWRAPPED_PACKAGES` 必须含 `org.springdoc`，否则文档页**白屏**。
 
+**WebSocket `/ws`**（交易页唯一的写入通道，同端口、JSON 文本帧，`ws/` 包 5 个类：`WebSocketConfig` 挂端点、
+`TradeSocketHandler` 只管连接与分发、`TradeDeskService` 是业务、`WsRequest`/`DeskSnapshot`/`EventMessage` 是线协议）
+
+- 上行只有三种：`{"type":"hello","accountId":…}` / `step` / `ping`。**连上不主动发东西**（身份只由 `hello` 给，
+  连接本身不带身份，就没有「URL 写 A、消息写 B」的歧义）。下行：`snapshot`（只回发起方）/ `event{action,
+  payload,by,seq}`（**广播给该账户全部连接，含发起方**）/ `error` / `pong`。
+- **不认识的消息回 `error`，不静默丢** —— 静默丢弃会让「字段名写错」表现成「点了没反应」。`order_*` /
+  `annotation_*` 目前就是这样明确拒绝的。
+- 前端 `webapp/src/data/socket.ts` 自动重连（1s→15s）+ 重发 `hello`，收到 `snapshot` 就整块重建；
+  **断线期间不缓存动作排队重发**（一条 `step` 重发会让账户一次多走一根，而用户只按了一下）。
+- **【下一根】的链路**（唯一实现的动作）：`step` → `BarCursorService` 找当前那根之后的**第一根**（会跨日文件、
+  会跳过缺失/空的日文件）→ `advanceCursor` 推账户 `lastBarTime` → 写一条 `BAR_ADVANCED` → 广播。
+  **顺序不能反**：先推账户再写流水，反过来的中途失败会留下「记了步进、盘面没动」的错位。没有下一根 → 回
+  `error`，按钮按 `snapshot.hasNext` 变灰（**不是静默成功**）。
+- 广播负载和 `audit_event.payload_json` 是**同一份** `BarAdvancedPayload`：`bar` 用画布口径 `BarView`
+  （字段叫 `time` 不是 `barTime`、没有 `ema20`），挂单/成交/持仓**发空数组不发 null**（撮合未接通，账上本来就空）。
+
 **数据模型**：**PF 账户是记账数据的唯一聚合根**，K 线不进库。三层 = **日志层 `audit_event`（唯一写入点、
 append-only、每行带 `symbol_id` + `bar_time`）→ 快照层（当前值）→ 投影层 `TradeRecord`（`start_seq`~
 `end_seq` 区间 + 独立摘要）**。`Trade` 是账务唯一真相（持仓/盈亏由它重放），`trade.seq` 定同一根内先后；

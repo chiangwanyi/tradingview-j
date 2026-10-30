@@ -37,6 +37,16 @@
             <artifactId>spring-boot-starter-web</artifactId>
         </dependency>
 
+        <!--
+          WebSocket：交易页（webapp/trade/:id）的唯一通信通道。
+          用 starter 而不是手写 @ServerEndpoint：这个 starter 会把 WebSocketHandler
+          挂进内嵌 Tomcat 的同一个端口（8791），不需要另开服务、也不需要 JSR-356 的容器扫描。
+        -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-websocket</artifactId>
+        </dependency>
+
         <!-- 持久化：Spring Data JPA（Hibernate 6.6）+ SQLite -->
         <dependency>
             <groupId>org.springframework.boot</groupId>

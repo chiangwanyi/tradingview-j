@@ -1,5 +1,8 @@
 package com.tradingviewj.server.enums;
 
+import java.util.Locale;
+import java.util.Optional;
+
 /**
  * 复盘里会发生的<strong>动作</strong>。目前用作「操作记录的动作」（{@code AuditEvent.action}）。
  *
@@ -18,8 +21,12 @@ package com.tradingviewj.server.enums;
  *
  * <p>Go 协议里这些值是小写下划线串（{@code "bar_advanced"} / {@code "order_placed"} …），
  * 前端按它挑 reducer 分支。换算规则只有一条：<strong>常量名转小写</strong>
- * （{@code name().toLowerCase()}）。所以<strong>新增动作时不要用常量名区分不开的写法</strong>
- * —— 两个动作只要小写后撞了，前端就别想分清楚了。换算在输出侧做，不在这层。
+ * （{@code name().toLowerCase(Locale.ROOT)}）。所以<strong>新增动作时不要用常量名区分不开的写法</strong>
+ * —— 两个动作只要小写后撞了，前端就别想分清楚了。
+ *
+ * <p><strong>这条规则是双向的，两个方向都只有这一份实现</strong>（{@link #wire()} / {@link #ofWire}）：
+ * 下行广播把枚举翻成协议串，上行命令把协议串翻回枚举。刻意不在这里判断「这个动作能不能当命令」
+ * —— 那是 WS 层的事（目前除了少数元命令，其余一律拒），枚举只管名字。
  *
  * <p>{@code shortcut: 新增动作要先加枚举值}；读到库里不认识的常量名会直接抛异常
  * （宁可当场红，也不要悄悄写进一条解释不了的审计流水）。等「改动作名」真的成了日常，
@@ -72,5 +79,37 @@ public enum ReplayAction {
     RECORDING_AUDIO,
 
     /** 交易记录的<strong>第 0 步</strong>：开仓**之前**那一屏。由 {@code AuditEvent#base} 写入。 */
-    BASE
+    BASE;
+
+    /**
+     * 协议串：{@code BAR_ADVANCED} → {@code "bar_advanced"}。下行广播和上行命令共用这一个换算。
+     *
+     * <p>用 {@code Locale.ROOT} 而不是默认 locale：土耳其语环境里 {@code "I".toLowerCase()}
+     * 会变成 {@code "ı"}，{@code ORDER_FILLED} 就成了 {@code order_fılled}，前端认不出来。
+     */
+    public String wire() {
+        return name().toLowerCase(Locale.ROOT);
+    }
+
+    /**
+     * {@link #wire()} 的逆运算：{@code "bar_advanced"} → {@code BAR_ADVANCED}。
+     *
+     * <p>返回 {@code Optional} 而不是抛异常，也不返回 null：调用方（WS 的 {@code default} 分支）
+     * 需要区分「这是认识的协议串，只是还没接通」和「这串压根不认识」，而这两句提示
+     * 恰好是能帮上忙和帮不上忙的区别。
+     *
+     * <p>注意它<strong>不判断语义</strong>：{@link #BASE} 和 {@link #RECORDING_AUDIO}
+     * 也会被翻出来，因为它们是合法的历史动作名。能不能当命令发上来，由调用方决定。
+     */
+    public static Optional<ReplayAction> ofWire(String wire) {
+        if (wire == null) {
+            return Optional.empty();
+        }
+        for (ReplayAction action : values()) {
+            if (action.wire().equals(wire)) {
+                return Optional.of(action);
+            }
+        }
+        return Optional.empty();
+    }
 }

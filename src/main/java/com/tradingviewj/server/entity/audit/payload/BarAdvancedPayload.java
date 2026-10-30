@@ -1,11 +1,11 @@
 package com.tradingviewj.server.entity.audit.payload;
 
+import com.tradingviewj.server.dto.BarView;
 import com.tradingviewj.server.entity.trade.ClosedLot;
 import com.tradingviewj.server.entity.trade.Order;
 import com.tradingviewj.server.entity.trade.Position;
 import com.tradingviewj.server.entity.trade.Trade;
 import com.tradingviewj.server.enums.ReplayAction;
-import com.tradingviewj.server.storage.Bar;
 
 import java.math.BigDecimal;
 import java.util.List;
@@ -20,11 +20,13 @@ import java.util.List;
  * <p>{@code fills} 只装<strong>这一根</strong>触发的成交（多数时候为空），是画布上「刚成交」
  * 那一下闪烁的数据源；{@code trades} 才是历史全量，两者别混。
  *
- * <p>⚠️ {@link Bar} 比 wire 少一个 {@code ema20}（Go 算好下发、前端画均线用），Java 侧
- * 不保存这个字段 —— 它是展示派生值，进不了任何账目。
+ * <p>⚠️ {@link BarView} 是<strong>画布协议</strong>里的那根 K 线：时间字段叫 {@code time}
+ * （CSV 原文叫 {@code barTime}），也没有 {@code ema20} —— 均线是展示派生值，前端现算，
+ * 不进任何账目。这里刻意<strong>不发</strong> {@code storage.Bar}：那样同一条广播里的
+ * {@code bar} 和快照里的 {@code bars[]} 会是两种字段名，前端得写两套映射。
  */
 public record BarAdvancedPayload(
-        Bar bar,
+        BarView bar,
         int cursor,
         int hiddenBars,
         boolean hasMore,

@@ -88,6 +88,9 @@ scripts/rules-check.mts      validate 的自检，node --experimental-strip-type
 - 逐根推进（「下一根」）—— 同上，K 线现在一次给一整天、全部揭示。
 - 画线与模板**只存在这个标签页的内存里**，刷新即失。它们不改余额、不改持仓，所以允许本地生效；
   但页面上有一条常驻说明写着这件事，别让人以为画完就存住了。
+- **指标设置（EMA / ATR / Doji X + ZigZag / Bar Count 的开关与参数）存在这台电脑的浏览器里**
+  （`lib/indicatorPrefs.ts`，键 `tv-trade-indicators-v1`），刷新页面还是上次那一套；
+  它不进账户存档、不广播，换电脑或清缓存就回默认（【指标 ▾】底部有「恢复默认」）。
 
 页面顶部默认落在**账户起点那一天**（`startDayFile`），标的默认第一个有数据的；两者都能在页头改
 （账户不绑单一标的，可以同时做 MES / MNQ / MGC）。

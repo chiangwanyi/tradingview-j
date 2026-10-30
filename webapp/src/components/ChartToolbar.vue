@@ -14,12 +14,15 @@ import { TIMEFRAMES, type Timeframe } from '@/types/protocol'
  * 右边这一块盘面的概况。**改掉的只有「谁来执行」**：
  *
  *   - 旧版里步进 / 接管 / 机器人 / 录音都是发消息给 Go 复盘服务，由后端执行再广播回来；
- *   - webapp 没有那套服务，交易后端也还没接通（`README.md` §三 仍是方案），
- *     所以这些入口全部拿掉 —— 不留「点了没反应」的按钮。留下的按钮（工具、周期、
- *     指标、模板）都是**纯前端状态**，点一下立刻生效。
+ *   - 这里只保留【下一根】这一个走后端的动作（WebSocket `/ws`，后端读 CSV + 落库 + 广播），
+ *     其余入口全部拿掉 —— 撮合、接管、机器人后端都还没有，留着只会是「点了没反应」的按钮。
+ *     留下的按钮（工具、周期、指标、模板）都是**纯前端状态**，点一下立刻生效。
+ *     其中指标那四项（EMA / ATR / Doji X + ZigZag / Bar Count）的开关与参数会**存在
+ *     这台电脑的浏览器里**（`lib/indicatorPrefs.ts`），刷新页面仍然是你上次调的那一套；
+ *     它不进账户存档、也不发给别人。底部那个「恢复默认」就是这套存档的出口。
  *
- * 绘图仍然是「前端预览、本页定稿」：图形只活在这个标签页的内存里，刷新就没了。
- * 这不是遗漏，页面上有一条常驻说明写着这件事，别让人以为画完就存住了。
+ * 绘图仍然是「前端预览、本页定稿」：图形的 `annotation_*` 消息后端还没接，只活在这个
+ * 标签页的内存里，刷新就没了。
  */
 const store = useTradeStore()
 
@@ -41,8 +44,53 @@ const drawKind = computed<DrawTool | null>(() => (isDrawTool(store.tool) ? store
 const hasMoreHint = computed(() => {
   const inst = store.instance
   if (!inst) return ''
-  return `${inst.symbol} · ${inst.bars.length} 根 5 分钟 K 线`
+  const rest = store.restOfDay > 0 ? `（这一天还剩 ${store.restOfDay} 根）` : ''
+  return `${inst.symbol} · ${store.currentTime || store.day} · ${inst.bars.length} 根${rest}`
 })
+
+// ---------------- 【下一根】 ----------------
+
+/**
+ * 能不能往后放一根。
+ *
+ * 四个条件缺一不可：有盘面、后端说磁盘上还有下一根、没有一条 step 正在路上（防连点）、
+ * 连接是通的。**连接那一条最重要** —— 断线时按钮必须立刻变灰，否则人按下去什么都不会发生，
+ * 只会以为是程序卡了。
+ */
+const canStep = computed(
+  () =>
+    !!store.instance &&
+    store.hasNext &&
+    !store.pendingStep &&
+    store.socketState === 'open',
+)
+
+const stepHint = computed(() => {
+  if (store.socketState !== 'open') return '和交易服务的连接断了，正在重连：连上之后才能往后放'
+  if (!store.instance) return '盘面还没加载出来'
+  if (store.pendingStep) return '这一根正在从后端取回来…'
+  if (!store.hasNext) {
+    return `${store.currentTime || '当前这一根'} 已经是磁盘上最后一根：等抓取程序再录一段行情`
+  }
+  return '把盘面往后放一根（等同画布上按 →）。这一根由后端读 CSV 算出来、写进操作记录，再把结果广播回来'
+})
+
+/** 连接状态的小圆点：绿=通、灰=重连中。断线时用户必须一眼看出来。 */
+const linkDot = computed(() =>
+  store.socketState === 'open'
+    ? 'bg-emerald-500'
+    : store.socketState === 'connecting'
+      ? 'bg-amber-400'
+      : 'bg-red-400',
+)
+const linkText = computed(() =>
+  store.socketState === 'open'
+    ? '已连接'
+    : store.socketState === 'connecting'
+      ? '连接中…'
+      : '重连中…',
+)
+
 
 const btn = 'rounded border border-line px-2 py-1 text-[13px] transition disabled:cursor-not-allowed disabled:opacity-40'
 const btnIdle = 'bg-panel text-dim hover:border-accent hover:text-accent'
@@ -407,7 +455,7 @@ onBeforeUnmount(() => {
         </label>
         <label
           class="flex items-center gap-2 py-1"
-          title="Bar Count 的数字颜色（只影响你自己的屏幕，不进存档）"
+          title="Bar Count 的数字颜色（只影响你自己的屏幕：存在这台电脑的浏览器里，不进账户存档）"
         >
           <span class="w-14 shrink-0 text-dim">颜色</span>
           <input
@@ -422,8 +470,18 @@ onBeforeUnmount(() => {
           每张表（每个交易日）从 #1 重新数，只标单数 1、3、5…
         </div>
 
-        <div class="mt-1 border-t border-line pt-1 text-[11px] text-faint">
-          指标只影响显示，不进存档，也不广播给别人
+        <div
+          class="mt-1 flex items-center justify-between gap-2 border-t border-line pt-1 text-[11px] leading-4 text-faint"
+        >
+          <span>只影响显示：存在这台电脑的浏览器里，不进账户存档，也不广播</span>
+          <button
+            type="button"
+            class="shrink-0 rounded border border-line px-1.5 py-0.5 transition hover:border-accent hover:text-accent"
+            title="把 EMA20 / ATR / Doji X + ZigZag / Bar Count 四项一起打回默认，本机存档同时被覆盖"
+            @click="store.resetIndicators()"
+          >
+            恢复默认
+          </button>
         </div>
       </div>
     </div>
@@ -431,18 +489,32 @@ onBeforeUnmount(() => {
     <div class="h-4 w-px bg-line" />
 
     <!--
-      这里**没有【下一根】/【下一天开盘】/【接管】/【机器人】/【录音】**：
-      它们全都是「改了盘面要落库」的动作，而交易后端还没接通（撮合、挂单、成交都只在
-      `README.md` §三 里）。留着按钮只会得到一个点了没反应的界面 ——
-      宁可现在就少几个按钮，等接口做出来再加回来。
-      （唯一的例外【下一根】放在页面的状态条上：它只把账户的「最新时间」往后推一格，
-       已经接通了，见 `TradeView.vue`。）
+      【下一根】：这一页唯一「改盘面」的动作，也是唯一走后端的动作。
+      点了不本地推进 —— 发一条 `step` 给后端，由它读 CSV 算出下一根、把账户的
+      `lastBarTime` 推过去、写一条 `BAR_ADVANCED` 操作记录，再把结果广播回来。
+      所以按钮在「还没收到广播」期间是灰的（`pendingStep`），防止连点堆一串。
+    -->
+    <button
+      type="button"
+      :class="[btn, store.pendingStep ? btnActive : btnIdle, 'tnum']"
+      :disabled="!canStep"
+      :title="stepHint"
+      @click="store.step()"
+    >
+      {{ store.pendingStep ? '取下一根…' : '下一根 ›' }}
+    </button>
+
+    <!--
+      下一天的开盘、接管、机器人、录音**仍然没有**：它们都要落库，而后端还没接
+      （消息会明确拒绝，见后端的 `TradeSocketHandler`）。留着按钮只会得到一个
+      「点了没反应」的界面 —— 宁可现在就少几个按钮，等接口做出来再加回来。
     -->
 
     <div class="ml-auto flex items-center gap-3 text-[12px] text-dim">
-      <span v-if="store.instance" class="text-faint">{{ hasMoreHint }}</span>
-      <span class="rounded border border-amber-300 bg-amber-50 px-1.5 py-0.5 text-[11px] text-amber-700">
-        看盘模式 · 下单未接通
+      <span v-if="store.instance" class="tnum text-faint">{{ hasMoreHint }}</span>
+      <span class="flex items-center gap-1.5 text-faint" :title="`交易服务 ${linkText}`">
+        <span class="h-1.5 w-1.5 rounded-full" :class="linkDot" />
+        {{ linkText }}
       </span>
     </div>
   </div>
