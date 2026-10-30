@@ -9,7 +9,8 @@
  *   <li>{@code drawing} —— 绘图图形 + 它的样式与锚点</li>
  *   <li>{@code trade} —— 挂单、成交，以及不落库的持仓/逐批归因值对象</li>
  *   <li>{@code voice} —— 语音讲解的元数据</li>
- *   <li>{@code audit} —— 操作记录（append-only）</li>
+ *   <li>{@code audit} —— 操作记录（append-only）；{@code audit.payload} 是「一个动作带什么负载」
+ *       的类型清单（{@code record}，<strong>不落库、不参与映射</strong>）</li>
  *   <li>{@code strategy} —— 策略注册表 + 机器人运行摘要</li>
  *   <li>{@code record} —— 交易记录（一笔完整交易的收尾摘要 + 标签）</li>
  * </ul>

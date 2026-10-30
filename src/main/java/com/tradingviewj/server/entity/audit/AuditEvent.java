@@ -45,7 +45,9 @@ import lombok.NoArgsConstructor;
  * <p>{@link #payloadJson} 存原始广播负载的 JSON 文本，而不是像 Go 版那样用
  * {@code any}（Java 里是 {@code Object}）。用 {@code Object} 的代价是：反序列化时
  * 不知道该还原成哪个类，只能全存成 {@code Map}，读的时候到处强转、到处判空。
- * 存字符串 + 一个类型化的 {@link #action}，读的一方按 action 自己挑 DTO 解析。
+ * 存字符串 + 一个类型化的 {@link #action}，读的一方按 action 自己挑 DTO 解析 ——
+ * 「哪个 action 对应哪一类」的唯一清单在
+ * {@link com.tradingviewj.server.entity.audit.payload.ReplayActionPayload}（一个动作一个 record）。
  *
  * <p>两个枚举字段（{@link #actor} / {@link #action}）在库里存的是 <strong>Java 常量名</strong>
  * （{@code HUMAN} / {@code BAR_ADVANCED}）。协议上的小写串由输出侧映射，持久化不跟展示格式走 ——
