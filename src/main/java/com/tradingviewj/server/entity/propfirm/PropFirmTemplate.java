@@ -73,6 +73,36 @@ public class PropFirmTemplate extends BaseEntity {
      */
     public static PropFirmTemplate define(String name, String description, PropFirmStage stage,
                                           String nextTemplateId, PropFirmRules rules) {
+        validate(name, stage, rules);
+
+        PropFirmTemplate template = new PropFirmTemplate();
+        template.name = name;
+        template.description = description;
+        template.stage = stage;
+        template.nextTemplateId = nextTemplateId;
+        template.rules = rules;
+        return template;
+    }
+
+    /**
+     * 就地改一套模板：名字、说明、下一套、规则。
+     *
+     * <p><strong>阶段不改</strong> —— 它在链上，改一下就意味着已经开出去的账户升级路径变了。
+     * 校验复用 {@link #define} 那条路径：更新时把规则改成和阶段矛盾（例如 FUNDED 还带盈利目标），
+     * 一样建不出来，不会出现「建的时候自洽、改完不自洽」的模板。
+     *
+     * @throws IllegalArgumentException 违反 {@link #define} 的任一条件
+     */
+    public void redefine(String name, String description, String nextTemplateId, PropFirmRules rules) {
+        validate(name, stage, rules);
+        this.name = name;
+        this.description = description;
+        this.nextTemplateId = nextTemplateId;
+        this.rules = rules;
+    }
+
+    /** 阶段与字段的自洽校验，建和改共用。 */
+    private static void validate(String name, PropFirmStage stage, PropFirmRules rules) {
         if (name == null || name.isBlank()) {
             throw new IllegalArgumentException("模板必须有名字，收到: " + name);
         }
@@ -91,13 +121,5 @@ public class PropFirmTemplate extends BaseEntity {
         if (stage == PropFirmStage.FUNDED && rules.getProfitTarget() != null) {
             throw new IllegalArgumentException("FUNDED 阶段不能有盈利目标（那是 EVAL 的规则）: " + name);
         }
-
-        PropFirmTemplate template = new PropFirmTemplate();
-        template.name = name;
-        template.description = description;
-        template.stage = stage;
-        template.nextTemplateId = nextTemplateId;
-        template.rules = rules;
-        return template;
     }
 }
