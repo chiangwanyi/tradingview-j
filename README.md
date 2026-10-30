@@ -162,12 +162,14 @@ nATR 定手数（只算手数不产生盈亏，`lib/natr.ts`，「每点价值�
 
 ## 测试 · 改代码前
 
-`go test ./...`（全部离线，不启浏览器）· `cd web && npm run type-check && npm run lint && npm run build`
+`go test ./...`（全部离线，不需要浏览器）· `cd web && npm run type-check && npm run lint && npm run build`
 
-**禁止用无头浏览器测试**。替代是用**假 CDP 服务端扮演 Chrome**（`internal/wstest`），把**真实抓包**
+**前端代码写完后应使用浏览器实际打开页面进行校验**：确认渲染效果、交互行为和运行时报错符合预期，
+并据此判断是否通过（不通过就继续改，而不是只看编译和静态检查过了就算完）。
+抓取侧的离线测试仍用**假 CDP 服务端扮演 Chrome**（`internal/wstest`），把**真实抓包**
 （`testdata/`）当帧事件推下去：握手、分帧、抽 K 线、周期判定、品种识别、落盘、留档全跑一遍。
-Chrome 的真实行为只能人工：勾远程调试 → 开图表页 → 菜单 1 → 点 Allow → 往回拖几次 → 看 CSV 是否
-长大、分析页根数是否跟着涨。
+Chrome 的真实行为建议人工确认一遍：勾远程调试 → 开图表页 → 菜单 1 → 点 Allow → 往回拖几次 →
+看 CSV 是否长大、分析页根数是否跟着涨。
 
 - **版本号只改 `VERSION`** 且必须重新构建；**`build.cmd` 必须纯 ASCII + CRLF**（有测试拦）。
 - **菜单只能有一个 stdin reader**，否则缓冲里的字符被绕过，表现成「按一次回车跳过两项」。
