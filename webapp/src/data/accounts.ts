@@ -84,15 +84,15 @@ export function targetProgress(a: Account): number | null {
   return Math.min(1, Math.max(0, gained / target))
 }
 
-/** "2024-03-04 09:00" → "03-04 09:00"，卡片上不重复年份。 */
+/** "2024-03-04 09:00" → "2024-03-04 09:00"，截到分钟，年月日全留（跨年账户要能分辨）。 */
 export function shortTime(barTime: string): string {
-  return barTime.length >= 16 ? barTime.slice(5, 16) : barTime
+  return barTime.length >= 16 ? barTime.slice(0, 16) : barTime
 }
 
-/** ISO → "MM-DD HH:mm"（本地时区）。解析不了就原样给回去，别显示 Invalid Date。 */
+/** ISO → "YYYY-MM-DD HH:mm"（本地时区）。解析不了就原样给回去，别显示 Invalid Date。 */
 export function shortInstant(iso: string): string {
   const d = new Date(iso)
   if (Number.isNaN(d.getTime())) return iso
   const p = (n: number) => String(n).padStart(2, '0')
-  return `${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`
 }

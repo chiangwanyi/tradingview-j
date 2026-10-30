@@ -107,28 +107,28 @@ function doPromote(): void {
         <input
           v-if="editing"
           v-model="draftName"
-          class="w-full rounded-md border border-line bg-panel px-2 py-1 text-[14px] font-semibold text-ink outline-none focus:border-accent/60"
+          class="w-full rounded-md border border-line bg-panel px-2 py-1 text-[15px] font-semibold text-ink outline-none focus:border-accent/60"
           @keyup.enter="submitRename"
           @keyup.esc="stopRename"
         />
-        <h3 v-else class="truncate text-[14px] font-semibold tracking-wide text-ink">
+        <h3 v-else class="truncate text-[15px] font-semibold tracking-wide text-ink">
           {{ a.name }}
         </h3>
-        <p class="mt-0.5 truncate text-[11px] text-faint tnum">起点 {{ shortTime(a.startBarTime) }}</p>
+        <p class="mt-0.5 truncate text-[12px] text-faint tnum">起点 {{ shortTime(a.startBarTime) }}</p>
       </div>
       <span
-        class="shrink-0 rounded border border-line bg-elev px-1.5 py-0.5 text-[10px] tracking-wider text-dim"
+        class="shrink-0 rounded border border-line bg-elev px-1.5 py-0.5 text-[11px] tracking-wider text-dim"
         >{{ stageLabel(a.stage) }}</span
       >
     </header>
 
     <!-- 三个状态小标签：回撤口径 / 在考核中或已失败 / 本阶段起点 -->
     <div class="mt-2.5 flex flex-wrap gap-1 px-4">
-      <span class="rounded-sm border border-line px-1.5 py-0.5 text-[9px] tracking-wider text-faint uppercase">
+      <span class="rounded-sm border border-line px-1.5 py-0.5 text-[10px] tracking-wider text-faint uppercase">
         {{ drawdownLabel(a.rules.drawdownType) }}
       </span>
       <span
-        class="rounded-sm border px-1.5 py-0.5 text-[9px] tracking-wider uppercase"
+        class="rounded-sm border px-1.5 py-0.5 text-[10px] tracking-wider uppercase"
         :class="
           a.status === 'ACTIVE'
             ? 'border-accent/30 bg-accent-soft text-accent-ink'
@@ -137,16 +137,16 @@ function doPromote(): void {
       >
         {{ a.status === 'ACTIVE' ? '进行中' : '已失败' }}
       </span>
-      <span class="rounded-sm border border-line px-1.5 py-0.5 text-[9px] tracking-wider text-faint uppercase">
-        本阶段自 {{ shortInstant(a.stageStartedAt) }}
+      <span class="rounded-sm border border-line px-1.5 py-0.5 text-[10px] tracking-wider text-faint uppercase">
+        创建于 {{ shortInstant(a.stageStartedAt) }}
       </span>
     </div>
 
     <div class="mt-3 grid grid-cols-2 gap-x-3 gap-y-3 border-t border-line px-4 py-3.5">
       <div>
-        <p class="text-[10px] tracking-wider text-faint uppercase">账户余额</p>
-        <p class="tnum text-[17px] leading-tight font-semibold text-ink">{{ usd(a.balance) }}</p>
-        <p class="tnum text-[10px] text-faint">
+        <p class="text-[11px] tracking-wider text-faint uppercase">账户余额</p>
+        <p class="tnum text-[18px] leading-tight font-semibold text-ink">{{ usd(a.balance) }}</p>
+        <p class="tnum text-[11px] text-faint">
           起点 {{ usd(a.baseBalance) }} ·
           <span :class="gained >= 0 ? 'text-accent-ink' : 'text-red-600'">
             {{ gained >= 0 ? '+' : '' }}{{ usd(gained) }}
@@ -154,25 +154,25 @@ function doPromote(): void {
         </p>
       </div>
       <div>
-        <p class="text-[10px] tracking-wider text-faint uppercase">盈利目标</p>
-        <p class="tnum text-[17px] leading-tight font-semibold text-ink">
+        <p class="text-[11px] tracking-wider text-faint uppercase">盈利目标</p>
+        <p class="tnum text-[18px] leading-tight font-semibold text-ink">
           {{ usd(a.rules.profitTarget) }}
         </p>
-        <p class="tnum text-[10px] text-faint">
+        <p class="tnum text-[11px] text-faint">
           {{ a.rules.profitTarget == null ? '本阶段无目标' : `还差 ${usd(Math.max(0, a.rules.profitTarget - gained))}` }}
         </p>
       </div>
       <div>
-        <p class="text-[10px] tracking-wider text-faint uppercase">最大回撤</p>
-        <p class="tnum text-[13px] font-medium text-ink">{{ usd(a.rules.maxDrawdown) }}</p>
-        <p class="tnum text-[10px] text-faint">亏损线 {{ usd(lossLine) }}</p>
+        <p class="text-[11px] tracking-wider text-faint uppercase">最大回撤</p>
+        <p class="tnum text-[14px] font-medium text-ink">{{ usd(a.rules.maxDrawdown) }}</p>
+        <p class="tnum text-[11px] text-faint">亏损线 {{ usd(lossLine) }}</p>
       </div>
       <div>
-        <p class="text-[10px] tracking-wider text-faint uppercase">一致性上限</p>
-        <p class="tnum text-[13px] font-medium text-ink">
+        <p class="text-[11px] tracking-wider text-faint uppercase">一致性上限</p>
+        <p class="tnum text-[14px] font-medium text-ink">
           {{ a.rules.consistencyRatio == null ? '—' : `≤${pct(a.rules.consistencyRatio)}` }}
         </p>
-        <p class="tnum text-[10px] text-faint">
+        <p class="tnum text-[11px] text-faint">
           {{ a.rules.minProfitDays == null ? '不查盈利日' : `盈利日 ${a.rules.minProfitDays} 天` }}
         </p>
       </div>
@@ -183,20 +183,20 @@ function doPromote(): void {
       <div class="h-1 w-full overflow-hidden rounded-full bg-elev">
         <div class="h-full rounded-full bg-accent" :style="{ width: `${progress * 100}%` }" />
       </div>
-      <div class="mt-1 flex justify-between text-[9px] tracking-wider text-faint uppercase tnum">
+      <div class="mt-1 flex justify-between text-[10px] tracking-wider text-faint uppercase tnum">
         <span>起点 {{ usd(a.baseBalance) }}</span>
         <span>{{ pct(progress) }}</span>
         <span>目标 {{ usd(a.baseBalance + (a.rules.profitTarget ?? 0)) }}</span>
       </div>
     </div>
 
-    <p v-if="err" class="mx-4 mb-2 rounded border border-red-200 bg-red-50 px-2 py-1 text-[11px] text-red-700">
+    <p v-if="err" class="mx-4 mb-2 rounded border border-red-200 bg-red-50 px-2 py-1 text-[12px] text-red-700">
       {{ err }}
     </p>
 
     <!-- 阶段流水：行数就是身份（1 行 = 建户时就在这个阶段，2 行 = 考过来的） -->
     <ul v-if="logs" class="mx-4 mb-3 space-y-1 rounded-lg border border-line bg-elev px-3 py-2">
-      <li v-for="l in logs" :key="l.id" class="flex items-baseline justify-between gap-2 text-[11px]">
+      <li v-for="l in logs" :key="l.id" class="flex items-baseline justify-between gap-2 text-[12px]">
         <span class="text-dim">
           {{ stageLabel(l.stage) }}
           <span class="text-faint">{{ shortInstant(l.startedAt) }}</span>
@@ -206,20 +206,20 @@ function doPromote(): void {
         </span>
       </li>
     </ul>
-    <p v-else-if="loadingLogs" class="mx-4 mb-3 text-[11px] text-faint">读取流水…</p>
+    <p v-else-if="loadingLogs" class="mx-4 mb-3 text-[12px] text-faint">读取流水…</p>
 
     <div class="mt-auto grid grid-cols-2 gap-1.5 px-4 pb-4">
       <template v-if="editing">
         <button
           type="button"
-          class="rounded-md border border-accent/40 py-1.5 text-[12px] font-medium text-accent-ink hover:bg-accent-soft"
+          class="rounded-md border border-accent/40 py-2 text-[13px] font-medium text-accent-ink hover:bg-accent-soft"
           @click="submitRename"
         >
           保存
         </button>
         <button
           type="button"
-          class="rounded-md border border-line py-1.5 text-[12px] text-dim hover:border-line-strong"
+          class="rounded-md border border-line py-2 text-[13px] text-dim hover:border-line-strong"
           @click="stopRename"
         >
           取消
@@ -228,7 +228,7 @@ function doPromote(): void {
       <template v-else>
         <button
           type="button"
-          class="flex items-center justify-center gap-1 rounded-md border border-accent/40 py-1.5 text-[12px] font-medium text-accent-ink transition-colors hover:bg-accent-soft disabled:cursor-not-allowed disabled:border-line disabled:text-faint disabled:hover:bg-transparent"
+          class="flex items-center justify-center gap-1 rounded-md border border-accent/40 py-2 text-[13px] font-medium text-accent-ink transition-colors hover:bg-accent-soft disabled:cursor-not-allowed disabled:border-line disabled:text-faint disabled:hover:bg-transparent"
           :disabled="busy || a.status === 'FAILED' || a.stage === 'PAYOUT'"
           :title="a.stage === 'PAYOUT' ? '已是最后阶段' : 'EVAL → FUNDED → PAYOUT'"
           @click="doPromote"
@@ -237,21 +237,21 @@ function doPromote(): void {
         </button>
         <button
           type="button"
-          class="rounded-md border border-line py-1.5 text-[12px] text-dim transition-colors hover:border-line-strong"
+          class="rounded-md border border-line py-2 text-[13px] text-dim transition-colors hover:border-line-strong"
           @click="toggleLogs"
         >
           {{ logs ? '收起流水' : '阶段流水' }}
         </button>
         <button
           type="button"
-          class="rounded-md border border-line py-1.5 text-[12px] text-dim transition-colors hover:border-line-strong"
+          class="rounded-md border border-line py-2 text-[13px] text-dim transition-colors hover:border-line-strong"
           @click="startRename"
         >
           改名
         </button>
         <button
           type="button"
-          class="flex items-center justify-center gap-1 rounded-md border border-line py-1.5 text-[12px] text-faint transition-colors hover:border-red-200 hover:text-red-700"
+          class="flex items-center justify-center gap-1 rounded-md border border-line py-2 text-[13px] text-faint transition-colors hover:border-red-200 hover:text-red-700"
           :disabled="busy"
           @click="doRemove"
         >
