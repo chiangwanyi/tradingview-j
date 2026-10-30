@@ -24,6 +24,8 @@
  * 一条「步进」在断线期间重发，可能让账户一次往前跳两根，而用户只按了一次。
  */
 
+import type { ClosedLot, Order, Position, Trade } from '@/types/protocol'
+
 /** 一根 K 线（和后端 `BarView` 同名）。没有 `ema20` —— 均线由前端现算。 */
 export interface DeskBar {
   time: string
@@ -34,7 +36,14 @@ export interface DeskBar {
   volume: number
 }
 
-/** 连上之后的第一条回执（后端 `DeskSnapshot`）。 */
+/**
+ * 连上之后的第一条回执（后端 `DeskSnapshot`）。
+ *
+ * **账和 K 线一起给**：断线重连后要按后端的样子重建整块盘面，挂单、成交、持仓
+ * 必须和 K 线一起来 —— 分开取会出现「K 线是新的、挂单还是断线前那批」的错位。
+ * 几个 `orders` / `trades` / `closedLots` / `position` 和广播里是同一批类型
+ * （`types/protocol.ts`），前端只有一套装载代码。
+ */
 export interface DeskSnapshot {
   type: 'snapshot'
   accountId: string
@@ -54,9 +63,22 @@ export interface DeskSnapshot {
   /** 磁盘上还有没有下一根 —— 【下一根】按钮的可用性就看它 */
   hasNext: boolean
   bars: DeskBar[]
+  orders: Order[]
+  trades: Trade[]
+  closedLots: ClosedLot[]
+  position: Position
+  /** 净已实现盈亏（已扣手续费） */
+  realizedPnl: number
+  unrealizedPnl: number
 }
 
-/** `bar_advanced` 的负载（后端 `BarAdvancedPayload`，和 `audit_event.payload_json` 同一份）。 */
+/**
+ * `bar_advanced` 的负载（后端 `BarAdvancedPayload`，和 `audit_event.payload_json` 同一份）。
+ *
+ * 撮合就发生在这一步：新揭示的那根 K 线会成交「之前挂的」单，结果全部在这份负载里
+ * （`orders` / `trades` / `closedLots` / `position` 是全量，`fills` 是**这一根**触发的）。
+ * 所以【下一根】之后不会再补一条 `order_filled`。
+ */
 export interface BarAdvancedPayload {
   bar: DeskBar
   /** 在这一天的日文件里是第几根（从 0 起）。只用于显示，不是凭证 */
@@ -65,12 +87,24 @@ export interface BarAdvancedPayload {
   hiddenBars: number
   /** 磁盘上还有没有下一根 */
   hasMore: boolean
+  orders: Order[]
+  trades: Trade[]
+  closedLots: ClosedLot[]
+  position: Position
+  realizedPnl: number
+  unrealizedPnl: number
+  /** 只装这一根触发的成交（多数时候为空） */
+  fills: Trade[]
 }
 
-/** 一条广播（后端 `EventMessage`）：盘面改了。 */
+/**
+ * 一条广播（后端 `EventMessage`）：盘面改了。
+ *
+ * `action` 是小写下划线的**事实名**：`bar_advanced` / `order_placed` / `order_filled` /
+ * `order_cancelled` / `order_moved` / `flat_all`。
+ */
 export interface DeskEvent {
   type: 'event'
-  /** 动作名，小写下划线：`bar_advanced` */
   action: string
   payload: unknown
   /** human / bot / system */

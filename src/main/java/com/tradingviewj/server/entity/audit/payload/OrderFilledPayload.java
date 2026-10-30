@@ -1,9 +1,9 @@
 package com.tradingviewj.server.entity.audit.payload;
 
-import com.tradingviewj.server.entity.trade.ClosedLot;
-import com.tradingviewj.server.entity.trade.Order;
-import com.tradingviewj.server.entity.trade.Position;
-import com.tradingviewj.server.entity.trade.Trade;
+import com.tradingviewj.server.dto.ClosedLotView;
+import com.tradingviewj.server.dto.OrderView;
+import com.tradingviewj.server.dto.PositionView;
+import com.tradingviewj.server.dto.TradeView;
 import com.tradingviewj.server.enums.ReplayAction;
 
 import java.math.BigDecimal;
@@ -19,15 +19,18 @@ import java.util.List;
  * 可以为 {@code null}。它同时也出现在 {@code orders} 里（全量列表），单独给一份是为了
  * 「操作记录那一行」：只写「买市价 5 手」看不出还挂了止损，而复盘时最该一眼看到的
  * 恰恰是「这一笔是有保护的」。
+ *
+ * <p>{@code realizedPnl} 是<strong>净额</strong>（已扣手续费）：它和账户余额、考核判定
+ * 是同一个口径。逐笔的毛利和手续费分别在 {@link TradeView} 里。
  */
 public record OrderFilledPayload(
-        Order order,
-        Trade trade,
-        Order stopOrder,
-        List<Order> orders,
-        List<Trade> trades,
-        List<ClosedLot> closedLots,
-        Position position,
+        OrderView order,
+        TradeView trade,
+        OrderView stopOrder,
+        List<OrderView> orders,
+        List<TradeView> trades,
+        List<ClosedLotView> closedLots,
+        PositionView position,
         BigDecimal realizedPnl,
         BigDecimal unrealizedPnl
 ) implements ReplayActionPayload {

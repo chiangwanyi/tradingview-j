@@ -1,10 +1,10 @@
 package com.tradingviewj.server.ws;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.tradingviewj.server.entity.audit.payload.BarAdvancedPayload;
 import com.tradingviewj.server.enums.Actor;
 import com.tradingviewj.server.enums.ReplayAction;
 import com.tradingviewj.server.exception.BusinessException;
+import com.tradingviewj.server.service.TradingService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -21,26 +21,35 @@ import java.util.concurrent.ConcurrentHashMap;
 /**
  * 交易页的 WebSocket 端点（{@code /ws}）。<strong>只管连接和分发，不含业务。</strong>
  *
- * <h2>消息一览（目前只有三条）</h2>
+ * <h2>消息一览</h2>
  *
  * <pre>
- * 上行                                下行
- * {"type":"hello","accountId":"a1"}  → {"type":"snapshot", ...盘面...}      只回发起方
- * {"type":"step","accountId":"a1"}   → {"type":"event","action":"bar_advanced",
- *                                        "payload":{...},"by":"human","seq":7}  广播给该账户全部连接
- * {"type":"ping"}                    → {"type":"pong"}                      只回发起方
- * 其它 / 出错                         → {"type":"error","msg":"..."}         只回发起方
+ * 上行                                     下行
+ * {"type":"hello","accountId":"a1"}       → {"type":"snapshot", ...盘面 + 账...}      只回发起方
+ * {"type":"step","accountId":"a1"}        → {"type":"event","action":"bar_advanced",
+ *                                             "payload":{...含本根撮合的成交...},
+ *                                             "by":"human","seq":7}                    广播给该账户全部连接
+ * {"type":"order_placed", side/kind/price/quantity}
+ *                                         → {"type":"event","action":"order_placed"}  广播
+ * {"type":"market_order", side/quantity[/stopDistance]}
+ *                                         → {"type":"event","action":"order_filled"}  广播
+ * {"type":"order_cancelled","orderId":…}  → {"type":"event","action":"order_cancelled"} 广播
+ * {"type":"order_moved","orderId":…,price}→ {"type":"event","action":"order_moved"}   广播
+ * {"type":"flat_all","accountId":"a1"}    → {"type":"event","action":"flat_all"}      广播
+ * {"type":"ping"}                         → {"type":"pong"}                           只回发起方
+ * 其它 / 出错                              → {"type":"error","msg":"..."}              只回发起方
  * </pre>
  *
  * <p><strong>{@code type} 从哪来：</strong>除了 {@code hello} / {@code step} / {@code ping}
- * 三条元命令，其余取值一律是 {@link ReplayAction} 的 {@code wire()} 形式 ——
- * 命令名与事实名是<strong>同一串</strong>（{@code order_placed} 既能当「请挂单」发上来，
- * 也会作为「挂上了」广播回来）。这样上下列表共用一份枚举，不必在 {@code switch} 里
- * 再抄一遍字面量：抄的那份没人维护，改了枚举它也不会红。
+ * 三条元命令和 {@code market_order} 这一条<strong>命令层名字</strong>，其余取值一律是
+ * {@link ReplayAction} 的 {@code wire()} 形式 —— 命令名与事实名是<strong>同一串</strong>
+ * （{@code order_placed} 既能当「请挂单」发上来，也会作为「挂上了」广播回来）。这样上下列表
+ * 共用一份枚举，不必在 {@code switch} 里再抄一遍字面量。
  *
- * <p>代价是「命令」和「事实」在名字上分不开了，所以<strong>语义必须靠方向区分</strong>
- * （上行 = 请求，下行 = 已发生）。真要表达「一条命令产出多条事实」（市价单就是
- * {@code order_placed} + {@code order_filled}）时，得单独给命令层建映射，不能再靠同名默认。
+ * <p>为什么 {@code market_order} 是例外：市价单是<strong>一条命令产出一条事实</strong>
+ * （{@code order_placed} + {@code order_filled} 两件事发生在同一瞬间，而且事实名就是后者）。
+ * 用 {@code order_filled} 当命令名，「成交」就同时是「请成交」和「成交了」，方向上彻底分不开；
+ * 所以命令层单独给它一个名字，和 Go 版 {@code market_order} 一致。
  *
  * <h2>三个刻意的选择</h2>
  *
@@ -71,15 +80,19 @@ public class TradeSocketHandler extends TextWebSocketHandler {
      * 三条<strong>元命令</strong>：连接管理，不产生任何审计事实，所以 {@link ReplayAction}
      * 里没有它们，只能在这里各命名一次。
      *
-     * <p>其余所有 {@code type} 都以 {@code ReplayAction} 的 {@code wire()} 形式出现 ——
-     * 一份名字，两个方向共用。前端 {@code webapp/src/types/protocol.ts} 的 {@code ACTION}
-     * 表就是同一批串，上下行都从它取。
+     * <p>{@code order_placed} / {@code order_cancelled} / {@code order_moved} / {@code flat_all}
+     * 则以 {@code ReplayAction} 的 {@code wire()} 形式出现 —— 一份名字，两个方向共用
+     * （前端 {@code webapp/src/types/protocol.ts} 的 {@code ACTION} 表是同一批串）。
+     * 唯一例外是 {@code market_order}：市价单一条命令产出一条事实（{@code order_filled}），
+     * 命令名不等于事实名，见类注释。
      */
     private static final String TYPE_HELLO = "hello";
-    /** 推进一根。名字不等于它产出的事实（{@code bar_advanced}），这是本协议唯一的例外。 */
+    /** 推进一根。名字不等于它产出的事实（{@code bar_advanced}），这是本协议第二个例外。 */
     private static final String TYPE_STEP = "step";
     private static final String TYPE_PING = "ping";
     private static final String TYPE_PONG = "pong";
+    /** 市价单：下单即成交，产出 {@code order_filled}。 */
+    private static final String TYPE_MARKET_ORDER = "market_order";
 
     private final ObjectMapper json;
     private final TradeDeskService desk;
@@ -110,7 +123,18 @@ public class TradeSocketHandler extends TextWebSocketHandler {
         try {
             switch (request.type()) {
                 case TYPE_HELLO -> hello(session, request);
-                case TYPE_STEP -> step(session, request);
+                case TYPE_STEP -> broadcast(desk.step(requireInAccount(session, request)));
+                case TYPE_MARKET_ORDER -> broadcast(desk.market(
+                        requireInAccount(session, request),
+                        request.side(), request.quantity(), request.stopDistance()));
+                case "order_placed" -> broadcast(desk.place(
+                        requireInAccount(session, request),
+                        request.side(), request.kind(), request.price(), request.quantity()));
+                case "order_cancelled" -> broadcast(desk.cancel(
+                        requireInAccount(session, request), request.orderId()));
+                case "order_moved" -> broadcast(desk.move(
+                        requireInAccount(session, request), request.orderId(), request.price()));
+                case "flat_all" -> broadcast(desk.flatAll(requireInAccount(session, request)));
                 case TYPE_PING -> sendTo(session, new Pong(TYPE_PONG));
                 // 其余一律拒。判据不在这里抄一份名字清单，而是问 ReplayAction：
                 // 「这是不是一个有名字的动作」。是 → 说明动作定义了但还没接通；
@@ -137,7 +161,7 @@ public class TradeSocketHandler extends TextWebSocketHandler {
      */
     private void reject(WebSocketSession session, String type) {
         if (ReplayAction.ofWire(type).isPresent()) {
-            sendTo(session, error("「" + type + "」还没接通：目前只有【下一根】走这条通道"));
+            sendTo(session, error("「" + type + "」还没接通：这条通道目前只有【下一根】和下单类消息"));
         } else {
             sendTo(session, error("不认识的消息类型: " + type));
         }
@@ -157,22 +181,31 @@ public class TradeSocketHandler extends TextWebSocketHandler {
         sendTo(session, snapshot);
     }
 
-    /** {@code step}：推一根，然后广播。 */
-    private void step(WebSocketSession session, WsRequest request) {
+    /**
+     * 做账之前先确认「这条连接已经进了这个账户」。
+     *
+     * <p>顺序不能省：没有 hello 就下单，消息会被<strong>广播到一个空房间</strong> ——
+     * 库里写进去了、自己却什么都看不见，最难查。要求先 hello 让「哪个连接是哪个账户」
+     * 永远只有一处答案。
+     */
+    private String requireInAccount(WebSocketSession session, WsRequest request) {
         String accountId = requireAccountId(request);
         if (!accountId.equals(session.getAttributes().get(ATTR_ACCOUNT))) {
-            // 连接还没 hello，或者发了别的账户 —— 两类都是「先 hello」能解决的
             throw new BusinessException("还没有进入账户 " + accountId + "：先发一条 hello");
         }
-        TradeDeskService.StepResult result = desk.step(accountId);
-        broadcast(accountId, result);
+        return accountId;
     }
 
-    private void broadcast(String accountId, TradeDeskService.StepResult result) {
-        BarAdvancedPayload payload = result.payload();
+    /**
+     * 把一次动作的结果广播给该账户的全部连接（<strong>含发起方</strong>）。
+     *
+     * <p>不在本地先改一遍再等广播回来：那样要维护两份推算，慢一个往返换来的是永远对得上。
+     */
+    private void broadcast(TradingService.Event result) {
         EventMessage event = EventMessage.of(
-                ReplayAction.BAR_ADVANCED.wire(), payload, Actor.HUMAN.name().toLowerCase(), result.seq());
-        Set<WebSocketSession> sessions = rooms.get(accountId);
+                result.action().wire(), result.payload(),
+                Actor.HUMAN.name().toLowerCase(java.util.Locale.ROOT), result.seq());
+        Set<WebSocketSession> sessions = rooms.get(result.accountId());
         if (sessions == null) {
             return;
         }

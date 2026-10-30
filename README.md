@@ -4,7 +4,8 @@
 
 - **Go 侧**（`main.go`/`internal/`/`web/`）：旁路抓你**本人已登录的 Chrome** 里 TradingView 图表页的 WS 帧，
   解 5 分钟 K 线落 CSV 并做本地复盘。零第三方依赖，产物 `tv-capture-v<版本>.exe`（`0.31.0`）。只**被动**监听。
-- **Spring 侧**（`src/`/`webapp/`）：Go 版复盘系统的迁移目标，SQLite，端口 8791；交易撮合仍是方案。
+- **Spring 侧**（`src/`/`webapp/`）：Go 版复盘系统的迁移目标，SQLite，端口 8791；下单撮合已接通
+  （市价 / 限价 / 止损、跳空修正、OCO、手续费净盈亏），PF 考核判定仍是方案。
 
 # 一、Go 侧：抓取 + 复盘
 
@@ -81,22 +82,30 @@ ASCII + CRLF**、**菜单只能有一个 stdin reader**（都有测试拦）。
   按磁盘 CSV 算不是日历减一；**不落库不缓存**）· 实体抛的 `IllegalArgumentException` 转 400 · Swagger 的
   `UNWRAPPED_PACKAGES` 必须含 `org.springdoc`，否则文档页**白屏**。
 
-**WebSocket `/ws`**（交易页唯一的写入通道，同端口、JSON 文本帧，`ws/` 包 5 个类：`WebSocketConfig` 挂端点、
+**WebSocket `/ws`**（交易页唯一的写入通道，同端口、JSON 文本帧，`ws/` 包 6 个类：`WebSocketConfig` 挂端点、
 `TradeSocketHandler` 只管连接与分发、`TradeDeskService` 是业务、`WsRequest`/`DeskSnapshot`/`EventMessage` 是线协议）
 
-- 上行只有三种：`{"type":"hello","accountId":…}` / `step` / `ping`。**连上不主动发东西**（身份只由 `hello` 给，
-  连接本身不带身份，就没有「URL 写 A、消息写 B」的歧义）。下行：`snapshot`（只回发起方）/ `event{action,
+- 上行：`{"type":"hello","accountId":…}` / `step` / `ping` / `order_placed`（限价或止损） /
+  `market_order`（市价即成交，可带 `stopDistance` 顺手挂保护性止损）/ `order_cancelled` /
+  `order_moved` / `flat_all`。**连上不主动发东西**（身份只由 `hello` 给，连接本身不带身份，
+  就没有「URL 写 A、消息写 B」的歧义）。下行：`snapshot`（只回发起方）/ `event{action,
   payload,by,seq}`（**广播给该账户全部连接，含发起方**）/ `error` / `pong`。
-- **不认识的消息回 `error`，不静默丢** —— 静默丢弃会让「字段名写错」表现成「点了没反应」。`order_*` /
-  `annotation_*` 目前就是这样明确拒绝的。
+- **命令名 = 事实名**（`order_placed` 既能当「请挂单」发上来，也作为「挂上了」广播回来），
+  唯二例外是 `step`→`bar_advanced` 和 `market_order`→`order_filled`（市价单一条命令产出一条事实，
+  命令名不能和事实名同串）。**不认识的消息回 `error`，不静默丢** —— 静默丢弃会让「字段名写错」
+  表现成「点了没反应」；`annotation_*` 目前就是这样明确拒绝的。
 - 前端 `webapp/src/data/socket.ts` 自动重连（1s→15s）+ 重发 `hello`，收到 `snapshot` 就整块重建；
   **断线期间不缓存动作排队重发**（一条 `step` 重发会让账户一次多走一根，而用户只按了一下）。
-- **【下一根】的链路**（唯一实现的动作）：`step` → `BarCursorService` 找当前那根之后的**第一根**（会跨日文件、
-  会跳过缺失/空的日文件）→ `advanceCursor` 推账户 `lastBarTime` → 写一条 `BAR_ADVANCED` → 广播。
-  **顺序不能反**：先推账户再写流水，反过来的中途失败会留下「记了步进、盘面没动」的错位。没有下一根 → 回
-  `error`，按钮按 `snapshot.hasNext` 变灰（**不是静默成功**）。
-- 广播负载和 `audit_event.payload_json` 是**同一份** `BarAdvancedPayload`：`bar` 用画布口径 `BarView`
-  （字段叫 `time` 不是 `barTime`、没有 `ema20`），挂单/成交/持仓**发空数组不发 null**（撮合未接通，账上本来就空）。
+- **【下一根】的链路**：`step` → `BarCursorService` 找当前那根之后的**第一根**（会跨日文件、
+  会跳过缺失/空的日文件）→ `advanceCursor` 推账户 `lastBarTime` → **用这根 K 线撮合挂单**
+  （`TradingService.match`）→ 写一条 `BAR_ADVANCED` → 广播。**顺序不能反**：先推账户再写流水，
+  反过来的中途失败会留下「记了步进、盘面没动」的错位。没有下一根 → 回 `error`，按钮按
+  `snapshot.hasNext` 变灰（**不是静默成功**）。
+- **成交不另发一条 `order_filled`**：撮合结果直接并进那条 `bar_advanced`（`fills` = 这一根触发的）。
+  拆成两条的话，前端会在「K 线到了、成交还没到」的那一帧画出错误的持仓线。
+- 广播负载和 `audit_event.payload_json` 是**同一份**：`bar` 用画布口径 `BarView`（字段叫 `time`
+  不是 `barTime`、没有 `ema20`）；挂单/成交/持仓用协议形状 `OrderView`/`TradeView`/`PositionView`
+  （小写方向、`realizedPnl` 毛利 / `commission` / `netPnl` 三笔账），**发空数组不发 null**。
 
 **数据模型**：**PF 账户是记账数据的唯一聚合根**，K 线不进库。三层 = **日志层 `audit_event`（唯一写入点、
 append-only、每行带 `symbol_id` + `bar_time`）→ 快照层（当前值）→ 投影层 `TradeRecord`（`start_seq`~
@@ -132,33 +141,48 @@ append-only、每行带 `symbol_id` + `bar_time`）→ 快照层（当前值）�
 **改表必须重建 `./db/`**（`ddl-auto: none`；`schema.sql` 全是 CREATE IF NOT EXISTS，删表只能手 `DROP`），
 旧库改名 `db/*.bak-日期-原因` **别删**。「测试全绿」不等于「旧库能用」。
 
-# 三、交易引擎（设计，未接通前端）
+# 三、交易引擎（下单撮合已接通）
 
-`webapp` 的下单/撤单/平仓一律只给提示、**不造本地成交**（账在后端算，前端造假会立刻对不上）。
+`webapp` 的下单/撤单/改价/一键退仓**已接通**：前端只发意图、**不造本地成交**（账在后端算，
+前端造假会立刻和余额对不上）。实现分两层：`service/TradingEngine` 是规则（纯函数、不碰库），
+`service/TradingService` 是编排（读账户 → 校验 → 落库 → 写 `audit_event`）；
+`ws/TradeDeskService` 把结果包成广播。
+
+**撮合规则**（`TradingEngine`，和 Go 版 `instance.go` 逐条对齐，单测 `TradingEngineTest` 钉住）：
 
 | 类型 | 触发 | 成交价 |
 |---|---|---|
 | LIMIT BUY / SELL | `low ≤ p` / `high ≥ p` | `min(p, open)` / `max(p, open)` |
 | STOP BUY / SELL | `high ≥ p` / `low ≤ p` | `max(p, open)` / `min(p, open)` |
 
-**跳空修正不能省**（不加则每次跳空都白送钱、回测数字全废）。**本根挂的单本根不撮合**（列
-`effective_from_bar`，**别用 `placedAtBar` 推**）。**OCO 一根只成交一张**，分不清高低谁先到时**取对持仓不
-利那侧**（组内止损优先）。不做部分成交/滑点。
+- **跳空修正不能省**（不加则每次跳空都白送钱、回测数字全废）。
+- **本根挂的单本根不撮合**：实现是「挂单的 `placedAtBar` **严格早于**本根时间」
+  （`TradingEngine.eligible`），不是另加一列 `effective_from_bar` —— 两者在当前语义下等价，
+  因为下单只能发生在账户 `lastBarTime` 那一根上，而那根的 O/H/L/C 已经收完。
+  哪天允许「往过去某根挂单」，就得把这一列加回来。
+- **OCO 一根只成交一张**：分不清高低谁先到时**取对持仓不利那侧**（组内止损优先，显式比较、
+  不依赖挂单顺序）。没成交的那张同根自动撤销 —— OCO 是「一张成交、另一张作废」。
+- 不做部分成交 / 滑点：一根 5 分钟 K 线只有 O/H/L/C，这两件事没有数据支撑。
 
-> **这个动作失败，事实表该不该回滚？** 该 → **编排**（同步、同事务、有返回值、有顺序）；
-> 不该 → **通知**（`AFTER_COMMIT`，失败只记日志）。
+**记账口径**（`TradeLedger` 是唯一算法，前端一处钱都不算）：
 
-撮合、落成交、`seq` 分配、考核判定、写 `audit_event` 全是**编排** —— **撮合绝不能做成事件**（有严格先后
-依赖，结果要同步返回）。事件驱动 ≠ 事件溯源：状态在表里，事件只是变更通知，可丢可重建；**领域事件与
-`audit_event` 是两条流**，别让投影去消费 `audit_event`。不上消息中间件（消费者都在同一进程）。
+- 持仓 / 已实现盈亏 / 逐批平仓全部由 `trade` 表重放得出，**不单独存**；
+- 每笔成交的 `realizedPnl` 是**毛利**（平均成本法），`commission` 是成交那一刻的费率快照
+  （每手每边 × 手数，**开仓也收**），`netPnl = 毛利 − 手续费`；广播里的 `realizedPnl` 是**净额**；
+- 逐批归因（`ClosedLot`）用**这一批自己的开仓价**算毛利，手续费不摊到批次上（一笔成交可能
+  同时平掉几批，没有可靠的摊法）；账户口径一律以净额为准。
+- 手数必须是 1~10000 的整数；价格吸到 `tick` 上（没配 tick 按两位小数）。
 
-订单只有 `OPEN → FILLED | CANCELLED`，撤单原因放 `cancel_reason` 字段而不是新状态。**按账户加锁，不用
-乐观锁**（撮合是「读一批→算→改一批」，重试时订单集合已经变了）。**幂等**靠 `expectedBarTime` 比对游标，
-不符回 409。平仓三入口一个出口（一笔反向 `Trade`），`qty ≤ |净持仓|` 否则 400；**强平先平后撤**；手数
-上限算「净持仓 + 未成交挂单」。
+**状态与并发**：订单只有 `OPEN → FILLED | CANCELLED`（实体方法 `markFilled` / `cancel` 把关，
+重复成交当场抛）。**不用乐观锁**：`spring.datasource.hikari.maximum-pool-size = 1` 让
+「读一批 → 算 → 写回」整段串行（改连接池之前先回来看 `TradingService` 类注释）。
+撤单 / 改价 / 一键退仓都写 `audit_event`（`ORDER_CANCELLED` / `ORDER_MOVED` / `FLAT_ALL`）；
+撮合不单独写 —— 它在 `bar_advanced` 那条流水里。**强平先平后撤**（失败不留半截状态）。
 
-**边界**：权益 **==** 亏损线判 FAILED · 23:55 那根**先撮合后强平** · 04:45–06:00 的 12 根跳过 · 用户停在
-最后一根必须调 `finish`（否则最后一天不结算、不升级）· CSV 被 Excel 占用整根回滚。
+**待做（仍是设计，未实现）**：撤单原因列 `cancel_reason` · 幂等（`expectedBarTime` 比对游标，
+不符回 409）· 手数上限「净持仓 + 未成交挂单」· PF 考核判定（逐根判爆仓、一致性、盈利日、
+`syncComputed` 追平余额）· 23:55 先撮合后强平 · 04:45–06:00 的 12 根跳过 · 停在最后一根要调
+`finish` · CSV 被 Excel 占用整根回滚。
 
 # 注意
 

@@ -1,9 +1,9 @@
 package com.tradingviewj.server.entity.audit.payload;
 
-import com.tradingviewj.server.entity.trade.ClosedLot;
-import com.tradingviewj.server.entity.trade.Order;
-import com.tradingviewj.server.entity.trade.Position;
-import com.tradingviewj.server.entity.trade.Trade;
+import com.tradingviewj.server.dto.ClosedLotView;
+import com.tradingviewj.server.dto.OrderView;
+import com.tradingviewj.server.dto.PositionView;
+import com.tradingviewj.server.dto.TradeView;
 import com.tradingviewj.server.enums.ReplayAction;
 
 import java.math.BigDecimal;
@@ -21,13 +21,13 @@ import java.util.List;
  * 而分不清是「没东西可平」还是「按钮坏了」。
  */
 public record FlatAllPayload(
-        Order order,
-        Trade trade,
+        OrderView order,
+        TradeView trade,
         int cancelled,
-        List<Order> orders,
-        List<Trade> trades,
-        List<ClosedLot> closedLots,
-        Position position,
+        List<OrderView> orders,
+        List<TradeView> trades,
+        List<ClosedLotView> closedLots,
+        PositionView position,
         BigDecimal realizedPnl,
         BigDecimal unrealizedPnl
 ) implements ReplayActionPayload {

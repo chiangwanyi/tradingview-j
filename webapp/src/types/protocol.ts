@@ -121,6 +121,13 @@ export type Side = 'buy' | 'sell'
 export type OrderKind = 'limit' | 'stop' | 'market'
 export type OrderStatus = 'open' | 'filled' | 'cancelled'
 
+/**
+ * 一张挂单。字段和后端 `dto/OrderView` **一一对应**（小写方向 / 单型 / 状态，
+ * 时间是 `yyyy-MM-dd HH:mm` 明文）。
+ *
+ * 刻意没有「第几根」这种下标：下标是**位置**，数据文件重抓 / 补一根 / 删一根坏行
+ * 就会指向另一根 K 线，而且不报错；时间才是标识（后端库里也已经清掉了 index 字段）。
+ */
 export interface Order {
   id: string
   side: Side
@@ -128,10 +135,11 @@ export interface Order {
   price: number
   quantity: number
   status: OrderStatus
+  /** 下单那一刻盘面停在哪根 K 线 */
   placedAt: string
-  placedIndex: number
+  /** 成交那一刻的 K 线时间；缺省 = 没成交（后端 non_null 会省掉这个键） */
   filledAt?: string
-  filledIndex: number
+  /** 实际成交价：跳空时可能不等于挂单价 */
   fillPrice?: number
   /**
    * OCO 组：同一组最多成交一张，其余同根自动撤销。
@@ -140,15 +148,24 @@ export interface Order {
   group?: string
 }
 
+/**
+ * 一笔成交。字段和后端 `dto/TradeView` 一致。
+ *
+ * 三个金额说的是三件事，**都由后端算好**，前端不重算：
+ * - `realizedPnl` 毛利（这一笔平掉的部分，开仓为 0）；
+ * - `commission` 这一笔的单边手续费快照（开仓也收）；
+ * - `netPnl` 净额 = 毛利 − 手续费（开仓那一笔因此是负数）。
+ */
 export interface Trade {
   id: string
   orderId: string
   time: string
   side: Side
-  kind: OrderKind
   price: number
   quantity: number
   realizedPnl: number
+  commission: number
+  netPnl: number
 }
 
 /**

@@ -13,10 +13,11 @@ import { useTradeStore } from '@/stores/trade'
  * 持仓、盈亏、挂着的单、已经成交的流水。
  *
  * 语义仍然刻意保持简单（需求如此）：
- *   - 没有初始资金、没有保证金、没有手续费和滑点，只看盈亏数字和流水；
+ *   - 没有初始资金、没有保证金、没有滑点；**手续费是要算的**（每手每边，成交那一刻快照），
+ *     净盈亏 = 毛利 − 手续费，考核判定用的也是扣费后的净额；
  *   - 没有止损/止盈类型 —— 想止损就挂一张 stop 单，和手动挂单完全一样；
  *   - 成交判断在后端：新揭示的那根 K 线的最高/最低价碰到挂单价就成交，成交价通常是挂单价，
- *     跳空（开盘就跳过挂单价）时按开盘价 —— 细节见 README「模拟交易：撮合规则与盈亏」。
+ *     跳空（开盘就跳过挂单价）时按开盘价 —— 细节见后端 `TradingEngine` 的注释。
  */
 
 const store = useTradeStore()
@@ -35,6 +36,11 @@ const historyOrders = computed(() =>
     .filter((o) => o.status !== 'open')
     .slice(-12)
     .reverse(),
+)
+
+/** 累计手续费：每一笔成交各自带的单边费率快照之和（开仓也收）。 */
+const totalCommission = computed(() =>
+  (inst.value?.trades ?? []).reduce((sum, t) => sum + t.commission, 0),
 )
 
 function orderLabel(kindValue: string): string {
@@ -76,6 +82,10 @@ function pnlClass(v: number): string {
         <span class="tnum" :class="pnlClass(inst?.unrealizedPnl ?? 0)">
           {{ formatSigned(inst?.unrealizedPnl ?? 0) }}
         </span>
+      </div>
+      <div class="flex justify-between">
+        <span class="text-dim">累计手续费</span>
+        <span class="tnum text-faint">{{ totalCommission.toFixed(2) }}</span>
       </div>
 
       <div class="mt-1 flex items-center justify-between border-t border-line pt-1 text-[12px] text-faint">

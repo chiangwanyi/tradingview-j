@@ -21,12 +21,19 @@ import type {
   AnnotationKind,
   AnnotationStyle,
   Bar,
+  ClosedLot,
+  FlatAllPayload,
   InstanceDetail,
+  Order,
+  OrderFilledPayload,
   OrderKind,
+  OrdersPayload,
   Point,
+  Position,
   Side,
   Template,
   Timeframe,
+  Trade,
 } from '@/types/protocol'
 
 /**
@@ -40,7 +47,7 @@ import type {
  * |---|---|---|
  * | K 线 | Go 服务的 WS 快照 + 逐根 step | Spring 的 `/ws`：连上给一份快照，之后每次 step 收一条广播 |
  * | 画线 / 模板 | 发消息给后端，后端编号后广播 | 只在本页内存 |
- * | 下单 / 撤单 / 平仓 | 后端撮合、落库、广播 | 还没接通，点了给一句明确提示 |
+ * | 下单 / 撤单 / 平仓 | 后端撮合、落库、广播 | 同左：发一条意图，**等广播照抄**（见 {@link placeOrder}） |
  *
  * ## 为什么所有动作都走 WebSocket，而不是「读用 HTTP、写用 WS」
  *
@@ -319,9 +326,18 @@ export const useTradeStore = defineStore('trade', () => {
     if (noticeTimer) window.clearTimeout(noticeTimer)
   }
 
-  /** 所有「要落库、但后端还没有」的动作都从这里出去 —— 一处文案，免得每个按钮各说一套。 */
-  function notWired(what: string): void {
-    noteError(`${what}要等交易后端（撮合 / 挂单 / 成交）接通：现在这一步不会产生任何数据。`)
+  /**
+   * 一条会改盘面的动作已经发出去、还没等到广播（防连点）。
+   *
+   * 空串 = 没有在等。它是**唯一**的等待位：一次只允许一条未确认的动作 ——
+   * 并发发出两条，回来的两条广播分不清哪条是哪条，用户也不知道自己按的哪个先生效。
+   */
+  const pendingAction = ref('')
+  let actionTimer = 0
+
+  function clearActionTimer(): void {
+    if (actionTimer) window.clearTimeout(actionTimer)
+    actionTimer = 0
   }
 
   // ---------------- 连上交易服务（唯一的取数与写入入口） ----------------
@@ -351,7 +367,9 @@ export const useTradeStore = defineStore('trade', () => {
       onEvent: (event) => applyEvent(event),
       onError: (message) => {
         pendingStep.value = false
+        pendingAction.value = ''
         clearStepTimer()
+        clearActionTimer()
         loading.value = false
         noteError(message)
       },
@@ -360,7 +378,9 @@ export const useTradeStore = defineStore('trade', () => {
         if (state === 'closed') {
           // 断线时不能让人以为按钮还灵：pending 一起清掉，按钮会立刻变灰
           pendingStep.value = false
+          pendingAction.value = ''
           clearStepTimer()
+          clearActionTimer()
         }
       },
     })
@@ -371,7 +391,9 @@ export const useTradeStore = defineStore('trade', () => {
     desk?.close()
     desk = null
     clearStepTimer()
+    clearActionTimer()
     pendingStep.value = false
+    pendingAction.value = ''
   }
 
   /**
@@ -393,7 +415,9 @@ export const useTradeStore = defineStore('trade', () => {
     dayBars.value = list
     restOfDay.value = 0
     pendingStep.value = false
+    pendingAction.value = ''
     clearStepTimer()
+    clearActionTimer()
 
     instance.value = {
       id: `${snapshot.symbolId}|${snapshot.day}`,
@@ -407,12 +431,13 @@ export const useTradeStore = defineStore('trade', () => {
       hiddenBars: 0,
       hasMore: snapshot.hasNext,
       annotations: [],
-      orders: [],
-      trades: [],
-      closedLots: [],
-      position: { quantity: 0, side: 'flat', averagePrice: 0 },
-      realizedPnl: 0,
-      unrealizedPnl: 0,
+      // 账和 K 线一起来（重连后整块重建）；数组永远给，空就是「确实是空的」
+      orders: snapshot.orders ?? [],
+      trades: snapshot.trades ?? [],
+      closedLots: snapshot.closedLots ?? [],
+      position: snapshot.position ?? { quantity: 0, side: 'flat', averagePrice: 0 },
+      realizedPnl: snapshot.realizedPnl ?? 0,
+      unrealizedPnl: snapshot.unrealizedPnl ?? 0,
       operator: '',
       members: [],
       bot: false,
@@ -435,15 +460,63 @@ export const useTradeStore = defineStore('trade', () => {
     }
   }
 
-  /** 后端广播的一条动作。目前只有 `bar_advanced`。 */
+  /**
+   * 后端广播的一条动作。**账的每一次变化都只从这里进来**。
+   *
+   * 任何一条广播都说明后端还活着：「在等回应」的等待位就地清掉，
+   * 按钮从转圈回到可点 —— 不用等 8 秒兜底计时器。
+   */
   function applyEvent(event: DeskEvent): void {
+    pendingAction.value = ''
+    clearActionTimer()
     switch (event.action) {
       case 'bar_advanced':
+        // 撮合就发生在这一步：负载里 orders / trades / closedLots / position 已经是
+        // 「这根 K 线撮合完」的样子，不需要再等一条 order_filled
         applyAdvanced(event.payload as BarAdvancedPayload)
         return
+      case 'order_placed':
+      case 'order_cancelled':
+      case 'order_moved':
+        // 这三个只改挂单区（改价连成交都不动），但后端还是发全量列表：
+        // 前端只做整份替换，不做增量合并
+        applyPortfolio(event.payload as OrdersPayload)
+        return
+      case 'order_filled':
+      case 'flat_all':
+        applyPortfolio(event.payload as OrderFilledPayload | FlatAllPayload)
+        return
       default:
-        // 别的动作后端还没接（下单 / 画线）。收到就说明协议变了，得说出来，不能装作没事
+        // 收到一个还不认识的动作：说明协议变了，得说出来，不能装作没事
         noteError(`收到一个还不认识的动作「${event.action}」`)
+    }
+  }
+
+  /**
+   * 把一份「全量账」盖到盘面上。
+   *
+   * **整份替换，不做增量合并**：后端每次发的都是全量（一次复盘通常只有个位数的单子，
+   * 全量发的代价很小），而增量合并逻辑极易出错 —— 少合并一笔成交不会报错，
+   * 只会让持仓和账户余额慢慢对不上。缺省的字段保持原样（`order_placed` 不带成交）。
+   */
+  function applyPortfolio(book: {
+    orders?: Order[]
+    trades?: Trade[]
+    closedLots?: ClosedLot[]
+    position?: Position
+    realizedPnl?: number
+    unrealizedPnl?: number
+  }): void {
+    const inst = instance.value
+    if (!inst) return
+    instance.value = {
+      ...inst,
+      orders: book.orders ?? inst.orders,
+      trades: book.trades ?? inst.trades,
+      closedLots: book.closedLots ?? inst.closedLots,
+      position: book.position ?? inst.position,
+      realizedPnl: book.realizedPnl ?? inst.realizedPnl,
+      unrealizedPnl: book.unrealizedPnl ?? inst.unrealizedPnl,
     }
   }
 
@@ -481,6 +554,8 @@ export const useTradeStore = defineStore('trade', () => {
       hiddenBars: payload.hiddenBars,
       hasMore: payload.hasMore,
     }
+    // 这根 K 线可能撮合了挂单：账和 K 线在同一条广播里，一起换掉
+    applyPortfolio(payload)
   }
 
   /** 快照里那个「最新 K 线时间」，用来判断「是不是已经走到最后」。 */
@@ -619,35 +694,109 @@ export const useTradeStore = defineStore('trade', () => {
     patchAnnotations(() => [])
   }
 
-  // ---------------- 交易动作：一律「未接通」 ----------------
-  function placeOrder(side: Side, kind: OrderKind, price: number, quantity: number): void {
-    void side
-    void kind
-    void price
-    void quantity
-    notWired('挂单')
+  // ---------------- 交易动作：发意图 → 后端算 → 等广播 ----------------
+
+  /**
+   * 发一条会改盘面的消息，然后**就地等广播**。
+   *
+   * 不本地预演任何效果：撮合、成交价、盈亏全在后端（见 `TradingService`），
+   * 前端先改一遍本地状态就会立刻和账户对不上 —— 而「对不上」比「慢一拍」糟得多。
+   *
+   * 三条护栏都在这里，一次说清：
+   * 1. 没有盘面 / 连接断了 / 正在等上一条 —— 当场说明，不发；
+   * 2. 发不出去（连接刚断）—— 明说「没发出去」，不假装成功；
+   * 3. 8 秒没回 —— 放弃这一步并提示，按钮不会永远转着。
+   */
+  function sendAction(type: string, extra: Record<string, unknown>, label: string): boolean {
+    if (!instance.value) {
+      noteError('还没有盘面，先打开一个账户')
+      return false
+    }
+    if (pendingAction.value) {
+      noteError(`「${pendingAction.value}」还没有回应，稍等一下再点`)
+      return false
+    }
+    if (socketState.value !== 'open' || !desk) {
+      noteError('和交易服务的连接断了，正在重连：连上之后再试')
+      return false
+    }
+    if (!desk.send({ type, accountId: accountId.value, ...extra })) {
+      noteError('这条消息没发出去（连接刚断），稍后重试')
+      return false
+    }
+    pendingAction.value = label
+    clearActionTimer()
+    actionTimer = window.setTimeout(() => {
+      pendingAction.value = ''
+      actionTimer = 0
+      noteError('交易服务 8 秒没有回应，已放弃这一步：请确认后端还在运行')
+    }, 8000)
+    return true
   }
 
+  /**
+   * 挂一张限价单或止损单（`kind` = `limit` / `stop`）。
+   *
+   * 它只是「等价格过来」的意图：本根挂的单**从下一根才撮合**，所以发出去之后
+   * 挂单列表里会立刻多一条 `open`，成交要等后面某根 K 线碰到它。
+   *
+   * `kind` 传 `market` 时转到 {@link marketOrder} —— 市价单下单即成交，
+   * 不留在挂单列表里，走的是另一条命令（`market_order`）。
+   */
+  function placeOrder(side: Side, kind: OrderKind, price: number, quantity: number): void {
+    if (kind === 'market') {
+      marketOrder(side, quantity)
+      return
+    }
+    if (!(price > 0)) {
+      noteError('挂单价格必须大于 0')
+      return
+    }
+    if (!(quantity > 0)) {
+      noteError('手数必须大于 0')
+      return
+    }
+    sendAction('order_placed', { side, kind, price, quantity }, `${side === 'buy' ? '买' : '卖'}${kind === 'limit' ? '限价' : '止损'} ${quantity} 手`)
+  }
+
+  /**
+   * 市价单：按当前这根 K 线的收盘价立即成交。
+   *
+   * `stopDistance` > 0 时，后端会在**同一个事务里**顺手挂一张反方向的止损单
+   * （价格 = 成交价 ∓ 距离）。传的是**距离**而不是止损价：成交价必须是后端自己的那个，
+   * 让前端拿现价去减会在四舍五入上差一跳，而那一跳正好落在止损位上。
+   */
   function marketOrder(side: Side, quantity: number, stopDistance = 0): void {
-    void side
-    void quantity
-    void stopDistance
-    notWired('市价下单')
+    if (!(quantity > 0)) {
+      noteError('手数必须大于 0')
+      return
+    }
+    const extra: Record<string, unknown> = { side, quantity }
+    if (stopDistance > 0) extra.stopDistance = stopDistance
+    sendAction('market_order', extra, `${side === 'buy' ? '买' : '卖'}市价 ${quantity} 手`)
   }
 
   function cancelOrder(orderId: string): void {
-    void orderId
-    notWired('撤单')
+    sendAction('order_cancelled', { orderId }, '撤单')
   }
 
   function moveOrder(orderId: string, price: number): void {
-    void orderId
-    void price
-    notWired('改挂单价')
+    if (!(price > 0)) {
+      noteError('挂单价必须大于 0')
+      return
+    }
+    sendAction('order_moved', { orderId, price }, '改挂单价')
   }
 
+  /**
+   * 一键退仓：市价平掉整个仓位 + 撤掉全部挂单。
+   *
+   * 提示语在**发出去之前**按当前盘面拼好：这条动作会把仓位和挂单都清掉，
+   * 等广播回来之后再读 instance，已经数不出「平了几手、撤了几张」了。
+   * 真正的执行在后端（`TradingService.flatAll`，先平后撤），这里不本地改状态。
+   */
   function flatAll(): void {
-    notWired('一键平仓')
+    sendAction('flat_all', {}, '一键退仓')
   }
 
   /**
@@ -737,6 +886,7 @@ export const useTradeStore = defineStore('trade', () => {
     restOfDay,
     hasNext,
     pendingStep,
+    pendingAction,
     accountBarTime,
     displayBars,
     timeframe,
@@ -793,7 +943,7 @@ export const useTradeStore = defineStore('trade', () => {
     deleteAnnotation,
     restyleAnnotation,
     clearAnnotations,
-    // 交易（未接通）
+    // 交易（发意图，等广播）
     placeOrder,
     marketOrder,
     cancelOrder,

@@ -55,6 +55,38 @@ public final class TradeLedger {
     }
 
     /**
+     * 一笔成交<strong>实现了多少</strong>（平均成本法，毛利，未扣手续费）。
+     *
+     * <p>开仓 / 同向加仓返回 0：加仓不产生盈亏，只改成本。反向成交按
+     * {@code (成交价 - 均价) × 平掉的手数 × 原仓位方向 × 每点价值} 记。
+     * 手数超过持仓时（反手）只算能平掉的那部分，剩下的算新开仓 —— 由调用方按
+     * {@link #replay} 的同一套规则处理。
+     *
+     * <p>它同时被 {@link #replay} 和下单服务（{@code TradingService}）使用：
+     * 前者逐笔重放历史，后者只算「刚落下的这一笔」。两处共用这一个算式，
+     * 「成交流水算出来的盈亏」和「成交那一刻写进 trade 的 realizedPnl」就不可能对不上。
+     *
+     * @param position      成交<strong>之前</strong>的净头寸（均价必须有效）
+     * @param fillPrice     实际成交价（不是挂单价，跳空时两者不同）
+     * @param signedQuantity 带符号的成交量：买为正、卖为负
+     */
+    public static BigDecimal realizedFor(Position position, BigDecimal fillPrice,
+                                        BigDecimal signedQuantity, BigDecimal pointValue) {
+        if (position == null || position.isFlat() || signedQuantity == null
+                || signedQuantity.signum() == 0 || pointValue == null) {
+            return BigDecimal.ZERO;
+        }
+        BigDecimal held = position.quantity();
+        if (held.signum() == signedQuantity.signum()) {
+            return BigDecimal.ZERO;
+        }
+        BigDecimal closeQty = held.abs().min(signedQuantity.abs());
+        BigDecimal dir = BigDecimal.valueOf(held.signum());
+        return fillPrice.subtract(position.averagePrice())
+                .multiply(closeQty).multiply(dir).multiply(pointValue);
+    }
+
+    /**
      * 重放成交。
      *
      * @param trades     按时间顺序排列的成交（顺序错了结果就错了，调用方负责排序）
@@ -87,11 +119,11 @@ public final class TradeLedger {
                 continue;
             }
 
-            // 反向成交 = 平仓：先按平均成本记掉这一笔实现的盈亏
-            BigDecimal closeQty = prev.abs().min(signed.abs());
-            BigDecimal dir = BigDecimal.valueOf(prev.signum());
-            realized = realized.add(trade.getPrice().subtract(avgPrice)
-                    .multiply(closeQty).multiply(dir).multiply(pointValue));
+            // 反向成交 = 平仓：先按平均成本记掉这一笔实现的盈亏。
+            // 算式在 realizedFor 里只有一份 —— 下单时的「这一笔赚多少」也调它，
+            // 两处各写一遍迟早会在反手/部分平仓上分叉，而那种偏差不抛异常。
+            realized = realized.add(realizedFor(
+                    new Position(prev, avgPrice), trade.getPrice(), signed, pointValue));
 
             // 再按 FIFO 从最早的批次开始消耗，消耗几批就产出几条归因
             Side lotSide = prev.signum() > 0 ? Side.BUY : Side.SELL;

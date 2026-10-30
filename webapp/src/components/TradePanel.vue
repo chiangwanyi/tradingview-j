@@ -7,8 +7,10 @@ import { useTradeStore } from '@/stores/trade'
 /**
  * 成交流水（底部「模拟交易」Tab 的右列）。
  *
- * 每一笔都对应一张被触发的挂单，`realizedPnl` 是这一笔平掉的部分实现的盈亏
- * （开仓/加仓时为 0）—— 这是后端算好的，前端不重算，避免出现两份口径。
+ * 每一笔都对应一张被触发的挂单，三个金额都是后端算好的，前端不重算（避免两份口径）：
+ * - **盈亏**：这一笔平掉的部分的毛利（开仓/加仓时为 0）；
+ * - **手续费**：这一笔的单边手续费快照（开仓也收，一笔往返出现两次）；
+ * - **净盈亏** = 毛利 − 手续费（开仓那一笔因此是负数 —— 钱确实已经付了）。
  */
 
 const store = useTradeStore()
@@ -28,11 +30,11 @@ function pnlClass(v: number): string {
     <!-- 累计已实现盈亏放在左边「持仓」那一列（同一个数字只在一处显示） -->
     <div class="flex items-center justify-between px-2.5 py-1.5 text-[13px] text-faint">
       <span>成交记录 {{ trades.length }} 笔</span>
-      <span>盈亏 = 平掉那部分实现的</span>
+      <span>盈亏 = 毛利 · 净额已扣手续费</span>
     </div>
 
     <div v-if="trades.length === 0" class="px-2.5 py-1 text-[13px] text-faint">
-      还没有成交。成交要等交易后端接通（撮合还没做），这里会一直空着。
+      还没有成交。挂一张单等它被触发，或者用下单浮窗里的市价按钮。
     </div>
 
     <div v-else class="min-h-0 flex-1 overflow-auto">
@@ -44,6 +46,8 @@ function pnlClass(v: number): string {
             <th class="px-2.5 py-1.5 text-right font-normal">价格</th>
             <th class="px-2.5 py-1.5 text-right font-normal">数量</th>
             <th class="px-2.5 py-1.5 text-right font-normal">盈亏</th>
+            <th class="px-2.5 py-1.5 text-right font-normal">手续费</th>
+            <th class="px-2.5 py-1.5 text-right font-normal">净盈亏</th>
           </tr>
         </thead>
         <tbody>
@@ -59,6 +63,10 @@ function pnlClass(v: number): string {
             <td class="tnum px-2.5 py-1 text-right text-dim">{{ t.quantity }}</td>
             <td class="tnum px-2.5 py-1 text-right" :class="pnlClass(t.realizedPnl)">
               {{ t.realizedPnl === 0 ? '—' : formatSigned(t.realizedPnl) }}
+            </td>
+            <td class="tnum px-2.5 py-1 text-right text-faint">{{ t.commission.toFixed(2) }}</td>
+            <td class="tnum px-2.5 py-1 text-right" :class="pnlClass(t.netPnl)">
+              {{ formatSigned(t.netPnl) }}
             </td>
           </tr>
         </tbody>

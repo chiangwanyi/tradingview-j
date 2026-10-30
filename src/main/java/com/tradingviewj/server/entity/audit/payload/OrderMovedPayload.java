@@ -1,6 +1,6 @@
 package com.tradingviewj.server.entity.audit.payload;
 
-import com.tradingviewj.server.entity.trade.Order;
+import com.tradingviewj.server.dto.OrderView;
 import com.tradingviewj.server.enums.ReplayAction;
 
 import java.util.List;
@@ -14,8 +14,8 @@ import java.util.List;
  * 「刚改的那张」的标记。
  */
 public record OrderMovedPayload(
-        Order order,
-        List<Order> orders
+        OrderView order,
+        List<OrderView> orders
 ) implements ReplayActionPayload {
 
     @Override

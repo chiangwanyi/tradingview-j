@@ -1411,8 +1411,9 @@ function menuOrder(side: Side, quantity = store.orderQuantity): void {
   const kind = orderKindFor(side, m.price, lastPrice.value)
   store.placeOrder(side, kind, m.price, quantity)
   closeMenu()
+  // 只说「已发出」：真正的挂单结果以广播为准（本地不预演，见 stores/trade.ts）
   showToast(
-    `已挂 ${side === 'buy' ? '买入' : '卖出'}${orderKindLabel(kind)} ${quantity} 手 ${formatPrice(m.price, store.priceDecimals)}`,
+    `已发出 ${side === 'buy' ? '买入' : '卖出'}${orderKindLabel(kind)} ${quantity} 手 ${formatPrice(m.price, store.priceDecimals)}`,
   )
 }
 

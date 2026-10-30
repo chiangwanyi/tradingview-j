@@ -101,7 +101,14 @@ function useCurrentPrice(): void {
 
 function submit(): void {
   if (!inst.value || !store.canOperate) return
-  if (!(price.value > 0) || !(store.orderQuantity > 0)) return
+  if (!(price.value > 0)) {
+    store.noteError('挂单价格必须大于 0')
+    return
+  }
+  if (!(store.orderQuantity > 0)) {
+    store.noteError('手数必须大于 0')
+    return
+  }
   store.placeOrder(side.value, kind.value, price.value, store.orderQuantity)
 }
 
@@ -596,9 +603,9 @@ const inputClass =
 
         <div
           class="truncate text-[12px] leading-4 text-faint"
-          title="限价买：最低价 ≤ 挂单价；限价卖：最高价 ≥ 挂单价；止损单相反。无资金/手续费/滑点。"
+          title="限价买：最低价 ≤ 挂单价；限价卖：最高价 ≥ 挂单价；止损单相反。跳空越过挂单价时按开盘价成交。手续费 = 每手每边，开仓平仓各收一次。"
         >
-          撮合规则同复盘版（限价 / 止损 / 市价，不计手续费与滑点）· 下单尚未接通
+          撮合同复盘版（限价 / 止损 / 市价，跳空按开盘价）· 手续费每手每边 · 本根挂的单下一根才撮合
         </div>
       </div>
     </div>
