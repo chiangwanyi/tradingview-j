@@ -26,6 +26,7 @@
 # 注意和 data/ 区分 —— 后者是 K 线 CSV，是行情数据，要入库。
 /db/*
 !/db/.gitkeep
+!/db/tradingview-j.db
 
 # IDE（Java 侧用得多，同时覆盖 Go/前端）
 .idea/
