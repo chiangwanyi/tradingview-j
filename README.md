@@ -81,6 +81,10 @@ ASCII + CRLF**、**菜单只能有一个 stdin reader**（都有测试拦）。
 - **行情（只读）**：`/api/bars/symbols`、`/api/bars?code=&time=`（上一交易日整天 + 截止 `time`，上一交易日
   按磁盘 CSV 算不是日历减一；**不落库不缓存**）· 实体抛的 `IllegalArgumentException` 转 400 · Swagger 的
   `UNWRAPPED_PACKAGES` 必须含 `org.springdoc`，否则文档页**白屏**。
+- **历史记录**：`/api/history/audit-events`（分页，`page` 从 0 起、`size` 上限 200）、
+  `DELETE /api/history/audit-events`（**清空全部操作记录**，返回删掉几行；不动交易记录——它锚在
+  `trade.seq` 上）、`/api/history/trade-records`（分页，摘要）。左菜单【操作记录】【交易记录】两个页面
+  就是这两张表，**只读**；清空是唯一写入口，前端要两步确认。
 
 **WebSocket `/ws`**（交易页唯一的写入通道，同端口、JSON 文本帧，`ws/` 包 6 个类：`WebSocketConfig` 挂端点、
 `TradeSocketHandler` 只管连接与分发、`TradeDeskService` 是业务、`WsRequest`/`DeskSnapshot`/`EventMessage` 是线协议）

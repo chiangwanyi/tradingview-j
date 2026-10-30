@@ -79,7 +79,7 @@ scripts/rules-check.mts      validate 的自检，node --experimental-strip-type
 |---|---|
 | `components/chart/*.ts` 全部渲染层（K 线、缩放平移、指标、吸附、ATR、Bar Count） | `stores/playback.ts` + 回放面板：回放属于复盘页 |
 | 画布交互（画线五种工具、模板、拖动、右键下单菜单） | 语音讲解（`VoiceFloat` / `VoiceTape` / 录音）：属于复盘 |
-| 工具栏（周期切换、指标设置）、下单浮窗、持仓/挂单/成交面板 | 操作记录（`EventLog`）：数据来自 `audit_event`，接口还没做 |
+| 工具栏（周期切换、指标设置）、下单浮窗、持仓/挂单/成交面板 | 操作记录（`EventLog`）：交易页底部仍没有这一栏，但**左菜单的【操作记录】页**已经是它的全量分页版（`/api/history/audit-events`） |
 | | 机器人 / 实例列表 / 接管操作权：多人复盘那套概念，单用户交易页没有对应物 |
 
 **没接通的三个动作**（点了会给一句明确提示，不产生任何假数据）：

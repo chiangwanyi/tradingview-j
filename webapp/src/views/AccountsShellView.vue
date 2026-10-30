@@ -4,8 +4,10 @@ import { nextTick, ref } from 'vue'
 import AppSidebar from '@/components/AppSidebar.vue'
 import AccountDetailView from '@/views/AccountDetailView.vue'
 import AccountsView from '@/views/AccountsView.vue'
+import AuditLogView from '@/views/AuditLogView.vue'
 import PlaceholderView from '@/views/PlaceholderView.vue'
 import TemplatesView from '@/views/TemplatesView.vue'
+import TradeRecordsView from '@/views/TradeRecordsView.vue'
 
 /**
  * 账户总览的外壳：左菜单 + 右内容。
@@ -26,10 +28,8 @@ function select(key: string): void {
   detailId.value = null
 }
 
-/** 有页面的两项接了 view，其余导航项给个占位。 */
+/** 有页面的几项接了 view，其余导航项给个占位。 */
 const LABEL: Record<string, string> = {
-  leaderboard: '排行榜',
-  payouts: '出金',
   certificates: '证书',
   platforms: '平台与附加项',
   profile: '我的资料',
@@ -65,6 +65,8 @@ async function add(): Promise<void> {
       @back="detailId = null"
     />
     <TemplatesView v-else-if="active === 'templates'" ref="templates" />
+    <AuditLogView v-else-if="active === 'audit'" />
+    <TradeRecordsView v-else-if="active === 'records'" />
     <PlaceholderView v-else :title="LABEL[active] ?? active" />
   </div>
 </template>
