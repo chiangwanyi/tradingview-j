@@ -13,6 +13,7 @@ import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
@@ -274,13 +275,21 @@ class PropFirmSessionTest {
                 new BigDecimal(low), new BigDecimal(close), BigDecimal.ZERO);
     }
 
+    /**
+     * 造成交用的流水号：每造一笔 +1。
+     *
+     * <p>测试里同一根 K 线上常常有两笔成交（止损平仓 + 反手开仓），谁先谁后必须确定 ——
+     * 按调用顺序发号就正好是它们的真实先后。
+     */
+    private static final AtomicInteger SEQ = new AtomicInteger();
+
     private static Trade buy(String barTime, String price, String qty, String commission) {
-        return Trade.fill("A", SYM, "O", barTime, Side.BUY, new BigDecimal(price),
+        return Trade.fill("A", SYM, "O", barTime, SEQ.incrementAndGet(), Side.BUY, new BigDecimal(price),
                 new BigDecimal(qty), BigDecimal.ZERO, new BigDecimal(commission));
     }
 
     private static Trade sell(String barTime, String price, String qty, String realized, String commission) {
-        return Trade.fill("A", SYM, "O", barTime, Side.SELL, new BigDecimal(price),
+        return Trade.fill("A", SYM, "O", barTime, SEQ.incrementAndGet(), Side.SELL, new BigDecimal(price),
                 new BigDecimal(qty), new BigDecimal(realized), new BigDecimal(commission));
     }
 }

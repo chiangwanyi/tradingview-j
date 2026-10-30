@@ -12,7 +12,6 @@ import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -112,7 +111,7 @@ public final class PropFirmSession {
         }
 
         List<Trade> sorted = new ArrayList<>(trades == null ? List.of() : trades);
-        sorted.sort(Comparator.comparing(Trade::getBarTime).thenComparing(Trade::getId));
+        sorted.sort(Trade.executionOrder());
         for (Trade trade : sorted) {
             tradesBySymbol.computeIfAbsent(trade.getSymbolId(), k -> new ArrayList<>()).add(trade);
         }

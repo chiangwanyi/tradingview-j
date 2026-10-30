@@ -21,8 +21,10 @@ import java.math.BigDecimal;
  * 就得定义「止损单能不能改价」「改了还是不是止损单」，规则会一直长下去。
  *
  * <p>{@link Type#MARKET} 是唯一的例外：它只在「市价成交」那一刻存在，落库时
- * {@link #status} 已经是 {@link Status#FILLED}。留着它是因为成交、历史、撤单列表
- * 要共用同一套数据结构，多一张表不如多一个取值。
+ * {@link #status} 已经是 {@link Status#FILLED}。<strong>但它和挂单走同一条状态机</strong>：
+ * {@link #place} 出来同样是 {@link Status#OPEN}，紧接着由下单用例调
+ * {@link #markFilled} 变成 FILLED —— 市价单不该有另一条「建出来就是已成交」的路。
+ * 留着这个类型是因为成交、历史、撤单列表要共用同一套数据结构，多一张表不如多一个取值。
  *
  * <p>{@link #ocoGroup} 是 OCO 组：同一组里最多成交一张，其余在本根自动撤销。
  * 机器人开仓时给止损和止盈打同一组 —— 5 分钟 K 线看不出高低点谁先出现，
@@ -68,21 +70,25 @@ public class Order extends BaseEntity {
     @Column(nullable = false)
     private BigDecimal quantity;
 
-    /** 下单那一刻的 K 线时间明文。 */
+    /**
+     * 下单那一刻的 K 线时间明文。
+     *
+     * <p><strong>这是「哪一根」的唯一答案</strong>，没有配套的下标。曾经有 {@code placed_index}
+     * 和 {@code filled_index}，2026-10-29 删了：下标是<strong>位置</strong>，
+     * 数据文件被重新抓取、补一根、删一根坏行，同一个下标就指向另一根 K 线，而且不报错；
+     * 时间不会。另外它只在某个标的下成立，而账户不绑标的。
+     */
     @Column(nullable = false)
     private String placedAtBar;
 
-    /** 下单那一刻的 K 线下标。 */
-    @Column(nullable = false)
-    private int placedIndex;
-
+    /**
+     * 成交那一刻的 K 线时间明文；{@code null} = 没成交。
+     *
+     * <p>「没成交」由这一列的空值表达，不再需要 {@code filled_index = -1} 那种哨兵值 ——
+     * 一个含义配一个表示法就够了。
+     */
     @Setter
     private String filledAtBar;
-
-    /** 成交时的 K 线下标；-1 = 没成交。 */
-    @Setter
-    @Column(nullable = false)
-    private int filledIndex = -1;
 
     /** 实际成交价。跳空时可能不等于挂单价（开盘直接跳过挂单价就取开盘价）。 */
     @Setter
@@ -98,15 +104,19 @@ public class Order extends BaseEntity {
      * @param accountId 在哪个 PF 账户里下单，<strong>不能为空</strong>；账户是不是还能交易
      *                  （ACTIVE 且不在 PAYOUT）由 {@code service.PropFirmAccountService#requireTradable} 把关
      * @param symbolId  挂在哪个品种上，<strong>不能为空</strong>
-     * @throws IllegalArgumentException 没给账户 / 标的
+     * @param placedAtBar 下单那一刻停在哪根 K 线上，<strong>不能为空</strong>
+     * @throws IllegalArgumentException 没给账户 / 标的 / K 线时间
      */
     public static Order place(String accountId, String symbolId, Side side, Type type, BigDecimal price,
-                              BigDecimal quantity, String placedAtBar, int placedIndex, String ocoGroup) {
+                              BigDecimal quantity, String placedAtBar, String ocoGroup) {
         if (accountId == null || accountId.isBlank()) {
             throw new IllegalArgumentException("下单必须发生在某个 PF 账户里，收到: " + accountId);
         }
         if (symbolId == null || symbolId.isBlank()) {
             throw new IllegalArgumentException("下单必须指定标的，收到: " + symbolId);
+        }
+        if (placedAtBar == null || placedAtBar.isBlank()) {
+            throw new IllegalArgumentException("下单必须记着停在哪根 K 线上，收到: " + placedAtBar);
         }
         Order order = new Order();
         order.accountId = accountId;
@@ -116,24 +126,28 @@ public class Order extends BaseEntity {
         order.price = price;
         order.quantity = quantity;
         order.placedAtBar = placedAtBar;
-        order.placedIndex = placedIndex;
         order.ocoGroup = ocoGroup;
-        order.status = type == Type.MARKET ? Status.FILLED : Status.OPEN;
+        // 一律从 OPEN 开始，市价单也不例外 —— 它在下单的同一步里立刻 markFilled。
+        // 不能在这里直接置 FILLED：那样 markFilled 会因为「已经不是 OPEN」而抛异常，
+        // 市价单的成交价和成交时间就只能靠调用方直接调 setter 硬填，状态机凭空多一条路。
+        order.status = Status.OPEN;
         return order;
     }
 
     /**
      * 记成交。一张单只能成交一次 —— 这是领域规则，写在实体里而不是指望调用方自觉。
      *
+     * <p>市价单走的是同一条路：{@link #place} 出来是 {@code OPEN}，紧接着就调这里。
+     * 所以「一张单怎么变成已成交」只有一种写法。
+     *
      * @throws IllegalStateException 已经成交 / 已经撤销的单再记成交
      */
-    public void markFilled(String barTime, int barIndex, BigDecimal fillPrice) {
+    public void markFilled(String barTime, BigDecimal fillPrice) {
         if (status != Status.OPEN) {
             throw new IllegalStateException("挂单 " + getId() + " 当前是 " + status + "，不能成交");
         }
         this.status = Status.FILLED;
         this.filledAtBar = barTime;
-        this.filledIndex = barIndex;
         this.fillPrice = fillPrice;
     }
 

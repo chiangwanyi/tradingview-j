@@ -11,7 +11,7 @@
  *   <li>{@code voice} —— 语音讲解的元数据</li>
  *   <li>{@code audit} —— 操作记录（append-only）</li>
  *   <li>{@code strategy} —— 策略注册表 + 机器人运行摘要</li>
- *   <li>{@code record} —— 交易记录（一笔完整交易的过程 + 摘要）</li>
+ *   <li>{@code record} —— 交易记录（一笔完整交易的收尾摘要 + 标签）</li>
  * </ul>
  *
  * <p>五条硬规矩：

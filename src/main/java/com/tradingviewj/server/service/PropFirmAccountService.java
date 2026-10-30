@@ -43,16 +43,22 @@ public class PropFirmAccountService {
     private final PropFirmAccountRepository accounts;
     private final PropFirmTemplateRepository templates;
     private final PropFirmStageLogRepository stageLogs;
+    private final PropFirmStartPicker startPicker;
 
     /**
-     * 按模板开一个账户。
+     * 按模板开一个账户，并<strong>当场抽好起点</strong>。
      *
      * <p>阶段由模板决定：拿 FUNDED 模板建出来的账户<strong>直接从 FUNDED 开始</strong>
      * （「有的是创建的时候就是 FUNDED」就是这条路径），阶段流水里只有一行 {@code CREATED}。
      *
+     * <p>起点由 {@link PropFirmStartPicker} 从全部标的的日文件里随机抽一份、定位到当天
+     * 09:00。抽不到就<strong>不建账户</strong>：一个没有起点的考核，日历、交易日、回放
+     * 全都无从算起，建出来只会变成一个到处要判空的对象。所以先在事务里把起点拿到，
+     * 再落库 —— 抽失败时库里一条残留都没有。
+     *
      * @param templateId 用哪套考核规则（规则会在这一刻复制到账户上）
      * @param name       账户名，用户自己起
-     * @throws BusinessException 模板不存在或缺规则
+     * @throws BusinessException 模板不存在 / 缺规则，或者 data/ 下没有可用的 K 线
      */
     @Transactional
     public PropFirmAccount open(String templateId, String name) {
@@ -61,7 +67,10 @@ public class PropFirmAccountService {
         if (template.getRules() == null || template.getRules().getAccountSize() == null) {
             throw new BusinessException("模板缺少账户规模，开不出账户: " + templateId);
         }
-        PropFirmAccount account = accounts.save(PropFirmAccount.open(template, name));
+        // 先抽起点再落库：抽不到就整个操作失败，不留下半成品账户
+        PropFirmStartPicker.Pick pick = startPicker.pick();
+        PropFirmAccount account = accounts.save(PropFirmAccount.open(template, name,
+                pick.barTime(), pick.dayFile()));
         stageLogs.save(PropFirmStageLog.begin(account.getId(), 0, account.getStage(),
                 account.getBaseBalance(), account.getStageStartedAt(), PropFirmStageLog.Reason.CREATED));
         return account;

@@ -11,7 +11,6 @@ import com.tradingviewj.server.entity.propfirm.PropFirmStage;
 import com.tradingviewj.server.entity.propfirm.PropFirmStageLog;
 import com.tradingviewj.server.entity.propfirm.PropFirmTemplate;
 import com.tradingviewj.server.entity.record.TradeRecord;
-import com.tradingviewj.server.entity.record.TradeRecordStep;
 import com.tradingviewj.server.entity.strategy.Strategy;
 import com.tradingviewj.server.entity.strategy.StrategyBot;
 import com.tradingviewj.server.entity.trade.Order;
@@ -32,7 +31,6 @@ import com.tradingviewj.server.repository.StrategyBotRepository;
 import com.tradingviewj.server.repository.StrategyRepository;
 import com.tradingviewj.server.repository.SymbolRepository;
 import com.tradingviewj.server.repository.TradeRecordRepository;
-import com.tradingviewj.server.repository.TradeRecordStepRepository;
 import com.tradingviewj.server.repository.TradeRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -45,6 +43,7 @@ import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.math.BigDecimal;
 import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -77,10 +76,17 @@ class PropFirmAccountLifecycleTest {
         try {
             String dir = Files.createTempDirectory("tvj-lifecycle-").toAbsolutePath().toString();
             registry.add("spring.datasource.url", () -> "jdbc:sqlite:" + dir + "/test.db");
+            // 开账户现在要抽一个 K 线起点（PropFirmStartPicker），而它读的是 data/ 目录。
+            // 指到临时目录 + 每个用例自己写两份 CSV，这样就**不依赖仓库里那 3000 多个真实 CSV** ——
+            // 否则这条测试会在「别人清空了 data/」的日子里莫名其妙地红。
+            registry.add("app.bar-root", () -> dir + "/data");
+            BAR_ROOT = dir + "/data";
         } catch (IOException e) {
             throw new UncheckedIOException(e);
         }
     }
+
+    private static String BAR_ROOT;
 
     @Autowired private PropFirmAccountService accountService;
     @Autowired private PropFirmAccountRepository accounts;
@@ -95,7 +101,6 @@ class PropFirmAccountLifecycleTest {
     @Autowired private StrategyRepository strategies;
     @Autowired private StrategyBotRepository bots;
     @Autowired private TradeRecordRepository records;
-    @Autowired private TradeRecordStepRepository steps;
 
     private Symbol symbol;
     private PropFirmTemplate evalTemplate;
@@ -107,6 +112,8 @@ class PropFirmAccountLifecycleTest {
         String suffix = Long.toHexString(System.nanoTime());
         symbol = symbols.save(Symbol.of("CME_MINI:MNQ-" + suffix, "MNQ-" + suffix,
                 new BigDecimal("0.50")));
+        writeDayFile(symbol.getFolder(), "2026-10-16",
+                "2026-10-16 08:55", "2026-10-16 09:00", "2026-10-16 09:05");
 
         // LucidFlex 50K：先有 FUNDED 模板，EVAL 才有 next 可指
         fundedTemplate = templates.save(PropFirmTemplate.define(
@@ -127,6 +134,43 @@ class PropFirmAccountLifecycleTest {
                         List.of(new PositionTier(BigDecimal.ZERO, 40)))));
     }
 
+    /**
+     * 写一份最小的日文件：表头 + 三根 K 线。价格随便给 —— 抽起点只看时间，
+     * 不读价格，所以这里不需要真实行情。
+     */
+    private static void writeDayFile(String folder, String day, String... barTimes) {
+        try {
+            Path dir = Path.of(BAR_ROOT, folder);
+            Files.createDirectories(dir);
+            StringBuilder csv = new StringBuilder("time,open,high,low,close,volume\n");
+            for (String t : barTimes) {
+                csv.append(t).append(",100,101,99,100,10\n");
+            }
+            Files.writeString(dir.resolve(day + ".csv"), csv.toString());
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
+    }
+
+    /**
+     * 起点三件套是开账户的<strong>必要条件</strong>，不是可以后补的。
+     *
+     * <p>没有起点的账户，日历首月、可交易日的下界、回放的起点全部无从算起 ——
+     * 它会变成一个每个读取方都要判一次空的对象。所以宁可开不出来。
+     */
+    @Test
+    void accountRefusesToExistWithoutAStartPosition() {
+        assertThrows(IllegalArgumentException.class,
+                () -> PropFirmAccount.open(evalTemplate, "无起点", null, "2026-10-16.csv"));
+        assertThrows(IllegalArgumentException.class,
+                () -> PropFirmAccount.open(evalTemplate, "无起点", "2026-10-16 09:00", "  "));
+
+        // 从服务层开出来的账户，起点必须已经定好，而且是「09:00 及之后的第一根」
+        PropFirmAccount opened = accountService.open(evalTemplate.getId(), "带起点");
+        assertEquals("2026-10-16 09:00", opened.getStartBarTime());
+        assertEquals("2026-10-16.csv", opened.getStartDayFile());
+    }
+
     @Test
     void deletingAccountKeepsEverythingItWasCounting() {
         PropFirmAccount account = accountService.open(evalTemplate.getId(), "第一次考核");
@@ -141,22 +185,22 @@ class PropFirmAccountLifecycleTest {
 
         // 账户里干了一整套活
         Order order = orders.save(Order.place(accountId, symbol.getId(), Side.BUY, Order.Type.LIMIT,
-                new BigDecimal("21250"), new BigDecimal("1"), "2026-10-16 12:00", 0, null));
-        Trade trade = trades.save(Trade.fill(accountId, symbol.getId(), order.getId(), "2026-10-16 12:05",
+                new BigDecimal("21250"), new BigDecimal("1"), "2026-10-16 12:00", null));
+        Trade trade = trades.save(Trade.fill(accountId, symbol.getId(), order.getId(), "2026-10-16 12:05", 1,
                 Side.BUY, new BigDecimal("21250"), new BigDecimal("1"), BigDecimal.ZERO,
                 new BigDecimal("0.13")));
-        auditEvents.save(AuditEvent.of(accountId, 0, Actor.HUMAN, ReplayAction.BAR_ADVANCED, "{\"cursor\":1}"));
+        auditEvents.save(AuditEvent.base(accountId, symbol.getId(), "2026-10-16 12:00", 0, Actor.HUMAN));
+        auditEvents.save(AuditEvent.of(accountId, symbol.getId(), "2026-10-16 12:05", 1,
+                Actor.HUMAN, ReplayAction.ORDER_PLACED, "{}"));
         Strategy strategy = strategies.save(Strategy.register("caveman-" + accountId, "Caveman", "野人", "{}"));
         StrategyBot bot = bots.save(StrategyBot.start(accountId, symbol.getId(), strategy.getId(),
                 new BigDecimal("1"), 300));
 
-        TradeRecord record = TradeRecord.open(accountId, symbol.getId(), "2026-10-16 12:00",
-                Actor.HUMAN, "jiang");
+        TradeRecord record = TradeRecord.open(accountId, account.getName(), symbol.getId(),
+                "2026-10-16 12:00", 0, Actor.HUMAN, "jiang");
         record.openPosition(Side.BUY, "2026-10-16 12:05", new BigDecimal("21250"), new BigDecimal("1"));
-        record.closeAt("2026-10-16 13:00", new BigDecimal("21260"), new BigDecimal("20"));
+        record.closeAt("2026-10-16 13:00", new BigDecimal("21260"), new BigDecimal("20"), 1);
         records.save(record);
-        steps.save(TradeRecordStep.of(record.getId(), 0, ReplayAction.BASE, "2026-10-16 12:00", 0,
-                Actor.HUMAN, null, "{\"events\":[]}"));
 
         // 删账户
         accountService.delete(accountId);
@@ -175,12 +219,21 @@ class PropFirmAccountLifecycleTest {
 
         TradeRecord keptRecord = records.findById(record.getId()).orElseThrow();
         assertEquals(accountId, keptRecord.getAccountId(), "交易记录必须保留，并且保留原账户 id");
+        assertEquals("第一次考核", keptRecord.getAccountName(),
+                "账户行删了，账户名快照还在 —— 列表上要能显示「这笔算在谁头上」");
         assertEquals(new BigDecimal("20"), keptRecord.getRealizedPnl(), "记录内容一位都不能变");
-        assertEquals(1, steps.findByRecordIdOrderByStepNoAsc(record.getId()).size(), "步骤属于记录，记录还在步骤就在");
 
         // 操作记录同样保留原账户 id —— 它是 append-only 的流水，任何改写都等于伪造
-        assertEquals(1, auditEvents.findByAccountIdOrderBySeqAsc(accountId).size(),
+        assertEquals(2, auditEvents.findByAccountIdOrderBySeqAsc(accountId).size(),
                 "操作记录必须保留原账户 id");
+
+        // **删账户之后这笔交易仍然能回放**：这是「在另一个交易记录页看所有记录」的核心。
+        // 记录只引用事件区间（startSeq/endSeq），不跟着账户走，也不跟着事件行一起消失。
+        assertEquals(2, auditEvents.findByAccountIdAndSeqBetweenOrderBySeqAsc(accountId,
+                        keptRecord.getStartSeq(), keptRecord.getEndSeq()).size(),
+                "账户被删掉之后，[startSeq, endSeq] 这段事件仍然取得到");
+        assertEquals(1, records.findAllByOrderByEntryBarTimeDesc().size(),
+                "「所有交易记录」页不按账户过滤，所以那笔记录还在列表里");
 
         // 模板也不受影响（账户存的是规则副本）
         assertNotNull(templates.findById(evalTemplate.getId()).orElseThrow());
@@ -241,8 +294,10 @@ class PropFirmAccountLifecycleTest {
     @Test
     void promotionResetsBalanceAndKeepsHistory() {
         PropFirmAccount account = accountService.open(evalTemplate.getId(), "考过来的");
-        // 先假装赚了 3000 再升级 —— 这笔钱绝不能带进 FUNDED
-        account.applyNetPnl(new BigDecimal("3000"));
+        // 先假装赚了 3000 再升级 —— 这笔钱绝不能带进 FUNDED。
+        // 余额只能由"重放结果"追平（syncComputed），没有增量累加的入口：
+        // 有两条算路就必然分叉，而增量那条很容易漏掉开仓那一笔的手续费。
+        account.syncComputed(account.getBaseBalance().add(new BigDecimal("3000")), account.getEodPeakBalance());
         accounts.save(account);
 
         PropFirmAccount funded = accountService.promote(account.getId(), null);

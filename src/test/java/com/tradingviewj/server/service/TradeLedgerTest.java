@@ -8,6 +8,7 @@ import org.junit.jupiter.api.Test;
 import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -97,13 +98,16 @@ class TradeLedgerTest {
         assertEquals(0, new BigDecimal("-10").compareTo(ledger.realizedPnl()));
     }
 
+    /** 造成交用的流水号：按构造顺序发号，和列表顺序一致（{@code List.of(...)} 从左到右求值）。 */
+    private static final AtomicInteger SEQ = new AtomicInteger();
+
     private static Trade sell(String barTime, String price, String qty) {
-        return Trade.fill("s1", "MNQ", "o1", barTime, Side.SELL,
+        return Trade.fill("s1", "MNQ", "o1", barTime, SEQ.incrementAndGet(), Side.SELL,
                 new BigDecimal(price), new BigDecimal(qty), BigDecimal.ZERO, BigDecimal.ZERO);
     }
 
     private static Trade buy(String barTime, String price, String qty) {
-        return Trade.fill("s1", "MNQ", "o1", barTime, Side.BUY,
+        return Trade.fill("s1", "MNQ", "o1", barTime, SEQ.incrementAndGet(), Side.BUY,
                 new BigDecimal(price), new BigDecimal(qty), BigDecimal.ZERO, BigDecimal.ZERO);
     }
 }

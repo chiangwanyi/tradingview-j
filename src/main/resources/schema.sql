@@ -100,6 +100,17 @@ CREATE TABLE IF NOT EXISTS prop_firm_account (
     eod_peak_balance     TEXT NOT NULL,  -- 本阶段"日终余额"的历史最高，初值 = base_balance
     balance              TEXT NOT NULL,  -- 当前余额 = base_balance + 本阶段已实现净额
     stage_started_at     INTEGER NOT NULL,
+    -- 起点（2026-10-29）：**模拟时间的零点**，由 PropFirmStartPicker 在开账户时
+    -- 从全部标的的日文件里随机抽一份、定位到当天 09:00。
+    -- 和 started_at 不是一回事：started_at 是真实时钟（这行什么时候写进库），
+    -- 这个才是行情时间轴上的位置。日历首月、可交易日下界、回放起点全由它推。
+    -- **建户即有值，没有「建好了但还没开始」的状态**，所以 NOT NULL。
+    --
+    -- 这里**没有 bar_index**：下标是「位置」，文件重抓 / 补一根 / 删一根坏行都会让它
+    -- 悄悄指向另一根 K 线（而且不报错）；它还只在抽中的那个标的下成立 ——
+    -- 账户不绑标的，同一个下标在 MES 和 CL 上是两根不同的 K 线。时间才是标识。
+    start_bar_time       TEXT NOT NULL,  -- 如 2024-03-04 09:00，起点的唯一键
+    start_day_file       TEXT NOT NULL,  -- 如 2024-03-04.csv（不含目录）
     status               TEXT NOT NULL,  -- ACTIVE / FAILED（走到 PAYOUT 用 stage 表达，不另立一个状态）
     started_at           INTEGER NOT NULL,
     created_at           INTEGER NOT NULL,
@@ -189,14 +200,25 @@ CREATE TABLE IF NOT EXISTS audio_clip (
 );
 CREATE INDEX IF NOT EXISTS idx_audio_symbol_bar ON audio_clip (symbol_id, bar_time);
 
--- 交易记录：一笔完整交易（开仓前那一屏 + 之后每一步操作）。
--- 名字不叫 recording：它确实不是录像，是「操作流水 + 结算摘要」。
+-- 交易记录：一笔完整交易 = **一段操作流水的区间** + 一份结算摘要（2026-10-29 起）。
 -- account_id 是统计归属，不是所有权：账户删了记录还在，account_id 原样留着。
+--
+-- start_seq / end_seq 指向 audit_event 的序号区间：同一账户内 [start_seq, end_seq]
+-- 之间的所有事件，就是这笔交易的全过程（逐 K 回放读的就是这一段）。
+--   · start_seq 指向那条 action='BASE' 的事件（开仓前那一屏），不可变
+--   · end_seq = -1 表示还没收尾（进程崩溃 / 账户被删 / 还持着仓）
+-- **摘要字段是独立列，不依赖事件行** —— 所以删账户、清理事件之后再列记录，
+-- 盈亏和标签照样在。这也正是「删账户后仍能在另一个页面看所有记录」的落点。
 CREATE TABLE IF NOT EXISTS trade_record (
     id             TEXT PRIMARY KEY,
     account_id     TEXT NOT NULL,    -- 保留原账户 id；账户删了也不置空
+    -- 账户名快照：账户行被删之后，这是唯一还记得「当初算在谁头上」的地方。
+    -- 不跟随账户改名 —— 名字也是「签下那一刻的事实」，和 Trade.commission 一个道理。
+    account_name   TEXT NOT NULL,
     symbol_id      TEXT NOT NULL REFERENCES symbol (id),  -- 这笔交易做的是哪个品种
-    anchor_bar_time TEXT NOT NULL,
+    anchor_bar_time TEXT NOT NULL,   -- 起点那根（= BASE 事件的 bar_time，冗余供列表显示）
+    start_seq      INTEGER NOT NULL, -- 区间起点：BASE 事件的 seq
+    end_seq        INTEGER NOT NULL DEFAULT -1,  -- 区间终点；-1 = 还没收尾
     entry_bar_time TEXT,
     exit_bar_time  TEXT,
     side           TEXT,             -- LONG / SHORT
@@ -218,23 +240,6 @@ CREATE TABLE IF NOT EXISTS trade_record (
 );
 CREATE INDEX IF NOT EXISTS idx_record_account ON trade_record (account_id);
 
--- 每一步操作。和数据表分开是因为它可能上千行，只有打开回放时才需要。
--- 步骤是记录的一部分 → 记录没了步骤也该没，这一条是**真级联**。
-CREATE TABLE IF NOT EXISTS trade_record_step (
-    id            TEXT PRIMARY KEY,
-    record_id     TEXT NOT NULL REFERENCES trade_record (id) ON DELETE CASCADE,
-    step_no       INTEGER NOT NULL,  -- 0 = 起点（开仓前那一屏）
-    kind          TEXT NOT NULL,     -- JAVA 常量名：BASE / BAR_ADVANCED / RECORDING_AUDIO …（见 ReplayAction）
-    bar_time      TEXT NOT NULL,
-    cursor_index  INTEGER NOT NULL,
-    actor         TEXT,              -- JAVA 常量名：HUMAN / BOT / SYSTEM
-    audio_clip_id TEXT REFERENCES audio_clip (id) ON DELETE SET NULL,
-    payload_json  TEXT,
-    created_at    INTEGER NOT NULL,
-    updated_at    INTEGER NOT NULL
-);
-CREATE UNIQUE INDEX IF NOT EXISTS ux_step_record_no ON trade_record_step (record_id, step_no);
-
 -- 用户给交易记录打的自定义标签（标签是记录的一部分 → 真级联）
 CREATE TABLE IF NOT EXISTS trade_record_tag (
     record_id  TEXT NOT NULL REFERENCES trade_record (id) ON DELETE CASCADE,
@@ -254,10 +259,11 @@ CREATE TABLE IF NOT EXISTS trade_order (
     status        TEXT NOT NULL,     -- OPEN / FILLED / CANCELLED
     price         TEXT NOT NULL,
     quantity      TEXT NOT NULL,
+    -- 「哪一根」只有一个答案：时间。**没有 placed_index / filled_index**（2026-10-29 删）——
+    -- 下标是位置，数据文件重抓 / 补一根 / 删一根坏行就指向另一根 K 线，且不报错；
+    -- 它还只在某个标的下成立，而账户不绑标的。排序用 placed_at_bar（明文定长，字典序=时间序）。
     placed_at_bar TEXT NOT NULL,
-    placed_index  INTEGER NOT NULL,
-    filled_at_bar TEXT,
-    filled_index  INTEGER NOT NULL DEFAULT -1,  -- -1 = 没成交
+    filled_at_bar TEXT,             -- NULL = 没成交（不再用 -1 这种哨兵值）
     fill_price    TEXT,
     oco_group     TEXT,              -- 同一组最多成交一张；NULL = 独立挂单
     created_at    INTEGER NOT NULL,
@@ -273,6 +279,9 @@ CREATE TABLE IF NOT EXISTS trade (
     symbol_id       TEXT NOT NULL REFERENCES symbol (id),  -- 成交在哪个品种上
     order_id        TEXT NOT NULL,
     bar_time        TEXT NOT NULL,
+    -- 成交流水号：同一账户内从 1 起单调递增。**排序只认它，不认 id**
+    -- （id 是 UUID，同一根 K 线上多笔成交按它排等于随机排，均价会在反手时算错）。
+    seq             INTEGER NOT NULL,
     side            TEXT NOT NULL,
     price           TEXT NOT NULL,
     quantity        TEXT NOT NULL,
@@ -283,22 +292,53 @@ CREATE TABLE IF NOT EXISTS trade (
     updated_at      INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_trade_account ON trade (account_id, symbol_id, bar_time);
+CREATE UNIQUE INDEX IF NOT EXISTS ux_trade_account_seq ON trade (account_id, seq);
 CREATE INDEX IF NOT EXISTS idx_trade_record ON trade (trade_record_id);
 
--- 操作记录：append-only 的审计流水。
+-- 复盘进度：**这张表已于 2026-10-29 删除**，进度改为「最后一条事件的 bar_time」。
+--
+-- 原来的理由是「唯一一种算不出来、必须存的状态」。那个理由只在「没有全量操作记录」的
+-- 前提下成立 —— 一旦每个动作都记进了 audit_event，进度就是
+-- 「这个账户在这个品种上最后一条事件停在哪根 K 线」，查一次就有。
+-- 同一份状态留两个来源，早晚会对不上（改了一条、忘了改另一条）。
+--
+-- 中间曾经加过一列 cursor（第几根的下标）来顶替它，同一天又删了：
+-- **下标是位置，时间是标识**。文件重抓 / 补一根 / 删一根坏行，同一个下标就指向另一根
+-- K 线而且不报错；时间永远指向原来那颗。位置类字段在这个库里已经全部清掉
+-- （连同 trade_order 的 placed_index / filled_index、prop_firm_account 的 start_bar_index）。
+--
+-- 旧库里的表不会自动消失（本脚本只管建，不管删）。要清掉它，手工执行：
+--   DROP TABLE IF EXISTS replay_cursor;
+-- 旧库还需要重建才能拿到 audit_event / trade_record 的新列，见 SERVER.md。
+
+-- 操作记录：append-only 的审计流水。**它是整个「记录 / 回放」的唯一日志层。**
 -- account_id **NOT NULL 且故意不加外键**：任何改写（包括 SET NULL）都会让这条流水
 -- 不再是「当时发生的事实」。账户删了这里仍保留原 id，指向一个不存在的账户不丢信息。
+--
+-- symbol_id / bar_time 是 2026-10-29 加的，之前它们只在 payload_json 里：
+--   · symbol_id —— 一个账户可同时做 MES / MNQ / MGC，seq 是混着排的，
+--                  没有这一列「这个品种从第几步到第几步」只能全表拉回内存逐条解析；
+--   · bar_time  —— 交易记录的区间回放要按 K 线定位、按时间过滤，也是进度本身。
+-- 两列都 NOT NULL：所有动作都发生在某块盘面的某根 K 线上（包括「退出」）。
 CREATE TABLE IF NOT EXISTS audit_event (
     id           TEXT PRIMARY KEY,
     account_id   TEXT NOT NULL,      -- 保留原账户 id，永不改写/置空
+    symbol_id    TEXT NOT NULL,      -- 发生在哪个品种的盘面上；不加外键（同 account_id 的理由）
+    bar_time     TEXT NOT NULL,      -- 当时停在哪根 K 线上（本地时区明文）；**这就是位置**
     seq          INTEGER NOT NULL,
     actor        TEXT NOT NULL,      -- JAVA 常量名：HUMAN / BOT / SYSTEM
     action       TEXT NOT NULL,      -- JAVA 常量名：BAR_ADVANCED / ORDER_PLACED …（见 ReplayAction）
-    payload_json TEXT,               -- 原始广播负载，原样留存
+    payload_json TEXT,               -- 原始广播负载，原样留存；BASE 事件可为 NULL
     created_at   INTEGER NOT NULL,
     updated_at   INTEGER NOT NULL
 );
 CREATE UNIQUE INDEX IF NOT EXISTS ux_audit_account_seq ON audit_event (account_id, seq);
+-- 「这个账户在这个品种上盘面停在哪」全靠它：找回进度、按品种切片回放
+CREATE INDEX IF NOT EXISTS idx_audit_account_symbol ON audit_event (account_id, symbol_id, seq);
+
+-- 没有 account_id / symbol_id 的「全局操作」（例如新建标的）不在这张表里。
+-- 需要这类流水时应另开一张表，不要把这两列放开成 NULL —— 一放开，
+-- 「这条属于哪块盘面」就有了空答案，而回放和进度都建立在「必有答案」之上。
 
 -- 策略：注册表。真正的算法是 strategy 包里的 Java 类，这张表只记「有哪些 + 参数」
 CREATE TABLE IF NOT EXISTS strategy (

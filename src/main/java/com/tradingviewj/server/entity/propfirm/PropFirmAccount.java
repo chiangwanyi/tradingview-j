@@ -108,20 +108,64 @@ public class PropFirmAccount extends BaseEntity {
     private Instant startedAt;
 
     /**
+     * 起点那根 K 线的明文时间，如 {@code 2024-03-04 09:00}。
+     *
+     * <p><strong>这是「模拟时间」的零点，不是建户时刻。</strong> {@link #startedAt} 是真实时钟
+     * （account 这一行是什么时候写进库的），这里记的是<strong>行情时间轴上的哪一根</strong>。
+     * 两者必须分开：补录、回看、换机器都不会改变「这笔考核从哪一根开始」，
+     * 而 {@code startedAt} 每次重建库都会变。
+     *
+     * <p>它由 {@code service.PropFirmStartPicker} 在开账户时随机抽出，此后
+     * <strong>永不改动</strong>：日历的「首月」、可交易日的下界、回放的起点全部由它推出来。
+     * 改一次，这个账户的所有历史都跟着挪位置。
+     */
+    @Column(nullable = false, updatable = false)
+    private String startBarTime;
+
+    /**
+     * 起点所在的日文件名（{@code 2024-03-04.csv}，不含目录）。
+     *
+     * <p>按 {@code startBarTime} 前 10 位拼也拼得出来，留着它是一个<strong>名字</strong>
+     * 而不是一个位置：文件名不会因为文件内容变了而指向别的一天，所以它不会撒谎。
+     * 存下来是为了让「当时读的是哪一份」这件事不必靠字符串切片回答。
+     */
+    @Column(nullable = false, updatable = false)
+    private String startDayFile;
+
+    /**
      * 按模板开一个账户。规则在这一刻<strong>复制</strong>进来，此后与模板无关。
      *
      * <p>阶段由模板决定：拿 FUNDED 模板建出来的账户直接从 FUNDED 开始
      * （「有的是创建的时候就是 FUNDED」就是这条路径），流水里只会有 CREATED 一行。
      *
+     * <p><strong>起点也是这一刻定的</strong>，而且必须有值：账户建出来就能开始看盘，
+     * 没有「建好了但还没开始」这个状态。所以起点字段在库里是 {@code NOT NULL}
+     * —— 允许 null 的话，每个读起点的地方都要处理一个谁也到不了的空值。
+     * （2026-10-29 用户确认：起始日期在创建账户后由系统随机分配，定位到当天 09:00。）
+     *
+     * <p><strong>起点只有一个键：K 线时间。</strong> 曾经还有一个「在那份日文件里的下标」，
+     * 已删除（2026-10-29）—— 位置会被内容悄悄改变（文件重新抓取、补一根、删一根坏行，
+     * 同一个下标就指向另一根 K 线，而且不报错），而且它只在「抽中的那个标的」下成立：
+     * 账户不绑标的，同一个下标在 MES / CL 上就是两根不同的 K 线。时间不会撒这个谎。
+     *
      * @param template 规则来源（它的 {@code stage} 就是新账户的初始阶段）
      * @param name     账户名（用户自己起，例如「LucidFlex 50K 第一次」）
+     * @param startBarTime 系统抽中的起点 K 线明文，<strong>不能为空</strong>
+     * @param startDayFile 起点所在的日文件名，<strong>不能为空</strong>
      */
-    public static PropFirmAccount open(PropFirmTemplate template, String name) {
+    public static PropFirmAccount open(PropFirmTemplate template, String name,
+                                       String startBarTime, String startDayFile) {
         if (name == null || name.isBlank()) {
             throw new IllegalArgumentException("账户必须有名字，收到: " + name);
         }
         if (template == null || template.getRules() == null) {
             throw new IllegalArgumentException("账户必须有模板和规则，收到: " + template);
+        }
+        if (startBarTime == null || startBarTime.isBlank()) {
+            throw new IllegalArgumentException("账户必须有起点 K 线时间，收到: " + startBarTime);
+        }
+        if (startDayFile == null || startDayFile.isBlank()) {
+            throw new IllegalArgumentException("账户必须记着起点在哪份日文件里，收到: " + startDayFile);
         }
         Instant now = Instant.now();
         PropFirmAccount account = new PropFirmAccount();
@@ -135,6 +179,8 @@ public class PropFirmAccount extends BaseEntity {
         account.stageStartedAt = now;
         account.status = Status.ACTIVE;
         account.startedAt = now;
+        account.startBarTime = startBarTime;
+        account.startDayFile = startDayFile;
         return account;
     }
 
@@ -154,26 +200,18 @@ public class PropFirmAccount extends BaseEntity {
     }
 
     /**
-     * 记一笔已实现净额（成交毛利 − 手续费）。
-     *
-     * <p>调用方是撮合/评估那一层，每次平仓都会调一次 —— 余额<strong>不等日终</strong>。
-     */
-    public void applyNetPnl(BigDecimal netPnl) {
-        if (netPnl == null) {
-            return;
-        }
-        this.balance = this.balance.add(netPnl);
-    }
-
-    /**
      * 把权威实现（{@code service.PropFirmSession}）算出来的余额和峰值同步过来。
      *
      * <p>这两个列是<strong>缓存</strong>：真值在「成交流水 + 规则快照」里，
      * 任何时候都可以从阶段起点重算一遍。写成缓存而不是每次现算，是因为界面上
      * 「还剩多少回撤」要显示在每一根 K 线上，每根都扫一遍成交不划算。
      *
-     * <p>所以这里<strong>不做校验</strong>：它只是在追平一个已经算好的结果。
-     * 想让余额变，正确做法是产生成交，不是调这个方法。
+     * <p><strong>这是修改余额的唯一入口，而且只用来「追平一个已经算好的结果」。</strong>
+     * 曾经有一个 {@code applyNetPnl(netPnl)} 做增量累加，已经删掉 —— 它和这里
+     * 各算一遍，两条路必然分叉，而且增量那条很容易漏掉开仓那一笔的手续费
+     * （开仓的已实现盈亏是 0、净额是 {@code -commission}，只在平仓时累加就只扣了一半）。
+     *
+     * <p>想让余额变，正确做法是产生成交，然后重算并调这个方法。
      */
     public void syncComputed(BigDecimal balance, BigDecimal eodPeak) {
         if (balance != null) {

@@ -12,6 +12,7 @@ import lombok.NoArgsConstructor;
 import lombok.Setter;
 
 import java.math.BigDecimal;
+import java.util.Comparator;
 
 /**
  * 一笔成交 = 一次挂单被触发。
@@ -64,6 +65,20 @@ public class Trade extends BaseEntity {
     @Column(nullable = false)
     private String barTime;
 
+    /**
+     * 成交流水号：同一账户内从 1 起单调递增。
+     *
+     * <p><strong>排序只认它。</strong> 同一根 K 线上可以有多笔成交（止损平仓 + 反手开仓、
+     * 两个品种同一时刻各成交一笔），这时按 {@code barTime} 排是分不出先后的，
+     * 而按主键（UUID）排等于随机排 —— 均价和已实现盈亏会在反手、部分平仓这些边界上算错，
+     * 而且每次重启错得还不一样，是最难查的一类 bug。
+     *
+     * <p>由写入方在同一事务里取 {@code max(seq) + 1}（单账户单写者，不需要锁）。
+     * 它不是数据库自增列：复盘里的成交是「先有对象再落库」，seq 在落库前就要用来排序。
+     */
+    @Column(nullable = false, updatable = false)
+    private int seq;
+
     @Column(nullable = false)
     @Enumerated(EnumType.STRING)
     private Side side;
@@ -113,18 +128,24 @@ public class Trade extends BaseEntity {
      * @param accountId  在哪个 PF 账户里成交，<strong>不能为空</strong>：成交只可能发生在
      *                   某个考核期里。允许为空的列只是为「账户被删」留的出口
      * @param symbolId   在哪个品种上成交，<strong>不能为空</strong>：账户不再绑定单个品种
+     * @param seq        成交流水号，<strong>必须为正</strong>：同一账户内单调递增，
+     *                   见 {@link #seq}。它不是可选装饰 —— 没有它就没法确定同一根 K 线上
+     *                   多笔成交的先后
      * @param commission 这一笔的单边手续费，<strong>不能为空</strong>：没配手续费就不该有成交，
      *                   否则净盈亏算出来是错的还看不出来
-     * @throws IllegalArgumentException 没给账户 / 标的 / 手续费
+     * @throws IllegalArgumentException 没给账户 / 标的 / 手续费，或者 seq 不是正数
      */
-    public static Trade fill(String accountId, String symbolId, String orderId, String barTime, Side side,
-                             BigDecimal price, BigDecimal quantity, BigDecimal realizedPnl,
+    public static Trade fill(String accountId, String symbolId, String orderId, String barTime, int seq,
+                             Side side, BigDecimal price, BigDecimal quantity, BigDecimal realizedPnl,
                              BigDecimal commission) {
         if (accountId == null || accountId.isBlank()) {
             throw new IllegalArgumentException("成交必须发生在某个 PF 账户里，收到: " + accountId);
         }
         if (symbolId == null || symbolId.isBlank()) {
             throw new IllegalArgumentException("成交必须发生在某个标的上，收到: " + symbolId);
+        }
+        if (seq <= 0) {
+            throw new IllegalArgumentException("成交流水号必须从 1 开始，收到: " + seq);
         }
         if (commission == null) {
             throw new IllegalArgumentException("成交必须带手续费（可以为 0，但不能没有）");
@@ -134,12 +155,23 @@ public class Trade extends BaseEntity {
         trade.symbolId = symbolId;
         trade.orderId = orderId;
         trade.barTime = barTime;
+        trade.seq = seq;
         trade.side = side;
         trade.price = price;
         trade.quantity = quantity;
         trade.realizedPnl = realizedPnl;
         trade.commission = commission;
         return trade;
+    }
+
+    /**
+     * 成交的正确先后顺序：先按 K 线时间，同一根再按 {@link #seq}。
+     *
+     * <p>放在这里是为了让「重放前怎么排」只有一个答案。{@code TradeLedger.replay} 的入参
+     * 要求按顺序排好，调用方各自写一个 comparator 迟早有人写成按 id 排。
+     */
+    public static Comparator<Trade> executionOrder() {
+        return Comparator.comparing(Trade::getBarTime).thenComparingInt(Trade::getSeq);
     }
 
     /**

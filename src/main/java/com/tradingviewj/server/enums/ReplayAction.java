@@ -1,15 +1,17 @@
 package com.tradingviewj.server.enums;
 
 /**
- * 复盘里会发生的<strong>动作</strong>。同时用作「操作记录的动作」和「交易记录里一步的类型」。
+ * 复盘里会发生的<strong>动作</strong>。目前用作「操作记录的动作」（{@code AuditEvent.action}）。
  *
- * <p>为什么两处共用一个枚举：交易记录的「一步」就是<strong>一条放行的广播</strong>开出来的
- * （点一次【下一根】、画一个图形、拖一次挂单价、录一段音，各占一步），所以
- * {@code AuditEvent.action} 和 {@code TradeRecordStep.kind} 的取值域本来就是同一套。
- * 拆成两个枚举没有任何好处，只会让两边慢慢长歪。
+ * <p>它曾经同时是交易记录里一步的类型：一步就是<strong>一条放行的广播</strong>
+ * （点一次【下一根】、画一个图形、拖一次挂单价、录一段音，各占一步）。交易记录改成
+ * <strong>引用 {@code audit_event} 的序号区间</strong>之后（2026-10-29），「一步」和
+ * 「一条审计流水」终于是同一个东西了 —— 不需要再有一张步骤表来重复记一遍。
  *
- * <p>{@link #BASE} 是唯一的例外：它不是广播，是交易记录的<strong>第 0 步</strong>
- * （开仓之前那一屏的完整快照）。放在这里是因为它在协议里就写在同一个字段上。
+ * <p>{@link #BASE} 由此获得了写入方：它是交易记录的<strong>第 0 步</strong>
+ * （开仓之前那一屏），见 {@code AuditEvent#base}。{@link #RECORDING_AUDIO} 仍然没有写入方
+ * —— 语音现在按 {@code audio_clip.bar_time} 落在区间内取，不需要单独占一条流水。
+ * 两个取值都留着，是因为它们出现在已落库的历史审计负载里，删掉会让老数据读不回来。
  *
  * <p><strong>库里存 Java 常量名</strong>（{@code BAR_ADVANCED} / {@code ORDER_PLACED} …），
  * 靠字段上的 {@code @Enumerated(EnumType.STRING)}，没有转换器参与。
@@ -66,9 +68,9 @@ public enum ReplayAction {
     VOICE_ADDED,
     /** 清掉了某根 K 线上的语音。 */
     VOICE_CLEARED,
-    /** 交易记录里的语音步：画面不动，但语音该响。 */
+    /** 遗留：曾经是交易记录里的语音步（画面不动，但语音该响）。 */
     RECORDING_AUDIO,
 
-    /** 交易记录的第 0 步 —— 开仓**之前**那一屏。不是广播，是起点快照。 */
+    /** 交易记录的<strong>第 0 步</strong>：开仓**之前**那一屏。由 {@code AuditEvent#base} 写入。 */
     BASE
 }

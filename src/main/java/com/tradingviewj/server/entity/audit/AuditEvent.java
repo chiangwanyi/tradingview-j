@@ -13,13 +13,34 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 
 /**
- * 一条操作记录。<strong>只追加，永不修改、永不删除</strong>。
+ * 一条操作记录。**只追加，永不修改、永不删除**。
  *
- * <p><strong>职责边界</strong>：它回答「谁在什么时候对哪个 PF 账户做了什么」。
+ * <h2>它是「日志」，不是「状态」</h2>
+ *
+ * <p>职责边界：它回答「<strong>谁、在哪根 K 线上、游标第几根、做了什么</strong>」。
  * 它<strong>不是</strong>业务状态的来源 —— 图形、挂单、成交各自有自己的表。
- * 这条分界很重要：如果靠重放操作记录来还原状态，那么一次转发/合并出错就会让
- * 整块盘面的状态永久错位；而独立存表的话，最坏情况是「审计流水少了一条」，
- * 盘面本身还是对的。
+ * 这条分界不能破：如果靠重放操作记录来还原状态，那么一次漏写就会让整块盘面的状态
+ * 永久错位；而独立存表的话，最坏情况是「审计流水少了一条」，盘面本身还是对的。
+ *
+ * <p>反过来，这条日志确实<strong>能</strong>独立回答两件别处答不出来的事：
+ *
+ * <ol>
+ *   <li><strong>操作的先后顺序</strong>（含同一根 K 线里的多次操作）。成交有
+ *       {@code Trade.seq}，但「先画了线再挂单」这种盘面动作只有这里按 {@link #seq} 记着。</li>
+ *   <li><strong>用户看到第几根</strong>：最后一条事件的 {@link #barTime}。
+ *       这一列是 2026-10-29 的答案 —— {@code replay_cursor} 表当天删了，进度不再单独存；
+ *       中间曾经加过一个 {@code cursor}（第几根的下标），同一天又删了：下标是位置，
+ *       文件内容一变就指向另一根 K 线，而时间是标识。</li>
+ * </ol>
+ *
+ * <h2>为什么 {@link #symbolId} / {@link #barTime} 抽成真列</h2>
+ *
+ * <p>它们本来只在 {@link #payloadJson} 里，靠解析 JSON 也能拿到。抽出来的理由是
+ * <strong>查询</strong>：一个账户可以同时做 MES / MNQ / MGC，而 {@link #seq} 是账户内
+ * 全局连续的 —— 没有 {@code symbol_id}，「这个品种从第几步到第几步」就只能把整个账户的
+ * 流水拉回内存再逐条解析。逐 K 回放每次打开记录都要做这件事，不能这么做。
+ *
+ * <h2>payload 为什么是字符串</h2>
  *
  * <p>{@link #payloadJson} 存原始广播负载的 JSON 文本，而不是像 Go 版那样用
  * {@code any}（Java 里是 {@code Object}）。用 {@code Object} 的代价是：反序列化时
@@ -51,6 +72,23 @@ public class AuditEvent extends BaseEntity {
     @Column(nullable = false)
     private String accountId;
 
+    /**
+     * 这一步发生在哪个品种的盘面上。
+     *
+     * <p>不是从账户推的：账户可以同时做 MES / MNQ / MGC，同一个 {@link #seq} 空间里
+     * 各品种的操作是混着排的。逐 K 回放要按品种过滤，靠这一列。
+     *
+     * <p>NOT NULL：所有动作都发生在某块盘面上，包括「退出」—— 退出时盘面停在某一根 K 线，
+     * 那根的时间是有的。如果将来真出现一个没有盘面的动作（例如「改账户名」），
+     * 它不该混进这张表，而是另开一张。
+     */
+    @Column(nullable = false)
+    private String symbolId;
+
+    /** 这一步发生时，盘面停在哪根 K 线上（本地时区明文，和 CSV 一致）。 */
+    @Column(nullable = false)
+    private String barTime;
+
     /** 账户内的自增序号，从 0 起。断档就说明某次广播没落库。 */
     @Column(nullable = false)
     private int seq;
@@ -65,7 +103,7 @@ public class AuditEvent extends BaseEntity {
     @Column(nullable = false)
     private ReplayAction action;
 
-    /** 这次操作的原始负载（JSON 文本）。 */
+    /** 这次操作的原始负载（JSON 文本）。起点事件没有负载，见 {@link #base}。 */
     @Column
     private String payloadJson;
 
@@ -73,18 +111,55 @@ public class AuditEvent extends BaseEntity {
      * 记一条操作流水。
      *
      * @param accountId 算在哪个 PF 账户头上，<strong>不能为空</strong>
-     * @throws IllegalArgumentException 没给账户
+     * @param symbolId  发生在哪个品种的盘面上，<strong>不能为空</strong>
+     * @param barTime   当时停在哪根 K 线上，<strong>不能为空</strong>
+     * @param seq       账户内序号，<strong>不能为负</strong>（从 0 起）
+     * @throws IllegalArgumentException 缺账户 / 品种 / K 线时间，或序号为负
      */
-    public static AuditEvent of(String accountId, int seq, Actor actor, ReplayAction action, String payloadJson) {
-        if (accountId == null || accountId.isBlank()) {
-            throw new IllegalArgumentException("操作记录必须归属一个 PF 账户，收到: " + accountId);
+    public static AuditEvent of(String accountId, String symbolId, String barTime,
+                                int seq, Actor actor, ReplayAction action, String payloadJson) {
+        requireText(accountId, "操作记录必须归属一个 PF 账户");
+        requireText(symbolId, "操作记录必须发生在某个标的的盘面上");
+        requireText(barTime, "操作记录必须记着当时停在哪根 K 线上");
+        if (seq < 0) {
+            throw new IllegalArgumentException("操作记录的序号从 0 起，收到: " + seq);
         }
         AuditEvent event = new AuditEvent();
         event.accountId = accountId;
+        event.symbolId = symbolId;
+        event.barTime = barTime;
         event.seq = seq;
         event.actor = actor;
         event.action = action;
         event.payloadJson = payloadJson;
         return event;
+    }
+
+    /**
+     * 交易记录的<strong>第 0 步</strong>：开仓之前那一屏。
+     *
+     * <p>{@link ReplayAction#BASE} 是一个特殊取值：它不是「用户做了什么」，而是
+     * 「回放从这里开始」的定位点。{@code TradeRecord.startSeq} 就指着它。
+     *
+     * <p><strong>它不带盘面快照。</strong>Go 版把整份盘面（K 线 + 图形 + 挂单 + 成交 + 持仓）
+     * 塞进了 Base 里，等于同一份盘面存两遍。这里不复制：起点盘面由
+     * 「{@code Drawing} / {@code AudioClip} / {@code Order} / {@code Trade} 按 {@link #barTime}
+     * 及之前过滤」现算 —— 代价是还原的是<strong>现在</strong>的样子（图形被拖动过就看不到原来的），
+     * 那是「图形不做版本化」的已知边界，不是这里省事省出来的。
+     */
+    public static AuditEvent base(String accountId, String symbolId, String barTime,
+                                  int seq, Actor actor) {
+        return of(accountId, symbolId, barTime, seq, actor, ReplayAction.BASE, null);
+    }
+
+    /** 是不是交易记录的起点事件。 */
+    public boolean isBase() {
+        return action == ReplayAction.BASE;
+    }
+
+    private static void requireText(String value, String message) {
+        if (value == null || value.isBlank()) {
+            throw new IllegalArgumentException(message + "，收到: " + value);
+        }
     }
 }
