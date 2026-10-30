@@ -14,6 +14,13 @@ PF 模板的五个入口（前端 `webapp/` 就在用这几个）：`GET|POST /a
 （阶段在链上，改不了）；实体抛的 `IllegalArgumentException` 由 `GlobalExceptionHandler` 转成
 400 + 原始中文原因，别再让它掉进 500。
 
+PF 账户的入口（`PropFirmAccountController`）：`GET /api/pf-accounts?status=ACTIVE|FAILED`、
+`GET|PUT|DELETE /api/pf-accounts/{id}`、`POST /api/pf-accounts`（`PropFirmAccountRequest`：
+`templateId` 必填、规则此刻复制进账户）、`POST /{id}/promote`、`POST /{id}/fail`、
+`GET /{id}/stages`。**没有「改余额」和「重置」接口**：余额只能由成交重算后经
+`syncFromSession` 追平，手改会让账和成交流水对不上。`promote` 在 PAYOUT 上会被拒（否则余额会被
+再重置一次，前两个阶段的账就擦掉了）。
+
 **Swagger 两个坑**（`OpenApiDocsTest` 钉住）：`UNWRAPPED_PACKAGES` 必须含 `org.springdoc`，否则文档端点也被
 包成 `{code,msg,data}`、页面**白屏**；响应结构也要补外壳（springdoc 只看方法签名），由 `OpenApiConfig` 做。
 

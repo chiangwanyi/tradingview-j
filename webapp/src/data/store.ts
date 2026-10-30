@@ -1,6 +1,9 @@
 import { reactive } from 'vue'
 
+import { call, send } from './api'
 import type { Template } from './rules'
+
+export { errorText } from './api'
 
 /*
  * 模板走后端 `PropFirmTemplateController`（/api/pf-templates）。
@@ -12,26 +15,6 @@ import type { Template } from './rules'
  */
 
 const BASE = '/api/pf-templates'
-
-interface Envelope<T> {
-  code: number
-  msg: string
-  data: T
-}
-
-/** 统一响应体（见后端 api/R.java）：code 0 才算成功，其余都是业务错误。 */
-async function call<T>(url: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(url, init)
-  const body = (await res.json().catch(() => null)) as Envelope<T> | null
-  if (!body || body.code !== 0) throw new Error(body?.msg || `HTTP ${res.status}`)
-  return body.data
-}
-
-const send = (method: 'POST' | 'PUT', body: unknown): RequestInit => ({
-  method,
-  headers: { 'Content-Type': 'application/json' },
-  body: JSON.stringify(body),
-})
 
 /** 建和改共用一个请求体；update 时后端会忽略 stage（阶段建出来之后不能改）。 */
 const payload = (t: Template) => ({
@@ -93,9 +76,4 @@ export function blank(): Template {
       positionTiers: [],
     },
   }
-}
-
-/** 把 catch 到的东西变成一句能给用户看的话。 */
-export function errorText(e: unknown): string {
-  return e instanceof Error ? e.message : String(e)
 }

@@ -184,6 +184,19 @@ public class PropFirmAccount extends BaseEntity {
         return account;
     }
 
+    /**
+     * 改账户名。改名<strong>不是</strong>对盘面的操作，所以失败（{@code FAILED}）的账户也能改 ——
+     * 它只是一个标签，不影响余额、回撤和阶段流水。
+     *
+     * @throws IllegalArgumentException 名字为空
+     */
+    public void rename(String name) {
+        if (name == null || name.isBlank()) {
+            throw new IllegalArgumentException("账户必须有名字，收到: " + name);
+        }
+        this.name = name;
+    }
+
     /** 还能不能往上挂操作（下单、画图、录音、起机器人）。 */
     public boolean isOpen() {
         return status == Status.ACTIVE;

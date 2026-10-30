@@ -2,14 +2,15 @@
 import { nextTick, ref } from 'vue'
 
 import AppSidebar from '@/components/AppSidebar.vue'
+import AccountsView from '@/views/AccountsView.vue'
 import PlaceholderView from '@/views/PlaceholderView.vue'
 import TemplatesView from '@/views/TemplatesView.vue'
 
-const active = ref('templates')
+/** 进应用先看账户：模板是配置，账户才是每天要看的东西。 */
+const active = ref('accounts')
 
-/** 只有「账户模板」有页面，其余导航项给个占位。 */
+/** 有页面的两项接了 view，其余导航项给个占位。 */
 const LABEL: Record<string, string> = {
-  accounts: '账户列表',
   leaderboard: '排行榜',
   payouts: '出金',
   certificates: '证书',
@@ -17,21 +18,28 @@ const LABEL: Record<string, string> = {
   profile: '我的资料',
 }
 
-const view = ref<InstanceType<typeof TemplatesView>>()
+const templates = ref<InstanceType<typeof TemplatesView>>()
+const accounts = ref<InstanceType<typeof AccountsView>>()
 
+/** 左边栏那个「+」按当前页面分流：在模板页建模板，其余一律建账户。 */
 async function add(): Promise<void> {
-  if (active.value !== 'templates') {
-    active.value = 'templates'
+  if (active.value === 'templates') {
+    templates.value?.openNew()
+    return
+  }
+  if (active.value !== 'accounts') {
+    active.value = 'accounts'
     await nextTick()
   }
-  view.value?.openNew()
+  accounts.value?.openNew()
 }
 </script>
 
 <template>
   <div class="flex h-full min-h-0">
     <AppSidebar :active="active" @select="active = $event" @add="add" />
-    <TemplatesView v-if="active === 'templates'" ref="view" />
+    <AccountsView v-if="active === 'accounts'" ref="accounts" />
+    <TemplatesView v-else-if="active === 'templates'" ref="templates" />
     <PlaceholderView v-else :title="LABEL[active] ?? active" />
   </div>
 </template>

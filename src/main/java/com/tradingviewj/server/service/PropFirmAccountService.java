@@ -135,7 +135,8 @@ public class PropFirmAccountService {
      *   <li>把当前阶段那段流水结掉（写入结束余额、单日最大盈利、盈利日数）；</li>
      *   <li>账户换规则、换余额基准（<strong>余额重置回账户规模</strong>，EVAL 的盈利不带进 FUNDED）；</li>
      *   <li>开一段新的流水（{@code reason=PROMOTED}）；</li>
-     *   <li>{@code FUNDED → PAYOUT} 时顺带把账户置成 {@code COMPLETED}（终态，不再交易）。</li>
+     *   <li>{@code FUNDED → PAYOUT} 时不开新流水之外的额外动作：{@code status} 保持 ACTIVE，
+     *       「不再交易」由 {@code stage} 表达（{@code COMPLETED} 这个状态已废弃）。</li>
      * </ol>
      *
      * @param session 判出升级的那个会话，用来把统计量写进流水；可以传 {@code null}
@@ -145,6 +146,11 @@ public class PropFirmAccountService {
     @Transactional
     public PropFirmAccount promote(String accountId, PropFirmSession session) {
         PropFirmAccount account = requireActive(accountId);
+        if (account.getStage() == PropFirmStage.PAYOUT) {
+            // PAYOUT 是链的尽头。没有这一条的话，「else → PAYOUT」会把已经在 PAYOUT 的账户
+            // 再"升"一次 PAYOUT：余额被重置回账户规模，EVAL/FUNDED 的账就这么被擦掉了。
+            throw new BusinessException("PF 账户已在 PAYOUT 阶段，没有下一阶段可升: " + accountId);
+        }
         PropFirmStage next = account.getStage() == PropFirmStage.EVAL
                 ? PropFirmStage.FUNDED
                 : PropFirmStage.PAYOUT;
@@ -219,10 +225,36 @@ public class PropFirmAccountService {
                 account.netProfitInStage(), symbolId, netAfterFill);
     }
 
-    /** 还在考核中的账户（前端列表用）。 */
+    /** 取一个账户，不判断「能不能往上挂操作」—— 那是 {@link #requireActive} 的事。 */
     @Transactional(readOnly = true)
-    public List<PropFirmAccount> listActive() {
-        return accounts.findByStatus(PropFirmAccount.Status.ACTIVE);
+    public PropFirmAccount get(String accountId) {
+        return accounts.findById(accountId)
+                .orElseThrow(() -> new BusinessException("PF 账户不存在: " + accountId));
+    }
+
+    /**
+     * 账户列表，新建的在前。
+     *
+     * @param status {@code null} = 全部（含 {@code FAILED}）
+     */
+    @Transactional(readOnly = true)
+    public List<PropFirmAccount> list(PropFirmAccount.Status status) {
+        return status == null
+                ? accounts.findAllByOrderByStartedAtDesc()
+                : accounts.findByStatusOrderByStartedAtDesc(status);
+    }
+
+    /**
+     * 改账户名。<strong>走 {@link #get} 而不是 {@link #requireActive}</strong>：
+     * 改名不是对盘面的操作，失败或走到 PAYOUT 的账户也应该能改成「2024 第一次考挂的那个」。
+     *
+     * @throws BusinessException 账户不存在；或缺名字（实体校验失败）
+     */
+    @Transactional
+    public PropFirmAccount rename(String accountId, String name) {
+        PropFirmAccount account = get(accountId);
+        account.rename(name);
+        return accounts.save(account);
     }
 
     /** 这个账户当过的所有阶段，按进入顺序（「考来的」和「直接开的」看行数）。 */

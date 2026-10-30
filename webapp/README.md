@@ -1,6 +1,6 @@
 # webapp
 
-PF（自营盘）账户模板管理的前端。左边菜单、右边内容，右侧那块空间以后要接「账户列表」。
+PF（自营盘）的前端：**账户总览**（首页）和**账户模板**。左边菜单、右边内容。
 
 ```
 npm install
@@ -11,9 +11,15 @@ npm run build   # 类型检查 + 生成 dist/
 
 ## 数据在哪
 
-**在后端**：`/api/pf-templates`（后端 `controller/PropFirmTemplateController.java`，
-表 `prop_firm_template`）。前端只缓存一份列表在 `src/data/store.ts` 的 `store.list` 里，
-任何写操作之后重新拉一遍 —— 服务端是唯一事实来源。
+**在后端**，前端不自己算账：
+
+- `/api/pf-templates`（`PropFirmTemplateController`，表 `prop_firm_template`）—— 模板列表缓存在
+  `src/data/store.ts` 的 `store.list`。
+- `/api/pf-accounts`（`PropFirmAccountController`，表 `prop_firm_account`）—— 账户列表在
+  `views/AccountsView.vue` 里，卡片自己再按需拉 `/stages`。
+
+任何写操作之后重新拉一遍 —— 服务端是唯一事实来源。余额、阶段、规则快照都由后端给，
+前端**不**用成交自己算一遍（两处算法必然分叉）。
 
 开发前先把后端跑起来（`./mvnw spring-boot:run`，127.0.0.1:8791）；
 `vite.config.ts` 里配了 `/api` → 8791 的 proxy，所以前端只写相对路径 `/api/...`。
@@ -25,14 +31,19 @@ npm run build   # 类型检查 + 生成 dist/
 
 ```
 src/
-  App.vue                    左右两栏；导航切换 + 「新建模板」把编辑框叫起来
+  App.vue                    左右两栏；导航切换 + 「+」按当前页分流（建账户 / 建模板）
+  views/AccountsView.vue     账户总览：筛选（全部/进行中/已失败）+ 卡片网格 + 新建弹窗
   views/TemplatesView.vue    标题 / 阶段筛选 / 卡片横向翻页 / 弹窗挂载点
   views/PlaceholderView.vue  还没做的导航项
   components/AppSidebar.vue  左侧菜单
+  components/AccountCard.vue 一张考核卡（余额/目标/回撤/进度条/升级/改名/流水）
+  components/AccountDialog.vue 开账户：选模板 + 起名
   components/PlanCard.vue    一张模板卡
   components/TemplateDialog.vue 建 / 改（表单里全是字符串，提交时才转成数字）
   data/rules.ts              类型 + validate + 金额/比例格式化 —— **校验口径的唯一实现**
-  data/store.ts              调 /api/pf-templates：列表缓存、建/改/删、删后断链、错误文案
+  data/accounts.ts           调 /api/pf-accounts：增删改查、升级/判失败、阶段流水、进度算给人看
+  data/store.ts              调 /api/pf-templates：列表缓存、建/改/删、删后断链
+  data/api.ts                统一响应体拆包 + JSON 请求体 + 错误文案（两份 store 共用）
 scripts/rules-check.mts      validate 的自检，node --experimental-strip-types 直接跑
 ```
 
@@ -45,6 +56,9 @@ scripts/rules-check.mts      validate 的自检，node --experimental-strip-type
 - **Daily Loss Limit**：同样不在规则里，没有编造。
 - 顶部的 Pro / Flex / Daily / Direct 段切换，这里当**阶段筛选**（全部 / EVAL / FUNDED / PAYOUT），
   因为模板唯一能分类的维度就是阶段。
+- 首页账户卡上的 **Trading Days / 一致性百分比**：要按成交逐根重算，本页没有这两项，
+  卡片放的是账户行里现成的余额 / 目标 / 回撤线 / 一致性上限和阶段起点，不编数字。
+  参考图的 **Reset** 按钮也不做 —— 余额只能由成交重算后同步，没有「重置」这个动作。
 
 ## 规矩（和 `PropFirmTemplate.java` 对齐，别在这里另立一套）
 
