@@ -74,6 +74,15 @@ public class PropFirmStartPicker {
      */
     public Pick pick() {
         List<String> folders = symbols.findAll().stream().map(Symbol::getFolder).toList();
+        if (folders.isEmpty()) {
+            // 这里单独报，是因为它和「目录里有目录、但没有 csv」是两件事，
+            // 而两者的现象一模一样（都是抽不到起点）。以前混在一起报「data/ 下没有 .csv」，
+            // 但真实原因是 symbol 表空着 —— 那样排查方向会完全跑偏。
+            throw new BusinessException(
+                    "数据库里没有任何标的（symbol 表为空），无法给账户分配起始时间。"
+                            + "标的清单来自 data/_symbols.json（由抓取程序维护），服务启动时会自动同步；"
+                            + "确认该文件存在且有内容后重启服务。");
+        }
         return pickFrom(bars, folders);
     }
 
@@ -90,8 +99,8 @@ public class PropFirmStartPicker {
         }
         if (files.isEmpty()) {
             throw new BusinessException(
-                    "没有任何 K 线数据（data/ 下没有 .csv），无法给账户分配起始时间。"
-                            + "请先用抓取程序录一段行情。");
+                    "标的目录下没有任何 .csv（已检查 " + folders.size() + " 个目录：" + folders + "），"
+                            + "无法给账户分配起始时间。请先用抓取程序录一段行情。");
         }
 
         // 随机起点 + 线性探测：抽到不合格的一天就顺延，整圈都没有才报错。

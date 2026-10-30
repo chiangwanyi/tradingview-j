@@ -130,6 +130,21 @@ PF 账户的入口（`PropFirmAccountController`）：`GET /api/pf-accounts?stat
 - FUNDED 手数按利润分档 0→20 / 1000→30 / 2000→40（`PropFirmPositionLimit`），判每品种净持仓。
 - **PAYOUT 只是「不能再下单」**，账户仍 ACTIVE（还能画图录音）→ `Status` 只有 **ACTIVE / FAILED**。
 
+## 标的清单：`_symbols.json` → `symbol` 表（启动时同步）
+
+`SymbolSyncService`（`ApplicationRunner`）每次启动读 `<bar-root>/_symbols.json`，按标的代码 upsert
+`folder / tick / tickValue / commission`。**内容没变的行不写**（否则每次启动 `updated_at` 全被刷新，
+日志里「更新 4 条」会把真改了费率的那个淹掉）。幂等，改费率重启即生效。
+库里有、清单里没有的标的**只 warn 不删**（可能是清单被临时覆盖，删了会让已有成交引用落空）。
+
+**为什么必须有这一步**：`PropFirmStartPicker` 抽账户起点时**只按 `symbol.folder` 找 CSV，从不枚举 `data/`
+根目录**。表空着的时候，`data/` 下有几万个 csv 也一个都看不见 —— 这就是 2026-10-30 那次
+「明明有数据却报 `data/ 下没有 .csv`」的成因（当时报错文案和真实原因完全对不上，已拆成两条）。
+
+四种情况分开处理：清单不存在（还没抓过行情）= 空转；清单坏了 = 启动日志 ERROR 但不拦启动
+（服务还能只读复盘，且开账户时会得到明确提示）；缺 `commission` 的标的跳过（不进库）；
+一个 `folder` 撞了 UNIQUE = 跳过该条、不带走整张表。
+
 ## 手续费：标的自己的参数，没有价目表
 
 `data/_symbols.json` 每个标的自带 `commission`（**每手每边**美元），Java 侧就是 `symbol.commission` 一列，
