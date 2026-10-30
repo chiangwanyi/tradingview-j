@@ -58,17 +58,19 @@ public class PropFirmAccountController {
     }
 
     @Operation(summary = "开一个账户", description = """
-            templateId 必填，规则在这一刻复制进账户；name 必填。
-            起点 K 线由后端随机抽（当天 09:00 及之后第一根），抽不到就不建账户（业务错误码 10000）。
+            templateId / name / symbolId 三个都必填，规则在这一刻复制进账户。
+            symbolId 是账户唯一可交易的标的，**建户后不可改**；起点 K 线只在它的日文件里抽
+            （当天 09:00 及之后第一根），抽不到就不建账户（业务错误码 10000）。
             阶段由模板决定：FUNDED 模板建出来的账户直接是 FUNDED。
             """)
     @PostMapping
     public PropFirmAccount open(@RequestBody PropFirmAccountRequest body) {
-        return accounts.open(body.templateId(), body.name());
+        return accounts.open(body.templateId(), body.symbolId(), body.name());
     }
 
     @Operation(summary = "改名", description = """
-            只改 name；请求体里的 templateId 被忽略（换模板 = 重开一个账户）。
+            只改 name；请求体里的 templateId / symbolId 被忽略
+            （换模板或换标的都等于重开一个账户，标的在建户时就锁死了）。
             失败 / PAYOUT 的账户也能改名 —— 它只是标签，不影响余额和阶段流水。
             """)
     @PutMapping("/{id}")

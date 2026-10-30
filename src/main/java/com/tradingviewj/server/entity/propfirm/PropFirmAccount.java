@@ -24,12 +24,19 @@ import java.time.Instant;
  *
  * <p><strong>它是一个「临时的统计点」，不是一个「容器」</strong>。
  *
- * <h2>它不再绑定一个标的</h2>
+ * <h2>它绑定一个标的，而且一建就锁死</h2>
  *
- * <p>LucidFlex 50K 的账户可以同时做 MES / MNQ / MGC，所以「账户是哪个品种」这个问题
- * 没有答案。品种下沉到每一条操作上（{@code symbolId}），账户只回答「算在谁头上」。
- * 原来的 {@code symbolId} 列已删除 —— 留着它会诱使后来的人把它当成"账户的主品种"，
- * 再用它去推断图形属于哪个时间轴。
+ * <p>2026-10-30 起，账户在创建时必须指定<strong>唯一一个</strong>交易标的
+ * （{@link #symbolId}），此后任何操作都不能换。所以「这个账户做哪个品种」这个问题
+ * 永远只有一个答案，交易页也不必再提供标的切换。
+ *
+ * <p>在此之前账户是<strong>不绑标的</strong>的（一个账户同时做 MES / MNQ / MGC，
+ * 品种下沉到每一条操作上），那一列被删过一次。这次回来的语义**不同**：
+ * 它不是「最近做过的那个品种」这种会被顺手改写的缓存，而是账户的身份 ——
+ * 所以用 {@code updatable = false} 钉在 ORM 层，且没有任何 setter。
+ *
+ * <p>子表（成交、挂单、交易记录、图形、语音）身上的 {@code symbol_id} 仍然保留：
+ * 它们记的是「这条事实发生在哪块盘面上」，是历史留痕，不因为账户锁定了标的而变得多余。
  *
  * <h2>规则是「一个阶段」的规则，且会换</h2>
  *
@@ -74,6 +81,21 @@ public class PropFirmAccount extends BaseEntity {
      */
     @Column(nullable = false)
     private String templateId;
+
+    /**
+     * 这个账户唯一可交易的标的（{@code symbol} 表的 id，也就是标的代码）。
+     *
+     * <p><strong>建户时定下，永不改动</strong>：{@code updatable = false} 让 Hibernate
+     * 的 UPDATE 语句里根本不含这一列，类上也没有 setter —— 想改它只能改这一行的 SQL。
+     * 「换个标的」不是「改一个字段」，而是「重开一个账户」，理由和模板一样：
+     * 换了标的，起点的 K 线、所有复盘坐标、成交的时间轴全都要跟着换，那不是改字段。
+     *
+     * <p>{@code REFERENCES symbol (id)}：这是一个真的引用（和 {@code account_id} 那种
+     * 「删了也要留着」的软指针相反）—— 指向一个不存在的标的的账户，连一根 K 线都读不出来。
+     * {@code SymbolSyncService} 从不删标的，所以这条外键不会因为同步而失效。
+     */
+    @Column(name = "symbol_id", nullable = false, updatable = false)
+    private String symbolId;
 
     /** 当前阶段。升级时连同 {@link #rules} 和余额基准一起换。 */
     @Column(nullable = false)
@@ -145,18 +167,22 @@ public class PropFirmAccount extends BaseEntity {
      *
      * <p><strong>起点只有一个键：K 线时间。</strong> 曾经还有一个「在那份日文件里的下标」，
      * 已删除（2026-10-29）—— 位置会被内容悄悄改变（文件重新抓取、补一根、删一根坏行，
-     * 同一个下标就指向另一根 K 线，而且不报错），而且它只在「抽中的那个标的」下成立：
-     * 账户不绑标的，同一个下标在 MES / CL 上就是两根不同的 K 线。时间不会撒这个谎。
+     * 同一个下标就指向另一根 K 线，而且不报错）。账户现在虽然绑定了标的，这条规则照样成立：
+     * 同一份文件被重抓一次，下标就换了，时间不会撒这个谎。
      *
      * @param template 规则来源（它的 {@code stage} 就是新账户的初始阶段）
+     * @param symbolId 唯一可交易的标的，<strong>不能为空</strong>；此后不可改
      * @param name     账户名（用户自己起，例如「LucidFlex 50K 第一次」）
      * @param startBarTime 系统抽中的起点 K 线明文，<strong>不能为空</strong>
      * @param startDayFile 起点所在的日文件名，<strong>不能为空</strong>
      */
-    public static PropFirmAccount open(PropFirmTemplate template, String name,
+    public static PropFirmAccount open(PropFirmTemplate template, String symbolId, String name,
                                        String startBarTime, String startDayFile) {
         if (name == null || name.isBlank()) {
             throw new IllegalArgumentException("账户必须有名字，收到: " + name);
+        }
+        if (symbolId == null || symbolId.isBlank()) {
+            throw new IllegalArgumentException("账户必须指定交易标的，收到: " + symbolId);
         }
         if (template == null || template.getRules() == null) {
             throw new IllegalArgumentException("账户必须有模板和规则，收到: " + template);
@@ -171,6 +197,7 @@ public class PropFirmAccount extends BaseEntity {
         PropFirmAccount account = new PropFirmAccount();
         account.name = name;
         account.templateId = template.getId();
+        account.symbolId = symbolId;
         account.stage = template.getStage();
         account.rules = template.getRules().copy();
         account.baseBalance = template.getRules().getAccountSize();
@@ -200,6 +227,16 @@ public class PropFirmAccount extends BaseEntity {
     /** 还能不能往上挂操作（下单、画图、录音、起机器人）。 */
     public boolean isOpen() {
         return status == Status.ACTIVE;
+    }
+
+    /**
+     * 这个账户能不能交易这个标的。
+     *
+     * <p>账户只做一个品种（建户时选定），别处的 {@code symbolId} 必须和它相等。
+     * 拿这个判断而不是比较字段，是为了让「以后要不要放宽成多标的」只有一处要改。
+     */
+    public boolean tradesSymbol(String symbolId) {
+        return this.symbolId != null && this.symbolId.equals(symbolId);
     }
 
     /** 还能不能下单。比 {@link #isOpen()} 多一条：PAYOUT 阶段虽然"开着"，但它是终点。 */

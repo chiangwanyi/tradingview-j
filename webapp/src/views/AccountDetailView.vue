@@ -223,6 +223,13 @@ function openTrade(): void {
         class="mt-3 grid grid-cols-1 gap-x-8 gap-y-2.5 rounded-xl border border-line bg-panel px-5 py-4 text-[13px] sm:grid-cols-2"
       >
         <div class="flex justify-between gap-4">
+          <dt class="text-faint">交易标的</dt>
+          <dd class="truncate text-ink" :title="`创建账户时选定，不可切换`">
+            {{ a.symbolId ?? '未绑定' }}
+            <span class="ml-1 text-[11px] text-faint">（不可切换）</span>
+          </dd>
+        </div>
+        <div class="flex justify-between gap-4">
           <dt class="text-faint">起点 K 线</dt>
           <dd class="tnum text-ink">{{ shortTime(a.startBarTime) }}</dd>
         </div>

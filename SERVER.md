@@ -16,10 +16,13 @@ PF 模板的五个入口（前端 `webapp/` 就在用这几个）：`GET|POST /a
 
 PF 账户的入口（`PropFirmAccountController`）：`GET /api/pf-accounts?status=ACTIVE|FAILED`、
 `GET|PUT|DELETE /api/pf-accounts/{id}`、`POST /api/pf-accounts`（`PropFirmAccountRequest`：
-`templateId` 必填、规则此刻复制进账户）、`POST /{id}/promote`、`POST /{id}/fail`、
-`GET /{id}/stages`。**没有「改余额」和「重置」接口**：余额只能由成交重算后经
-`syncFromSession` 追平，手改会让账和成交流水对不上。`promote` 在 PAYOUT 上会被拒（否则余额会被
-再重置一次，前两个阶段的账就擦掉了）。
+`templateId` / `name` / **`symbolId` 三个都必填**，规则此刻复制进账户，标的此刻定死）、
+`POST /{id}/promote`、`POST /{id}/fail`、`GET /{id}/stages`。**没有「改余额」和「重置」接口**：
+余额只能由成交重算后经 `syncFromSession` 追平，手改会让账和成交流水对不上。`promote` 在 PAYOUT 上会被拒
+（否则余额会被再重置一次，前两个阶段的账就擦掉了）。**也没有「换标的」接口**：`PUT` 只读 `name`，
+请求体里的 `symbolId` 被忽略 —— 换标的等于换一条时间轴，那是重开账户。
+「这个账户能不能交易这个标的」的守卫在 `PropFirmAccountService#requireSymbol` /
+`checkPositionLimit`（以后接下单时每一处入口都要过一遍）。
 
 **Swagger 两个坑**（`OpenApiDocsTest` 钉住）：`UNWRAPPED_PACKAGES` 必须含 `org.springdoc`，否则文档端点也被
 包成 `{code,msg,data}`、页面**白屏**；响应结构也要补外壳（springdoc 只看方法签名），由 `OpenApiConfig` 做。
@@ -29,7 +32,7 @@ PF 账户的入口（`PropFirmAccountController`）：`GET /api/pf-accounts?stat
 的 5 分钟 K 线（`day` 不传就是最新一天，休市日返回空数组而不是错误）。数据全部来自
 `CsvBarStore` + `SymbolCatalog`，**不落库、不缓存**；`code → folder` 的映射和「默认最新一天」只在
 `BarQueryService` 一处。webapp 的交易页就是靠这两个接口画图 —— 这也是为什么那边不用 WebSocket：
-单用户看自己账户的图，一问一答已经够了。
+单用户看自己账户的图，一问一答已经够了。交易页的标的**不由用户选**，读账户上的 `symbolId`。
 
 版本号只有一处：`pom.xml` 的 `<version>` → 资源过滤 → `app.version` → `AppProperties`。
 
@@ -47,7 +50,7 @@ PF 账户的入口（`PropFirmAccountController`）：`GET /api/pf-accounts?stat
 | 概念 | 实体（包） | 关键设计 |
 |---|---|---|
 | 标的 | `Symbol`（market） | 主键就是代码；`folder` 是 CSV 目录锚；tick/tickValue/commission 只存这 |
-| PF 模板 / 账户 | `PropFirmTemplate` / `PropFirmAccount`（propfirm） | 模板 `stage`+`nextTemplateId` 串成三阶段链；账户是**唯一归属点**，带 `stage`/`baseBalance`/`eodPeakBalance`，规则是建户那刻的副本；另有**起点** `startBarTime`（唯一键）+ `startDayFile` |
+| PF 模板 / 账户 | `PropFirmTemplate` / `PropFirmAccount`（propfirm） | 模板 `stage`+`nextTemplateId` 串成三阶段链；账户是**唯一归属点**，带 `stage`/`baseBalance`/`eodPeakBalance`，规则是建户那刻的副本；另有**绑定标的** `symbolId`（建户时定、`updatable=false`、无 setter）和**起点** `startBarTime`（唯一键）+ `startDayFile` |
 | 绘图 / 下单 | `Drawing` / `Order` | 样式是**画下那刻的快照**；`Drawing` **不带 `account_id`**（挂在 K 线上）；没有止损/止盈单类型，`ocoGroup` 管同根不双触发 |
 | 交易 | `Trade`（trade） | **交易域的唯一真相**，持仓与盈亏由它重放；`commission` 是成交那刻的快照；`Position`/`ClosedLot` **不落库**（均价法给账户，FIFO 给画线） |
 | **操作记录** | `AuditEvent`（audit） | **日志层，唯一写入点**。append-only；每行带 `symbol_id` + `bar_time`，能定位到「哪块盘面的哪一根」；**没有任何下标列** |
@@ -60,7 +63,9 @@ PF 账户的入口（`PropFirmAccountController`）：`GET /api/pf-accounts?stat
 「没有全量操作记录」时才成立；两处存同一份状态，早晚会对不上。
 
 「挂 K 线」的表（drawing / audio_clip / trade / trade_order / trade_record / strategy_bot）各带
-`symbol_id` —— **账户不绑单个标的**，一个账户可同时做 MES / MNQ / MGC。
+`symbol_id` —— 那是「这条事实发生在哪块盘面上」的留痕。**账户自己也有 `symbol_id`（2026-10-30 加）**：
+一个账户只做一个品种，建户时选定、之后不可改，所以子表上的 `symbol_id` 现在必然与账户的那个一致
+（历史数据里可能不一致 —— 换标的前的旧数据不迁移、不改写）。
 
 **图形和语音只有 `symbol_id`，没有 `account_id`**：它们依附在 K 线上，不参加任何账户统计
 （余额、回撤、一致性、盈利日都不看它们），所以 `Drawing.of(symbolId, kind, start, end, createdBy)` 和
@@ -93,7 +98,7 @@ PF 账户的入口（`PropFirmAccountController`）：`GET /api/pf-accounts?stat
 - **全库没有「K 线下标」这种字段**（2026-10-29 清干净）：`audit_event.cursor`、
   `trade_order.placed_index` / `filled_index`、`prop_firm_account.start_bar_index` 全部删掉。
   理由是同一条：**下标是位置，时间是标识**。文件重抓 / 补一根 / 删一根坏行，同一个下标就指向
-  另一根 K 线而且不报错；时间永远指向原来那颗。而且下标只在某个标的下成立，账户不绑标的。
+  另一根 K 线而且不报错；时间永远指向原来那颗。
   保留的是**序号**（`trade.seq` / `audit_event.seq` / `prop_firm_stage_log.seq` / `audio_clip.seq`，
   用来定同一根 K 线内多件事的先后，推不出来）和 **`Anchor.offset`**（「向右延伸 40 根」是用户意图，
   不是某个下标的值）。
@@ -103,22 +108,24 @@ PF 账户的入口（`PropFirmAccountController`）：`GET /api/pf-accounts?stat
 - **不做撤销**（2026-10-29 明确）：append-only 的日志里删事件就不叫「记录在案」了；
   交易类动作（平仓）不可逆，撤销等于改账。盘面类若将来要撤，只能追加补偿事件。
 
-## 起点：开账户时随机抽一根 K 线
+## 起点：开账户时在**绑定标的**里随机抽一根 K 线
 
-`PropFirmStartPicker`（service）：把**所有标的的全部日文件**摊平，随机挑一份，定位到
-**当天 09:00 及之后的第一根**可交易 K 线。开账户时由 `PropFirmAccountService#open` 调用，
-结果写进账户的 `start_bar_time` / `start_day_file`。
+`PropFirmStartPicker`（service）：取账户绑定的那个标的（`symbol.folder`）的**全部日文件**，
+随机挑一份，定位到**当天 09:00 及之后的第一根**可交易 K 线。开账户时由
+`PropFirmAccountService#open(templateId, symbolId, name)` 调用，结果写进账户的
+`start_bar_time` / `start_day_file`。
 
-- **抽的是「日文件」不是「日期」**：账户不绑标的，光有日期定位不到具体文件；抽文件自带品种。
-  均匀性以文件为单位（某标的抓得多就更容易被抽中），当前 4 个标的起止相同，差异可忽略。
+- **只在这个标的的目录里抽**（2026-10-30 起）：起点必须在账户自己的图上真实存在，
+  否则日历首月、可交易日下界、回放起点全建立在一个不存在的坐标上。别的标的数据再全也不会被选中。
+- **抽的是「日文件」不是「日期」**：抽文件自带「存在性」——写进库的那根一定读得出来，
+  而「先抽日期再查有没有这根」要另外处理两种空结果。
 - **为什么顺延而不是报错**：真实数据里有些日子不是从 07:00 开始的。要求「必须正好有一根 09:00」
   会让开账户随日期**随机失败**——一周撞一次，最难查。所以取「09:00 及之后第一根」，
   整天都在 09:00 之前就换下一份文件。
 - **抽不到就不建账户**：没有起点的考核，日历首月 / 交易日下界 / 回放起点全部无从算起。
-  先抽再落库，抽失败库里零残留。
+  先抽再落库，抽失败库里零残留。标的不在 `symbol` 表里也在这一步拒掉。
 - **起点只有一个键：`startBarTime`。** 曾经还有个 `startBarIndex`，已删（2026-10-29）——
-  下标是**位置**，文件重抓 / 补一根 / 删一根坏行就悄悄指向另一根 K 线（不报错），
-  而且只在抽中的那个标的下成立（账户不绑标的，同一个下标在 MES 和 CL 上是两根）。
+  下标是**位置**，文件重抓 / 补一根 / 删一根坏行就悄悄指向另一根 K 线（不报错）。
   名字（时间、文件名）不会因为内容变了而撒谎，位置会。
 - **`started_at` ≠ `start_bar_time`**：前者是真实时钟（这行何时写进库），后者是行情时间轴上的位置。
   起点字段都是 `updatable = false`——改一次，这个账户的所有历史都跟着挪位置。
@@ -180,14 +187,15 @@ Go 侧会**整个重写** `_symbols.json`：0.31.0 起 `commission` 被原样带
 
 ## 测试 / 改表
 
-`./mvnw test`。覆盖：`PersistenceSmokeTest`（schema/映射/BigDecimal/枚举落库/seq 落库/**事件区间回放**/
-`replay_cursor` 表必须不存在）· `PropFirmAccountLifecycleTest`（删账户后子表一行不少、`account_id` 原样保留，
-**且那笔交易的事件区间仍然取得到**）· `AccountRequiredTest`（含 `seq` 不能为负、区间不能是反的）·
-`TradeLedgerTest` · `TradeLedgerConsistencyTest`（**同一根 K 线上多笔成交必须按 seq 排**，否则逐批归因随读库顺序变）·
-`PropFirm*Test` 三支 · `PropFirmStartPickerTest`（09:00 定位 / 顺延 / 跳过不合格日 / 没数据就报错）·
-`SymbolCommissionTest` · `CsvBarStoreTest` · 三个 controller 测试。
+`./mvnw test`。覆盖：`PropFirmAccountServiceTest`（建户复制规则快照 / 起点抽不到就不建 / 等级迁移结流水 /
+删账户不连坐 / **标的是真外键，必填且改名升级都不动它** / 别的标的被 `requireSymbol` 与手数闸门拒掉）·
+`PropFirmStartPickerTest`（09:00 定位 / 顺延 / 跳过不合格日 / 没数据就报错 / **只在自己标的的目录里抽**）·
+`PropFirmAccountControllerTest`（JSON 契约含 `symbolId`）· `PropFirmTemplate*Test` · `SymbolSyncServiceTest` ·
+`SymbolCatalogTest` · `CsvBarStoreTest` · `BarQueryServiceTest`（只读，扫描前后目录快照一致）。
 
-⚠️ 三个 controller 测试**没覆写 datasource**，跑测试会直接读写 `./db/tradingview-j.db`（既有行为）。
+⚠️ 两个 controller 测试是 `@WebMvcTest`（不起 JPA，不碰库）；三支 `@SpringBootTest`
+（`PropFirmAccountServiceTest` / `PropFirmTemplateServiceTest` / `SymbolSyncServiceTest`）都用
+`@DynamicPropertySource` 把库指到临时目录，跑测试不会改用户的账户数据。
 ⚠️ `Trade.realizedPnl` 与 `TradeLedger` 现算 realized 是**两处计算**，将来要合并。
 
 `ddl-auto` 是 `none`，表结构全由 `schema.sql` 管（SQLite 的 `ALTER TABLE` 支持极有限，Hibernate 的 `update`
@@ -201,6 +209,15 @@ Go 侧会**整个重写** `_symbols.json`：0.31.0 起 `commission` 被原样带
 启动会在建索引那一步报 `no such column: symbol_id`。现场是
 `db/tradingview-j.db.bak-20261029-audit-event-range`。同一天加 `prop_firm_account.start_*` 与
 `trade_record.account_name` 又处理了一次：`db/tradingview-j.db.bak-20261029-account-start-and-name`。
+
+**2026-10-30 的 `prop_firm_account.symbol_id` 是第三次**：账户开始绑定唯一标的，新库由 `schema.sql` 建成
+`NOT NULL REFERENCES symbol (id)`。旧库那一行账户当初是「随机从任意标的里抽的起点」，**它做的是哪个品种
+无从得知**（抽取器当时只把 folder 写进日志、没落库），所以：
+`db/tradingview-j.db.bak-20261030-account-symbol` 是归档的旧库，`prop_firm_template` 已按原值迁到新库，
+旧账户没有迁（新建即可，10 秒）。想保住自己的旧账户，可以手工
+`ALTER TABLE prop_firm_account ADD COLUMN symbol_id TEXT;` 再
+`UPDATE prop_firm_account SET symbol_id='<你记得的标的>' WHERE id='<id>';` —— 但列上没有外键、
+也没 NOT NULL，和新建的库不一致，得自己记着。
 
 ⚠️ 加 NOT NULL 列**不会**让 controller 测试变红（它们不往这两张表插数据），所以「测试全绿」
 不等于「旧库能用」。改完表结构要自己 `pragma table_info` 看一眼真实列。

@@ -13,10 +13,11 @@
 --   4. **PF 账户是唯一的操作归属点，但不是数据的所有者**。
 --      没有「会话」这张表了：挂单、成交、操作记录、机器人、交易记录
 --      全部用 account_id 指向 prop_firm_account。
---      **账户不再是"一个标的"**：它是可以同时做 MES / MNQ / MGC 的考核账户，
---      所以凡是"挂在一根 K 线上"且**要记账**的数据（挂单、成交、交易记录、
---      机器人）都另有 symbol_id —— 只有 account_id 就没有时间轴，只有 symbol_id
---      就不知道算在谁头上，两个都要。
+--      **账户绑定一个标的（2026-10-30 起），建户时定，永不改**（symbol_id）。
+--      子表上的 symbol_id 仍然保留：它们记的是「这条事实发生在哪块盘面上」，
+--      是历史留痕，不因为账户锁定了标的而变得多余。凡是"挂在一根 K 线上"且
+--      **要记账**的数据（挂单、成交、交易记录、机器人）都带 symbol_id ——
+--      只有 account_id 就没有时间轴，只有 symbol_id 就不知道算在谁头上，两个都要。
 --      **图形（drawing）和语音（audio_clip）例外：它们没有 account_id。**
 --      两者的附体是 K 线（symbol_id + bar_time），不参与任何账户统计 —— 既不进余额、
 --      也不算回撤/一致性/盈利日。给它们挂账户只会让「同一条线换个账户就消失」
@@ -84,6 +85,12 @@ CREATE TABLE IF NOT EXISTS prop_firm_account (
     id                   TEXT PRIMARY KEY,
     name                 TEXT NOT NULL,
     template_id          TEXT NOT NULL,  -- 从哪套模板开的；模板删了也保留原 id（不置空）
+    -- 这个账户唯一可交易的标的（2026-10-30 加）。**建户时定，永不改**：
+    -- 换标的等于换一整条时间轴（起点那根 K 线、所有复盘坐标、成交时间轴），
+    -- 那是「重开一个账户」，不是「改一个字段」。实体上 updatable = false + 无 setter。
+    -- 这是个**真引用**（不是 account_id 那种删了也要留的软指针）：指向不存在的标的，
+    -- 一根 K 线都读不出来。SymbolSyncService 从不删标的，所以这条外键不会被同步弄坏。
+    symbol_id            TEXT NOT NULL REFERENCES symbol (id),
     stage                TEXT NOT NULL,  -- 当前阶段：EVAL / FUNDED / PAYOUT
     -- ↓↓ 以下 9 列是建户那一刻从模板复制的规则快照，和模板同名同义
     account_size         TEXT,
@@ -101,14 +108,13 @@ CREATE TABLE IF NOT EXISTS prop_firm_account (
     balance              TEXT NOT NULL,  -- 当前余额 = base_balance + 本阶段已实现净额
     stage_started_at     INTEGER NOT NULL,
     -- 起点（2026-10-29）：**模拟时间的零点**，由 PropFirmStartPicker 在开账户时
-    -- 从全部标的的日文件里随机抽一份、定位到当天 09:00。
+    -- 从**该账户绑定标的**的日文件里随机抽一份、定位到当天 09:00。
     -- 和 started_at 不是一回事：started_at 是真实时钟（这行什么时候写进库），
     -- 这个才是行情时间轴上的位置。日历首月、可交易日下界、回放起点全由它推。
     -- **建户即有值，没有「建好了但还没开始」的状态**，所以 NOT NULL。
     --
     -- 这里**没有 bar_index**：下标是「位置」，文件重抓 / 补一根 / 删一根坏行都会让它
-    -- 悄悄指向另一根 K 线（而且不报错）；它还只在抽中的那个标的下成立 ——
-    -- 账户不绑标的，同一个下标在 MES 和 CL 上是两根不同的 K 线。时间才是标识。
+    -- 悄悄指向另一根 K 线（而且不报错）。时间才是标识 —— 这条规则和账户绑不绑标的无关。
     start_bar_time       TEXT NOT NULL,  -- 如 2024-03-04 09:00，起点的唯一键
     start_day_file       TEXT NOT NULL,  -- 如 2024-03-04.csv（不含目录）
     status               TEXT NOT NULL,  -- ACTIVE / FAILED（走到 PAYOUT 用 stage 表达，不另立一个状态）

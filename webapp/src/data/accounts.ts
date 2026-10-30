@@ -21,6 +21,11 @@ export interface Account {
   name: string
   /** 从哪套模板开的（只用于追溯；真正生效的是下面的 rules 快照）。 */
   templateId: string
+  /**
+   * 这个账户唯一可交易的标的（`_symbols.json` 的键，如 `CME_MINI:MES1!`）。
+   * **建户时定，之后不可改** —— 交易页直接读它，不再提供标的切换。
+   */
+  symbolId: string
   stage: Stage
   status: AccountStatus
   /** 开账户那一刻从模板复制过来的规则，之后与模板无关。 */
@@ -62,9 +67,15 @@ export const list = (status?: AccountStatus): Promise<Account[]> =>
 /** 取单个账户。详情页用它自己拉一份，不依赖列表里那份可能已经过期的拷件。 */
 export const get = (id: string): Promise<Account> => call(`${BASE}/${id}`)
 
-export const open = (templateId: string, name: string): Promise<Account> =>
-  call(BASE, send('POST', { templateId, name }))
+/**
+ * 开账户：模板 + 名字 + **交易标的**（三个都必填）。
+ *
+ * `symbolId` 只在建户这一刻有意义 —— 后端把它钉死在账户上，之后的改名、升级都不会碰它。
+ */
+export const open = (templateId: string, symbolId: string, name: string): Promise<Account> =>
+  call(BASE, send('POST', { templateId, symbolId, name }))
 
+/** 改名。只发 name：换模板或换标的都等于重开一个账户，后端也不认这两个字段。 */
 export const rename = (id: string, name: string): Promise<Account> =>
   call(`${BASE}/${id}`, send('PUT', { name }))
 

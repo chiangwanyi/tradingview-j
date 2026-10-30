@@ -17,19 +17,19 @@ import java.util.List;
 import java.util.concurrent.ThreadLocalRandom;
 
 /**
- * 给新开的 PF 账户<strong>抽一个起点</strong>：从所有标的的全部日文件里随机挑一份，
- * 再定位到那天早上 09:00 的那根 K 线。
+ * 给新开的 PF 账户<strong>抽一个起点</strong>：在<strong>账户绑定的那个标的</strong>的
+ * 全部日文件里随机挑一份，再定位到那天早上 09:00 的那根 K 线。
  *
  * <h2>为什么抽的是「日文件」而不是「日期」</h2>
  *
- * <p>账户<strong>不绑定标的</strong>（可以同时做 MES / MNQ / MGC），所以「哪一天」本身
- * 不足以定位 —— 每个标的都有自己的日文件，各自的第一根、最后一根都不同。
- * 抽「(标的, 日期) 这一份文件」就天然解决了这件事：起点那根一定真实存在，
- * 因为它是从那份文件里读出来的。
+ * <p>账户绑定唯一标的（2026-10-30 起），所以「哪一天」理论上已经够定位了。仍然抽「文件」，
+ * 是因为<strong>起点那根必须真实存在</strong>：从那份文件里读出来的时间不可能指向一根
+ * 不存在的 K 线，而「先抽日期、再去查有没有这根」要处理「那天没数据 / 那根在禁交易窗口」
+ * 两种空结果。挑文件自带品种与存在性两件事。
  *
- * <p>均匀性以<strong>文件</strong>为单位：某个标的抓得多、另一个抓得少，
- * 抓到多的概率就大。这在当前数据里是 4 个标的同一天起、同一天止，差别可以忽略；
- * 若将来要「每个标的等概率」，得先抽标的再抽它的某一天 —— 那是另一个决定。
+ * <p>在此之前账户不绑标的，抽的是<strong>全部标的</strong>的日文件；现在只剩一份目录，
+ * 于是「某个标的抓得多就更容易被抽中」这个偏差自动消失了 —— 每个标的等概率由
+ * 「建户时选哪个标的」表达。
  *
  * <h2>为什么是 09:00</h2>
  *
@@ -68,22 +68,32 @@ public class PropFirmStartPicker {
     }
 
     /**
-     * 抽一个起点。
+     * 在指定标的的日文件里抽一个起点。
      *
-     * @throws BusinessException 一个日文件都没有，或者所有候选日都定位不到可交易的 K 线
+     * @param symbolCode 账户绑定的标的（{@code symbol} 表的 id，即标的代码）
+     * @throws BusinessException 没给标的 / 标的不在库里 / 这个标的没有任何日文件 /
+     *                           所有候选日都定位不到可交易的 K 线
      */
-    public Pick pick() {
-        List<String> folders = symbols.findAll().stream().map(Symbol::getFolder).toList();
-        if (folders.isEmpty()) {
-            // 这里单独报，是因为它和「目录里有目录、但没有 csv」是两件事，
-            // 而两者的现象一模一样（都是抽不到起点）。以前混在一起报「data/ 下没有 .csv」，
-            // 但真实原因是 symbol 表空着 —— 那样排查方向会完全跑偏。
+    public Pick pick(String symbolCode) {
+        if (symbolCode == null || symbolCode.isBlank()) {
+            throw new BusinessException("开账户必须指定交易标的（symbolId 不能为空）");
+        }
+        List<Symbol> all = symbols.findAll();
+        if (all.isEmpty()) {
+            // 这里单独报，是因为它和「目录里没有 csv」是两件事，而两者的现象一模一样
+            // （都是抽不到起点）。真实原因是 symbol 表空着 —— 那样排查方向会完全跑偏。
             throw new BusinessException(
                     "数据库里没有任何标的（symbol 表为空），无法给账户分配起始时间。"
                             + "标的清单来自 data/_symbols.json（由抓取程序维护），服务启动时会自动同步；"
                             + "确认该文件存在且有内容后重启服务。");
         }
-        return pickFrom(bars, folders);
+        Symbol symbol = all.stream()
+                .filter(s -> symbolCode.equals(s.getId()))
+                .findFirst()
+                .orElseThrow(() -> new BusinessException(
+                        "不认识的标的: " + symbolCode + "（symbol 表里只有: "
+                                + all.stream().map(Symbol::getId).toList() + "）"));
+        return pickFrom(bars, List.of(symbol.getFolder()));
     }
 
     /**
@@ -162,11 +172,10 @@ public class PropFirmStartPicker {
      * 一起构成起点的<strong>唯一键</strong>。
      *
      * <p>这里<strong>故意不带下标</strong>：下标是「位置」，会被内容变化悄悄改变
-     * （文件重抓、补一根、删一根坏行），而且只在抽中的那个标的下成立。
-     * 时间才是标识，位置不是。
+     * （文件重抓、补一根、删一根坏行），时间才是标识。
      *
-     * @param folder  抽中的是哪个标的的目录（只用于追溯和日志，<strong>不落库</strong>：
-     *                账户不绑标的）
+     * @param folder  起点来自哪个标的目录。**不落库** —— 账户上的 {@code symbol_id}
+     *                已经回答了这个品种，再存一份只会有两份说法。这里留着是为了日志点名。
      * @param barTime 起点那根 K 线的明文时间，如 {@code 2024-03-04 09:00}
      * @param dayFile 起点所在的日文件名，如 {@code 2024-03-04.csv}（不含目录）
      */

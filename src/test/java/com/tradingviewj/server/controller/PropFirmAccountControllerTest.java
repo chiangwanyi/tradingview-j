@@ -42,22 +42,24 @@ class PropFirmAccountControllerTest {
     @MockitoBean
     private PropFirmAccountService accounts;
 
-    /** 一个 EVAL 账户：规模 50000、目标 3000。 */
+    /** 一个 EVAL 账户：规模 50000、目标 3000，标的 MES。 */
     private static PropFirmAccount evalAccount() {
         PropFirmRules rules = new PropFirmRules(new BigDecimal("50000"), new BigDecimal("3000"),
                 new BigDecimal("2000"), PropFirmRules.DrawdownType.TRAILING_EOD,
                 new BigDecimal("52100"), new BigDecimal("0.5"), null, null, List.of());
         PropFirmTemplate template = PropFirmTemplate.define("LucidFlex 50K EVAL", null,
                 PropFirmStage.EVAL, null, rules);
-        return PropFirmAccount.open(template, "第一次考核", "2024-03-04 09:00", "2024-03-04.csv");
+        return PropFirmAccount.open(template, "CME_MINI:MES1!", "第一次考核",
+                "2024-03-04 09:00", "2024-03-04.csv");
     }
 
     @Test
-    void openReadsTemplateIdAndName() throws Exception {
-        when(accounts.open(eq("tpl-1"), eq("第一次考核"))).thenReturn(evalAccount());
+    void openReadsTemplateIdSymbolIdAndName() throws Exception {
+        when(accounts.open(eq("tpl-1"), eq("CME_MINI:MES1!"), eq("第一次考核")))
+                .thenReturn(evalAccount());
 
         String body = """
-                {"name":"第一次考核","templateId":"tpl-1"}
+                {"name":"第一次考核","templateId":"tpl-1","symbolId":"CME_MINI:MES1!"}
                 """;
 
         mvc.perform(post("/api/pf-accounts").contentType(MediaType.APPLICATION_JSON).content(body))
@@ -66,22 +68,24 @@ class PropFirmAccountControllerTest {
                 .andExpect(jsonPath("$.data.stage").value("EVAL"))
                 .andExpect(jsonPath("$.data.status").value("ACTIVE"))
                 .andExpect(jsonPath("$.data.name").value("第一次考核"))
+                // 标的随账户回：交易页不再有标的切换，直接读这个字段
+                .andExpect(jsonPath("$.data.symbolId").value("CME_MINI:MES1!"))
                 .andExpect(jsonPath("$.data.balance").value(50000.0))
                 .andExpect(jsonPath("$.data.startBarTime").value("2024-03-04 09:00"))
                 // 规则快照随账户一起回：前端卡片上的目标/回撤直接读它，不再去查模板
                 .andExpect(jsonPath("$.data.rules.profitTarget").value(3000.0));
 
-        verify(accounts).open("tpl-1", "第一次考核");
+        verify(accounts).open("tpl-1", "CME_MINI:MES1!", "第一次考核");
     }
 
     /** 实体校验失败（没名字）→ 400，原因原样回给前端。 */
     @Test
     void openMapsIllegalArgumentToBadRequest() throws Exception {
-        when(accounts.open(any(), any()))
+        when(accounts.open(any(), any(), any()))
                 .thenThrow(new IllegalArgumentException("账户必须有名字，收到: "));
 
         mvc.perform(post("/api/pf-accounts").contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"name\":\"\",\"templateId\":\"tpl-1\"}"))
+                        .content("{\"name\":\"\",\"templateId\":\"tpl-1\",\"symbolId\":\"CME_MINI:MES1!\"}"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value(400))
                 .andExpect(jsonPath("$.msg").value("账户必须有名字，收到: "));

@@ -51,25 +51,31 @@ public class PropFirmAccountService {
      * <p>阶段由模板决定：拿 FUNDED 模板建出来的账户<strong>直接从 FUNDED 开始</strong>
      * （「有的是创建的时候就是 FUNDED」就是这条路径），阶段流水里只有一行 {@code CREATED}。
      *
-     * <p>起点由 {@link PropFirmStartPicker} 从全部标的的日文件里随机抽一份、定位到当天
+     * <p><strong>标的在这一刻定下，此后不可改</strong>（2026-10-30）。起点也只在
+     * <strong>这个标的</strong>的日文件里抽 —— 否则起点那根 K 线会在账户自己的图上不存在，
+     * 日历、复核日、回放起点全都建在一个不存在的坐标上。
+     *
+     * <p>起点由 {@link PropFirmStartPicker} 从该标的的日文件里随机抽一份、定位到当天
      * 09:00。抽不到就<strong>不建账户</strong>：一个没有起点的考核，日历、交易日、回放
      * 全都无从算起，建出来只会变成一个到处要判空的对象。所以先在事务里把起点拿到，
      * 再落库 —— 抽失败时库里一条残留都没有。
      *
      * @param templateId 用哪套考核规则（规则会在这一刻复制到账户上）
+     * @param symbolId   这个账户唯一可交易的标的；<strong>必填</strong>，之后没有任何入口能改
      * @param name       账户名，用户自己起
-     * @throws BusinessException 模板不存在 / 缺规则，或者 data/ 下没有可用的 K 线
+     * @throws BusinessException 模板不存在 / 缺规则、标的不存在，或者该标的目录下没有可用的 K 线
      */
     @Transactional
-    public PropFirmAccount open(String templateId, String name) {
+    public PropFirmAccount open(String templateId, String symbolId, String name) {
         PropFirmTemplate template = templates.findById(templateId)
                 .orElseThrow(() -> new BusinessException("模板不存在: " + templateId));
         if (template.getRules() == null || template.getRules().getAccountSize() == null) {
             throw new BusinessException("模板缺少账户规模，开不出账户: " + templateId);
         }
-        // 先抽起点再落库：抽不到就整个操作失败，不留下半成品账户
-        PropFirmStartPicker.Pick pick = startPicker.pick();
-        PropFirmAccount account = accounts.save(PropFirmAccount.open(template, name,
+        // 先抽起点再落库：抽不到就整个操作失败，不留下半成品账户。
+        // 标的存不存在也在这一步判（抽不到就不可能有起点）。
+        PropFirmStartPicker.Pick pick = startPicker.pick(symbolId);
+        PropFirmAccount account = accounts.save(PropFirmAccount.open(template, symbolId, name,
                 pick.barTime(), pick.dayFile()));
         stageLogs.save(PropFirmStageLog.begin(account.getId(), 0, account.getStage(),
                 account.getBaseBalance(), account.getStageStartedAt(), PropFirmStageLog.Reason.CREATED));
@@ -215,14 +221,42 @@ public class PropFirmAccountService {
     /**
      * 下单前的手数闸门：这一笔成交之后，该品种的净持仓会不会超过当前利润档位。
      *
+     * <p>顺带把「这个账户只做它绑定的那个标的」落下：{@code symbolId} 和账户上的
+     * {@link PropFirmAccount#getSymbolId()} 不一致就直接拒绝。这是下单路径上现存的
+     * 唯一入口，所以守卫放这里 —— 以后真接上撮合时，它已经是必经之路。
+     *
      * @param netAfterFill 成交之后该品种的净持仓（买正卖负）
-     * @throws BusinessException 超限
+     * @throws BusinessException 超限，或者这个标的不是该账户的标的
      */
     @Transactional(readOnly = true)
     public void checkPositionLimit(String accountId, String symbolId, BigDecimal netAfterFill) {
         PropFirmAccount account = requireTradable(accountId);
+        requireBoundSymbol(account, symbolId);
         PropFirmPositionLimit.requireWithinLimit(account.getRules(),
                 account.netProfitInStage(), symbolId, netAfterFill);
+    }
+
+    /**
+     * 这个账户能不能交易这个标的，不能就抛业务异常。
+     *
+     * <p>公开出来是给将来的下单 / 挂单 / 成交入口复用的：<strong>每一处都得问一次</strong>，
+     * 而不是只在某一个按钮上判 —— 只判一处等于没判。
+     *
+     * @throws BusinessException 账户不在考核中，或者标的不是它绑定的那个
+     */
+    @Transactional(readOnly = true)
+    public PropFirmAccount requireSymbol(String accountId, String symbolId) {
+        PropFirmAccount account = requireActive(accountId);
+        requireBoundSymbol(account, symbolId);
+        return account;
+    }
+
+    private static void requireBoundSymbol(PropFirmAccount account, String symbolId) {
+        if (!account.tradesSymbol(symbolId)) {
+            throw new BusinessException("账户「" + account.getName() + "」只做 "
+                    + account.getSymbolId() + "，不能交易 " + symbolId
+                    + "（标的在创建账户时选定，不可切换）");
+        }
     }
 
     /** 取一个账户，不判断「能不能往上挂操作」—— 那是 {@link #requireActive} 的事。 */

@@ -33,6 +33,7 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -48,6 +49,9 @@ import static org.mockito.Mockito.when;
  */
 @SpringBootTest
 class PropFirmAccountServiceTest {
+
+    /** 每个账户都绑同一个标的。必须在 {@code symbol} 表里存在 —— 这一列是真外键。 */
+    private static final String SYMBOL = "CME_MINI:MES1!";
 
     private static String testDbUrl;
 
@@ -71,6 +75,7 @@ class PropFirmAccountServiceTest {
     @Autowired private PropFirmAccountRepository accounts;
     @Autowired private PropFirmStageLogRepository logs;
     @Autowired private PropFirmTemplateRepository templateRepo;
+    @Autowired private com.tradingviewj.server.repository.SymbolRepository symbols;
     @Autowired private DataSource dataSource;
 
     @BeforeEach
@@ -78,8 +83,11 @@ class PropFirmAccountServiceTest {
         logs.deleteAll();
         accounts.deleteAll();
         templateRepo.deleteAll();
+        // 账户的 symbol_id 是真外键：标的必须先存在，否则开账户会在落库时被数据库拒掉
+        symbols.save(com.tradingviewj.server.entity.market.Symbol.of(
+                SYMBOL, "CME_MINI_MES1!", new BigDecimal("0.50")));
         // 默认抽中一个固定起点；想验失败的用例自己再 when(...).thenThrow(...)
-        when(picker.pick()).thenReturn(
+        when(picker.pick(anyString())).thenReturn(
                 new PropFirmStartPicker.Pick("MES", "2024-03-04 09:00", "2024-03-04.csv"));
     }
 
@@ -98,7 +106,7 @@ class PropFirmAccountServiceTest {
     void openCopiesRulesSnapshotAndWritesFirstStageLog() {
         PropFirmTemplate eval = evalTemplate(null);
 
-        PropFirmAccount account = service.open(eval.getId(), "LucidFlex 50K 第一次");
+        PropFirmAccount account = service.open(eval.getId(), SYMBOL, "LucidFlex 50K 第一次");
 
         assertNotNull(account.getId());
         assertEquals("LucidFlex 50K 第一次", account.getName());
@@ -110,6 +118,7 @@ class PropFirmAccountServiceTest {
         assertEquals(new BigDecimal("50000.00"), account.getEodPeakBalance());
         assertEquals("2024-03-04 09:00", account.getStartBarTime());
         assertEquals("2024-03-04.csv", account.getStartDayFile());
+        assertEquals(SYMBOL, account.getSymbolId(), "标的在建户那一刻定下，落在账户上");
         assertEquals(new BigDecimal("3000.00"), account.getRules().getProfitTarget(),
                 "规则必须是副本、落在账户上，不能只靠模板");
 
@@ -125,7 +134,7 @@ class PropFirmAccountServiceTest {
     @Test
     void openWithFundedTemplateStartsInFunded() {
         PropFirmTemplate funded = fundedTemplate();
-        PropFirmAccount account = service.open(funded.getId(), "直接买的出金号");
+        PropFirmAccount account = service.open(funded.getId(), SYMBOL, "直接买的出金号");
         assertEquals(PropFirmStage.FUNDED, account.getStage());
         assertEquals(1, service.stageHistory(account.getId()).size());
     }
@@ -134,7 +143,7 @@ class PropFirmAccountServiceTest {
     @Test
     void openWithUnknownTemplateLeavesNothing() {
         BusinessException e = assertThrows(BusinessException.class,
-                () -> service.open("没有这个模板", "x"));
+                () -> service.open("没有这个模板", SYMBOL, "x"));
         assertTrue(e.getMessage().contains("模板不存在"));
         assertEquals(0, accounts.count());
     }
@@ -143,9 +152,9 @@ class PropFirmAccountServiceTest {
     @Test
     void openWithoutStartBarLeavesNothing() {
         PropFirmTemplate eval = evalTemplate(null);
-        when(picker.pick()).thenThrow(new BusinessException("没有任何 K 线数据"));
+        when(picker.pick(anyString())).thenThrow(new BusinessException("没有任何 K 线数据"));
 
-        assertThrows(BusinessException.class, () -> service.open(eval.getId(), "x"));
+        assertThrows(BusinessException.class, () -> service.open(eval.getId(), SYMBOL, "x"));
         assertEquals(0, accounts.count(), "抽不到起点就不能留下一个没有起点的账户");
         assertEquals(0, logs.count());
     }
@@ -154,14 +163,65 @@ class PropFirmAccountServiceTest {
     @Test
     void openRejectsBlankName() {
         PropFirmTemplate eval = evalTemplate(null);
-        assertThrows(IllegalArgumentException.class, () -> service.open(eval.getId(), "  "));
+        assertThrows(IllegalArgumentException.class, () -> service.open(eval.getId(), SYMBOL, "  "));
         assertEquals(0, accounts.count());
+    }
+
+    /** 没给标的建不出来；标的不在 symbol 表里也建不出来（抽起点那一步就拒了）。 */
+    @Test
+    void openRequiresAKnownSymbol() {
+        PropFirmTemplate eval = evalTemplate(null);
+
+        assertThrows(IllegalArgumentException.class, () -> service.open(eval.getId(), "  ", "x"));
+
+        when(picker.pick("CME_MINI:XXX1!")).thenThrow(new BusinessException("不认识的标的"));
+        BusinessException e = assertThrows(BusinessException.class,
+                () -> service.open(eval.getId(), "CME_MINI:XXX1!", "x"));
+        assertTrue(e.getMessage().contains("不认识的标的"));
+        assertEquals(0, accounts.count(), "标的不合法时库里不留半条账户");
+    }
+
+    /**
+     * 标的不可换：改名不会动它，阶段迁移也不会动它。
+     *
+     * <p>真正把「不可改」钉死的是实体上的 {@code updatable = false} + 没有 setter；
+     * 这条测试钉的是「上层每一处写账户的路径都不碰它」。
+     */
+    @Test
+    void symbolSurvivesRenameAndPromotion() {
+        PropFirmTemplate funded = fundedTemplate();
+        PropFirmAccount account = service.open(evalTemplate(funded.getId()).getId(), SYMBOL, "锁标的");
+        String id = account.getId();
+
+        service.rename(id, "改个名");
+        assertEquals(SYMBOL, service.get(id).getSymbolId());
+
+        service.promote(id, null);
+        assertEquals(SYMBOL, service.get(id).getSymbolId(), "升级换的是规则和余额，不是标的");
+    }
+
+    /** 别的标的进不来：手数闸门和 requireSymbol 都按账户绑定的那个标的把关。 */
+    @Test
+    void otherSymbolsAreRejected() {
+        PropFirmAccount account = service.open(evalTemplate(null).getId(), SYMBOL, "只做 MES");
+        String id = account.getId();
+
+        BusinessException e = assertThrows(BusinessException.class,
+                () -> service.requireSymbol(id, "CME_MINI:MNQ1!"));
+        assertTrue(e.getMessage().contains("不可切换"), e.getMessage());
+
+        assertThrows(BusinessException.class,
+                () -> service.checkPositionLimit(id, "CME_MINI:MNQ1!", BigDecimal.ONE));
+
+        // 自己的标的照常通过（40 手上限内）
+        service.checkPositionLimit(id, SYMBOL, new BigDecimal("40"));
+        assertEquals(id, service.requireSymbol(id, SYMBOL).getId());
     }
 
     /** 改名：只换 name，身份、余额、阶段、流水都不动；空名字当场拒绝。 */
     @Test
     void renameOnlyChangesTheLabel() {
-        PropFirmAccount account = service.open(evalTemplate(null).getId(), "旧名字");
+        PropFirmAccount account = service.open(evalTemplate(null).getId(), SYMBOL, "旧名字");
         String id = account.getId();
         var createdAt = service.get(id).getCreatedAt();
 
@@ -182,7 +242,7 @@ class PropFirmAccountServiceTest {
     void promoteClosesCurrentStageAndResetsBalanceToNewSize() {
         PropFirmTemplate funded = fundedTemplate();            // 账户规模 100000
         PropFirmTemplate eval = evalTemplate(funded.getId());  // 账户规模 50000
-        PropFirmAccount account = service.open(eval.getId(), "考过来的出金号");
+        PropFirmAccount account = service.open(eval.getId(), SYMBOL, "考过来的出金号");
 
         PropFirmAccount promoted = service.promote(account.getId(), null);
 
@@ -210,7 +270,7 @@ class PropFirmAccountServiceTest {
     /** 模板没配 next_template_id：升不上去，账户原样不动。 */
     @Test
     void promoteWithoutNextTemplateFailsAndLeavesAccountUntouched() {
-        PropFirmAccount account = service.open(evalTemplate(null).getId(), "没有下一站");
+        PropFirmAccount account = service.open(evalTemplate(null).getId(), SYMBOL, "没有下一站");
 
         BusinessException e = assertThrows(BusinessException.class,
                 () -> service.promote(account.getId(), null));
@@ -227,7 +287,7 @@ class PropFirmAccountServiceTest {
     @Test
     void promoteFromPayoutIsRejected() {
         PropFirmTemplate funded = fundedTemplate();
-        PropFirmAccount account = service.open(evalTemplate(funded.getId()).getId(), "走到终点");
+        PropFirmAccount account = service.open(evalTemplate(funded.getId()).getId(), SYMBOL, "走到终点");
         service.promote(account.getId(), null);   // EVAL → FUNDED
         PropFirmAccount payout = service.promote(account.getId(), null); // FUNDED → PAYOUT
         assertEquals(PropFirmStage.PAYOUT, payout.getStage());
@@ -245,7 +305,7 @@ class PropFirmAccountServiceTest {
     /** 判失败是终态：之后不能再产生操作，第二次数失败直接报错。 */
     @Test
     void failIsTerminal() {
-        PropFirmAccount account = service.open(evalTemplate(null).getId(), "撞线了");
+        PropFirmAccount account = service.open(evalTemplate(null).getId(), SYMBOL, "撞线了");
 
         PropFirmAccount failed = service.fail(account.getId(), null);
         assertEquals(PropFirmAccount.Status.FAILED, failed.getStatus());
@@ -261,7 +321,7 @@ class PropFirmAccountServiceTest {
     @Test
     void deleteRemovesOnlyTheAccountRow() {
         PropFirmTemplate funded = fundedTemplate();
-        PropFirmAccount account = service.open(evalTemplate(funded.getId()).getId(), "要删的");
+        PropFirmAccount account = service.open(evalTemplate(funded.getId()).getId(), SYMBOL, "要删的");
         service.promote(account.getId(), null);
         String id = account.getId();
 
@@ -278,8 +338,8 @@ class PropFirmAccountServiceTest {
     /** 读接口：不存在 → 业务异常；列表默认全部、可以按状态筛，新建的在前。 */
     @Test
     void getAndList() {
-        PropFirmAccount first = service.open(evalTemplate(null).getId(), "一号");
-        PropFirmAccount second = service.open(fundedTemplate().getId(), "二号");
+        PropFirmAccount first = service.open(evalTemplate(null).getId(), SYMBOL, "一号");
+        PropFirmAccount second = service.open(fundedTemplate().getId(), SYMBOL, "二号");
         service.fail(first.getId(), null);
 
         BusinessException e = assertThrows(BusinessException.class, () -> service.get("没有这个账户"));
@@ -302,7 +362,7 @@ class PropFirmAccountServiceTest {
     /** 会话算完写回：两个缓存列被追平，接口上立刻能读到。 */
     @Test
     void syncFromSessionWritesCachedBalanceAndPeak() {
-        PropFirmAccount account = service.open(evalTemplate(null).getId(), "同步一下");
+        PropFirmAccount account = service.open(evalTemplate(null).getId(), SYMBOL, "同步一下");
         PropFirmSession session = mock(PropFirmSession.class);
         when(session.balance()).thenReturn(new BigDecimal("51234.56"));
         when(session.eodPeak()).thenReturn(new BigDecimal("51500.00"));

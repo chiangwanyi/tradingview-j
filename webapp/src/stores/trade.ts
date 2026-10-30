@@ -150,7 +150,8 @@ export const useTradeStore = defineStore('trade', () => {
   // ---------------- 数据 ----------------
   const symbols = ref<SymbolBrief[]>([])
   const instance = ref<InstanceDetail | null>(null)
-  /** 当前标的代码（`_symbols.json` 的键）与日期；页头的两个选择器直接改它们 */
+  /** 当前标的代码（`_symbols.json` 的键）与日期。**标的由账户锁定**，页头只有日期选择器；
+   *  `setSymbol` 留着是给「换一个账户 / 换一份数据」用的，界面上没有入口。 */
   const symbolCode = ref('')
   const day = ref('')
   const loading = ref(false)

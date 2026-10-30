@@ -50,8 +50,15 @@ function onTrade(): void {
       >
     </header>
 
-    <!-- 三个状态小标签：回撤口径 / 在考核中或已失败 / 本阶段起点 -->
+    <!-- 三个状态小标签：标的 / 回撤口径 / 在考核中或已失败 / 本阶段起点 -->
     <div class="mt-2.5 flex flex-wrap gap-1 px-4">
+      <!-- 标的：建户时定死，卡片上给一个能一眼认出来的位置（同名账户靠它区分） -->
+      <span
+        class="rounded-sm border border-accent/30 bg-accent-soft px-1.5 py-0.5 text-[10px] tracking-wider text-accent-ink uppercase"
+        title="这个账户只做这一个标的，创建后不可切换"
+      >
+        {{ a.symbolId ?? '未绑定标的' }}
+      </span>
       <span class="rounded-sm border border-line px-1.5 py-0.5 text-[10px] tracking-wider text-faint uppercase">
         {{ drawdownLabel(a.rules.drawdownType) }}
       </span>

@@ -24,6 +24,9 @@ import { useTradeStore } from '@/stores/trade'
  * 能：看那一天的真 K 线（缩放 / 平移 / 指标 / 周期切换）、画线（趋势线/射线/矩形/
  *     箭头/斐波那契 + 模板）、按 nATR 算手数、把下单面板填好。
  *
+ * **标的只有一个**：它在建账户时选定、写死在账户上，所以这一页没有标的选择器 ——
+ * 只显示「已锁定」和是哪个品种（要换标的就新建账户）。日期仍然可换（一天一个 CSV）。
+ *
  * 不能：**下单、撤单、平仓、逐根推进**。撮合还在设计阶段（`TRADING-ENGINE-DESIGN.md`），
  *     后端没有任何交易接口。所以那些按钮点下去只给一句明确提示，不产生假数据 ——
  *     账由后端算，前端先造一笔成交会让界面立刻和余额对不上。
@@ -45,8 +48,11 @@ const dayDraft = computed({
   set: (v: string) => store.setDay(v),
 })
 
+/** 账户绑定的标的（建户时定、不可改）。交易页只画它，没有切换入口。 */
+const boundCode = computed(() => account.value?.symbolId ?? '')
+
 /** 当前标的的日文件范围：日期框据此夹 min/max，免得选到 2019 年去查一个空目录。 */
-const symbol = computed(() => store.symbols.find((s) => s.code === store.symbolCode) ?? null)
+const symbol = computed(() => store.symbols.find((s) => s.code === boundCode.value) ?? null)
 
 /** 账户起点那天（`startDayFile` 是文件名，如 `2024-03-04.csv`）。 */
 function accountDay(a: Account): string {
@@ -64,16 +70,30 @@ onMounted(async () => {
     loadingAccount.value = false
   }
 
-  await store.loadSymbols()
-  const first = store.symbols.find((s) => s.days > 0) ?? store.symbols[0]
-  if (!first) {
-    store.noteError('没有任何标的：先跑抓取程序，data/_symbols.json 里才会出现标的。')
+  const code = account.value?.symbolId
+  if (!code) {
+    // 账户都没读到（或旧库里没有标的列）就别去猜一个标的来画 —— 猜错了就是另一张图
+    if (account.value) store.noteError('这个账户没有绑定标的，无法确定看哪个品种。')
     return
   }
-  // 起点优先用账户那一天（训练从哪根 K 线开始是账户的一部分），否则退到这个标的的最新一天
+
+  await store.loadSymbols()
+  const meta = store.symbols.find((s) => s.code === code)
+  if (!meta) {
+    store.noteError(
+      `账户的标的 ${code} 不在标的清单里（data/_symbols.json 里没有它），读不到 K 线。`,
+    )
+    return
+  }
+  if (meta.days === 0) {
+    store.noteError(`标的 ${code} 还没有任何 K 线文件：先跑抓取程序录一段行情。`)
+    return
+  }
+
+  // 起点优先用账户那一天（训练从哪根 K 线开始是账户的一部分），否则退到该标的的最新一天
   const wanted = account.value ? accountDay(account.value) : ''
-  const inside = wanted && first.firstDay && first.lastDay && wanted >= first.firstDay && wanted <= first.lastDay
-  await store.load(first.code, inside ? wanted : first.lastDay)
+  const inside = wanted && meta.firstDay && meta.lastDay && wanted >= meta.firstDay && wanted <= meta.lastDay
+  await store.load(code, inside ? wanted : meta.lastDay)
 })
 </script>
 
@@ -109,19 +129,18 @@ onMounted(async () => {
       <span v-else-if="loadingAccount" class="text-[13px] text-faint">账户加载中…</span>
       <span v-else class="text-[13px] text-red-600">账户加载失败：{{ accountErr }}</span>
 
-      <!-- 标的与日期：账户不绑定单一标的（可以同时做 MES / MNQ），所以这两个都得能换 -->
+      <!-- 标的与日期：标的在建户时就锁死了（一个账户只做一个品种），这里只显示不能换；日期照旧可换 -->
       <div class="ml-auto flex items-center gap-1.5 text-[12px]">
-        <select
-          class="rounded border border-line bg-panel px-1.5 py-1 text-[12px] text-ink"
-          :value="store.symbolCode"
-          title="标的：清单来自 data/_symbols.json（抓取程序维护）"
-          @change="store.setSymbol(($event.target as HTMLSelectElement).value)"
+        <span
+          class="flex items-center gap-1 rounded border border-line bg-elev px-1.5 py-0.5 text-[12px] text-dim"
+          :title="`本账户只做 ${boundCode || '—'}：标的是创建账户时选定的，不可切换；要换标的请新建账户`"
         >
-          <option v-for="s in store.symbols" :key="s.code" :value="s.code">
-            {{ s.code }}（{{ s.days }} 天）
-          </option>
-          <option v-if="store.symbols.length === 0" value="">没有标的</option>
-        </select>
+          <span class="text-faint">标的</span>
+          <span class="font-medium text-ink tnum">{{ boundCode || '—' }}</span>
+          <span class="rounded-sm border border-line px-1 text-[10px] tracking-wider text-faint uppercase">
+            已锁定
+          </span>
+        </span>
 
         <input
           type="date"
@@ -151,6 +170,7 @@ onMounted(async () => {
       <span class="font-medium">看盘模式</span>
       <span>下单 / 撤单 / 平仓 / 逐根推进都还没接通（撮合后端在做），按钮只给提示，不会产生任何数据。</span>
       <span class="text-amber-700">画线与模板只存在这个标签页里，刷新即失。</span>
+      <span class="text-amber-700">本页标的由账户锁定（一个账户只做一个品种），要换标的请新建账户。</span>
       <span v-if="store.loading" class="ml-auto">加载中…</span>
       <span v-else-if="store.instance" class="tnum ml-auto text-amber-700">
         {{ store.instance.symbol }} · {{ store.day }} · {{ store.bars.length }} 根
