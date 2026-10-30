@@ -118,6 +118,8 @@ class PropFirmAccountServiceTest {
         assertEquals(new BigDecimal("50000.00"), account.getEodPeakBalance());
         assertEquals("2024-03-04 09:00", account.getStartBarTime());
         assertEquals("2024-03-04.csv", account.getStartDayFile());
+        assertEquals("2024-03-04 09:00", account.getLastBarTime(),
+                "最新时间初值就是起点：第一次「继续交易」只揭示到这一根");
         assertEquals(SYMBOL, account.getSymbolId(), "标的在建户那一刻定下，落在账户上");
         assertEquals(new BigDecimal("3000.00"), account.getRules().getProfitTarget(),
                 "规则必须是副本、落在账户上，不能只靠模板");
@@ -315,6 +317,45 @@ class PropFirmAccountServiceTest {
         assertThrows(BusinessException.class, () -> service.requireActive(account.getId()));
         assertThrows(BusinessException.class, () -> service.requireTradable(account.getId()));
         assertThrows(BusinessException.class, () -> service.fail(account.getId(), null));
+    }
+
+    /**
+     * 盘面最新时间：建户 = 起点，之后只能往后推，推到哪儿「继续交易」就从哪儿开始。
+     *
+     * <p>这是「重新打开交易页不能提前看到未来」的唯一依据，所以三条都钉住：
+     * 初值、往后推能落库、往回退会被拒。
+     */
+    @Test
+    void advanceCursorOnlyMovesForwardAndStartsAtTheStartBar() {
+        PropFirmAccount account = service.open(evalTemplate(null).getId(), SYMBOL, "接着上次的位置");
+        assertEquals("2024-03-04 09:00", account.getLastBarTime(), "建户即停在起点");
+
+        PropFirmAccount stepped = service.advanceCursor(account.getId(), "2024-03-04 09:35");
+        assertEquals("2024-03-04 09:35", stepped.getLastBarTime());
+        assertEquals("2024-03-04 09:35", service.get(account.getId()).getLastBarTime(), "要真落库");
+
+        // 同一根重复提交是幂等的（用户连点两次不该报错）
+        assertEquals("2024-03-04 09:35",
+                service.advanceCursor(account.getId(), "2024-03-04 09:35").getLastBarTime());
+
+        // 往回退 = 重看已经发生的行情，账要跟着回滚，现在不做 → 拒绝，而且不改值
+        assertThrows(IllegalArgumentException.class,
+                () -> service.advanceCursor(account.getId(), "2024-03-04 09:30"));
+        assertEquals("2024-03-04 09:35", service.get(account.getId()).getLastBarTime());
+
+        // 格式不对也拒：时间列是「定长明文 + 字典序即时间序」，格式不齐比较就废了
+        assertThrows(IllegalArgumentException.class,
+                () -> service.advanceCursor(account.getId(), "2024-03-04"));
+    }
+
+    /** 考挂了的账户不能再往前走（推进盘面也是「还在考核中」才做的事）。 */
+    @Test
+    void advanceCursorRejectsFailedAccount() {
+        PropFirmAccount account = service.open(evalTemplate(null).getId(), SYMBOL, "考挂了");
+        service.fail(account.getId(), null);
+
+        assertThrows(BusinessException.class,
+                () -> service.advanceCursor(account.getId(), "2024-03-04 09:05"));
     }
 
     /** 删账户只删这一行：阶段流水和（将来的）成交都保留，account_id 原样留着。 */

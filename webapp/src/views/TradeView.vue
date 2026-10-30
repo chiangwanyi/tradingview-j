@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { onMounted, ref } from 'vue'
 
 import ChartPanel from '@/components/ChartPanel.vue'
 import ChartToolbar from '@/components/ChartToolbar.vue'
@@ -9,7 +9,6 @@ import TradeFloat from '@/components/TradeFloat.vue'
 import * as accounts from '@/data/accounts'
 import type { Account } from '@/data/accounts'
 import { errorText } from '@/data/store'
-import { drawdownLabel, pct, stageLabel, usd } from '@/data/rules'
 import { useTradeStore } from '@/stores/trade'
 
 /**
@@ -21,17 +20,21 @@ import { useTradeStore } from '@/stores/trade'
  *
  * ## 这一页现在能做什么、不能做什么
  *
- * 能：看那一天的真 K 线（缩放 / 平移 / 指标 / 周期切换）、画线（趋势线/射线/矩形/
- *     箭头/斐波那契 + 模板）、按 nATR 算手数、把下单面板填好。
+ * 能：看那一天的真 K 线（**只到账户记住的那一根**，按 → / 【下一根】往后放）、
+ *     缩放 / 平移 / 指标 / 周期切换、画线（趋势线/射线/矩形/箭头/斐波那契 + 模板）、
+ *     按 nATR 算手数、把下单面板填好。
  *
  * **标的只有一个**：它在建账户时选定、写死在账户上，所以这一页没有标的选择器 ——
- * 只显示「已锁定」和是哪个品种（要换标的就新建账户）。日期仍然可换（一天一个 CSV）。
+ * 只显示「已锁定」和是哪个品种（要换标的就新建账户）。
  *
- * 不能：**下单、撤单、平仓、逐根推进**。撮合还在设计阶段（`TRADING-ENGINE-DESIGN.md`），
- *     后端没有任何交易接口。所以那些按钮点下去只给一句明确提示，不产生假数据 ——
+ * **打开时停在哪一根**：账户的 `lastBarTime`（建户 = 起点，每步进一根就往后推一格）。
+ * 这一步是「继续交易」的全部含义 —— 不是从头再来一遍，而是接着上次的位置。
+ *
+ * 不能：**下单、撤单、平仓**。撮合还在设计阶段（`TRADING-ENGINE-DESIGN.md`），
+ *     后端没有这些接口。所以那些按钮点下去只给一句明确提示，不产生假数据 ——
  *     账由后端算，前端先造一笔成交会让界面立刻和余额对不上。
  *
- * 画线只活在这个标签页的内存里：刷新即失。页面顶部有一条常驻说明。
+ * 画线只活在这个标签页的内存里：刷新即失。
  */
 
 const props = defineProps<{ id: string }>()
@@ -41,23 +44,6 @@ const store = useTradeStore()
 const account = ref<Account | null>(null)
 const accountErr = ref('')
 const loadingAccount = ref(true)
-
-/** 日期选择框：跟 store 里的 day 走，改了就去取那一天。 */
-const dayDraft = computed({
-  get: () => store.day,
-  set: (v: string) => store.setDay(v),
-})
-
-/** 账户绑定的标的（建户时定、不可改）。交易页只画它，没有切换入口。 */
-const boundCode = computed(() => account.value?.symbolId ?? '')
-
-/** 当前标的的日文件范围：日期框据此夹 min/max，免得选到 2019 年去查一个空目录。 */
-const symbol = computed(() => store.symbols.find((s) => s.code === boundCode.value) ?? null)
-
-/** 账户起点那天（`startDayFile` 是文件名，如 `2024-03-04.csv`）。 */
-function accountDay(a: Account): string {
-  return a.startDayFile.replace(/\.csv$/i, '')
-}
 
 onMounted(async () => {
   document.title = '交易 · webapp'
@@ -90,77 +76,40 @@ onMounted(async () => {
     return
   }
 
-  // 起点优先用账户那一天（训练从哪根 K 线开始是账户的一部分），否则退到该标的的最新一天
-  const wanted = account.value ? accountDay(account.value) : ''
-  const inside = wanted && meta.firstDay && meta.lastDay && wanted >= meta.firstDay && wanted <= meta.lastDay
-  await store.load(code, inside ? wanted : meta.lastDay)
+  // 步进要落库到这个账户（store 只管记 id，账户本身是这一页的数据）
+  store.bindAccount(props.id, account.value?.lastBarTime)
+
+  /*
+   * 停在哪一根：优先用账户的 lastBarTime（旧库里这一列可能空着 → 退到起点）。
+   * 那一天的日文件可能已经不在了（被清理 / 该标的只抓到更早的日期），
+   * 这时退到磁盘上最新的一天并整天全揭示 —— 宁可多给，也不要给一块空盘面。
+   */
+  const cursor = account.value?.lastBarTime || account.value?.startBarTime || ''
+  const cursorDay = cursor.slice(0, 10)
+  const inside =
+    cursorDay && meta.firstDay && meta.lastDay && cursorDay >= meta.firstDay && cursorDay <= meta.lastDay
+  if (inside) {
+    await store.load(code, cursorDay, cursor.slice(0, 16))
+  } else {
+    await store.load(code, meta.lastDay)
+  }
 })
 </script>
 
 <template>
   <div class="flex h-screen flex-col bg-surface text-ink">
-    <header class="flex min-h-11 shrink-0 flex-wrap items-center gap-x-3 gap-y-1 border-b border-line bg-panel px-3 py-1">
+    <!-- 只留一个返回入口：顶栏上原来那一排（账户名 / 阶段 / 余额 / 回撤 / 标的 / 日期）全部去掉，
+         盘面本身才是这一页的主体 -->
+    <header class="flex min-h-9 shrink-0 items-center gap-3 border-b border-line bg-panel px-3 py-1">
       <a
         href="/"
         class="flex items-center gap-1 whitespace-nowrap text-[13px] text-dim transition-colors hover:text-ink"
         title="回到账户总览（这个标签页可以直接关掉）"
       >
-        <Icon name="left" :size="13" />账户
+        <Icon name="left" :size="13" />返回账户
       </a>
-
-      <template v-if="account">
-        <h1 class="whitespace-nowrap text-[15px] font-semibold tracking-wide">{{ account.name }}</h1>
-        <span class="rounded border border-line bg-elev px-1.5 py-0.5 text-[11px] tracking-wider text-dim">
-          {{ stageLabel(account.stage) }}
-        </span>
-        <span
-          class="tnum whitespace-nowrap text-[13px]"
-          :class="account.balance >= account.baseBalance ? 'text-accent-ink' : 'text-red-600'"
-          :title="`起点 ${usd(account.baseBalance)}`"
-        >
-          {{ usd(account.balance) }}
-        </span>
-        <span class="tnum whitespace-nowrap text-[12px] text-faint">
-          回撤 {{ drawdownLabel(account.rules.drawdownType) }}
-          {{ usd(account.rules.maxDrawdown) }} · 一致性
-          {{ account.rules.consistencyRatio == null ? '—' : `≤${pct(account.rules.consistencyRatio)}` }}
-        </span>
-      </template>
-      <span v-else-if="loadingAccount" class="text-[13px] text-faint">账户加载中…</span>
-      <span v-else class="text-[13px] text-red-600">账户加载失败：{{ accountErr }}</span>
-
-      <!-- 标的与日期：标的在建户时就锁死了（一个账户只做一个品种），这里只显示不能换；日期照旧可换 -->
-      <div class="ml-auto flex items-center gap-1.5 text-[12px]">
-        <span
-          class="flex items-center gap-1 rounded border border-line bg-elev px-1.5 py-0.5 text-[12px] text-dim"
-          :title="`本账户只做 ${boundCode || '—'}：标的是创建账户时选定的，不可切换；要换标的请新建账户`"
-        >
-          <span class="text-faint">标的</span>
-          <span class="font-medium text-ink tnum">{{ boundCode || '—' }}</span>
-          <span class="rounded-sm border border-line px-1 text-[10px] tracking-wider text-faint uppercase">
-            已锁定
-          </span>
-        </span>
-
-        <input
-          type="date"
-          class="tnum rounded border border-line bg-panel px-1.5 py-0.5 text-[12px] text-ink"
-          :value="dayDraft"
-          :min="symbol?.firstDay"
-          :max="symbol?.lastDay"
-          title="看哪一天：一天一个 CSV，切换日期就是换一天"
-          @change="dayDraft = ($event.target as HTMLInputElement).value"
-        />
-
-        <button
-          v-if="symbol?.lastDay && store.day !== symbol.lastDay"
-          type="button"
-          class="rounded border border-line px-2 py-1 text-[12px] text-dim hover:border-accent hover:text-accent"
-          @click="store.setDay(symbol.lastDay!)"
-        >
-          最新
-        </button>
-      </div>
+      <span v-if="loadingAccount" class="text-[13px] text-faint">账户加载中…</span>
+      <span v-else-if="!account" class="text-[13px] text-red-600">账户加载失败：{{ accountErr }}</span>
     </header>
 
     <!-- 常驻说明：交易后端还没接通、画线不落库 —— 这两件事不写在页面上，用户会以为是自己用错了 -->
@@ -168,13 +117,30 @@ onMounted(async () => {
       class="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-1 border-b border-amber-200 bg-amber-50 px-3 py-1 text-[12px] text-amber-800"
     >
       <span class="font-medium">看盘模式</span>
-      <span>下单 / 撤单 / 平仓 / 逐根推进都还没接通（撮合后端在做），按钮只给提示，不会产生任何数据。</span>
+      <span>下单 / 撤单 / 平仓还没接通（撮合后端在做），按钮只给提示，不会产生任何数据。</span>
+      <span class="text-amber-700">按 → 或【下一根】往后放一根，账户会记住停在哪一根。</span>
       <span class="text-amber-700">画线与模板只存在这个标签页里，刷新即失。</span>
       <span class="text-amber-700">本页标的由账户锁定（一个账户只做一个品种），要换标的请新建账户。</span>
       <span v-if="store.loading" class="ml-auto">加载中…</span>
-      <span v-else-if="store.instance" class="tnum ml-auto text-amber-700">
-        {{ store.instance.symbol }} · {{ store.day }} · {{ store.bars.length }} 根
-      </span>
+      <template v-else-if="store.instance">
+        <span class="tnum ml-auto text-amber-700">
+          {{ store.instance.symbol }} · {{ store.currentTime || store.day }} · {{ store.bars.length }} 根
+          <template v-if="store.hiddenBars > 0"> · 还有 {{ store.hiddenBars }} 根没到</template>
+        </span>
+        <button
+          type="button"
+          class="rounded border border-amber-300 bg-panel px-2 py-0.5 text-[12px] text-amber-800 transition hover:border-accent hover:text-accent disabled:cursor-not-allowed disabled:opacity-40"
+          :disabled="store.hiddenBars === 0"
+          :title="
+            store.hiddenBars === 0
+              ? '这一天的 K 线已经走完：后面的行情要等换了日文件才接得上'
+              : '推进一根 K 线（等同按 →），账户会记住停在哪一根'
+          "
+          @click="store.step()"
+        >
+          下一根 ›
+        </button>
+      </template>
     </div>
 
     <main class="relative flex min-h-0 flex-1 flex-col">
@@ -188,8 +154,8 @@ onMounted(async () => {
           class="pointer-events-none absolute inset-0 flex items-center justify-center"
         >
           <p class="rounded border border-line bg-panel/95 px-4 py-3 text-[13px] text-dim shadow">
-            {{ store.symbolCode }} 在 {{ store.day }} 没有 K 线（休市，或那一天还没抓）。
-            <span class="text-faint">换一个日期试试。</span>
+            {{ store.symbolCode }} 在 {{ store.day }} 这一屏还没有 K 线（休市、没抓，或者账户的位置还在这一天之前）。
+            <span class="text-faint">按【下一根】可以往后放一根。</span>
           </p>
         </div>
       </div>

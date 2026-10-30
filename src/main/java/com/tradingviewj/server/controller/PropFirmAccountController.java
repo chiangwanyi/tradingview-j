@@ -2,6 +2,7 @@ package com.tradingviewj.server.controller;
 
 import com.tradingviewj.server.api.R;
 import com.tradingviewj.server.dto.PropFirmAccountRequest;
+import com.tradingviewj.server.dto.PropFirmCursorRequest;
 import com.tradingviewj.server.entity.propfirm.PropFirmAccount;
 import com.tradingviewj.server.entity.propfirm.PropFirmStageLog;
 import com.tradingviewj.server.service.PropFirmAccountService;
@@ -30,7 +31,8 @@ import java.util.List;
  * {@code non_null} 会把取值为 null 的字段整个省掉（前端读到 {@code undefined}），
  * 所以前端一律用 {@code == null} 判断。
  *
- * <p>业务操作只有三个，其余都是读写：升级（{@code promote}）、判失败（{@code fail}）。
+ * <p>业务操作只有三个：升级（{@code promote}）、判失败（{@code fail}）、
+ * 步进（{@code cursor}，只把「盘面最新时间」往后推一格）。其余都是读写。
  * 没有「重置余额」—— 余额只能由成交重算后同步，手工改余额会让账和成交流水对不上。
  */
 @Tag(name = "PF 账户", description = "考核账户的增删改查，以及升级 / 判失败两个业务动作")
@@ -105,6 +107,17 @@ public class PropFirmAccountController {
     @PostMapping("/{id}/fail")
     public PropFirmAccount fail(@PathVariable String id) {
         return accounts.fail(id, null);
+    }
+
+    @Operation(summary = "步进一根（记录盘面最新时间）", description = """
+            把账户的 lastBarTime 推到你给的那一根，交易页下次「继续交易」就揭示到那里。
+            必须 yyyy-MM-dd HH:mm，而且只能往后走（退回去要回滚账，现在不做）。
+            账户已失败 / 不存在 → 业务错误码 10000。
+            """)
+    @PostMapping("/{id}/cursor")
+    public PropFirmAccount cursor(@PathVariable String id,
+                                 @RequestBody PropFirmCursorRequest body) {
+        return accounts.advanceCursor(id, body.barTime());
     }
 
     @Operation(summary = "阶段流水", description = """

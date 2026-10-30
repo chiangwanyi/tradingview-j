@@ -435,6 +435,8 @@ onBeforeUnmount(() => {
       它们全都是「改了盘面要落库」的动作，而交易后端还没接通（撮合、挂单、成交都只在
       `TRADING-ENGINE-DESIGN.md` 里）。留着按钮只会得到一个点了没反应的界面 ——
       宁可现在就少几个按钮，等接口做出来再加回来。
+      （唯一的例外【下一根】放在页面的状态条上：它只把账户的「最新时间」往后推一格，
+       已经接通了，见 `TradeView.vue`。）
     -->
 
     <div class="ml-auto flex items-center gap-3 text-[12px] text-dim">

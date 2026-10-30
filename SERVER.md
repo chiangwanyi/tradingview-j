@@ -17,7 +17,8 @@ PF 模板的五个入口（前端 `webapp/` 就在用这几个）：`GET|POST /a
 PF 账户的入口（`PropFirmAccountController`）：`GET /api/pf-accounts?status=ACTIVE|FAILED`、
 `GET|PUT|DELETE /api/pf-accounts/{id}`、`POST /api/pf-accounts`（`PropFirmAccountRequest`：
 `templateId` / `name` / **`symbolId` 三个都必填**，规则此刻复制进账户，标的此刻定死）、
-`POST /{id}/promote`、`POST /{id}/fail`、`GET /{id}/stages`。**没有「改余额」和「重置」接口**：
+`POST /{id}/promote`、`POST /{id}/fail`、`POST /{id}/cursor`（`PropFirmCursorRequest`：`barTime`，
+把账户的「盘面最新时间」往后推一格，只能往前不能退）、`GET /{id}/stages`。**没有「改余额」和「重置」接口**：
 余额只能由成交重算后经 `syncFromSession` 追平，手改会让账和成交流水对不上。`promote` 在 PAYOUT 上会被拒
 （否则余额会被再重置一次，前两个阶段的账就擦掉了）。**也没有「换标的」接口**：`PUT` 只读 `name`，
 请求体里的 `symbolId` 被忽略 —— 换标的等于换一条时间轴，那是重开账户。
@@ -50,7 +51,7 @@ PF 账户的入口（`PropFirmAccountController`）：`GET /api/pf-accounts?stat
 | 概念 | 实体（包） | 关键设计 |
 |---|---|---|
 | 标的 | `Symbol`（market） | 主键就是代码；`folder` 是 CSV 目录锚；tick/tickValue/commission 只存这 |
-| PF 模板 / 账户 | `PropFirmTemplate` / `PropFirmAccount`（propfirm） | 模板 `stage`+`nextTemplateId` 串成三阶段链；账户是**唯一归属点**，带 `stage`/`baseBalance`/`eodPeakBalance`，规则是建户那刻的副本；另有**绑定标的** `symbolId`（建户时定、`updatable=false`、无 setter）和**起点** `startBarTime`（唯一键）+ `startDayFile` |
+| PF 模板 / 账户 | `PropFirmTemplate` / `PropFirmAccount`（propfirm） | 模板 `stage`+`nextTemplateId` 串成三阶段链；账户是**唯一归属点**，带 `stage`/`baseBalance`/`eodPeakBalance`，规则是建户那刻的副本；另有**绑定标的** `symbolId`（建户时定、`updatable=false`、无 setter）和**起点** `startBarTime`（唯一键）+ `startDayFile`，以及**盘面最新时间** `lastBarTime`（初值 = 起点，步进时只增） |
 | 绘图 / 下单 | `Drawing` / `Order` | 样式是**画下那刻的快照**；`Drawing` **不带 `account_id`**（挂在 K 线上）；没有止损/止盈单类型，`ocoGroup` 管同根不双触发 |
 | 交易 | `Trade`（trade） | **交易域的唯一真相**，持仓与盈亏由它重放；`commission` 是成交那刻的快照；`Position`/`ClosedLot` **不落库**（均价法给账户，FIFO 给画线） |
 | **操作记录** | `AuditEvent`（audit） | **日志层，唯一写入点**。append-only；每行带 `symbol_id` + `bar_time`，能定位到「哪块盘面的哪一根」；**没有任何下标列** |
@@ -129,6 +130,23 @@ PF 账户的入口（`PropFirmAccountController`）：`GET /api/pf-accounts?stat
   名字（时间、文件名）不会因为内容变了而撒谎，位置会。
 - **`started_at` ≠ `start_bar_time`**：前者是真实时钟（这行何时写进库），后者是行情时间轴上的位置。
   起点字段都是 `updatable = false`——改一次，这个账户的所有历史都跟着挪位置。
+
+## 盘面停在哪一根：`last_bar_time`（2026-10-30）
+
+账户上另有一列 `last_bar_time`，语义是**这个账户最新看到的 K 线时间**：建户时等于
+`start_bar_time`，此后用户每在交易页步进一根（【下一根】/ →）就往后推一格，
+由 `POST /api/pf-accounts/{id}/cursor` 落库（`PropFirmAccount#advanceBarTime`，**只增不减**，
+格式必须 `yyyy-MM-dd HH:mm`）。
+
+- **为什么要有这一列**：「继续交易」打开交易页时只揭示到这一根。没有它，每次回来都整天全揭示，
+  等于提前看到未来，训练就失效了。
+- **为什么不能退**：账（成交、余额、回撤）按时间累积，退回去就得回滚账 —— 那是另一件事，
+  现在直接拒（重复提交同一根是幂等的）。
+- **为什么不随阶段升级重置**：EVAL → FUNDED 只是换规则，盘面还停在原来那一根。
+- **旧库要补列**（`ddl-auto: none`，schema.sql 只管建新表）：
+  `ALTER TABLE prop_firm_account ADD COLUMN last_bar_time TEXT NOT NULL DEFAULT '';`
+  `UPDATE prop_firm_account SET last_bar_time = start_bar_time WHERE last_bar_time = '';`
+  2026-10-30 那份 `./db/tradingview-j.db` 已经就地补过（备份在 `db/tradingview-j.db.bak-20261030-lastbartime`）。
 
 ## PF 考核规则
 

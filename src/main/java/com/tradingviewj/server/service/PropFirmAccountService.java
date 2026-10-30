@@ -205,6 +205,24 @@ public class PropFirmAccountService {
     }
 
     /**
+     * 把账户的「盘面最新时间」推到某一根 K 线（交易页按【下一根】时调）。
+     *
+     * <p>写的是 {@link PropFirmAccount#getLastBarTime()} —— 「继续交易」打开交易页时
+     * 就揭示到这一根。规则在实体上：<strong>只能往后走</strong>（见
+     * {@link PropFirmAccount#advanceBarTime(String)}），这里只负责「账户得还在考核中」。
+     *
+     * <p>只有 {@code ACTIVE} 账户能推进：考挂了的账户不该再往前走。
+     *
+     * @throws BusinessException 账户不存在 / 已失败，或时间格式不对、比当前值更早
+     */
+    @Transactional
+    public PropFirmAccount advanceCursor(String accountId, String barTime) {
+        PropFirmAccount account = requireActive(accountId);
+        account.advanceBarTime(barTime);
+        return accounts.save(account);
+    }
+
+    /**
      * 把会话算出的余额 / 峰值写回账户（这两个列是缓存，见 {@code PropFirmAccount#syncComputed}）。
      *
      * <p>推进盘面的那一层每根 K 线之后调一次，界面就能直接读账户行显示

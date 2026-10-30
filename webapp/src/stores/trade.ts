@@ -7,6 +7,7 @@ import { DEFAULT_BAR_COUNT, sanitizeBarCount, type BarCountSettings } from '@/co
 import { DEFAULT_INDICATOR, sanitizeIndicator, type IndicatorSettings } from '@/components/chart/indicators'
 import * as barsApi from '@/data/bars'
 import type { SymbolBrief } from '@/data/bars'
+import * as accountsApi from '@/data/accounts'
 import { DEFAULT_NATR, planNatr, sanitizeNatr, type NatrSettings } from '@/lib/natr'
 import { TIMEFRAMES } from '@/types/protocol'
 import type {
@@ -31,9 +32,17 @@ import type {
  *
  * | | web/（复盘） | 这里 |
  * |---|---|---|
- * | K 线 | Go 服务的 WS 快照 + 逐根 step | 一次 HTTP 取一整天，全揭示 |
+ * | K 线 | Go 服务的 WS 快照 + 逐根 step | 一次 HTTP 取一整天，**只揭示到账户记住的那一根**，再逐根 step |
  * | 画线 / 模板 | 发消息给后端，后端编号后广播 | 只在本页内存 |
  * | 下单 / 撤单 / 平仓 | 后端撮合、落库、广播 | 没有后端，点了给一句明确提示 |
+ *
+ * ## 「揭示到哪一根」为什么是账户的状态
+ *
+ * 账户上有一个 `lastBarTime`（最新 K 线时间）：建户时等于起点，每步进一根就往后推一格，
+ * 由后端落库。交易页打开时就按它截断 —— 否则每次「继续交易」都整天全揭示，
+ * 等于每次回来都提前看到未来，训练就没了。
+ * 一天的数据仍然一次取全，只是**画布上只给到那一根**：后面的 K 线不消失，
+ * 只是还没到（`hiddenBars`），step 一次放一根出来。
  *
  * ## 为什么不假装「下单成功」
  *
@@ -80,6 +89,20 @@ function seedTemplates(): Template[] {
     style: defaultStyle(kind),
     createdAt: i,
   }))
+}
+
+/**
+ * 序列里「时间 ≤ t」的最后一根的下标；一根都没有时返回 -1。
+ *
+ * 时间列是定长明文 `yyyy-MM-dd HH:mm`（字典序 = 时间序），所以直接比字符串。
+ * 找不到精确相等是**正常情况**：账户记的那一根可能因为日文件重抓而不在了，
+ * 那就停在它之前最后一根已存在的 K 线上，而不是「一根都不给」。
+ */
+function lastIndexAtOrBefore(list: Bar[], t: string): number {
+  for (let i = list.length - 1; i >= 0; i -= 1) {
+    if (list[i].time <= t) return i
+  }
+  return -1
 }
 
 /** `"2024-03-04 09:35"` → 当天第几分钟。解析不了返回 NaN（聚合时整根丢掉）。 */
@@ -155,6 +178,17 @@ export const useTradeStore = defineStore('trade', () => {
   const symbolCode = ref('')
   const day = ref('')
   const loading = ref(false)
+  /**
+   * 这一天的**全部** K 线（含还没揭示的）。`instance.bars` 只是它的前缀 ——
+   * 步进一次就多放一根出来，不用重新取数。
+   */
+  const dayBars = ref<Bar[]>([])
+  /** `dayBars` 里已揭示到第几根（含）；-1 = 一根都不给（这一天没数据）。 */
+  const revealIndex = ref(-1)
+  /** 步进要落库的那个账户；为空时 step 只在本页生效。 */
+  const accountId = ref('')
+  /** 账户上记着的「最新 K 线时间」（载入时的那个，落库成功后跟着更新）。 */
+  const accountBarTime = ref('')
   const lastError = ref('')
   const errorKey = ref(0)
   /** 一句会自己消失的轻提示（本地动作的结果都走这里）。 */
@@ -205,6 +239,10 @@ export const useTradeStore = defineStore('trade', () => {
   const bars = computed(() => instance.value?.bars ?? [])
   const cursor = computed(() => instance.value?.cursor ?? 0)
   const currentBar = computed(() => bars.value[bars.value.length - 1] ?? null)
+  /** 盘面现在停在哪一根（已揭示的最后一根的时间）—— 也是要落库的那个值。 */
+  const currentTime = computed(() => currentBar.value?.time ?? '')
+  /** 这一天还有多少根没揭示。 */
+  const hiddenBars = computed(() => Math.max(0, dayBars.value.length - revealIndex.value - 1))
   const tick = computed(() => instance.value?.tick ?? 0)
   const priceDecimals = computed(() => {
     const t = tick.value
@@ -290,8 +328,12 @@ export const useTradeStore = defineStore('trade', () => {
    * `instance` 是照 `InstanceDetail` 造的：画布只认这几个字段（bars / annotations /
    * orders / trades / position / tick / tickValue），给它一份形状完整的空盘面，
    * 那些分支就都不用改。
+   *
+   * `until` 是「揭示到哪一根」（账户的 `lastBarTime`）：只把这一天里时间 ≤ 它的那一段
+   * 装进 `instance.bars`，后面的留在 {@link dayBars} 里等 step。不传 = 整天全揭示
+   * （找不到账户起点时的退路，和以前一样）。
    */
-  async function load(code: string, date?: string): Promise<void> {
+  async function load(code: string, date?: string, until?: string): Promise<void> {
     if (!code) return
     loading.value = true
     try {
@@ -301,17 +343,20 @@ export const useTradeStore = defineStore('trade', () => {
       const list = withEma(
         res.bars.map((b) => ({ ...b, ema20: null as number | null })),
       )
+      dayBars.value = list
+      revealIndex.value = until ? lastIndexAtOrBefore(list, until) : list.length - 1
+      const shown = list.slice(0, revealIndex.value + 1)
       instance.value = {
         id: `${res.code}|${res.day}`,
         symbol: res.code,
         folder: res.folder,
         anchor: list[0]?.time ?? `${res.day} 00:00`,
-        cursor: Math.max(0, list.length - 1),
+        cursor: Math.max(0, shown.length - 1),
         tick: res.tick ?? 0,
         tickValue: res.tickValue ?? 0,
-        bars: list,
-        // 一整天的 K 线一次全部给出：这里没有「逐根揭示」，也就没有未揭示的部分
-        hiddenBars: 0,
+        bars: shown,
+        // 这一天剩下的根数：它们不在画布上，但不是没有 —— step 一次放一根出来
+        hiddenBars: list.length - shown.length,
         hasMore: false,
         annotations: [],
         orders: [],
@@ -339,6 +384,52 @@ export const useTradeStore = defineStore('trade', () => {
       noteError(`K 线读取失败：${String(e instanceof Error ? e.message : e)}`)
     } finally {
       loading.value = false
+    }
+  }
+
+  /**
+   * 记下「步进要落库到哪个账户」。由交易页在读完账户之后调 —— 不在这里读账户，
+   * 因为 store 只该知道「有这么一个 id」，账户本身是页面的数据。
+   */
+  function bindAccount(id: string, barTime?: string): void {
+    accountId.value = id
+    accountBarTime.value = barTime ?? ''
+  }
+
+  /**
+   * 只改「揭示到哪」：把 `instance.bars` 换成 `dayBars` 的前缀。
+   *
+   * 别的字段（标注、挂单、持仓…）一概不碰 —— 步进只是多一根 K 线，
+   * 不是换了一张图（换了图就得走 {@link load}，`instance.id` 会变、视图会重置）。
+   */
+  function applyReveal(): void {
+    const inst = instance.value
+    if (!inst) return
+    const shown = dayBars.value.slice(0, revealIndex.value + 1)
+    instance.value = {
+      ...inst,
+      bars: shown,
+      cursor: Math.max(0, shown.length - 1),
+      hiddenBars: Math.max(0, dayBars.value.length - shown.length),
+    }
+  }
+
+  /**
+   * 把新的「最新 K 线时间」存回账户。
+   *
+   * 存不下也**不收回这一根**：K 线已经画出来了，收回去会让人以为自己没按成功；
+   * 但必须明说「没存下」，否则下次打开会退回上一根，而人不会记得是哪一步丢的。
+   */
+  async function persistCursor(time: string): Promise<void> {
+    const id = accountId.value
+    if (!id || !time) return
+    try {
+      const saved = await accountsApi.advanceCursor(id, time)
+      accountBarTime.value = saved.lastBarTime ?? time
+    } catch (e) {
+      noteError(
+        `这一根已经画出来了，但「最新时间 ${time}」没存下：${String(e instanceof Error ? e.message : e)}`,
+      )
     }
   }
 
@@ -494,9 +585,25 @@ export const useTradeStore = defineStore('trade', () => {
     notWired('一键平仓')
   }
 
-  /** 键盘 →（ChartPanel 里绑着）：这里没有「逐根揭示」，只提示一句不再多出 K 线。 */
+  /**
+   * 步进一根（ChartPanel 的 → 键、状态条上的【下一根】）。
+   *
+   * 一天的数据已经全在本页（`dayBars`），所以这里只是「多放一根出来」并把它存回账户 ——
+   * 下次「继续交易」就停在这儿。走到这一天最后一根时给一句提示，不跨日：
+   * 跨日要换日文件，那是另一件事（换日 = 换整张图，会重置缩放和标注）。
+   */
   function step(): void {
-    noteNotice('这一天的 K 线已经全部画出：逐根推进要等交易后端接通。')
+    if (!instance.value) return
+    const next = dayBars.value[revealIndex.value + 1]
+    if (!next) {
+      noteNotice(
+        `${day.value} 已经是最后一根（${currentTime.value || '—'}）：后面的行情要等换了日文件才接得上。`,
+      )
+      return
+    }
+    revealIndex.value += 1
+    applyReveal()
+    void persistCursor(next.time)
   }
 
   // 换周期不需要请求，聚合是 computed 现算的；这里保留 watch 只为清掉「上一份」的选中态。
@@ -512,6 +619,10 @@ export const useTradeStore = defineStore('trade', () => {
     bars,
     cursor,
     currentBar,
+    currentTime,
+    hiddenBars,
+    accountBarTime,
+    bindAccount,
     displayBars,
     timeframe,
     setTimeframe,

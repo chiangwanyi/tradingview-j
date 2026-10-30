@@ -117,6 +117,12 @@ CREATE TABLE IF NOT EXISTS prop_firm_account (
     -- 悄悄指向另一根 K 线（而且不报错）。时间才是标识 —— 这条规则和账户绑不绑标的无关。
     start_bar_time       TEXT NOT NULL,  -- 如 2024-03-04 09:00，起点的唯一键
     start_day_file       TEXT NOT NULL,  -- 如 2024-03-04.csv（不含目录）
+    -- 盘面现在停在哪一根（2026-10-30 加）：账户的「最新 K 线时间」，**只增不减**。
+    -- 初值 = start_bar_time（建户即停在起点），此后每步进一根就往后推一格。
+    -- 这是「继续交易」打开交易页时该揭示到哪一根的唯一依据 ——
+    -- 没有它的话，重新打开页面只能整天全揭示，等于每次回来都提前看到了未来。
+    -- 存时间而不是下标：文件重抓 / 补一根 / 删一根坏行，下标会指向另一根且不报错。
+    last_bar_time        TEXT NOT NULL,
     status               TEXT NOT NULL,  -- ACTIVE / FAILED（走到 PAYOUT 用 stage 表达，不另立一个状态）
     started_at           INTEGER NOT NULL,
     created_at           INTEGER NOT NULL,

@@ -42,6 +42,12 @@ export interface Account {
   /** 模拟时间轴上的起点 K 线，如 "2024-03-04 09:00"。 */
   startBarTime: string
   startDayFile: string
+  /**
+   * 盘面现在停在哪一根 —— 账户的「最新 K 线时间」，如 "2024-03-04 09:35"。
+   * 建户时 = `startBarTime`，用户每步进一根就往后走一格（只增不减）。
+   * 交易页打开时**只揭示到这一根**。
+   */
+  lastBarTime: string
 }
 
 /** 阶段流水：这个账户当过哪几个阶段的什么身份。行数就说明身份。 */
@@ -87,6 +93,15 @@ export const promote = (id: string): Promise<Account> =>
 
 /** 判失败（撞了亏损线）。终态，不会自动重开。 */
 export const fail = (id: string): Promise<Account> => call(`${BASE}/${id}/fail`, { method: 'POST' })
+
+/**
+ * 步进一根：把账户的「盘面最新时间」推到 `barTime`（`yyyy-MM-dd HH:mm`）。
+ *
+ * 后端只接受**往后**的时间（退回去要回滚账，现在不做）。下一次「继续交易」
+ * 就揭示到这一根。
+ */
+export const advanceCursor = (id: string, barTime: string): Promise<Account> =>
+  call(`${BASE}/${id}/cursor`, send('POST', { barTime }))
 
 export const stages = (id: string): Promise<StageLog[]> => call(`${BASE}/${id}/stages`)
 

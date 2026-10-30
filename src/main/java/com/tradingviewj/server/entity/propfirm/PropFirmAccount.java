@@ -155,6 +155,22 @@ public class PropFirmAccount extends BaseEntity {
     private String startDayFile;
 
     /**
+     * 盘面现在停在哪一根 —— 这个账户的<strong>最新 K 线时间</strong>，如 {@code 2024-03-04 09:35}。
+     *
+     * <p>初值等于 {@link #startBarTime}（建户即停在起点），此后用户每步进一根就往后推一格。
+     * 交易页「继续交易」打开时<strong>只揭示到这一根</strong>：没有它，重新打开页面只能整天
+     * 全揭示，等于每次回来都提前看到了未来。
+     *
+     * <p>和 {@link #startBarTime} 的分工：起点是「这次考核从哪一根开始」（永不改动），
+     * 这里是「看到哪了」（只会往后走）。两者都是<strong>时间</strong>而不是下标 ——
+     * 日文件重抓、补一根、删一根坏行都不会让时间撒谎。
+     *
+     * <p>它<strong>不随阶段升级重置</strong>：EVAL 考到 FUNDED 只是换规则，盘面还停在原来那一根。
+     */
+    @Column(nullable = false)
+    private String lastBarTime;
+
+    /**
      * 按模板开一个账户。规则在这一刻<strong>复制</strong>进来，此后与模板无关。
      *
      * <p>阶段由模板决定：拿 FUNDED 模板建出来的账户直接从 FUNDED 开始
@@ -208,7 +224,35 @@ public class PropFirmAccount extends BaseEntity {
         account.startedAt = now;
         account.startBarTime = startBarTime;
         account.startDayFile = startDayFile;
+        // 建户即停在起点：「继续交易」第一次打开时只揭示到这一根
+        account.lastBarTime = startBarTime;
         return account;
+    }
+
+    /**
+     * 把盘面推到某一根 —— 记下「这个账户最新看到的 K 线时间」。
+     *
+     * <p>只在用户步进（交易页按【下一根】/ → 键）之后由 {@code PropFirmAccountService} 调用。
+     *
+     * <p><strong>只能往后走</strong>：往前退等于「重看已经发生过的行情」，
+     * 而账（成交、余额、回撤）全按时间累积，退回去就得回滚账 —— 那是另一件事，
+     * 现在不做，所以这里直接拒绝。重复提交同一根是允许的（幂等）。
+     *
+     * @param barTime 明文时间 {@code yyyy-MM-dd HH:mm}，格式错或早于当前值都抛异常
+     */
+    public void advanceBarTime(String barTime) {
+        if (barTime == null || barTime.isBlank()) {
+            throw new IllegalArgumentException("步进必须有 K 线时间，收到: " + barTime);
+        }
+        String t = barTime.trim();
+        if (t.length() != 16 || t.charAt(10) != ' ') {
+            // 时间在本库里是「定长明文 + 字典序即时间序」，格式不齐会让比较失效
+            throw new IllegalArgumentException("K 线时间必须是 yyyy-MM-dd HH:mm，收到: " + barTime);
+        }
+        if (lastBarTime != null && t.compareTo(lastBarTime) < 0) {
+            throw new IllegalArgumentException("盘面时间只能往后走，当前停在 " + lastBarTime + "，收到: " + t);
+        }
+        this.lastBarTime = t;
     }
 
     /**
