@@ -1,6 +1,6 @@
 package com.tradingviewj.server.service;
 
-import com.tradingviewj.server.entity.trade.Order;
+import com.tradingviewj.server.entity.trade.TradeOrder;
 import com.tradingviewj.server.entity.trade.Side;
 import com.tradingviewj.server.exception.BusinessException;
 import com.tradingviewj.server.storage.Bar;
@@ -8,20 +8,18 @@ import com.tradingviewj.server.storage.Bar;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.util.ArrayList;
-import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Map;
 
 /**
  * 撮合规则与价格/手数校验的<strong>唯一实现</strong>（Go 版对应 {@code internal/replay/instance.go} 里
- * {@code orderTriggered} / {@code fillPriceFor} / {@code ocoWinner} / {@code roundPrice} 那几个函数）。
+ * {@code orderTriggered} / {@code fillPriceFor} / {@code roundPrice} 那几个函数）。
  *
  * <h2>为什么单独一个类</h2>
  *
  * <p>这几条规则不需要数据库、不需要 Spring、不需要账户 —— 入参是「一张单 + 一根 K 线」，
  * 出参是布尔或者一个价格。放在 {@code TradingService} 里也行，但那样每验一条撮合规则
  * 都要先建库、建账户、造 CSV；而撮合恰恰是<strong>最需要被逐条钉住</strong>的部分
- * （跳空、同根双触发、挂反的单）。分开之后这些用例可以是纯单元测试。
+ * （跳空、挂反的单）。分开之后这些用例可以是纯单元测试。
  *
  * <p>同样的理由让它成为<strong>唯一</strong>一份：服务层只调用这里，不自己再写一遍
  * 「最低价 ≤ 挂单价」—— 两份判据在跳空和反手这些边界上一定会分叉，而分叉出来的错
@@ -55,7 +53,7 @@ public final class TradingEngine {
      * <p>市价单永远不会出现在这里：它在下单那一刻就成交了，不会以 OPEN 状态留到下一根。
      * 真出现（数据坏了）返回 {@code false}，而不是抛异常 —— 一次撮合失败不该让整根 K 线回滚。
      */
-    public static boolean triggered(Order order, Bar bar) {
+    public static boolean triggered(TradeOrder order, Bar bar) {
         if (order == null || bar == null || order.getPrice() == null) {
             return false;
         }
@@ -86,65 +84,14 @@ public final class TradingEngine {
      * （等价格过来），止损单拿到的是<strong>不比挂单价好</strong>的价（价格跑了才追）。
      * 方向写反，复盘里就出现了无风险套利。
      */
-    public static BigDecimal fillPrice(Order order, Bar bar, BigDecimal tick) {
+    public static BigDecimal fillPrice(TradeOrder order, Bar bar, BigDecimal tick) {
         BigDecimal open = bar.open();
         if (open == null || open.signum() <= 0) {
             return order.getPrice();
         }
-        boolean downward = (order.getType() == Order.Type.LIMIT) == (order.getSide() == Side.BUY);
+        boolean downward = (order.getType() == TradeOrder.Type.LIMIT) == (order.getSide() == Side.BUY);
         BigDecimal raw = downward ? open.min(order.getPrice()) : open.max(order.getPrice());
         return roundPrice(raw, tick);
-    }
-
-    /**
-     * 这一根里每个 OCO 组「该成交哪一张」，返回 {@code 组号 → orderId}。
-     *
-     * <p><strong>同一组最多成交一张</strong>：5 分钟 K 线看不出最高价和最低价谁先出现，
-     * 止损和止盈可能同时被判为触发。不拦的话，一张止盈单平完仓，止损单接着成交，
-     * 仓位被平过头、反手开出一个谁也不想要的仓。
-     *
-     * <p><strong>组内优先级：止损 &gt; 限价；同类按挂单时间、再按 id。</strong>
-     * 为什么是「止损优先」而不是「止盈优先」：两头都扎到时，数据里根本没有先后，
-     * 唯一诚实的做法是取<strong>对持仓更不利</strong>的那一侧。反过来等于每次「说不清」
-     * 都替策略挑了好结果 —— 回测好看，实盘一跑就露馅。
-     *
-     * <p>优先级<strong>显式比较</strong>，不依赖挂单顺序：早先 Go 版靠「谁先挂谁成交」，
-     * 因为机器人恰好先挂止损而碰巧正确；改一行挂单顺序就会静默翻转成乐观口径。
-     *
-     * @param openOrders 本根<strong>可以参与撮合</strong>的挂单（调用方已按「本根挂的本根不撮合」筛过）
-     */
-    public static Map<String, String> ocoWinners(List<Order> openOrders, Bar bar) {
-        Map<String, Order> best = new LinkedHashMap<>();
-        for (Order order : openOrders) {
-            String group = order.getOcoGroup();
-            if (group == null || group.isBlank() || !triggered(order, bar)) {
-                continue;
-            }
-            Order current = best.get(group);
-            if (current == null || comparePriority(order, current) < 0) {
-                best.put(group, order);
-            }
-        }
-        Map<String, String> winners = new LinkedHashMap<>();
-        best.forEach((group, order) -> winners.put(group, order.getId()));
-        return winners;
-    }
-
-    /** 组内优先级：数字小的先成交。同类型再比挂单时间（定长明文，字典序即时间序），最后比 id 保证确定。 */
-    private static int comparePriority(Order a, Order b) {
-        int byKind = Integer.compare(priorityRank(a), priorityRank(b));
-        if (byKind != 0) {
-            return byKind;
-        }
-        int byTime = a.getPlacedAtBar().compareTo(b.getPlacedAtBar());
-        if (byTime != 0) {
-            return byTime;
-        }
-        return a.getId().compareTo(b.getId());
-    }
-
-    private static int priorityRank(Order order) {
-        return order.getType() == Order.Type.STOP ? 0 : 1;
     }
 
     /**
@@ -231,22 +178,22 @@ public final class TradingEngine {
      *
      * @throws BusinessException 无法识别 / 用了 market
      */
-    public static Order.Type parsePlacementType(String wire) {
+    public static TradeOrder.Type parsePlacementType(String wire) {
         if (wire == null || wire.isBlank()) {
             throw new BusinessException("挂单必须给类型（limit / stop）");
         }
         return switch (wire.trim().toLowerCase(java.util.Locale.ROOT)) {
-            case "limit" -> Order.Type.LIMIT;
-            case "stop" -> Order.Type.STOP;
+            case "limit" -> TradeOrder.Type.LIMIT;
+            case "stop" -> TradeOrder.Type.STOP;
             case "market" -> throw new BusinessException("市价单请用 market_order 提交：它下单即成交，不留在挂单里");
             default -> throw new BusinessException("挂单类型只能是 limit / stop，收到: " + wire);
         };
     }
 
-    /** 同一次撮合里按「本根挂的本根不撮合」筛出的候选单（顺序由调用方给定，OCO 判定不依赖它）。 */
-    public static List<Order> eligible(List<Order> openOrders, String barTime) {
-        List<Order> out = new ArrayList<>();
-        for (Order order : openOrders) {
+    /** 同一次撮合里按「本根挂的本根不撮合」筛出的候选单（顺序由调用方给定）。 */
+    public static List<TradeOrder> eligible(List<TradeOrder> openOrders, String barTime) {
+        List<TradeOrder> out = new ArrayList<>();
+        for (TradeOrder order : openOrders) {
             if (order.getPlacedAtBar() != null && order.getPlacedAtBar().compareTo(barTime) < 0) {
                 out.add(order);
             }

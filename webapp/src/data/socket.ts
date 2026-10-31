@@ -24,7 +24,7 @@
  * 一条「步进」在断线期间重发，可能让账户一次往前跳两根，而用户只按了一次。
  */
 
-import type { ClosedLot, Order, Position, Trade } from '@/types/protocol'
+import type { ClosedLot, TradeOrder, Position, Trade } from '@/types/protocol'
 
 /** 一根 K 线（和后端 `BarView` 同名）。没有 `ema20` —— 均线由前端现算。 */
 export interface DeskBar {
@@ -63,7 +63,7 @@ export interface DeskSnapshot {
   /** 磁盘上还有没有下一根 —— 【下一根】按钮的可用性就看它 */
   hasNext: boolean
   bars: DeskBar[]
-  orders: Order[]
+  orders: TradeOrder[]
   trades: Trade[]
   closedLots: ClosedLot[]
   position: Position
@@ -87,7 +87,7 @@ export interface BarAdvancedPayload {
   hiddenBars: number
   /** 磁盘上还有没有下一根 */
   hasMore: boolean
-  orders: Order[]
+  orders: TradeOrder[]
   trades: Trade[]
   closedLots: ClosedLot[]
   position: Position

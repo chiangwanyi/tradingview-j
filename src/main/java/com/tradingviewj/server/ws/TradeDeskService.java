@@ -129,7 +129,7 @@ public class TradeDeskService {
      *       流水是「当时发生过什么」的日志。先写流水再推账户，中间失败就留下一条
      *       「记录了步进、但账户没动」的错位；反过来失败则只是少一条流水，盘面本身还是对的。</li>
      *   <li><strong>用这根 K 线撮合挂单</strong>（{@link TradingService#match}）：
-     *       触发判定、跳空修正、OCO 撤销、落成交，全部发生在这一根<strong>揭示之后</strong>；
+     *       触发判定、跳空修正、落成交，全部发生在这一根<strong>揭示之后</strong>；
      *       成交结果直接并进下面那条 {@code bar_advanced}，不另发 {@code order_filled} ——
      *       拆成两条的话，前端会在「K 线到了、成交还没到」的那一帧画出错误的持仓线。</li>
      *   <li>写 {@code BAR_ADVANCED} 流水（payload = 广播内容，见 {@link BarAdvancedPayload}）；</li>

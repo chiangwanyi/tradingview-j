@@ -24,7 +24,7 @@ import type {
   ClosedLot,
   FlatAllPayload,
   InstanceDetail,
-  Order,
+  TradeOrder,
   OrderFilledPayload,
   OrderKind,
   OrdersPayload,
@@ -500,7 +500,7 @@ export const useTradeStore = defineStore('trade', () => {
    * 只会让持仓和账户余额慢慢对不上。缺省的字段保持原样（`order_placed` 不带成交）。
    */
   function applyPortfolio(book: {
-    orders?: Order[]
+    orders?: TradeOrder[]
     trades?: Trade[]
     closedLots?: ClosedLot[]
     position?: Position

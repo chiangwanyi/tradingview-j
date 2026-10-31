@@ -19,7 +19,7 @@ import { type ClosedTrade } from '@/components/chart/trades'
 import { chartNav, chartViewport } from '@/components/chart/viewport'
 import TradeTipCard from '@/components/TradeTipCard.vue'
 import { TOOL_LABEL, isDrawTool, useTradeStore, type DrawTool } from '@/stores/trade'
-import type { Order, OrderKind, Point, Side } from '@/types/protocol'
+import type { TradeOrder, OrderKind, Point, Side } from '@/types/protocol'
 
 /**
  * 画布 = Canvas（K 线/指标/挂单价线/十字光标）+ SVG（标注图形）。
@@ -269,7 +269,7 @@ function draw(): void {
 }
 
 /** 画布上的挂单：拖动中的那一张换成**本机价格**，其余原样 */
-function effectiveOrders(): Order[] {
+function effectiveOrders(): TradeOrder[] {
   const inst = store.instance
   if (!inst) return []
   const d = orderDrag.value

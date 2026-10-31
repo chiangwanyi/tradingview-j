@@ -291,7 +291,6 @@ CREATE TABLE IF NOT EXISTS trade_order (
     placed_at_bar TEXT NOT NULL,
     filled_at_bar TEXT,             -- NULL = 没成交（不再用 -1 这种哨兵值）
     fill_price    TEXT,
-    oco_group     TEXT,              -- 同一组最多成交一张；NULL = 独立挂单
     created_at    INTEGER NOT NULL,
     updated_at    INTEGER NOT NULL
 );

@@ -1,4 +1,4 @@
-import type { Order, Position, Trade } from '@/types/protocol'
+import type { TradeOrder, Position, Trade } from '@/types/protocol'
 
 import { atrLegend, type AtrSettings } from './atr'
 import { barCountMarks, type BarCountSettings } from './barcount'
@@ -172,7 +172,7 @@ export interface DrawInput {
   theme: ChartTheme
   hover: HoverState | null
   symbol: string
-  orders: Order[]
+  orders: TradeOrder[]
   trades: Trade[]
   /** 已经配好对的「开仓 → 平仓」（见 chart/trades.ts），画连线用 */
   closed: ClosedTrade[]
@@ -665,7 +665,7 @@ function drawBarCount(
  * 每点价值 = tickValue / tick。于是「画布上预告的数字」和「真成交后记录里的数字」
  * 是同一把尺子算出来的。
  */
-function hedgePnl(order: Order, position: Position, pointValue: number): number | null {
+function hedgePnl(order: TradeOrder, position: Position, pointValue: number): number | null {
   if (!position || position.side === 'flat' || !(position.averagePrice > 0)) return null
   if (!(pointValue > 0) || !(order.quantity > 0)) return null
   const closing = position.side === 'long' ? order.side === 'sell' : order.side === 'buy'
@@ -701,7 +701,7 @@ function drawOrders(
   ctx: CanvasRenderingContext2D,
   scale: ChartScale,
   theme: ChartTheme,
-  orders: Order[],
+  orders: TradeOrder[],
   position: Position,
   pointValue: number,
   activeId: string | null,

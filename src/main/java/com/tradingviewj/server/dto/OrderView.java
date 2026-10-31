@@ -1,14 +1,14 @@
 package com.tradingviewj.server.dto;
 
-import com.tradingviewj.server.entity.trade.Order;
+import com.tradingviewj.server.entity.trade.TradeOrder;
 
 import java.math.BigDecimal;
 import java.util.Locale;
 
 /**
- * 一张挂单<strong>在协议里</strong>的样子（前端 {@code webapp/src/types/protocol.ts} 的 {@code Order}）。
+ * 一张挂单<strong>在协议里</strong>的样子（前端 {@code webapp/src/types/protocol.ts} 的 {@code TradeOrder}）。
  *
- * <h2>为什么不让 {@link Order} 实体直接上线</h2>
+ * <h2>为什么不让 {@link TradeOrder} 实体直接上线</h2>
  *
  * <p>实体是<strong>库里的形状</strong>：枚举存 Java 常量名（{@code BUY} / {@code LIMIT}）、
  * 时间列叫 {@code placedAtBar}。协议是<strong>客户端的形状</strong>：小写串（{@code buy}）、
@@ -29,7 +29,6 @@ import java.util.Locale;
  * @param status {@code open} / {@code filled} / {@code cancelled}
  * @param placedAt 下单那一刻盘面停在哪根 K 线（{@code yyyy-MM-dd HH:mm}）
  * @param filledAt 成交那一刻的 K 线时间；{@code null} = 没成交（全局 non_null 会省掉这个键）
- * @param group    OCO 组号；{@code null} = 独立挂单
  */
 public record OrderView(
         String id,
@@ -40,12 +39,11 @@ public record OrderView(
         BigDecimal quantity,
         String placedAt,
         String filledAt,
-        BigDecimal fillPrice,
-        String group
+        BigDecimal fillPrice
 ) {
 
     /** 实体的枚举 → 协议串。{@code toLowerCase(Locale.ROOT)} 和 {@code ReplayAction#wire()} 同一套理由。 */
-    public static OrderView of(Order order) {
+    public static OrderView of(TradeOrder order) {
         return new OrderView(
                 order.getId(),
                 lower(order.getSide()),
@@ -55,8 +53,7 @@ public record OrderView(
                 order.getQuantity(),
                 order.getPlacedAtBar(),
                 order.getFilledAtBar(),
-                order.getFillPrice(),
-                order.getOcoGroup());
+                order.getFillPrice());
     }
 
     private static String lower(Enum<?> value) {

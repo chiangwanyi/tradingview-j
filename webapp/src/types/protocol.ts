@@ -123,12 +123,15 @@ export type OrderStatus = 'open' | 'filled' | 'cancelled'
 
 /**
  * 一张挂单。字段和后端 `dto/OrderView` **一一对应**（小写方向 / 单型 / 状态，
- * 时间是 `yyyy-MM-dd HH:mm` 明文）。
+ * 时间是 `yyyy-MM-dd HH:mm` 明文）。名字和后端实体 `entity.trade.TradeOrder` 一致，
+ * 免得和别的 `Order`（下单命令、DOM 事件）混着读。
  *
  * 刻意没有「第几根」这种下标：下标是**位置**，数据文件重抓 / 补一根 / 删一根坏行
  * 就会指向另一根 K 线，而且不报错；时间才是标识（后端库里也已经清掉了 index 字段）。
+ *
+ * 也**没有 OCO 组**：`webapp` 只发独立挂单，单与单之间没有组合关系。
  */
-export interface Order {
+export interface TradeOrder {
   id: string
   side: Side
   kind: OrderKind
@@ -141,11 +144,6 @@ export interface Order {
   filledAt?: string
   /** 实际成交价：跳空时可能不等于挂单价 */
   fillPrice?: number
-  /**
-   * OCO 组：同一组最多成交一张，其余同根自动撤销。
-   * 空 = 独立挂单（用户手下的都是这种）；机器人的止损/止盈共用一组。
-   */
-  group?: string
 }
 
 /**
@@ -225,7 +223,7 @@ export interface InstanceDetail {
   hiddenBars: number
   hasMore: boolean
   annotations: Annotation[]
-  orders: Order[]
+  orders: TradeOrder[]
   trades: Trade[]
   /** 逐批平仓记录（画布上那些平仓虚线的数据源，盈亏已由后端算好） */
   closedLots: ClosedLot[]
@@ -386,7 +384,7 @@ export interface BarAdvancedPayload {
   cursor: number
   hiddenBars: number
   hasMore: boolean
-  orders: Order[]
+  orders: TradeOrder[]
   trades: Trade[]
   /** 逐批平仓记录（画布上那些平仓虚线的数据源，盈亏已由后端算好） */
   closedLots: ClosedLot[]
@@ -430,18 +428,18 @@ export interface AnnotationClearedPayload {
 }
 
 export interface OrdersPayload {
-  orders: Order[]
+  orders: TradeOrder[]
 }
 
 /** 改挂单价：多带一个「改完的那张」，操作记录里才能写清改的是谁、改成了多少 */
 export interface OrderMovedPayload {
-  order: Order
-  orders: Order[]
+  order: TradeOrder
+  orders: TradeOrder[]
 }
 
 /** 市价单成交：订单、成交、持仓、盈亏一次给全，前端不用再要快照 */
 export interface OrderFilledPayload {
-  order: Order
+  order: TradeOrder
   trade: Trade
   /**
    * 这一笔**顺手挂上的**保护性止损（nATR 定手数时才有，价格 = 成交价 ∓ n×ATR）。
@@ -449,8 +447,8 @@ export interface OrderFilledPayload {
    * 它同时出现在 `orders` 里（前端照旧整份替换挂单列表），这个字段是给
    * 「操作记录那一行」用的：只写「买市价 5 手」看不出还挂了止损。
    */
-  stopOrder?: Order
-  orders: Order[]
+  stopOrder?: TradeOrder
+  orders: TradeOrder[]
   trades: Trade[]
   /** 逐批平仓记录（画布上那些平仓虚线的数据源，盈亏已由后端算好） */
   closedLots: ClosedLot[]
@@ -470,12 +468,12 @@ export interface OrderFilledPayload {
  */
 export interface FlatAllPayload {
   /** 平掉仓位的那张市价单；本来空仓时为 undefined */
-  order?: Order
+  order?: TradeOrder
   /** 对应的成交；本来空仓时为 undefined */
   trade?: Trade
   /** 撤销了几张挂单（操作记录里写清「顺手撤了几张」） */
   cancelled: number
-  orders: Order[]
+  orders: TradeOrder[]
   trades: Trade[]
   closedLots: ClosedLot[]
   position: Position
@@ -701,7 +699,7 @@ export interface RecordingBase {
   cursor: number
   bars: Bar[]
   annotations: Annotation[]
-  orders: Order[]
+  orders: TradeOrder[]
   trades: Trade[]
   closedLots: ClosedLot[]
   position: Position

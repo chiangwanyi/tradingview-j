@@ -145,7 +145,7 @@ public class AuditEvent extends BaseEntity {
      *
      * <p><strong>它不带盘面快照。</strong>Go 版把整份盘面（K 线 + 图形 + 挂单 + 成交 + 持仓）
      * 塞进了 Base 里，等于同一份盘面存两遍。这里不复制：起点盘面由
-     * 「{@code Drawing} / {@code AudioClip} / {@code Order} / {@code Trade} 按 {@link #barTime}
+     * 「{@code Drawing} / {@code AudioClip} / {@code TradeOrder} / {@code Trade} 按 {@link #barTime}
      * 及之前过滤」现算 —— 代价是还原的是<strong>现在</strong>的样子（图形被拖动过就看不到原来的），
      * 那是「图形不做版本化」的已知边界，不是这里省事省出来的。
      */

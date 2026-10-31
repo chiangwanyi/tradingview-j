@@ -8,7 +8,7 @@ import com.tradingviewj.server.entity.propfirm.PropFirmRules;
 import com.tradingviewj.server.entity.propfirm.PropFirmStage;
 import com.tradingviewj.server.entity.propfirm.PropFirmTemplate;
 import com.tradingviewj.server.entity.record.TradeRecord;
-import com.tradingviewj.server.entity.trade.Order;
+import com.tradingviewj.server.entity.trade.TradeOrder;
 import com.tradingviewj.server.entity.trade.Side;
 import com.tradingviewj.server.entity.trade.Trade;
 import com.tradingviewj.server.exception.BusinessException;
@@ -155,7 +155,7 @@ class TradingServiceTest {
     void orderPlacedOnCurrentBarDoesNotFillOnIt() {
         trading.place(accountId, "buy", "limit", new BigDecimal("3998.00"), BigDecimal.ONE);
         assertEquals(0, tradeRepo.count());
-        assertEquals(Order.Status.OPEN,
+        assertEquals(TradeOrder.Status.OPEN,
                 orderRepo.findByAccountIdOrderByPlacedAtBarAsc(accountId).get(0).getStatus());
     }
 
@@ -370,30 +370,6 @@ class TradingServiceTest {
         assertMoney("4004.00", fresh.getEntryPrice());
     }
 
-    /**
-     * OCO：同组的止损和限价在同一根上都被触发时，止损赢、限价自动撤销。
-     *
-     * <p>不拦的话，一张限价成交平完仓，止损单接着成交，会平过头、开出一个反向仓。
-     * 组号没有对外接口（手动下单永远是独立单），所以这里用 {@code Order.place} 直接建两张带组的单。
-     */
-    @Test
-    void ocoFillsOnlyTheStopAndCancelsTheSibling() {
-        Order limit = Order.place(accountId, SYMBOL, Side.SELL, Order.Type.LIMIT,
-                new BigDecimal("4004.00"), BigDecimal.ONE, barTime, "g1");
-        Order stop = Order.place(accountId, SYMBOL, Side.SELL, Order.Type.STOP,
-                new BigDecimal("3999.00"), BigDecimal.ONE, barTime, "g1");
-        orderRepo.save(limit);
-        orderRepo.save(stop);
-
-        desk.step(accountId);
-
-        assertEquals(1, tradeRepo.count(), "一组只成交一张");
-        assertEquals(Order.Status.FILLED, orderRepo.findById(stop.getId()).orElseThrow().getStatus(),
-                "止损优先（对持仓更不利）");
-        assertEquals(Order.Status.CANCELLED, orderRepo.findById(limit.getId()).orElseThrow().getStatus(),
-                "同组另一张自动撤销");
-    }
-
     // ---------------- 撤单 / 改价 / 退仓 ----------------
 
     @Test
@@ -403,7 +379,7 @@ class TradingServiceTest {
 
         TradingService.Event event = trading.cancel(accountId, orderId);
         assertEquals("order_cancelled", event.action().wire());
-        assertEquals(Order.Status.CANCELLED, orderRepo.findById(orderId).orElseThrow().getStatus());
+        assertEquals(TradeOrder.Status.CANCELLED, orderRepo.findById(orderId).orElseThrow().getStatus());
 
         // 再撤一次：已经撤销了
         assertThrows(BusinessException.class, () -> trading.cancel(accountId, orderId));

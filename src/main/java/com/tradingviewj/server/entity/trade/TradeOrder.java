@@ -26,15 +26,16 @@ import java.math.BigDecimal;
  * {@link #markFilled} 变成 FILLED —— 市价单不该有另一条「建出来就是已成交」的路。
  * 留着这个类型是因为成交、历史、撤单列表要共用同一套数据结构，多一张表不如多一个取值。
  *
- * <p>{@link #ocoGroup} 是 OCO 组：同一组里最多成交一张，其余在本根自动撤销。
- * 机器人开仓时给止损和止盈打同一组 —— 5 分钟 K 线看不出高低点谁先出现，
- * 不打组的话同根双触发会把仓位平两遍，凭空多出一个反向仓。
+ * <p><strong>没有 OCO 组</strong>（2026-10-31 删 {@code ocoGroup}）：`webapp` 只支持
+ * 独立挂单，同根双触发无人能用得上，留着字段就得连带养一套撮合裁决与测试。
+ * 一张单和别的单之间<strong>没有</strong>任何组合关系 —— 要「同根只成交一张」，
+ * 现在的答案是撤掉另一张，而不是给两张单打组。
  */
 @Getter
 @Entity
 @Table(name = "trade_order")
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
-public class Order extends BaseEntity {
+public class TradeOrder extends BaseEntity {
 
     /**
      * 挂在哪个 PF 账户的盘面上。
@@ -94,10 +95,6 @@ public class Order extends BaseEntity {
     @Setter
     private BigDecimal fillPrice;
 
-    /** OCO 组号；NULL = 独立挂单。 */
-    @Column
-    private String ocoGroup;
-
     /**
      * 挂一张单。
      *
@@ -107,8 +104,8 @@ public class Order extends BaseEntity {
      * @param placedAtBar 下单那一刻停在哪根 K 线上，<strong>不能为空</strong>
      * @throws IllegalArgumentException 没给账户 / 标的 / K 线时间
      */
-    public static Order place(String accountId, String symbolId, Side side, Type type, BigDecimal price,
-                              BigDecimal quantity, String placedAtBar, String ocoGroup) {
+    public static TradeOrder place(String accountId, String symbolId, Side side, Type type, BigDecimal price,
+                                   BigDecimal quantity, String placedAtBar) {
         if (accountId == null || accountId.isBlank()) {
             throw new IllegalArgumentException("下单必须发生在某个 PF 账户里，收到: " + accountId);
         }
@@ -118,7 +115,7 @@ public class Order extends BaseEntity {
         if (placedAtBar == null || placedAtBar.isBlank()) {
             throw new IllegalArgumentException("下单必须记着停在哪根 K 线上，收到: " + placedAtBar);
         }
-        Order order = new Order();
+        TradeOrder order = new TradeOrder();
         order.accountId = accountId;
         order.symbolId = symbolId;
         order.side = side;
@@ -126,7 +123,6 @@ public class Order extends BaseEntity {
         order.price = price;
         order.quantity = quantity;
         order.placedAtBar = placedAtBar;
-        order.ocoGroup = ocoGroup;
         // 一律从 OPEN 开始，市价单也不例外 —— 它在下单的同一步里立刻 markFilled。
         // 不能在这里直接置 FILLED：那样 markFilled 会因为「已经不是 OPEN」而抛异常，
         // 市价单的成交价和成交时间就只能靠调用方直接调 setter 硬填，状态机凭空多一条路。

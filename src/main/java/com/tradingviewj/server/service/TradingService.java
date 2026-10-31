@@ -12,7 +12,7 @@ import com.tradingviewj.server.entity.audit.payload.OrderMovedPayload;
 import com.tradingviewj.server.entity.audit.payload.OrderPlacedPayload;
 import com.tradingviewj.server.entity.propfirm.PropFirmAccount;
 import com.tradingviewj.server.entity.record.TradeRecord;
-import com.tradingviewj.server.entity.trade.Order;
+import com.tradingviewj.server.entity.trade.TradeOrder;
 import com.tradingviewj.server.entity.trade.Position;
 import com.tradingviewj.server.entity.trade.Side;
 import com.tradingviewj.server.entity.trade.Trade;
@@ -139,9 +139,9 @@ public class TradingService {
 
     /** 挂单全量（含已成交 / 已撤销），按挂单时间升序。 */
     public List<OrderView> orders(String accountId) {
-        List<Order> list = orderRepo.findByAccountIdOrderByPlacedAtBarAsc(accountId);
+        List<TradeOrder> list = orderRepo.findByAccountIdOrderByPlacedAtBarAsc(accountId);
         List<OrderView> out = new ArrayList<>(list.size());
-        for (Order order : list) {
+        for (TradeOrder order : list) {
             out.add(OrderView.of(order));
         }
         return out;
@@ -170,13 +170,13 @@ public class TradingService {
         PropFirmAccount account = accounts.requireTradable(accountId);
         SymbolSpec spec = spec(account.getSymbolId());
         Side side = TradingEngine.parseSide(sideWire);
-        Order.Type type = TradingEngine.parsePlacementType(kindWire);
+        TradeOrder.Type type = TradingEngine.parsePlacementType(kindWire);
         BigDecimal limitPrice = TradingEngine.normalizePrice(price, spec.tick());
         int qty = TradingEngine.normalizeQuantity(quantity);
         String barTime = requireBarTime(account);
 
-        Order order = Order.place(accountId, spec.code(), side, type, limitPrice,
-                BigDecimal.valueOf(qty), barTime, null);
+        TradeOrder order = TradeOrder.place(accountId, spec.code(), side, type, limitPrice,
+                BigDecimal.valueOf(qty), barTime);
         orderRepo.save(order);
 
         OrderPlacedPayload payload = new OrderPlacedPayload(orders(accountId));
@@ -227,8 +227,8 @@ public class TradingService {
             }
         }
 
-        Order order = Order.place(accountId, spec.code(), side, Order.Type.MARKET, fillPrice,
-                BigDecimal.valueOf(qty), bar.barTime(), null);
+        TradeOrder order = TradeOrder.place(accountId, spec.code(), side, TradeOrder.Type.MARKET, fillPrice,
+                BigDecimal.valueOf(qty), bar.barTime());
         order.markFilled(bar.barTime(), fillPrice);
         orderRepo.save(order);
 
@@ -236,10 +236,10 @@ public class TradingService {
                 tradeRepo.findByAccountIdOrderByBarTimeAscSeqAsc(accountId));
         Trade trade = recordFill(account, spec, order, fillPrice, bar.barTime(), history);
 
-        Order stopOrder = null;
+        TradeOrder stopOrder = null;
         if (stopPrice != null) {
-            stopOrder = Order.place(accountId, spec.code(), side.opposite(), Order.Type.STOP,
-                    stopPrice, BigDecimal.valueOf(qty), bar.barTime(), null);
+            stopOrder = TradeOrder.place(accountId, spec.code(), side.opposite(), TradeOrder.Type.STOP,
+                    stopPrice, BigDecimal.valueOf(qty), bar.barTime());
             orderRepo.save(stopOrder);
         }
 
@@ -266,10 +266,10 @@ public class TradingService {
     @Transactional
     public Event cancel(String accountId, String orderId) {
         PropFirmAccount account = accounts.requireActive(accountId);
-        Order order = requireOrder(account, orderId);
+        TradeOrder order = requireOrder(account, orderId);
         if (!order.isOpen()) {
             throw new BusinessException("这张单当前是 " + order.getStatus() + "，撤不了"
-                    + (order.getStatus() == Order.Status.FILLED ? "（已经成交了，要减仓请下单或一键退仓）" : "（它已经撤销过了）"));
+                    + (order.getStatus() == TradeOrder.Status.FILLED ? "（已经成交了，要减仓请下单或一键退仓）" : "（它已经撤销过了）"));
         }
         order.cancel();
         orderRepo.save(order);
@@ -294,7 +294,7 @@ public class TradingService {
     @Transactional
     public Event move(String accountId, String orderId, BigDecimal price) {
         PropFirmAccount account = accounts.requireActive(accountId);
-        Order order = requireOrder(account, orderId);
+        TradeOrder order = requireOrder(account, orderId);
         if (!order.isOpen()) {
             throw new BusinessException("这张单当前是 " + order.getStatus() + "，不能改价");
         }
@@ -337,7 +337,7 @@ public class TradingService {
                 tradeRepo.findByAccountIdOrderByBarTimeAscSeqAsc(accountId));
         Position position = TradeLedger.replay(history, pointValue(spec)).position();
 
-        Order closeOrder = null;
+        TradeOrder closeOrder = null;
         Trade closeTrade = null;
         if (!position.isFlat()) {
             Bar bar = currentBar(account, spec);
@@ -346,16 +346,16 @@ public class TradingService {
                 throw new BusinessException("当前 K 线（" + bar.barTime() + "）没有可成交的收盘价，退不了仓");
             }
             Side side = position.quantity().signum() > 0 ? Side.SELL : Side.BUY;
-            closeOrder = Order.place(accountId, spec.code(), side, Order.Type.MARKET, price,
-                    position.quantity().abs(), bar.barTime(), null);
+            closeOrder = TradeOrder.place(accountId, spec.code(), side, TradeOrder.Type.MARKET, price,
+                    position.quantity().abs(), bar.barTime());
             closeOrder.markFilled(bar.barTime(), price);
             orderRepo.save(closeOrder);
             closeTrade = recordFill(account, spec, closeOrder, price, bar.barTime(), history);
         }
 
         int cancelled = 0;
-        for (Order order : orderRepo.findByAccountIdAndStatusOrderByPlacedAtBarAsc(
-                accountId, Order.Status.OPEN)) {
+        for (TradeOrder order : orderRepo.findByAccountIdAndStatusOrderByPlacedAtBarAsc(
+                accountId, TradeOrder.Status.OPEN)) {
             order.cancel();
             orderRepo.save(order);
             cancelled++;
@@ -387,7 +387,7 @@ public class TradingService {
     // ------------------------------------------------------------------
 
     /**
-     * 用新揭示的这根 K 线撮合挂单，落成交并处理 OCO。
+     * 用新揭示的这根 K 线撮合挂单，落成交。
      *
      * <p><strong>没有对应的广播</strong>：成交结果直接并进那条 {@code bar_advanced}。
      * 拆成两条的话，前端会在「K 线到了、成交还没到」的那一帧画出错误的持仓线。
@@ -396,12 +396,14 @@ public class TradingService {
      *
      * <ol>
      *   <li>取还挂着的单，筛出「本根之前挂的」（本根挂的本根不撮合）；</li>
-     *   <li>先按 {@link TradingEngine#ocoWinners} 算出每组该成交哪一张 ——
-     *       同组其余单<strong>无论自己有没有触发</strong>都撤销（OCO 是「一张成交、另一张作废」）；</li>
      *   <li>逐张判触发 → 定成交价（跳空修正）→ {@code markFilled} → 落 {@code trade}；</li>
      *   <li>成交的 {@code realizedPnl} 用「成交前持仓 + 本笔成交价」现算，
      *       和 {@link TradeLedger} 重放历史用的是同一个算式。</li>
      * </ol>
+     *
+     * <p><strong>不处理 OCO</strong>：`webapp` 只有独立挂单，单与单之间没有组合关系。
+     * 同一根里两张单都被触发就成交两张 —— 那正是用户各挂各单时的真实结果，
+     * 不该被一条前端根本发不出来的规则偷偷改掉。
      *
      * <p>不做部分成交：一张挂 5 手就整张 5 手成交，不按 K 线的成交量拆。
      * 一根 5 分钟 K 线只有 O/H/L/C，拆出来的比例是编的。
@@ -410,29 +412,18 @@ public class TradingService {
      */
     @Transactional
     public List<Trade> match(PropFirmAccount account, SymbolSpec spec, Bar bar) {
-        List<Order> open = orderRepo.findByAccountIdAndStatusOrderByPlacedAtBarAsc(
-                account.getId(), Order.Status.OPEN);
-        List<Order> candidates = TradingEngine.eligible(open, bar.barTime());
+        List<TradeOrder> open = orderRepo.findByAccountIdAndStatusOrderByPlacedAtBarAsc(
+                account.getId(), TradeOrder.Status.OPEN);
+        List<TradeOrder> candidates = TradingEngine.eligible(open, bar.barTime());
         if (candidates.isEmpty()) {
             return List.of();
         }
 
-        var winners = TradingEngine.ocoWinners(candidates, bar);
         List<Trade> history = new ArrayList<>(
                 tradeRepo.findByAccountIdOrderByBarTimeAscSeqAsc(account.getId()));
         List<Trade> fills = new ArrayList<>();
 
-        for (Order order : candidates) {
-            String group = order.getOcoGroup();
-            if (group != null && !group.isBlank()) {
-                String winnerId = winners.get(group);
-                if (winnerId != null && !winnerId.equals(order.getId())) {
-                    order.cancel();
-                    orderRepo.save(order);
-                    log.debug("OCO：{} 与本组成交单 {} 互斥，已自动撤销", order.getId(), winnerId);
-                    continue;
-                }
-            }
+        for (TradeOrder order : candidates) {
             if (!TradingEngine.triggered(order, bar)) {
                 continue;
             }
@@ -462,7 +453,7 @@ public class TradingService {
      * <p>{@code history} 由调用方持有并<strong>原地追加</strong>：一次撮合里可能连续成交几张，
      * 后一张的持仓必须是前一张算完之后的。每次都回库重查一遍既慢又容易读到旧快照。
      */
-    private Trade recordFill(PropFirmAccount account, SymbolSpec spec, Order order,
+    private Trade recordFill(PropFirmAccount account, SymbolSpec spec, TradeOrder order,
                              BigDecimal price, String barTime, List<Trade> history) {
         BigDecimal pv = pointValue(spec);
         Position before = TradeLedger.replay(history, pv).position();
@@ -545,8 +536,8 @@ public class TradingService {
     }
 
     /** 一条「成交了」的广播负载（市价单用）。 */
-    private OrderFilledPayload filledPayload(PropFirmAccount account, SymbolSpec spec, Order order,
-                                             Trade trade, Order stopOrder, List<Trade> history) {
+    private OrderFilledPayload filledPayload(PropFirmAccount account, SymbolSpec spec, TradeOrder order,
+                                             Trade trade, TradeOrder stopOrder, List<Trade> history) {
         Portfolio book = book(account, spec, history);
         return new OrderFilledPayload(
                 OrderView.of(order),
@@ -666,11 +657,11 @@ public class TradingService {
         return TradeLedger.pointValue(spec.tick(), spec.tickValue());
     }
 
-    private Order requireOrder(PropFirmAccount account, String orderId) {
+    private TradeOrder requireOrder(PropFirmAccount account, String orderId) {
         if (orderId == null || orderId.isBlank()) {
             throw new BusinessException("这条消息必须带 orderId");
         }
-        Order order = orderRepo.findById(orderId)
+        TradeOrder order = orderRepo.findById(orderId)
                 .orElseThrow(() -> new BusinessException("没有这张挂单: " + orderId + "（可能已经删掉或填错了）"));
         if (!account.getId().equals(order.getAccountId())) {
             throw new BusinessException("挂单 " + orderId + " 不属于账户 " + account.getId());
