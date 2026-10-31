@@ -182,6 +182,23 @@ public class TradeRecord extends BaseEntity {
      */
     private BigDecimal realizedPnl;
 
+    /**
+     * 这条记录<strong>承担</strong>的手续费合计（美元），与 {@link #realizedPnl} 配成一对。
+     *
+     * <p>为什么不能"用区间内 Σ {@code trade.commission} 现算"：<strong>反手时一笔成交横跨两条记录</strong>。
+     * 卖 5 手把 +2 翻成 −3，那 5 手的费按整笔收（{@code 费率 × 5}），但只有 2 手是旧仓的平仓腿、
+     * 3 手是新仓的建仓腿。区间求和会把同一笔费在两条记录里各算一遍 —— 两条记录各多算一份，
+     * 全账户合计却正好对得上，这种「只错单条记录」的偏差最难发现。
+     *
+     * <p>所以写入时按手数切：平仓腿那部分累加到旧记录，开仓腿那部分累加到新记录
+     * （见 {@code TradingService#keepRecord}）。{@link #startSeq} 那一笔的费同理只算开仓腿。
+     *
+     * <p>和 {@code realizedPnl} 一样<strong>没有 setter</strong>：只能 {@link #addCommission} 累加。
+     * 一次交易会经过多笔成交，费用是逐笔攒起来的，不是收尾时一次算出来的 ——
+     * 但攒完就封存，{@link #closeAt} 之后不再动。
+     */
+    private BigDecimal commission = BigDecimal.ZERO;
+
     /** 最大有利波动（美元）。 */
     @Setter
     private BigDecimal mfe;
@@ -317,6 +334,38 @@ public class TradeRecord extends BaseEntity {
         this.endSeq = endSeq;
         this.closed = true;
         this.endedAt = Instant.now();
+    }
+
+    /**
+     * 把一笔成交里<strong>属于这条记录的那部分</strong>手续费累加进来。
+     *
+     * <p>调用方必须已经按手数切好（反手时一笔成交的费由两条记录分），这里不做切分 ——
+     * 切分要知道「成交前持仓」，那是 {@code TradingService} 那边才有的事实。
+     *
+     * <p>只累加、不覆盖：同一条记录会被多笔成交依次刷新手数（加仓 / 部分平仓），
+     * 每一笔都带来自己的进场或出场费。{@code null} 和 0 直接忽略，免得调用方到处判空。
+     */
+    public void addCommission(BigDecimal amount) {
+        if (amount == null) {
+            return;
+        }
+        this.commission = Money.round(this.commission.add(amount));
+    }
+
+    /**
+     * 这条记录的<strong>净</strong>盈亏 = 毛利 − 手续费；还没收尾时返回 {@code null}。
+     *
+     * <p>为什么未闭合返回 null 而不是 0：毛利要等仓位回到 0 才定下来，
+     * 这时候给 0 会被读成"打平"，而真相是"还不知道"。
+     *
+     * <p>它和 {@code Trade#netPnl} 是同一个算式，但<strong>不是同一个数</strong>：
+     * 一个是逐笔成交、一个是整段交易。整段这个才是"这一单赚了多少"。
+     */
+    public BigDecimal netPnl() {
+        if (realizedPnl == null) {
+            return null;
+        }
+        return Money.round(realizedPnl.subtract(commission));
     }
 
     /**

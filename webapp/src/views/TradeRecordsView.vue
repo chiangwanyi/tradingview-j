@@ -10,8 +10,11 @@ import type { TradeRow } from '@/data/history'
 /**
  * 交易记录：`trade_record` 的全量分页浏览（只读）。
  *
- * 只列摘要（方向 / 手数 / 进出价 / 毛利 / 持仓根数 / 是否已平），不含每一步明细 ——
+ * 只列摘要（方向 / 手数 / 进出价 / 毛利 / 手续费 / 净额 / 是否已平），不含每一步明细 ——
  * 回放在交易页，这里是「回头看我一共做了哪些单」。跨账户，按开仓时间倒序。
+ *
+ * 毛利、手续费、净额三列都由后端算好发过来（{@code TradeRecordView}），前端不自己相减：
+ * 反手时一笔成交横跨两条记录，手续费的切分只有后端知道该按哪条腿算。
  */
 
 const SIZE = 50
@@ -61,7 +64,7 @@ const sideLabel = (s?: string): string => (s === 'buy' ? '买' : s === 'sell' ? 
     <header class="px-8 pt-10 pb-4">
       <h1 class="text-[26px] font-semibold tracking-tight text-ink">交易记录</h1>
       <p class="mt-1 text-[13px] text-dim">
-        所有账户的每一笔交易，按开仓时间倒序。盈亏是毛利（没扣手续费）。
+        所有账户的每一笔交易，按开仓时间倒序。毛利不扣手续费；手续费按平仓腿 / 开仓腿分摊，净额 = 毛利 − 手续费。
       </p>
     </header>
 
@@ -85,7 +88,9 @@ const sideLabel = (s?: string): string => (s === 'buy' ? '买' : s === 'sell' ? 
               <th class="px-3 py-2 text-right font-normal">手数</th>
               <th class="px-3 py-2 text-right font-normal">开仓价</th>
               <th class="px-3 py-2 text-right font-normal">平仓价</th>
-              <th class="px-3 py-2 text-right font-normal">盈亏</th>
+              <th class="px-3 py-2 text-right font-normal">毛利</th>
+              <th class="px-3 py-2 text-right font-normal">手续费</th>
+              <th class="px-3 py-2 text-right font-normal">净额</th>
               <th class="px-3 py-2 font-normal">状态</th>
               <th class="px-3 py-2 font-normal">来源</th>
             </tr>
@@ -108,6 +113,12 @@ const sideLabel = (s?: string): string => (s === 'buy' ? '买' : s === 'sell' ? 
               </td>
               <td class="tnum px-3 py-1.5 text-right" :class="pnlClass(r.realizedPnl ?? 0)">
                 {{ r.realizedPnl == null ? '—' : formatSigned(r.realizedPnl) }}
+              </td>
+              <td class="tnum px-3 py-1.5 text-right text-dim">
+                {{ r.commission == null ? '—' : '-' + r.commission.toFixed(2) }}
+              </td>
+              <td class="tnum px-3 py-1.5 text-right" :class="pnlClass(r.netPnl ?? 0)">
+                {{ r.netPnl == null ? '—' : formatSigned(r.netPnl) }}
               </td>
               <td class="px-3 py-1.5" :class="r.closed ? 'text-dim' : 'text-accent-ink'">
                 {{ r.closed ? '已平' : '未平' }}

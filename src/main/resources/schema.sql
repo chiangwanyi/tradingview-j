@@ -247,6 +247,10 @@ CREATE TABLE IF NOT EXISTS trade_record (
     entry_price    TEXT,
     exit_price     TEXT,
     realized_pnl   TEXT,
+    -- 这条记录承担的手续费合计。**不能由区间内 Σ trade.commission 现算**：反手时一笔成交
+    -- 横跨两条记录（旧仓平仓腿 + 新仓开仓腿），区间求和会把同一笔费算两遍。
+    -- 净盈亏 = realized_pnl − commission，两条记录各自独立成立。
+    commission     TEXT NOT NULL DEFAULT '0.00',
     mfe            TEXT,             -- 最大有利波动
     mae            TEXT,             -- 最大不利波动
     closed         INTEGER NOT NULL DEFAULT 0,

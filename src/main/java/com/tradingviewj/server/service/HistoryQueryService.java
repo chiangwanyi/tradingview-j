@@ -73,6 +73,7 @@ public class HistoryQueryService {
                         r.getSide() == null ? null : wire(r.getSide().name()),
                         r.getQuantity(), r.getEntryBarTime(), r.getExitBarTime(),
                         r.getEntryPrice(), r.getExitPrice(), r.getRealizedPnl(),
+                        r.getCommission(), r.netPnl(),
                         r.isClosed(), wire(r.getActor().name())))
                 .toList();
         return new PageResponse<>(items, found.getTotalElements(), found.getNumber(), found.getSize());

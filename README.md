@@ -128,6 +128,12 @@ append-only、每行带 `symbol_id` + `bar_time`）→ 快照层（当前值）�
   （一笔成交在事实上就是平掉旧仓 + 开新仓两条腿，`realizedFor` 只把平仓那半算盈亏）。
   一账户最多一条未闭合，由 `ux_record_open`（`WHERE closed = 0` 的 partial unique index）兜住；
   **闭合时必须 `saveAndFlush`** —— Hibernate 同一次 flush 里 insert 排在 update 之前，不先落库新记录会撞索引。
+- **反手的那个 seq 上，手续费要按腿切**（2026-10-31）：`trade.commission` 是按整笔成交量收的，
+  `trade_record.commission` 只累加**平仓腿**那部分（`手续费 × min(|成交前持仓|, |成交量|) / 成交量`），
+  开仓腿那部分归新记录，两半相加恒等于成交上那个数（第二半用减法，不重复舍入）。
+  **不要用 `seq BETWEEN start_seq AND end_seq` 去 SUM 毛利或手续费** —— 共享的那一个 seq 会被两条记录
+  各算一遍，单条偏、全账户合计却对得上，是最难发现的一类偏差。摘要列才是账。
+  `trade.trade_record_id` 同一轮开始回写：**反手那笔归旧记录**（与 `realizedPnl` 全额归旧记录同口径）。
 - **进度不单独存**：= 该(账户,品种)最后一条 `audit_event.bar_time`。**不做撤销**（append-only 只能补偿）。
 - **全库没有「K 线下标」字段**：**下标是位置，时间是标识** —— 重抓/补一根/删坏行会让下标悄悄指向另一根
   且不报错。保留的只有序号 `*.seq` 和 `Anchor.offset`（「延伸 40 根」是意图）。**别加回来。**
@@ -154,6 +160,15 @@ append-only、每行带 `symbol_id` + `bar_time`）→ 快照层（当前值）�
 
 **改表必须重建 `./db/`**（`ddl-auto: none`；`schema.sql` 全是 CREATE IF NOT EXISTS，删表只能手 `DROP`），
 旧库改名 `db/*.bak-日期-原因` **别删**。「测试全绿」不等于「旧库能用」。
+**例外：纯追加列可以用 `ALTER TABLE ... ADD COLUMN`**（SQLite 只支持加列/改名这几种形式），不用重建。
+2026-10-31 新增 `trade_record.commission` 就是这么加的：
+
+```sql
+ALTER TABLE trade_record ADD COLUMN commission TEXT NOT NULL DEFAULT '0.00';
+```
+
+加了列还要**按腿回填历史值**（不是 `SUM(trade.commission)`，反手那笔会被算两遍），
+做法见 `archive/20261031-record-commission/migrate.py`（先备份成 `db/*.bak-日期-原因`，可重复执行）。
 
 # 三、交易引擎（下单撮合已接通）
 

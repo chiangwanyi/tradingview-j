@@ -43,6 +43,10 @@ export interface TradeRow {
   exitPrice?: number
   /** 毛利（没扣手续费）。 */
   realizedPnl?: number
+  /** 这条记录承担的手续费（后端按平仓腿 / 开仓腿切好）。 */
+  commission?: number
+  /** 净盈亏 = 毛利 − 手续费；记录还没收尾时后端给 null，这里就是 undefined。 */
+  netPnl?: number
   closed: boolean
   actor: string
 }

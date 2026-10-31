@@ -32,6 +32,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.math.MathContext;
 import java.time.LocalDate;
 import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
@@ -499,10 +500,23 @@ public class TradingService {
      * {@code bar_advanced}、没有自己的流水行，两个 seq 序列本来就不对齐，用事件 seq 切不到
      * 成交粒度。{@code trade.seq} 每笔成交必有且账户内单调递增，正是「第几笔」的答案。
      *
+     * <p><strong>手续费按腿切</strong>：这笔成交的 {@code commission} 是「费率 × 成交量」整笔收的，
+     * 而反手那一笔里只有一部分手数属于旧仓（平仓腿），剩下的属于新仓（开仓腿）。
+     * 整笔塞给任何一边都会让那条记录的费用虚高，所以按手数比例切：平仓腿归旧记录、
+     * 开仓腿归新记录，两半相加恒等于成交上那个数（用减法算第二半，不重复舍入）。
+     *
+     * <p>同理回写 {@code trade.tradeRecordId}：反手时归<strong>旧</strong>记录 ——
+     * 这笔成交的 {@code realizedPnl} 也全额归旧记录，两者口径必须一致，
+     * 否则「按记录汇总净额」会凭空多出或少掉一笔。
+     *
      * <p>{@code Actor} 一律记 HUMAN：本类所有入口都是真人操作（机器人路径不走这里）。
      */
     private void keepRecord(PropFirmAccount account, Position before, BigDecimal signed, Trade trade) {
         BigDecimal after = before.quantity().add(signed);
+        BigDecimal closeLeg = closeLegQuantity(before, signed);
+        BigDecimal closeLegFee = commissionShare(trade.getCommission(), closeLeg, trade.getQuantity());
+        // 这笔成交最终归哪条记录。反手时先定成旧记录，后面新开的那条不能覆盖它
+        String owner = null;
         TradeRecord open = recordRepo
                 .findFirstByAccountIdAndClosedFalseOrderByStartSeqAsc(account.getId())
                 .orElse(null);
@@ -511,6 +525,8 @@ public class TradingService {
             BigDecimal booked = open.getRealizedPnl() == null ? BigDecimal.ZERO : open.getRealizedPnl();
             open.closeAt(trade.getBarTime(), trade.getPrice(),
                     booked.add(trade.getRealizedPnl()), trade.getSeq());
+            open.addCommission(closeLegFee);
+            owner = open.getId();
             // 必须在这里落库：Hibernate 同一次 flush 里 insert 排在 update 之前，
             // 不先写下去，下面新插的那条会撞上 ux_record_open（那一刻旧记录还是 closed=0）
             recordRepo.saveAndFlush(open);
@@ -519,6 +535,7 @@ public class TradingService {
         if (after.signum() == 0) {
             // 归零且原本就没有未闭合记录（手工删过 / 旧数据）：不补一条空记录。
             // 记录是统计视图，不是账 —— 账永远以 trade 表重放为准。
+            trade.setTradeRecordId(owner);
             return;
         }
         if (open == null) {
@@ -526,13 +543,50 @@ public class TradingService {
                     trade.getBarTime(), trade.getSeq(), Actor.HUMAN, account.getName());
             open.openPosition(after.signum() > 0 ? Side.BUY : Side.SELL,
                     trade.getBarTime(), trade.getPrice(), after.abs());
+            // 开仓腿的费 = 整笔 − 平仓腿，减法保证两半相加正好等于成交上那个数
+            open.addCommission(trade.getCommission().subtract(closeLegFee));
+            if (owner == null) {
+                owner = open.getId();
+            }
         } else {
             open.setQuantity(after.abs());
             if (open.getMaxQuantity() == null || after.abs().compareTo(open.getMaxQuantity()) > 0) {
                 open.setMaxQuantity(after.abs());
             }
+            // 加仓 / 部分平仓：整笔成交都属于这条记录，费用不切
+            open.addCommission(trade.getCommission());
+            owner = open.getId();
         }
+        trade.setTradeRecordId(owner);
         recordRepo.saveAndFlush(open);
+    }
+
+    /**
+     * 这笔成交里「平掉旧仓」的手数；没有旧仓、或者方向相同（加仓）时为 0。
+     *
+     * <p>反手时它小于成交量：平掉 before 那部分，剩下的才是新开的反向仓。
+     * 和 {@code TradeLedger#realizedFor} 取的 {@code min(|持仓|, |成交|)} 是同一个量 ——
+     * 那边用它算毛利，这里用它切手续费，两个口径必须同源，否则毛利和费用会对不上腿。
+     */
+    private static BigDecimal closeLegQuantity(Position before, BigDecimal signed) {
+        if (before.isFlat() || before.quantity().signum() == signed.signum()) {
+            return BigDecimal.ZERO;
+        }
+        return before.quantity().abs().min(signed.abs());
+    }
+
+    /**
+     * 按手数比例把一笔成交的手续费切出一份（只给平仓腿用，另一半由减法得出）。
+     *
+     * <p>用 {@code DECIMAL128} 中间精度再收敛到分：{@code 2.50 × 2 / 5} 这类算式在十进制下
+     * 本来就有余数，先除后乘会放大误差，先乘后除只丢最后一位。
+     */
+    private static BigDecimal commissionShare(BigDecimal total, BigDecimal legQty, BigDecimal quantity) {
+        if (total == null || legQty == null || legQty.signum() == 0
+                || quantity == null || quantity.signum() == 0) {
+            return BigDecimal.ZERO;
+        }
+        return TradeLedger.money(total.multiply(legQty).divide(quantity, MathContext.DECIMAL128));
     }
 
     /** 一条「成交了」的广播负载（市价单用）。 */

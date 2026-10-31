@@ -38,6 +38,7 @@ import java.util.List;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -309,7 +310,15 @@ class TradingServiceTest {
         assertEquals(2, sealed.getEndSeq(), "终点是平仓那一笔成交的 seq");
         assertMoney("4004.00", sealed.getExitPrice());
         assertMoney("12", sealed.getRealizedPnl());
+        // 进场 2 手 1.00 + 出场 2 手 1.00：非反手时整笔都归这条记录，不切
+        assertMoney("2.00", sealed.getCommission());
+        assertMoney("10", sealed.netPnl());
         assertEquals(1, recordRepo.count(), "归零之后不开新记录");
+
+        List<Trade> fills = tradeRepo.findByAccountIdOrderByBarTimeAscSeqAsc(accountId);
+        for (Trade fill : fills) {
+            assertEquals(rec.getId(), fill.getTradeRecordId(), "两笔成交都归同一条记录");
+        }
     }
 
     /** 一键退仓的平仓是同一笔反向成交，所以封口走的是同一条判据，不需要第二条分支。 */
@@ -337,6 +346,8 @@ class TradingServiceTest {
         assertFalse(rec.isClosed());
         assertMoney("2", rec.getQuantity(), "3 手减掉 1 手");
         assertMoney("3", rec.getMaxQuantity(), "峰值是 3 手，不跟着回头");
+        // 三次成交的费都归这条记录：2 手 1.00 + 1 手 0.50 + 1 手 0.50
+        assertMoney("2.00", rec.getCommission());
     }
 
     /**
@@ -360,6 +371,9 @@ class TradingServiceTest {
         assertEquals(1, old.getStartSeq());
         assertEquals(2, old.getEndSeq());
         assertMoney("12", old.getRealizedPnl(), "只有平掉的 2 手产生盈亏");
+        // 进场 2 手 1.00 + 这笔 5 手里属于平仓腿的 2 手 1.00；那 5 手整笔收 2.50
+        assertMoney("2.00", old.getCommission());
+        assertMoney("10", old.netPnl(), "12 毛利 − 2.00 手续费");
 
         TradeRecord fresh = all.get(1);
         assertFalse(fresh.isClosed());
@@ -368,6 +382,14 @@ class TradingServiceTest {
         assertEquals(Side.SELL, fresh.getSide());
         assertMoney("3", fresh.getQuantity());
         assertMoney("4004.00", fresh.getEntryPrice());
+        // 开仓腿 3 手 = 2.50 − 1.00，不是把整笔 2.50 再算一遍
+        assertMoney("1.50", fresh.getCommission());
+        assertNull(fresh.netPnl(), "还没收尾，净额是 null 而不是 0");
+
+        List<Trade> trades = tradeRepo.findByAccountIdOrderByBarTimeAscSeqAsc(accountId);
+        assertEquals(old.getId(), trades.get(0).getTradeRecordId(), "开仓那笔归旧记录");
+        assertEquals(old.getId(), trades.get(1).getTradeRecordId(),
+                "反手这一笔归旧记录（和 realizedPnl 全额归旧记录同口径）");
     }
 
     // ---------------- 撤单 / 改价 / 退仓 ----------------
