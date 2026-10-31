@@ -190,15 +190,6 @@ public class TradeRecord extends BaseEntity {
     @Setter
     private BigDecimal mae;
 
-    @Setter
-    @Column(nullable = false)
-    private int barsHeld;
-
-    /** 成交笔数（开仓 + 加减仓 + 平仓）。 */
-    @Setter
-    @Column(nullable = false)
-    private int fillCount;
-
     /**
      * 这一笔是否<strong>正常平完</strong>。
      *

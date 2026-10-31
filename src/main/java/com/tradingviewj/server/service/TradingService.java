@@ -515,9 +515,6 @@ public class TradingService {
         TradeRecord open = recordRepo
                 .findFirstByAccountIdAndClosedFalseOrderByStartSeqAsc(account.getId())
                 .orElse(null);
-        if (open != null) {
-            open.setFillCount(open.getFillCount() + 1);
-        }
         if (open != null && !before.isFlat() && after.signum() != before.quantity().signum()) {
             // 反手时这笔成交的一半是平仓、一半是开仓；realizedFor 只算平仓那半，整笔全额归旧记录
             BigDecimal booked = open.getRealizedPnl() == null ? BigDecimal.ZERO : open.getRealizedPnl();
@@ -538,7 +535,6 @@ public class TradingService {
                     trade.getBarTime(), trade.getSeq(), Actor.HUMAN, account.getName());
             open.openPosition(after.signum() > 0 ? Side.BUY : Side.SELL,
                     trade.getBarTime(), trade.getPrice(), after.abs());
-            open.setFillCount(1);
         } else {
             open.setQuantity(after.abs());
             if (open.getMaxQuantity() == null || after.abs().compareTo(open.getMaxQuantity()) > 0) {

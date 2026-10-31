@@ -86,7 +86,6 @@ const sideLabel = (s?: string): string => (s === 'buy' ? '买' : s === 'sell' ? 
               <th class="px-3 py-2 text-right font-normal">开仓价</th>
               <th class="px-3 py-2 text-right font-normal">平仓价</th>
               <th class="px-3 py-2 text-right font-normal">盈亏</th>
-              <th class="px-3 py-2 text-right font-normal">根数</th>
               <th class="px-3 py-2 font-normal">状态</th>
               <th class="px-3 py-2 font-normal">来源</th>
             </tr>
@@ -110,7 +109,6 @@ const sideLabel = (s?: string): string => (s === 'buy' ? '买' : s === 'sell' ? 
               <td class="tnum px-3 py-1.5 text-right" :class="pnlClass(r.realizedPnl ?? 0)">
                 {{ r.realizedPnl == null ? '—' : formatSigned(r.realizedPnl) }}
               </td>
-              <td class="tnum px-3 py-1.5 text-right text-faint">{{ r.barsHeld }}</td>
               <td class="px-3 py-1.5" :class="r.closed ? 'text-dim' : 'text-accent-ink'">
                 {{ r.closed ? '已平' : '未平' }}
               </td>

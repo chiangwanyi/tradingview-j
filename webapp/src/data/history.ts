@@ -43,7 +43,6 @@ export interface TradeRow {
   exitPrice?: number
   /** 毛利（没扣手续费）。 */
   realizedPnl?: number
-  barsHeld: number
   closed: boolean
   actor: string
 }

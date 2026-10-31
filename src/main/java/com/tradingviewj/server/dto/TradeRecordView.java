@@ -19,7 +19,6 @@ public record TradeRecordView(
         BigDecimal entryPrice,
         BigDecimal exitPrice,
         BigDecimal realizedPnl,
-        int barsHeld,
         boolean closed,
         String actor
 ) {

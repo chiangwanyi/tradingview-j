@@ -72,7 +72,7 @@ public class HistoryQueryService {
                 .map(r -> new TradeRecordView(r.getId(), r.getAccountName(), r.getSymbolId(),
                         r.getSide() == null ? null : wire(r.getSide().name()),
                         r.getQuantity(), r.getEntryBarTime(), r.getExitBarTime(),
-                        r.getEntryPrice(), r.getExitPrice(), r.getRealizedPnl(), r.getBarsHeld(),
+                        r.getEntryPrice(), r.getExitPrice(), r.getRealizedPnl(),
                         r.isClosed(), wire(r.getActor().name())))
                 .toList();
         return new PageResponse<>(items, found.getTotalElements(), found.getNumber(), found.getSize());

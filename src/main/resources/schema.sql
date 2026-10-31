@@ -249,8 +249,6 @@ CREATE TABLE IF NOT EXISTS trade_record (
     realized_pnl   TEXT,
     mfe            TEXT,             -- 最大有利波动
     mae            TEXT,             -- 最大不利波动
-    bars_held      INTEGER NOT NULL DEFAULT 0,
-    fill_count     INTEGER NOT NULL DEFAULT 0,
     closed         INTEGER NOT NULL DEFAULT 0,
     actor          TEXT NOT NULL,    -- JAVA 常量名：HUMAN / BOT（SYSTEM 不是一笔交易的来源）
     actor_name     TEXT,

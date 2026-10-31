@@ -300,7 +300,6 @@ class TradingServiceTest {
         assertEquals(Side.BUY, rec.getSide());
         assertMoney("2", rec.getQuantity());
         assertMoney("4001.00", rec.getEntryPrice());
-        assertEquals(1, rec.getFillCount());
 
         desk.step(accountId);
         trading.market(accountId, "sell", BigDecimal.valueOf(2), null);
@@ -310,7 +309,6 @@ class TradingServiceTest {
         assertEquals(2, sealed.getEndSeq(), "终点是平仓那一笔成交的 seq");
         assertMoney("4004.00", sealed.getExitPrice());
         assertMoney("12", sealed.getRealizedPnl());
-        assertEquals(2, sealed.getFillCount());
         assertEquals(1, recordRepo.count(), "归零之后不开新记录");
     }
 
@@ -339,7 +337,6 @@ class TradingServiceTest {
         assertFalse(rec.isClosed());
         assertMoney("2", rec.getQuantity(), "3 手减掉 1 手");
         assertMoney("3", rec.getMaxQuantity(), "峰值是 3 手，不跟着回头");
-        assertEquals(3, rec.getFillCount(), "三次成交：开 2、加 1、平 1");
     }
 
     /**
@@ -371,7 +368,6 @@ class TradingServiceTest {
         assertEquals(Side.SELL, fresh.getSide());
         assertMoney("3", fresh.getQuantity());
         assertMoney("4004.00", fresh.getEntryPrice());
-        assertEquals(1, fresh.getFillCount());
     }
 
     /**
