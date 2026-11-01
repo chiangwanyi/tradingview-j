@@ -235,6 +235,71 @@ public class TradeDeskService {
         return new TradingService.Event(accountId, payload.action(), payload, event.getSeq());
     }
 
+    /**
+     * 【结算今日】：一步把盘面推到<strong>下一个交易日</strong>的第一根，让上一个交易日当场结算
+     * （日终余额进峰值 → 亏损线上移）。
+     *
+     * <p>落点按<strong>交易日</strong>算，不是日历日：交易日 D = {@code [D 06:00, D+1 04:45)}，
+     * 所以从 {@code D+1 02:00} 出发的「下一个交易日」是 {@code D+1}，不是 {@code D+2}。
+     *
+     * <p><strong>手上不是空的就拒绝</strong>：这一天会被整段跳过，中途每一根本该触发的止损 / 限价
+     * 都不会成交，用户会以为仓位还在保护里。逐根推进走【下一根】，那个才是逐根撮合的。
+     *
+     * <p>整段跳过只做<strong>一次重放</strong>：{@link PropFirmJudge#assess} 会把跳过的 K 线全部喂给
+     * 会话，收盘余额、撞线、达标都在那一次里判出来 —— 和连点几百次【下一根】得到的读数相同
+     * （前提是空仓无挂单，见上）。
+     */
+    @Transactional
+    public PropFirmAccount settleTradingDay(String accountId) {
+        PropFirmAccount account = accounts.requireExisting(accountId);
+        SymbolSpec spec = trading.spec(account.getSymbolId());
+        TradingService.Portfolio book = trading.portfolio(account);
+        boolean flat = book.position().quantity().signum() == 0;
+        boolean noOpenOrders = book.orders().stream().noneMatch(o -> "open".equals(o.status()));
+        if (!flat || !noOpenOrders) {
+            throw new BusinessException("账户「" + account.getName() + "」还有"
+                    + (flat ? "挂着的单" : "持仓")
+                    + "：结算今日会把这一天整段跳过，中途的止损不会触发 —— "
+                    + "先退仓、撤单，或者回交易页一根一根推");
+        }
+
+        BarCursorService.NextBar next = cursor.nextTradingDay(spec.folder(), account.getLastBarTime());
+        if (next == null) {
+            throw new BusinessException("账户停在 " + account.getLastBarTime()
+                    + "，磁盘上已经没有下一个交易日的 K 线了：等抓取程序再录一段才能继续");
+        }
+        String barTime = next.bar().barTime();
+        accounts.advanceCursor(accountId, barTime);
+
+        // 跨到新交易日那一下就是上一个交易日的日终结算（onBar 的跨日分支）
+        PropFirmJudge.State state = judge.assess(account);
+        if (state.failed()) {
+            accounts.fail(accountId, state.session());
+        }
+        PfView pf = judge.settle(account, state);
+
+        TradingService.Portfolio after = trading.portfolio(account);
+        BarAdvancedPayload payload = new BarAdvancedPayload(
+                new BarView(barTime, next.bar().open(), next.bar().high(),
+                        next.bar().low(), next.bar().close(), next.bar().volume()),
+                next.indexInDay(),
+                next.restOfDay(),
+                next.hasNext(),
+                after.orders(),
+                after.trades(),
+                after.closedLots(),
+                after.position(),
+                after.realizedPnl(),
+                after.unrealizedPnl(),
+                pf,
+                List.of(),
+                new VoiceState(barTime, List.of(), 0, VOICE_MAX_PER_BAR));
+        AuditEvent event = audit.append(accountId, spec.code(), barTime, Actor.HUMAN, payload);
+        log.info("账户 {} 结算今日：直接推进到 {}（seq={}，已平仓无挂单才允许整段跳过）",
+                accountId, barTime, event.getSeq());
+        return account;
+    }
+
     /** 挂一张限价 / 止损单。见 {@link TradingService#place}。 */
     @Transactional
     public TradingService.Event place(String accountId, String side, String kind,

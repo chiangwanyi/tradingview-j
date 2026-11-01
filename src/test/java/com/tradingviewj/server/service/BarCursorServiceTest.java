@@ -104,4 +104,21 @@ class BarCursorServiceTest {
     void unknownFolderIsEmptyNotAnException() {
         assertNull(cursor.next("NO_SUCH_FOLDER", "2024-03-04 09:00"));
     }
+
+    /** 【结算今日】的落点是交易日，不是日历日：03-06 凌晨两点仍属于交易日 03-05。 */
+    @Test
+    void nextTradingDaySkipsTheRestOfTheSession() throws IOException {
+        Files.writeString(dataRoot.resolve(FOLDER).resolve("2024-03-06.csv"), """
+                time,open,high,low,close,volume
+                2024-03-06 02:00,5120.00,5121.00,5119.50,5120.50,700
+                2024-03-06 06:00,5122.00,5123.00,5121.50,5122.50,600
+                """);
+
+        // 03-04 还有一根 09:05，不能停在它上面
+        assertEquals("2024-03-05 09:00", cursor.nextTradingDay(FOLDER, "2024-03-04 09:00").bar().barTime());
+        // 03-06 02:00 属于交易日 03-05，跳过去；06:00 才是 03-06
+        assertEquals("2024-03-06 06:00", cursor.nextTradingDay(FOLDER, "2024-03-05 09:00").bar().barTime());
+        // 已经是最后一根：没有下一个交易日
+        assertNull(cursor.nextTradingDay(FOLDER, "2024-03-06 06:00"));
+    }
 }

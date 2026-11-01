@@ -12,8 +12,8 @@ import { drawdownLabel, pct, stageLabel, usd } from '@/data/rules'
  * 卡片只留两个入口：继续交易 / 详情。升级、改名、删除、阶段流水全在详情页 ——
  * 卡片是「一眼看进度」的地方，写操作不该跟数字抢位置。
  */
-const props = defineProps<{ a: Account }>()
-const emit = defineEmits<{ detail: [id: string] }>()
+const props = defineProps<{ a: Account; busy?: boolean }>()
+const emit = defineEmits<{ detail: [id: string]; settle: [id: string] }>()
 
 const progress = computed(() => targetProgress(props.a))
 const gained = computed(() => props.a.balance - props.a.baseBalance)
@@ -138,6 +138,17 @@ function onTrade(): void {
         @click="emit('detail', a.id)"
       >
         详情
+      </button>
+      <!-- 只在考核中给：失败的账户没有「今天的账」可结 -->
+      <button
+        v-if="a.status === 'ACTIVE'"
+        type="button"
+        class="col-span-2 rounded-md border border-line py-2 text-[13px] text-dim transition-colors hover:border-line-strong hover:text-ink disabled:opacity-50"
+        title="一步推到下一个交易日，结算上一个交易日（日终峰值 → 回撤线上移）；有持仓或挂单时不让用"
+        :disabled="busy"
+        @click="emit('settle', a.id)"
+      >
+        {{ busy ? '结算中…' : '结算今日' }}
       </button>
     </div>
   </article>

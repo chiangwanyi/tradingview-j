@@ -103,6 +103,15 @@ export const fail = (id: string): Promise<Account> => call(`${BASE}/${id}/fail`,
 export const advanceCursor = (id: string, barTime: string): Promise<Account> =>
   call(`${BASE}/${id}/cursor`, send('POST', { barTime }))
 
+/**
+ * 【结算今日】：一步把盘面推到**下一个交易日**并结算上一个交易日。
+ *
+ * 端上不看时间、不挑那一根 —— 交易日是 [D 06:00, D+1 04:45)，只有后端算得对。
+ * 有持仓或挂单时后端会拒绝（整段跳过不撮合中途的止损），这里照它的错误信息显示。
+ */
+export const settleDay = (id: string): Promise<Account> =>
+  call(`${BASE}/${id}/settle-day`, { method: 'POST' })
+
 export const stages = (id: string): Promise<StageLog[]> => call(`${BASE}/${id}/stages`)
 
 /** 卡片上的进度：本阶段已赚到目标的几成。没有盈利目标（FUNDED / PAYOUT）返回 null。 */

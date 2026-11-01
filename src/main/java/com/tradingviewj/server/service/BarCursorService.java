@@ -88,6 +88,42 @@ public class BarCursorService {
         return next(folder, from) != null;
     }
 
+    /**
+     * <strong>下一个交易日</strong>的第一根 —— 【结算今日】一步跨过当天剩下的 K 线。
+     *
+     * <p>判据是交易日而不是日历日：交易日 D = {@code [D 06:00, D+1 04:45)}，
+     * {@code D+1 00:30} 那根仍然属于 D，不能在这里停下。
+     *
+     * @return 落点；磁盘上已经没有更晚的交易日时返回 null
+     */
+    public NextBar nextTradingDay(String folder, String from) {
+        LocalDate day = tradingDayOfOrNull(from);
+        String at = from;
+        while (true) {
+            NextBar next = next(folder, at);
+            if (next == null) {
+                return null;
+            }
+            LocalDate nextDay = tradingDayOfOrNull(next.bar().barTime());
+            if (day == null || (nextDay != null && !nextDay.equals(day))) {
+                return next;
+            }
+            at = next.bar().barTime();
+        }
+    }
+
+    /** 时间格式不认识时返回 null（当作「没有可比较的当前交易日」），不让一次脏数据炸掉整个按钮。 */
+    private static LocalDate tradingDayOfOrNull(String barTime) {
+        if (barTime == null || barTime.length() < 16) {
+            return null;
+        }
+        try {
+            return PropFirmClock.tradingDayOf(barTime);
+        } catch (RuntimeException e) {
+            return null;
+        }
+    }
+
     /** {@code "2026-10-30 09:35"} → {@code 2026-10-30}；格式不认识返回 null（当作「从头找」）。 */
     private static LocalDate dayOf(String barTime) {
         if (barTime == null || barTime.length() < 10) {

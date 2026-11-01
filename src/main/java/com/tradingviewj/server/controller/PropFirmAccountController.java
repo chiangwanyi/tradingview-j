@@ -7,6 +7,7 @@ import com.tradingviewj.server.entity.propfirm.PropFirmAccount;
 import com.tradingviewj.server.entity.propfirm.PropFirmStageLog;
 import com.tradingviewj.server.service.PropFirmAccountService;
 import com.tradingviewj.server.service.TradingService;
+import com.tradingviewj.server.ws.TradeDeskService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
@@ -32,8 +33,9 @@ import java.util.List;
  * {@code non_null} 会把取值为 null 的字段整个省掉（前端读到 {@code undefined}），
  * 所以前端一律用 {@code == null} 判断。
  *
- * <p>业务操作只有三个：升级（{@code promote}）、判失败（{@code fail}）、
- * 步进（{@code cursor}，只把「盘面最新时间」往后推一格）。其余都是读写。
+ * <p>业务操作只有四个：升级（{@code promote}）、判失败（{@code fail}）、
+ * 步进（{@code cursor}，只把「盘面最新时间」往后推一格）、
+ * 结算今日（{@code settle-day}，一步推到下一个交易日并结算上一个交易日）。其余都是读写。
  * 没有「重置余额」—— 余额只能由成交重算后同步，手工改余额会让账和成交流水对不上。
  */
 @Tag(name = "PF 账户", description = "考核账户的增删改查，以及升级 / 判失败两个业务动作")
@@ -52,6 +54,12 @@ public class PropFirmAccountController {
      * 就会和手动这条路各写一遍收摊。
      */
     private final TradingService trading;
+
+    /**
+     * 「结算今日」是盘面动作（推光标 + 结算），和交易页的【下一根】同一份实现，
+     * 所以走 {@link TradeDeskService}，不在这里另拼一遍光标推进和日终结算。
+     */
+    private final TradeDeskService desk;
 
     @Operation(summary = "账户列表", description = """
             status 可选：ACTIVE / FAILED，不传 = 全部。按建户时间倒序，新建的在前。
@@ -134,6 +142,17 @@ public class PropFirmAccountController {
     public PropFirmAccount cursor(@PathVariable String id,
                                  @RequestBody PropFirmCursorRequest body) {
         return accounts.advanceCursor(id, body.barTime());
+    }
+
+    @Operation(summary = "结算今日（推进到下一个交易日）", description = """
+            一步把盘面推到**下一个交易日**的第一根（交易日 = [D 06:00, D+1 04:45)，不是日历日），
+            跨到新的一天时上一个交易日当场结算：日终余额进峰值、亏损线随之更新。
+            **有持仓或有挂单时拒绝**（业务错误码 10000）：整段跳过不会撮合中途的止损。
+            返回推进后的账户（余额 / 峰值是新值）。
+            """)
+    @PostMapping("/{id}/settle-day")
+    public PropFirmAccount settleDay(@PathVariable String id) {
+        return desk.settleTradingDay(id);
     }
 
     @Operation(summary = "阶段流水", description = """

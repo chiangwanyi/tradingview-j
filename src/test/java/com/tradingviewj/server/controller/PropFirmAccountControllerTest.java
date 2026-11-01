@@ -7,6 +7,7 @@ import com.tradingviewj.server.entity.propfirm.PropFirmTemplate;
 import com.tradingviewj.server.exception.BusinessException;
 import com.tradingviewj.server.service.PropFirmAccountService;
 import com.tradingviewj.server.service.TradingService;
+import com.tradingviewj.server.ws.TradeDeskService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
@@ -46,6 +47,10 @@ class PropFirmAccountControllerTest {
     /** 判失败要和「收摊」一起做，所以这个入口走 {@link TradingService#failAccount}。 */
     @MockitoBean
     private TradingService trading;
+
+    /** 「结算今日」推光标 + 结算，和交易页【下一根】是同一份实现。 */
+    @MockitoBean
+    private TradeDeskService desk;
 
     /** 一个 EVAL 账户：规模 50000、目标 3000，标的 MES。 */
     private static PropFirmAccount evalAccount() {
@@ -142,5 +147,21 @@ class PropFirmAccountControllerTest {
                 .andExpect(jsonPath("$.data.status").value("FAILED"));
 
         verify(trading).failAccount("a1");
+    }
+
+    /** 结算今日：只转发给盘面那一层，并把推进后的账户（新余额 / 新峰值）回给前端。 */
+    @Test
+    void settleDayDelegatesToDeskAndReturnsAccount() throws Exception {
+        PropFirmAccount settled = evalAccount();
+        settled.advanceBarTime("2024-03-05 09:00");
+        settled.syncComputed(new BigDecimal("51200"), new BigDecimal("51200"));
+        when(desk.settleTradingDay("a1")).thenReturn(settled);
+
+        mvc.perform(post("/api/pf-accounts/a1/settle-day"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.lastBarTime").value("2024-03-05 09:00"))
+                .andExpect(jsonPath("$.data.eodPeakBalance").value(51200.0));
+
+        verify(desk).settleTradingDay("a1");
     }
 }

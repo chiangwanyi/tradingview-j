@@ -80,6 +80,24 @@ function onCreate(payload: { templateId: string; symbolId: string; name: string 
 /** 详情是整页切换，交给 App 管；这里只把 id 往上递。 */
 const emit = defineEmits<{ detail: [id: string] }>()
 
+/** 正在结算的账户 id：一次只跑一个，按钮在这期间置灰（整段跳过要读不少日文件）。 */
+const settling = ref('')
+
+function onSettle(id: string): void {
+  if (settling.value) return
+  settling.value = id
+  error.value = ''
+  api
+    .settleDay(id)
+    .then(() => reload())
+    .catch((e: unknown) => {
+      error.value = errorText(e)
+    })
+    .finally(() => {
+      settling.value = ''
+    })
+}
+
 defineExpose({ openNew })
 </script>
 
@@ -124,7 +142,14 @@ defineExpose({ openNew })
 
     <div class="px-8 pb-10">
       <div v-if="list.length" class="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-        <AccountCard v-for="a in list" :key="a.id" :a="a" @detail="emit('detail', $event)" />
+        <AccountCard
+          v-for="a in list"
+          :key="a.id"
+          :a="a"
+          :busy="settling === a.id"
+          @detail="emit('detail', $event)"
+          @settle="onSettle"
+        />
       </div>
 
       <p v-else class="py-16 text-center text-[13px] text-faint">
