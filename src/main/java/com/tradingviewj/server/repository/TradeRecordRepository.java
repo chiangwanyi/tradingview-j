@@ -2,6 +2,8 @@ package com.tradingviewj.server.repository;
 
 import com.tradingviewj.server.entity.record.TradeRecord;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
+import org.springframework.data.jpa.repository.Query;
 
 import java.util.List;
 import java.util.Optional;
@@ -58,4 +60,21 @@ public interface TradeRecordRepository extends JpaRepository<TradeRecord, String
      * 拿到 List 还得自己判长度、自己挑一个，那正好是「两条都保留，行为随机」的来源。
      */
     Optional<TradeRecord> findFirstByAccountIdAndClosedFalseOrderByStartSeqAsc(String accountId);
+
+    /**
+     * 清空全部交易记录标签（{@code trade_record_tag}），返回删掉几行。
+     *
+     * <p><strong>为什么是原生 SQL，而不是走实体的 {@code @ElementCollection}</strong>：
+     * 标签是 {@link TradeRecord} 上的一个 {@code List<RecordTag>}，「清空整张标签表」这件事
+     * 在 JPA 里没有批量写法 —— 只能把每条记录加载出来、逐个 {@code clear()}，几万行时
+     * 那叫「用 ORM 把一次 DELETE 变成 N 次查询」。
+     *
+     * <p><strong>为什么不靠 {@code ON DELETE CASCADE} 顺手删掉</strong>：
+     * schema 里 {@code trade_record_tag.record_id} 确实写了级联，删记录时标签也会跟着走。
+     * 但那样一来「这次到底删了什么、删了多少」就成了数据库的隐式行为，service 拿不到行数。
+     * 清空是不可逆操作，账要对得上，所以这里显式删一次（<strong>必须在删记录之前</strong>）。
+     */
+    @Modifying
+    @Query(value = "DELETE FROM trade_record_tag", nativeQuery = true)
+    int deleteAllTags();
 }

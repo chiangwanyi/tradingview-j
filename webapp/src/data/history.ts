@@ -1,7 +1,12 @@
 /**
  * 历史记录接口：`/api/history`（后端 `controller/HistoryController.java`）。
  *
- * 两个页面（操作记录 / 交易记录）都是**只读**的全量分页列表；唯一能写的动作是清空操作记录。
+ * 两个页面（操作记录 / 交易记录）都是**只读**的全量分页列表；
+ * 能写的只有两个清空动作，各管各的表，互不牵连：
+ *
+ *   `DELETE /audit-events`  清 `audit_event`（我按过哪些按钮）
+ *   `DELETE /trade-data`    清交易信息那 4 张表（我手上做过哪些单）
+ *
  * 分页从 0 起，和后面 `PageRequest` 一致 —— 界面上显示页码时才 +1。
  */
 
@@ -60,6 +65,31 @@ export const tradeRecords = (page: number, size: number) => paged<TradeRow>('tra
 /** 清空全部操作记录，返回删掉几条。不可逆。 */
 export const clearAuditEvents = (): Promise<number> =>
   call(`${BASE}/audit-events`, { method: 'DELETE' })
+
+/**
+ * 清空交易信息的结果：4 张表各删了几行（后端 `ClearTradeDataResponse`）。
+ *
+ * 分表返回是为了让用户能核对范围 —— 「挂单 12 / 成交 8 / 记录 3 / 标签 5」
+ * 一眼看出删的是不是他以为的那几张表。
+ */
+export interface ClearedTradeData {
+  /** `trade_order`：挂单（含已成交 / 已撤的历史单）。 */
+  orders: number
+  /** `trade`：成交明细。 */
+  trades: number
+  /** `trade_record`：交易记录（复盘用的那一条摘要）。 */
+  records: number
+  /** `trade_record_tag`：记录上的自定义标签。 */
+  tags: number
+}
+
+/**
+ * 清空全部交易信息（挂单 / 成交 / 交易记录 / 记录标签 4 张表），不可逆。
+ *
+ * 不动操作记录、账户（含余额）、图形、语音、K 线。已经打开的交易页要刷新才会看到空盘面。
+ */
+export const clearTradeData = (): Promise<ClearedTradeData> =>
+  call(`${BASE}/trade-data`, { method: 'DELETE' })
 
 /** 动作名 → 中文。漏掉的取值退化成原串显示，别让它变成空白格。 */
 export const ACTION_LABEL: Record<string, string> = {

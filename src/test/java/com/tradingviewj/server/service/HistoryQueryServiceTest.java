@@ -1,6 +1,7 @@
 package com.tradingviewj.server.service;
 
 import com.tradingviewj.server.dto.AuditEventView;
+import com.tradingviewj.server.dto.ClearTradeDataResponse;
 import com.tradingviewj.server.dto.TradeRecordView;
 import com.tradingviewj.server.entity.audit.AuditEvent;
 import com.tradingviewj.server.entity.propfirm.PropFirmAccount;
@@ -9,10 +10,13 @@ import com.tradingviewj.server.entity.trade.Side;
 import com.tradingviewj.server.enums.Actor;
 import com.tradingviewj.server.enums.ReplayAction;
 import com.tradingviewj.server.repository.AuditEventRepository;
+import com.tradingviewj.server.repository.OrderRepository;
 import com.tradingviewj.server.repository.PropFirmAccountRepository;
 import com.tradingviewj.server.repository.TradeRecordRepository;
+import com.tradingviewj.server.repository.TradeRepository;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
+import org.mockito.InOrder;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -23,12 +27,13 @@ import java.util.List;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 /**
- * 历史记录查询的口径：枚举转小写协议串、账户名现查、分页参数夹紧、清空返回行数。
+ * 历史记录查询的口径：枚举转小写协议串、账户名现查、分页参数夹紧、两个清空各自返回什么。
  *
  * <p>不连库：这两件事（怎么翻页、怎么映射字段）都和数据库无关，
  * 真库上是「JPA 排序对不对」，那种事靠跑起来看，不靠单测编。
@@ -38,7 +43,10 @@ class HistoryQueryServiceTest {
     private final AuditEventRepository events = mock(AuditEventRepository.class);
     private final TradeRecordRepository records = mock(TradeRecordRepository.class);
     private final PropFirmAccountRepository accounts = mock(PropFirmAccountRepository.class);
-    private final HistoryQueryService history = new HistoryQueryService(events, records, accounts);
+    private final TradeRepository trades = mock(TradeRepository.class);
+    private final OrderRepository orders = mock(OrderRepository.class);
+    private final HistoryQueryService history =
+            new HistoryQueryService(events, records, accounts, trades, orders);
 
     @Test
     void auditEventsMapsEnumsToWireAndClampsPageSize() {
@@ -82,6 +90,39 @@ class HistoryQueryServiceTest {
 
         assertEquals(42L, history.clearAuditEvents());
         verify(events).deleteAllInBatch();
+    }
+
+    /**
+     * 清空交易信息：4 张表各报自己删了几行，且<strong>从叶子往根删</strong>
+     * —— 标签指向记录、成交指向记录，先删根会把「删了几行标签」变成不可知的级联副作用。
+     */
+    @Test
+    void clearTradeDataDeletesLeafFirstAndReportsPerTable() {
+        when(records.deleteAllTags()).thenReturn(5);
+        when(orders.count()).thenReturn(12L);
+        when(trades.count()).thenReturn(8L);
+        when(records.count()).thenReturn(3L);
+
+        ClearTradeDataResponse result = history.clearTradeData();
+
+        assertEquals(12L, result.orders(), "挂单");
+        assertEquals(8L, result.trades(), "成交");
+        assertEquals(3L, result.records(), "交易记录");
+        assertEquals(5L, result.tags(), "记录上的标签，行数来自原生 DELETE 的返回值");
+
+        InOrder deleting = inOrder(records, trades, orders);
+        deleting.verify(records).deleteAllTags();
+        deleting.verify(trades).deleteAllInBatch();
+        deleting.verify(records).deleteAllInBatch();
+        deleting.verify(orders).deleteAllInBatch();
+    }
+
+    /** 清空交易信息<strong>不碰</strong>操作记录：两个入口各管各的，别顺手多删一张表。 */
+    @Test
+    void clearTradeDataLeavesAuditEventsAlone() {
+        history.clearTradeData();
+
+        verify(events, org.mockito.Mockito.never()).deleteAllInBatch();
     }
 
     private static PropFirmAccount account(String id, String name) {

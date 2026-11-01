@@ -2,6 +2,7 @@ package com.tradingviewj.server.controller;
 
 import com.tradingviewj.server.api.R;
 import com.tradingviewj.server.dto.AuditEventView;
+import com.tradingviewj.server.dto.ClearTradeDataResponse;
 import com.tradingviewj.server.dto.PageResponse;
 import com.tradingviewj.server.dto.TradeRecordView;
 import com.tradingviewj.server.service.HistoryQueryService;
@@ -22,7 +23,7 @@ import org.springframework.web.bind.annotation.RestController;
  *
  * <p>唯一的写操作是清空操作记录（用户手动触发），其余都是 GET。
  */
-@Tag(name = "历史记录", description = "操作记录 / 交易记录的全量分页查看，以及清空操作记录")
+@Tag(name = "历史记录", description = "操作记录 / 交易记录的全量分页查看，以及两个清空入口")
 @RestController
 @RequestMapping("/api/history")
 @RequiredArgsConstructor
@@ -62,5 +63,17 @@ public class HistoryController {
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "50") int size) {
         return history.tradeRecords(page, size);
+    }
+
+    @Operation(summary = "清空全部交易信息", description = """
+            **不可逆**：挂单 trade_order、成交 trade、交易记录 trade_record、
+            记录标签 trade_record_tag 四张表一起清空，返回每张表各删了几行。
+            `trade_record_tag` 是交易记录上那些自定义标签，它挂在记录上，所以先于记录删除。
+            不动操作记录（audit_event）、账户本身（含余额）、图形、语音、K 线 CSV。
+            清空后 trade.seq 从 1 重新开始；已经打开的交易页要刷新才会看到空盘面。
+            """)
+    @DeleteMapping("/trade-data")
+    public R<ClearTradeDataResponse> clearTradeData() {
+        return R.ok(history.clearTradeData());
     }
 }
