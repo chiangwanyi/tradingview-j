@@ -62,15 +62,18 @@ public interface TradeRecordRepository extends JpaRepository<TradeRecord, String
     Optional<TradeRecord> findFirstByAccountIdAndClosedFalseOrderByStartSeqAsc(String accountId);
 
     /**
-     * 清空全部交易记录标签（{@code trade_record_tag}），返回删掉几行。
+     * 清空全部「记录 ↔ 标签」关联行（{@code trade_record_tag}），返回删掉几行。
      *
-     * <p><strong>为什么是原生 SQL，而不是走实体的 {@code @ElementCollection}</strong>：
-     * 标签是 {@link TradeRecord} 上的一个 {@code List<RecordTag>}，「清空整张标签表」这件事
-     * 在 JPA 里没有批量写法 —— 只能把每条记录加载出来、逐个 {@code clear()}，几万行时
-     * 那叫「用 ORM 把一次 DELETE 变成 N 次查询」。
+     * <p><strong>只删关联，不删标签本身</strong>：标签字典在 {@code trade_tag}
+     * （{@link com.tradingviewj.server.entity.record.TradeTag}），是用户自己攒的本子，
+     * 交易清空了它该留着。这条 SQL 里出现 {@code trade_record_tag} 就从没碰过 {@code trade_tag}。
+     *
+     * <p><strong>为什么是原生 SQL，而不是走 {@code @ManyToMany}</strong>：
+     * 清空整张关联表在 JPA 里没有批量写法 —— 只能把每条记录加载出来、逐个
+     * {@code getTags().clear()}，几万行时那叫「用 ORM 把一次 DELETE 变成 N 次查询」。
      *
      * <p><strong>为什么不靠 {@code ON DELETE CASCADE} 顺手删掉</strong>：
-     * schema 里 {@code trade_record_tag.record_id} 确实写了级联，删记录时标签也会跟着走。
+     * schema 里 {@code trade_record_tag.record_id} 确实写了级联，删记录时关联行也会跟着走。
      * 但那样一来「这次到底删了什么、删了多少」就成了数据库的隐式行为，service 拿不到行数。
      * 清空是不可逆操作，账要对得上，所以这里显式删一次（<strong>必须在删记录之前</strong>）。
      */

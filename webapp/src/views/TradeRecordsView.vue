@@ -60,8 +60,8 @@ const clearing = ref(false)
 
 /** 后端分表报数 → 一句人话。4 个数都列出来，用户才能核对删的范围对不对。 */
 function clearedText(c: ClearedTradeData): string {
-  const total = c.orders + c.trades + c.records + c.tags
-  return `已清空 ${total} 行（挂单 ${c.orders} / 成交 ${c.trades} / 交易记录 ${c.records} / 标签 ${c.tags}）`
+  const total = c.orders + c.trades + c.records + c.tagLinks
+  return `已清空 ${total} 行（挂单 ${c.orders} / 成交 ${c.trades} / 交易记录 ${c.records} / 标签关联 ${c.tagLinks}）`
 }
 
 function onClearClick(): void {
@@ -142,7 +142,7 @@ const sideLabel = (s?: string): string => (s === 'buy' ? '买' : s === 'sell' ? 
       v-if="notice"
       class="mx-8 mb-3 rounded-md border border-line bg-elev px-3 py-2 text-[12px] text-dim"
     >
-      {{ notice }}。操作记录、账户、图形、语音、K 线都没有动；已经打开的交易页要刷新才会看到空盘面。
+      {{ notice }}。操作记录、账户、标签本子、图形、语音、K 线都没有动；已经打开的交易页要刷新才会看到空盘面。
     </p>
 
     <div class="flex min-h-0 flex-1 flex-col px-8 pb-10">

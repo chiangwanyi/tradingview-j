@@ -67,9 +67,10 @@ public class HistoryController {
 
     @Operation(summary = "清空全部交易信息", description = """
             **不可逆**：挂单 trade_order、成交 trade、交易记录 trade_record、
-            记录标签 trade_record_tag 四张表一起清空，返回每张表各删了几行。
-            `trade_record_tag` 是交易记录上那些自定义标签，它挂在记录上，所以先于记录删除。
-            不动操作记录（audit_event）、账户本身（含余额）、图形、语音、K 线 CSV。
+            记录标签关联 trade_record_tag 四张表一起清空，返回每张表各删了几行
+            （tagLinks 是关联行数，不是标签个数）。
+            **不动标签字典 trade_tag**：那是用户自己攒的标签本子，交易清空了它还在。
+            也不动操作记录（audit_event）、账户本身（含余额）、图形、语音、K 线 CSV。
             清空后 trade.seq 从 1 重新开始；已经打开的交易页要刷新才会看到空盘面。
             """)
     @DeleteMapping("/trade-data")

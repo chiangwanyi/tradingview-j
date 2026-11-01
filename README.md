@@ -88,10 +88,11 @@ ASCII + CRLF**、**菜单只能有一个 stdin reader**（都有测试拦）。
     **不动交易记录**（它锚在 `trade.seq` 上）。清完各账户 `seq` 从 0 重新开始。
   - `DELETE /api/history/trade-data` —— 清**交易信息那 4 张表**（我手上做过哪些单）：
     `trade_record_tag` → `trade` → `trade_record` → `trade_order`，返回
-    `{orders,trades,records,tags}` 四个数（分表返回是为了让用户核对删的范围）。
-    **从叶子往根删**：标签和成交都指向 `trade_record`，先删记录虽然靠 `ON DELETE CASCADE`
-    也不报错，但「删了几行标签」就成了不可知的级联副作用，账对不上。
-    不动 `audit_event`、账户本身（**余额是落库字面值，不会回退** —— 那是「重开账户」的事）、
+    `{orders,trades,records,tagLinks}` 四个数（分表返回是为了让用户核对删的范围）。
+    **从叶子往根删**：标签关联和成交都指向 `trade_record`，先删记录虽然靠 `ON DELETE CASCADE`
+    也不报错，但「删了几行标签关联」就成了不可知的级联副作用，账对不上。
+    **不动 `trade_tag`**（标签字典）：清空删的是「哪条记录打了哪个标签」，不是标签本身。
+    也不动 `audit_event`、账户本身（**余额是落库字面值，不会回退** —— 那是「重开账户」的事）、
     图形、语音、K 线 CSV。清完 `trade.seq` 从 1 重新开始；服务端不留持仓缓存
     （每次 `snapshot` 都重查这 4 张表），但**已经打开的交易页要刷新**才看得到空盘面。
 
@@ -143,6 +144,14 @@ append-only、每行带 `symbol_id` + `bar_time`）→ 快照层（当前值）�
   **不要用 `seq BETWEEN start_seq AND end_seq` 去 SUM 毛利或手续费** —— 共享的那一个 seq 会被两条记录
   各算一遍，单条偏、全账户合计却对得上，是最难发现的一类偏差。摘要列才是账。
   `trade.trade_record_id` 同一轮开始回写：**反手那笔归旧记录**（与 `realizedPnl` 全额归旧记录同口径）。
+- **标签是独立实体，不是记录上的一个字符串**（2026-11-01 拆表）：`trade_tag(id, name, color)` 是「我有
+  哪些标签」这本册子，`trade_record_tag(record_id, tag_id, tag_index)` 只是关联。之前把名字/颜色直接写在
+  关联行上、主键 `(record_id, tag_index)`，同一个「追单」在 20 条记录里就是 20 行互不相关的数据 ——
+  改颜色要改 20 次，也答不出「我一共有哪些标签」。
+  `name` 上有唯一索引 `ux_tag_name`（同名会让「按追单筛选」筛出两堆）；`record_id` **级联删**（记录没了
+  记号没有附体），`tag_id` **RESTRICT**（被记录引用时不许删，得先摘干净 —— 删标签不能一次误点就抹掉几十条
+  历史判断）；`tag_index` 只是显示顺序、不在主键里。`TradeRecord.tags` 是 `@ManyToMany` 且**不级联 REMOVE**。
+  本次拆表**手删**了旧 `trade_record_tag`（当时 0 行），备份在 `db/tradingview-j.db.bak-20261101-tag-model`。
 - **进度不单独存**：= 该(账户,品种)最后一条 `audit_event.bar_time`。**不做撤销**（append-only 只能补偿）。
 - **全库没有「K 线下标」字段**：**下标是位置，时间是标识** —— 重抓/补一根/删坏行会让下标悄悄指向另一根
   且不报错。保留的只有序号 `*.seq` 和 `Anchor.offset`（「延伸 40 根」是意图）。**别加回来。**

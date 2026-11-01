@@ -102,7 +102,7 @@ public class HistoryQueryService {
     }
 
     /**
-     * 清空全部交易信息：挂单、成交、交易记录、记录标签，4 张表一起。
+     * 清空全部交易信息：挂单、成交、交易记录、记录标签关联，4 张表一起。
      *
      * <h2>顺序不能换</h2>
      *
@@ -113,11 +113,19 @@ public class HistoryQueryService {
      * 替你收拾），但那样「删了几行标签」就只能靠数差，拿不到准数。清空是不可逆的，
      * 账要对得上，所以从叶子往根删。
      *
+     * <h2>{@code trade_tag} 不在清空范围内（2026-11-01）</h2>
+     *
+     * <p>标签在数据库里分两张表：{@code trade_tag} 是「我有哪些标签」这本册子，
+     * {@code trade_record_tag} 是「哪条记录打了哪个标签」的关联行。
+     * 清空只删<strong>关联行</strong> —— 交易删光了，标签本子还在，
+     * 下次做单能接着用（和「清空聊天记录不删通讯录」是同一个道理）。
+     *
      * <h2>它<strong>不</strong>动什么</h2>
      *
      * <ul>
      *   <li>{@code audit_event}（操作记录）—— 那是「我按过哪些按钮」，和「手上做过哪些单」
      *       是两件事；要一起清就去点操作记录页的清空。</li>
+     *   <li>{@code trade_tag}（标签字典）—— 见上。</li>
      *   <li>{@code prop_firm_account}（账户本身，含余额 {@code balance}）。余额是<strong>落库的
      *       字面值</strong>，不由成交反推（升级时会被强制拨回账户规模，反推必错）。
      *       所以清完交易，账户余额不会跟着回退 —— 那是「重开一个账户」该做的事，
@@ -134,7 +142,7 @@ public class HistoryQueryService {
      */
     @Transactional
     public ClearTradeDataResponse clearTradeData() {
-        long tags = records.deleteAllTags();
+        long tagLinks = records.deleteAllTags();
         long traded = trades.count();
         long recorded = records.count();
         long ordered = orders.count();
@@ -143,7 +151,7 @@ public class HistoryQueryService {
         records.deleteAllInBatch();
         orders.deleteAllInBatch();
 
-        return new ClearTradeDataResponse(ordered, traded, recorded, tags);
+        return new ClearTradeDataResponse(ordered, traded, recorded, tagLinks);
     }
 
     /**

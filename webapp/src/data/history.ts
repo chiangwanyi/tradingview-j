@@ -69,7 +69,7 @@ export const clearAuditEvents = (): Promise<number> =>
 /**
  * 清空交易信息的结果：4 张表各删了几行（后端 `ClearTradeDataResponse`）。
  *
- * 分表返回是为了让用户能核对范围 —— 「挂单 12 / 成交 8 / 记录 3 / 标签 5」
+ * 分表返回是为了让用户能核对范围 —— 「挂单 12 / 成交 8 / 记录 3 / 标签 6」
  * 一眼看出删的是不是他以为的那几张表。
  */
 export interface ClearedTradeData {
@@ -79,8 +79,11 @@ export interface ClearedTradeData {
   trades: number
   /** `trade_record`：交易记录（复盘用的那一条摘要）。 */
   records: number
-  /** `trade_record_tag`：记录上的自定义标签。 */
-  tags: number
+  /**
+   * `trade_record_tag`：**记录与标签的关联行**，不是标签个数。
+   * 标签字典（`trade_tag`）是用户自己攒的本子，清空交易时不会被删。
+   */
+  tagLinks: number
 }
 
 /**

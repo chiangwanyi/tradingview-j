@@ -4,14 +4,14 @@ import com.tradingviewj.server.enums.Actor;
 import com.tradingviewj.server.entity.BaseEntity;
 import com.tradingviewj.server.entity.trade.Money;
 import com.tradingviewj.server.entity.trade.Side;
-import jakarta.persistence.CollectionTable;
 import jakarta.persistence.Column;
-import jakarta.persistence.ElementCollection;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.JoinColumn;
+import jakarta.persistence.JoinTable;
+import jakarta.persistence.ManyToMany;
 import jakarta.persistence.OrderColumn;
 import jakarta.persistence.Table;
 import lombok.AccessLevel;
@@ -237,12 +237,27 @@ public class TradeRecord extends BaseEntity {
     @Setter
     private Instant endedAt;
 
-    /** 用户打的标签，顺序即打标签的顺序。 */
+    /**
+     * 这条记录打过哪些标签，顺序即打标签的先后。
+     *
+     * <p>标签是<strong>独立实体</strong>（{@link TradeTag}，存在 {@code trade_tag}），
+     * 这里只是一条引用；关联落在 {@code trade_record_tag}（{@code record_id, tag_id, tag_index}）。
+     * 所以「改一次标签颜色，所有记录上的它一起变」「删记录不会删掉标签本身」这两件事
+     * 是结构保证的，不靠代码自觉。
+     *
+     * <p><strong>故意没有 {@code cascade = REMOVE}</strong>：删一条交易记录只该摘掉关联，
+     * 不该把用户攒的标签一起带走。
+     *
+     * <p>{@code tag_index} 由 {@code @OrderColumn} 维护，只是显示顺序 ——
+     * 它不在主键里，重排一次不该让关联行「变成另一行」。
+     */
     @Setter
-    @ElementCollection(fetch = FetchType.EAGER)
-    @CollectionTable(name = "trade_record_tag", joinColumns = @JoinColumn(name = "record_id"))
+    @ManyToMany(fetch = FetchType.EAGER)
+    @JoinTable(name = "trade_record_tag",
+            joinColumns = @JoinColumn(name = "record_id"),
+            inverseJoinColumns = @JoinColumn(name = "tag_id"))
     @OrderColumn(name = "tag_index")
-    private List<RecordTag> tags = new ArrayList<>();
+    private List<TradeTag> tags = new ArrayList<>();
 
     /**
      * 开一条记录。

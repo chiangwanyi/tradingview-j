@@ -108,7 +108,7 @@ class HistoryQueryServiceTest {
         assertEquals(12L, result.orders(), "挂单");
         assertEquals(8L, result.trades(), "成交");
         assertEquals(3L, result.records(), "交易记录");
-        assertEquals(5L, result.tags(), "记录上的标签，行数来自原生 DELETE 的返回值");
+        assertEquals(5L, result.tagLinks(), "记录与标签的关联行数，来自原生 DELETE 的返回值");
 
         InOrder deleting = inOrder(records, trades, orders);
         deleting.verify(records).deleteAllTags();

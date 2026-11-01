@@ -271,13 +271,46 @@ CREATE INDEX IF NOT EXISTS idx_record_account ON trade_record (account_id);
 CREATE UNIQUE INDEX IF NOT EXISTS ux_record_open ON trade_record (account_id) WHERE closed = 0;
 
 -- 用户给交易记录打的自定义标签（标签是记录的一部分 → 真级联）
-CREATE TABLE IF NOT EXISTS trade_record_tag (
-    record_id  TEXT NOT NULL REFERENCES trade_record (id) ON DELETE CASCADE,
-    tag_index  INTEGER NOT NULL,
+--
+-- **2026-11-01 拆成两张表**。原来只有下面这一张，它是「标签定义 + 归属」的合体：
+--   trade_record_tag(record_id, tag_index, name, color)，主键 (record_id, tag_index)
+-- 那样存的结果是：同一个「追单」在 20 条记录里就是 20 行互不相关的数据 ——
+-- 改个颜色要改 20 次、删了一条记录另外 19 条的"同名兄弟"还在、也没法回答
+-- 「我一共有哪些标签」「哪些交易带追单」。**标签本身是个东西，不是一个字符串**。
+--
+-- 现在的分工：
+--   trade_tag        标签是什么（名字 + 颜色），一条一行，跟记录无关
+--   trade_record_tag 谁打了它（记录 ↔ 标签 + 显示顺序），纯关联
+--
+-- 注意「标签名唯一」这条索引：允许同名的话，「按追单筛选」会筛出两堆，
+-- 而用户眼里它们明明是同一个标签。名字是标签的身份，所以加唯一索引。
+CREATE TABLE IF NOT EXISTS trade_tag (
+    id         TEXT PRIMARY KEY,
     name       TEXT NOT NULL,
     color      TEXT,                 -- #rrggbb
-    PRIMARY KEY (record_id, tag_index)
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL
 );
+CREATE UNIQUE INDEX IF NOT EXISTS ux_tag_name ON trade_tag (name);
+
+-- 关联表：一条记录打过哪些标签。**两端都不是数据的所有者，各自独立存在**。
+--   · record_id → trade_record，**级联删**：记录没了，这个记号没有附体，跟着走；
+--   · tag_id    → trade_tag，**限制删**（RESTRICT）：标签还被记录引用时不许删，
+--     必须先把所有记录上的它摘掉。理由（2026-11-01 定）：「我不想要这个标签了」
+--     要付一次显式代价 —— 否则删掉一个标签会静默抹掉几十条历史交易上的记号，
+--     而那些记号是当时真实的判断，事后没人能还原。
+--     RESTRICT 是 SQLite 默认行为，这里写出来是为了让意图直接落在 DDL 上，
+--     而不是靠「没写 CASCADE」这种默认值来表达。
+-- tag_index 只是显示顺序（用户拖出来的先后），**不参与主键**：
+-- 它变一次不该让这行「变成另一行」；同一对 (记录, 标签) 也只该有一行。
+CREATE TABLE IF NOT EXISTS trade_record_tag (
+    record_id  TEXT NOT NULL REFERENCES trade_record (id) ON DELETE CASCADE,
+    tag_id     TEXT NOT NULL REFERENCES trade_tag (id) ON DELETE RESTRICT,
+    tag_index  INTEGER NOT NULL,
+    PRIMARY KEY (record_id, tag_id)
+);
+-- 「这个标签用在哪些交易上」是标签页/筛选的主要查询方向
+CREATE INDEX IF NOT EXISTS idx_record_tag_tag ON trade_record_tag (tag_id);
 
 -- 挂单。表名不能叫 order（SQL 保留字，SQLite 会直接报错）
 CREATE TABLE IF NOT EXISTS trade_order (
