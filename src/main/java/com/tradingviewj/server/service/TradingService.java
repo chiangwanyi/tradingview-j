@@ -174,6 +174,9 @@ public class TradingService {
         TradeOrder.Type type = TradingEngine.parsePlacementType(kindWire);
         BigDecimal limitPrice = TradingEngine.normalizePrice(price, spec.tick());
         int qty = TradingEngine.normalizeQuantity(quantity);
+        // 手数闸门：挂单也是「将来会成交的仓位」，超限的单当场就不让挂，不等到撮合时才卡
+        accounts.checkPositionLimit(accountId, spec.code(),
+                netHeld(accountId, spec).add(signedQuantity(side, BigDecimal.valueOf(qty))));
         String barTime = requireBarTime(account);
 
         TradeOrder order = TradeOrder.place(accountId, spec.code(), side, type, limitPrice,
@@ -209,6 +212,12 @@ public class TradingService {
         SymbolSpec spec = spec(account.getSymbolId());
         Side side = TradingEngine.parseSide(sideWire);
         int qty = TradingEngine.normalizeQuantity(quantity);
+        List<Trade> history = new ArrayList<>(
+                tradeRepo.findByAccountIdOrderByBarTimeAscSeqAsc(accountId));
+        // 手数闸门：这一笔成交之后该品种的净持仓，超了就连单都不留
+        accounts.checkPositionLimit(accountId, spec.code(),
+                TradeLedger.replay(history, pointValue(spec)).position().quantity()
+                        .add(signedQuantity(side, BigDecimal.valueOf(qty))));
 
         Bar bar = currentBar(account, spec);
         BigDecimal fillPrice = TradingEngine.roundPrice(bar.close(), spec.tick());
@@ -233,8 +242,6 @@ public class TradingService {
         order.markFilled(bar.barTime(), fillPrice);
         orderRepo.save(order);
 
-        List<Trade> history = new ArrayList<>(
-                tradeRepo.findByAccountIdOrderByBarTimeAscSeqAsc(accountId));
         Trade trade = recordFill(account, spec, order, fillPrice, bar.barTime(), history);
 
         TradeOrder stopOrder = null;
@@ -423,9 +430,21 @@ public class TradingService {
         List<Trade> history = new ArrayList<>(
                 tradeRepo.findByAccountIdOrderByBarTimeAscSeqAsc(account.getId()));
         List<Trade> fills = new ArrayList<>();
+        BigDecimal pv = pointValue(spec);
 
         for (TradeOrder order : candidates) {
             if (!TradingEngine.triggered(order, bar)) {
+                continue;
+            }
+            // 手数闸门：挂单是逐张放行的，两张各 40 手同根触发会叠成 80 手 —— 这里按
+            // 「成交之后」的净持仓判，超限的那张不成交、单子留着 OPEN。
+            // shortcut: 不撤单也不报错，等仓位降下来它才成交；真要做「拒单」语义再改。
+            BigDecimal after = TradeLedger.replay(history, pv).position().quantity()
+                    .add(signedQuantity(order.getSide(), order.getQuantity()));
+            if (!PropFirmPositionLimit.withinLimit(account.getRules(),
+                    account.netProfitInStage(), after)) {
+                log.warn("账户 {} 挂单 {} 在 {} 成交后净持仓 {} 手，超出手数上限：本根不成交",
+                        account.getId(), order.getId(), bar.barTime(), after.abs().toPlainString());
                 continue;
             }
             BigDecimal price = TradingEngine.fillPrice(order, bar, spec.tick());
@@ -458,9 +477,7 @@ public class TradingService {
                              BigDecimal price, String barTime, List<Trade> history) {
         BigDecimal pv = pointValue(spec);
         Position before = TradeLedger.replay(history, pv).position();
-        BigDecimal signed = order.getSide() == Side.BUY
-                ? order.getQuantity()
-                : order.getQuantity().negate();
+        BigDecimal signed = signedQuantity(order.getSide(), order.getQuantity());
         BigDecimal realized = TradeLedger.realizedFor(before, price, signed, pv);
         int seq = 0;
         for (Trade trade : history) {
@@ -475,6 +492,17 @@ public class TradingService {
         history.add(saved);
         keepRecord(account, before, signed, saved);
         return saved;
+    }
+
+    /** 带方向的手数：买正卖负。持仓重放、成交记账、手数闸门都用这一个符号约定。 */
+    private static BigDecimal signedQuantity(Side side, BigDecimal quantity) {
+        return side == Side.BUY ? quantity : quantity.negate();
+    }
+
+    /** 此刻的净持仓手数（买正卖负）。手数闸门按「成交之后」的净持仓判，所以要先知道现在有多少。 */
+    private BigDecimal netHeld(String accountId, SymbolSpec spec) {
+        return TradeLedger.replay(tradeRepo.findByAccountIdOrderByBarTimeAscSeqAsc(accountId),
+                pointValue(spec)).position().quantity();
     }
 
     /**

@@ -66,6 +66,19 @@ public final class PropFirmPositionLimit {
     }
 
     /**
+     * 成交后的净持仓是否还在限内。<strong>不抛异常</strong>的版本，给撮合路径用：
+     * 那里超限的后果是「这根不成交」，不是「整个请求失败」。
+     */
+    public static boolean withinLimit(PropFirmRules rules, BigDecimal netProfit,
+                                      BigDecimal netAfterFill) {
+        int limit = maxContracts(rules, netProfit);
+        if (limit <= 0 || netAfterFill == null) {
+            return true;
+        }
+        return netAfterFill.abs().compareTo(BigDecimal.valueOf(limit)) <= 0;
+    }
+
+    /**
      * 下单前的闸门：这一笔过后，该品种的净持仓会不会超限。
      *
      * <p>参数收的是<strong>成交之后的净持仓</strong>而不是"这一笔几手"：
@@ -79,15 +92,13 @@ public final class PropFirmPositionLimit {
      */
     public static void requireWithinLimit(PropFirmRules rules, BigDecimal netProfit,
                                           String symbolId, BigDecimal netAfterFill) {
-        int limit = maxContracts(rules, netProfit);
-        if (limit <= 0 || netAfterFill == null) {
+        if (withinLimit(rules, netProfit, netAfterFill)) {
             return;
         }
+        int limit = maxContracts(rules, netProfit);
         BigDecimal held = netAfterFill.abs();
-        if (held.compareTo(BigDecimal.valueOf(limit)) > 0) {
-            throw new BusinessException("超出该阶段的手数上限：" + symbolId
-                    + " 成交后净持仓 " + held.stripTrailingZeros().toPlainString()
-                    + " 手，当前利润档位允许 " + limit + " 手");
-        }
+        throw new BusinessException("超出该阶段的手数上限：" + symbolId
+                + " 成交后净持仓 " + held.stripTrailingZeros().toPlainString()
+                + " 手，当前利润档位允许 " + limit + " 手");
     }
 }

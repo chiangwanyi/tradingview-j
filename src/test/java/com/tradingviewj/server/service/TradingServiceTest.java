@@ -280,7 +280,55 @@ class TradingServiceTest {
         assertMoney("12", book.closedLots().get(0).realizedPnl()); // 逐批归因按这一批自己的开仓价
     }
 
-    // ---------------- 交易记录的开 / 闭 ----------------
+    // ---------------- 手数限制 ----------------
+
+    /** 超过档位的市价单当场拒绝：不留挂单、不留成交 —— 否则「超限」就只是句提示。 */
+    @Test
+    void marketOrderAboveTierLimitIsRejected() {
+        String capped = openAccountWithLimit(1);
+
+        BusinessException e = assertThrows(BusinessException.class,
+                () -> trading.market(capped, "buy", BigDecimal.valueOf(2), null));
+        assertTrue(e.getMessage().contains("手数上限"), e.getMessage());
+        assertEquals(0, orderRepo.count());
+        assertEquals(0, tradeRepo.count());
+    }
+
+    /** 挂单也过同一道闸：将来会成交的仓位数现在就得合规，不能等到撮合那根才发现。 */
+    @Test
+    void placeAboveTierLimitIsRejected() {
+        String capped = openAccountWithLimit(1);
+
+        assertThrows(BusinessException.class, () -> trading.place(capped, "buy", "limit",
+                new BigDecimal("4001.00"), BigDecimal.valueOf(2)));
+        assertEquals(0, orderRepo.count());
+    }
+
+    /**
+     * 两张各自合规（1 手 + 1 手）的挂单在同一根里都触发：档位只有 1 手，
+     * 所以<strong>只有第一张成交</strong>，第二张不动、单子留 OPEN；等仓位降下来它才成交。
+     */
+    @Test
+    void stackedLimitOrdersStopAtTierLimit() {
+        String capped = openAccountWithLimit(1);
+        trading.place(capped, "buy", "limit", new BigDecimal("4010.00"), BigDecimal.ONE);
+        trading.place(capped, "buy", "limit", new BigDecimal("4010.00"), BigDecimal.ONE);
+
+        desk.step(capped); // 09:05：两张都触发，但只能成交 1 手
+        assertEquals(1, tradeRepo.count(), "第二张会超限，不成交");
+        List<TradeOrder> first = orderRepo.findByAccountIdOrderByPlacedAtBarAsc(capped);
+        assertEquals(TradeOrder.Status.FILLED, first.get(0).getStatus());
+        assertEquals(TradeOrder.Status.OPEN, first.get(1).getStatus(), "超限的单留着，不撤也不丢");
+
+        // 平掉之后仓位归零，那张留下的单在下一根就能成交
+        trading.market(capped, "sell", BigDecimal.ONE, null);
+        desk.step(capped);
+        assertEquals(3, tradeRepo.count(), "开 1 + 平 1 + 那张留下的单终于成交 1");
+        List<TradeOrder> after = orderRepo.findByAccountIdOrderByPlacedAtBarAsc(capped);
+        assertEquals(TradeOrder.Status.FILLED, after.get(1).getStatus());
+    }
+
+
 
     /**
      * 空仓 → 有仓开记录，仓位回到 0 封口。<strong>归零不新开一条</strong>。
@@ -477,6 +525,21 @@ class TradingServiceTest {
     }
 
     // ---------------- 夹具 ----------------
+
+    /**
+     * 开一个手数上限 = {@code max} 的账户（档位只一档，利润是多少都落这一档）。
+     *
+     * <p>不用 {@code @BeforeEach} 那个 40 手的账户：40 手要真成交 40 手才到上限，
+     * 用 1 手钉同一件事，成交笔数少好断言。
+     */
+    private String openAccountWithLimit(int max) {
+        PropFirmTemplate capped = templates.create("限额 " + max, "测试", PropFirmStage.EVAL, null,
+                new PropFirmRules(new BigDecimal("50000.00"), new BigDecimal("3000.00"),
+                        new BigDecimal("2000.00"), PropFirmRules.DrawdownType.TRAILING_EOD,
+                        new BigDecimal("52100.00"), new BigDecimal("0.50"), null, null,
+                        List.of(new PositionTier(BigDecimal.ZERO, max))));
+        return accounts.open(capped.getId(), SYMBOL, "限额账户").getId();
+    }
 
     /**
      * 金额断言：按 {@code compareTo} 比，忽略 scale。
