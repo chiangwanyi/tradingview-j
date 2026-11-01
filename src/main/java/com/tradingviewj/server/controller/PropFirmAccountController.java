@@ -71,7 +71,8 @@ public class PropFirmAccountController {
 
     @Operation(summary = "账户列表", description = """
             status 可选：ACTIVE / FAILED，不传 = 全部。按建户时间倒序，新建的在前。
-            每个元素都带 rules 快照（规则是开账户时复制的，不是指向模板的引用）。
+            每个元素都带 rules 快照（规则是开账户时复制的，不是指向模板的引用），
+            以及 passed = 已达标待升级（**现算**的，不是列；首页据此决定出不出【升级】按钮）。
             """)
     @GetMapping
     public List<PropFirmAccount> list(
@@ -79,10 +80,14 @@ public class PropFirmAccountController {
         return accounts.list(status);
     }
 
-    @Operation(summary = "取一个账户", description = "不存在时返回业务错误码 10000。")
+    @Operation(summary = "取一个账户", description = """
+            不存在时返回业务错误码 10000。
+            带 passed：已达成本阶段升级条件、等手动升级。它是读的时候现算的
+            （从阶段起点重放到账户停住的那根 K 线），写操作的返回里没有这个字段。
+            """)
     @GetMapping("/{id}")
     public PropFirmAccount get(@PathVariable String id) {
-        return accounts.get(id);
+        return accounts.detail(id);
     }
 
     @Operation(summary = "开一个账户", description = """

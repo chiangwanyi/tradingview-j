@@ -8,6 +8,7 @@ import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
 import jakarta.persistence.Table;
+import jakarta.persistence.Transient;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -302,6 +303,33 @@ public class PropFirmAccount extends BaseEntity {
     /** 还能不能下单。比 {@link #isOpen()} 多一条：PAYOUT 阶段虽然"开着"，但它是终点。 */
     public boolean isTradable() {
         return isOpen() && stage.tradable();
+    }
+
+    /**
+     * <strong>已达标、等升级</strong>（{@code true} / {@code false} / {@code null} = 这次没人算）。
+     *
+     * <p>⚠️ <strong>不是数据库列</strong>（{@code @Transient}）：真值在「阶段起点 + 本阶段成交 +
+     * 盘面走到哪一根」里，由 {@code PropFirmJudge#assess} 重放得出，口径只有那一处。
+     * 存成列就必须回答「谁来更新它」，而达标是会在日终来回翻的（今天赚够、明天又亏回去），
+     * 任何一种「定时/事件时更新」的答案都会在某个时刻是错的。
+     *
+     * <p>所以它由 {@code PropFirmAccountService} 在<b>读账户</b>时现算填入，只用于界面判断
+     * 「升级按钮出不出现」。前端自己按 {@code profitTarget} 和 {@code minProfitDays} 推一遍
+     * 会得到第二份考核口径 —— 那正是这个项目一直在避免的东西。
+     *
+     * <p>{@code null}（被 {@code non_null} 整个省掉 → 前端读到 {@code undefined}）表示这次
+     * 没有算过，和 {@code false}（算过、没达标）是两件事：写操作（成交、推进、改名）返回的
+     * 账户不重放盘面，那里没有这个数。
+     */
+    @Transient
+    private Boolean passed;
+
+    /**
+     * 由 service 填入「已达标待升级」的结论。不落库、不参与任何判定，
+     * 只影响界面上那颗【升级】按钮。
+     */
+    public void markPassed(boolean passed) {
+        this.passed = passed;
     }
 
     /** 本阶段赚了多少（已扣手续费）。可正可负。 */

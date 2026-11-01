@@ -80,22 +80,48 @@ function onCreate(payload: { templateId: string; symbolId: string; name: string 
 /** 详情是整页切换，交给 App 管；这里只把 id 往上递。 */
 const emit = defineEmits<{ detail: [id: string] }>()
 
-/** 正在结算的账户 id：一次只跑一个，按钮在这期间置灰（整段跳过要读不少日文件）。 */
-const settling = ref('')
+/**
+ * 卡片上正在跑的写操作（结算 / 升级）：一次只跑一个，期间那颗按钮置灰并入文案。
+ * 两个动作互斥 —— 它们都在改同一行账户，并发点只会让后一个读到半截状态。
+ */
+const pendingId = ref('')
+const pendingKind = ref<'settle' | 'promote' | ''>('')
 
-function onSettle(id: string): void {
-  if (settling.value) return
-  settling.value = id
+function act(id: string, kind: 'settle' | 'promote', fn: () => Promise<unknown>): void {
+  if (pendingId.value) return
+  pendingId.value = id
+  pendingKind.value = kind
   error.value = ''
-  api
-    .settleDay(id)
+  fn()
     .then(() => reload())
     .catch((e: unknown) => {
       error.value = errorText(e)
     })
     .finally(() => {
-      settling.value = ''
+      pendingId.value = ''
+      pendingKind.value = ''
     })
+}
+
+function onSettle(id: string): void {
+  act(id, 'settle', () => api.settleDay(id))
+}
+
+/**
+ * 升级到下一阶段。这是一次**不可撤销**的迁移：换规则、余额重置回新阶段的账户规模、
+ * 上一段阶段流水结掉。所以先问一句，并把「钱不带过去」写在问句里。
+ *
+ * 只在 `passed === true` 时才画这颗按钮（见 `AccountCard.vue`），
+ * 所以这里不需要再判一次达标 —— 判了就是第三份口径。
+ */
+function onPromote(id: string): void {
+  const a = rows.value.find((r) => r.id === id)
+  if (!a) return
+  const next = a.stage === 'EVAL' ? 'FUNDED' : 'PAYOUT'
+  if (!confirm(`把「${a.name}」升到 ${next}？余额会重置回新阶段的账户规模（本阶段赚的钱不带过去）。`)) {
+    return
+  }
+  act(id, 'promote', () => api.promote(id))
 }
 
 defineExpose({ openNew })
@@ -215,9 +241,11 @@ defineExpose({ openNew })
           v-for="a in list"
           :key="a.id"
           :a="a"
-          :busy="settling === a.id"
+          :busy="pendingId === a.id"
+          :pending="pendingId === a.id ? pendingKind : ''"
           @detail="emit('detail', $event)"
           @settle="onSettle"
+          @promote="onPromote"
         />
       </div>
 

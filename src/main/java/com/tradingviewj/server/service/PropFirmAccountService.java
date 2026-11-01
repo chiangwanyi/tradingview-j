@@ -364,15 +364,63 @@ public class PropFirmAccountService {
     }
 
     /**
+     * 取一个账户，<strong>顺便把「已达标待升级」算出来填上</strong>（{@code account.passed}）。
+     *
+     * <p>只在<strong>读接口</strong>用（{@code GET /api/pf-accounts/{id}}）：那一次请求就是为了
+     * 让界面决定「升级按钮出不出现」，多花一次重放（十几到几十毫秒）换掉前端自己推规则。
+     *
+     * <p>⚠️ <strong>不要换掉 {@link #get}</strong>：{@code requireExisting} 走的是 {@code get}，
+     * 那是看盘 / 撤单 / 退仓的热路径，每按一次【下一根】就要读一次账户，
+     * 在那里重放一遍整段盘面纯属浪费 —— 而写操作本来也不需要这个数。
+     */
+    @Transactional(readOnly = true)
+    public PropFirmAccount detail(String accountId) {
+        PropFirmAccount account = get(accountId);
+        fillPassed(account);
+        return account;
+    }
+
+    /**
+     * 算「已达标待升级」并填到实体上（不落库）。
+     *
+     * <p>三类直接给 {@code false}，连重放都不做：
+     *
+     * <ul>
+     *   <li><strong>已判失败</strong> —— 终态，没有下一阶段可升；</li>
+     *   <li><strong>已在 PAYOUT</strong> —— 链的尽头。</li>
+     * </ul>
+     *
+     * <p>重放本身失败（标的被删了、规则快照缺字段）也退化成 {@code false}：
+     * 那是一个「详情页少一颗按钮」的问题，不该变成「账户列表打不开」。
+     */
+    private void fillPassed(PropFirmAccount account) {
+        if (!account.isOpen() || account.getStage() == PropFirmStage.PAYOUT) {
+            account.markPassed(false);
+            return;
+        }
+        try {
+            account.markPassed(judge.assess(account).frozen());
+        } catch (RuntimeException e) {
+            account.markPassed(false);
+        }
+    }
+
+    /**
      * 账户列表，新建的在前。
+     *
+     * <p>每个元素都带上 {@code passed}（见 {@link #fillPassed}），首页据此决定
+     * 那张卡片上出不出【升级】按钮 —— 所以这个接口的重放次数 = 账户数 × 1，
+     * 和「每个账户都去交易页开一遍」是同一份代价，只是提前在一次请求里做完。
      *
      * @param status {@code null} = 全部（含 {@code FAILED}）
      */
     @Transactional(readOnly = true)
     public List<PropFirmAccount> list(PropFirmAccount.Status status) {
-        return status == null
+        List<PropFirmAccount> all = status == null
                 ? accounts.findAllByOrderByStartedAtDesc()
                 : accounts.findByStatusOrderByStartedAtDesc(status);
+        all.forEach(this::fillPassed);
+        return all;
     }
 
     /**

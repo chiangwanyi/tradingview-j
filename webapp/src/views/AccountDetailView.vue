@@ -141,9 +141,14 @@ function submitRename(): void {
 }
 
 function doPromote(): void {
-  if (!a.value) return
-  if (!confirm(`把「${a.value.name}」升到下一阶段？余额会重置回新阶段的账户规模。`)) return
-  run(() => api.promote(a.value!.id).then(load))
+  const acc = a.value
+  if (!acc) return
+  const next = acc.stage === 'EVAL' ? 'FUNDED' : 'PAYOUT'
+  // 没达标也允许升（后端只要求 ACTIVE 且不是 PAYOUT），但问句里要把这件事说明白：
+  // 一旦升上去，本阶段赚的钱就被拨回账户规模，退不回来。
+  const warn = acc.passed ? '' : '⚠️ 这个账户还没达成本阶段的升级条件。'
+  if (!confirm(`${warn}把「${acc.name}」升到 ${next}？余额会重置回新阶段的账户规模。`)) return
+  run(() => api.promote(acc.id).then(load))
 }
 
 function doRemove(): void {
@@ -192,6 +197,15 @@ function openTrade(): void {
           "
         >
           {{ a.status === 'ACTIVE' ? '进行中' : '已失败' }}
+        </span>
+        <!-- 已达标：后端重放算出来的结论（`passed`），页面顶部就要能看到，
+             不能让人翻到最底下的按钮才知道考过了 -->
+        <span
+          v-if="a.passed"
+          class="rounded border border-amber-300 bg-amber-50 px-1.5 py-0.5 text-[11px] tracking-wider text-amber-800"
+          title="已达成本阶段升级条件，持仓已平、暂停接受新单"
+        >
+          已达标 · 待升级
         </span>
         <span class="rounded border border-line px-1.5 py-0.5 text-[11px] tracking-wider text-faint uppercase">
           {{ drawdownLabel(a.rules.drawdownType) }}
@@ -420,14 +434,27 @@ function openTrade(): void {
 
       <!-- 6. 动作：升级 / 改名 / 删除（继续交易在页头，天天要点的那个放上面） -->
       <div class="flex flex-wrap gap-2">
+        <!-- 升级：已达标时是主按钮（首页那颗也一样），没达标时留一颗弱按钮 ——
+             手工升级仍然允许（后端只要求 ACTIVE 且不是 PAYOUT），但要先看清没达标这件事。 -->
         <button
           type="button"
-          class="flex items-center gap-1.5 rounded-md border border-line px-4 py-2 text-[13px] text-dim transition-colors hover:border-line-strong hover:text-ink disabled:cursor-not-allowed disabled:opacity-40"
+          class="flex items-center gap-1.5 rounded-md px-4 py-2 text-[13px] transition-colors disabled:cursor-not-allowed disabled:opacity-40"
+          :class="
+            a.passed && a.status === 'ACTIVE' && a.stage !== 'PAYOUT'
+              ? 'bg-accent font-medium text-white hover:bg-accent-ink'
+              : 'border border-line text-dim hover:border-line-strong hover:text-ink'
+          "
           :disabled="busy || a.status === 'FAILED' || a.stage === 'PAYOUT'"
-          :title="a.stage === 'PAYOUT' ? '已是最后阶段' : 'EVAL → FUNDED → PAYOUT'"
+          :title="
+            a.stage === 'PAYOUT'
+              ? '已是最后阶段'
+              : a.passed
+                ? '考核已通过：升级会换下一套规则、余额重置回账户规模'
+                : '还没达成本阶段的升级条件（后端不会拦，但正常流程是等达标）'
+          "
           @click="doPromote"
         >
-          <Icon name="check" :size="14" />升级
+          <Icon name="check" :size="14" />{{ a.passed ? '考核通过 · 升级' : '升级' }}
         </button>
         <button
           type="button"

@@ -28,6 +28,15 @@ export interface Account {
   symbolId: string
   stage: Stage
   status: AccountStatus
+  /**
+   * **已达标、等升级**。后端在读接口里现算（从阶段起点重放到账户停住的那根 K 线），
+   * 不是数据库列 —— 所以只有 `list` / `get` 拿到的对象上有它，写操作（成交、推进、改名）
+   * 返回的账户没有（读到 `undefined`，一律写 `== null` 判断）。
+   *
+   * 首页的【升级】按钮就按它出不出来：**不要**拿 `profitTarget` 和 `minProfitDays`
+   * 在这里自己推一遍，那是第二份考核口径。
+   */
+  passed?: boolean
   /** 开账户那一刻从模板复制过来的规则，之后与模板无关。 */
   rules: Rules
   /** 本阶段起点余额（升级时重置回账户规模）。 */

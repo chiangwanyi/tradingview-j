@@ -16,15 +16,19 @@ import { drawdownLabel, pct, stageLabel, usd } from '@/data/rules'
 /**
  * 一张考核卡。版式照参考图的账户卡：身份 → 三个状态小标签 → 四个数字 → 进度条 → 动作。
  *
- * 卡片只留两个入口：继续交易 / 详情。升级、改名、删除、阶段流水全在详情页 ——
- * 卡片是「一眼看进度」的地方，写操作不该跟数字抢位置。
+ * 卡片上的入口只有三个：继续交易 / 详情 / 结算今日；外加一颗**只在考核通过时才出现**的
+ * 【升级】—— 它是唯一一个「有结论才有动作」的按钮，没达标时整颗不画，
+ * 而不是画出来再置灰（置灰的按钮会让人以为点得动、只是坏了）。改名、删除、阶段流水仍在详情页。
+ *
+ * ⚠️ 「通没通过」用 `a.passed`（后端现算的），**不在这里按 profitTarget / 盈利日自己推**：
+ * 那是一份考核口径，推一遍就有了第二份，两份迟早不一致。
  *
  * ⚠️ 盈利目标一律用 `profitTarget(a)`（后端算好的**一致性抬升后**的值），
  * 不能用 `a.rules.profitTarget`：单日赚 2750、一致性 40% 时真实目标是 6875，
  * 而模板上写的是 3000 —— 拿模板的值会显示「还差 40 就过关」，那是错的。
  */
-const props = defineProps<{ a: Account; busy?: boolean }>()
-const emit = defineEmits<{ detail: [id: string]; settle: [id: string] }>()
+const props = defineProps<{ a: Account; busy?: boolean; pending?: 'settle' | 'promote' | '' }>()
+const emit = defineEmits<{ detail: [id: string]; settle: [id: string]; promote: [id: string] }>()
 
 const target = computed(() => profitTarget(props.a))
 const progress = computed(() => targetProgress(props.a))
@@ -33,6 +37,11 @@ const gained = computed(() => props.a.balance - props.a.baseBalance)
 const floor = computed(() => lossLine(props.a))
 /** 目标被一致性抬高了：副行要说明来源，否则「目标怎么突然变了」会变成一个疑问。 */
 const raised = computed(() => targetRaised(props.a))
+
+/** 考核通过、能升上去 —— 失败和 PAYOUT 的账户后端给的就是 false，不用在这儿再判一遍。 */
+const canPromote = computed(() => props.a.passed === true && props.a.status === 'ACTIVE')
+/** 下一阶段叫什么（按钮上说清楚升到哪儿，别只写「升级」）。 */
+const nextStage = computed(() => (props.a.stage === 'EVAL' ? 'FUNDED' : 'PAYOUT'))
 
 // ---- 继续交易 ----
 /**
@@ -77,12 +86,14 @@ function onTrade(): void {
       <span
         class="rounded-sm border px-1.5 py-0.5 text-[10px] tracking-wider uppercase"
         :class="
-          a.status === 'ACTIVE'
-            ? 'border-accent/30 bg-accent-soft text-accent-ink'
-            : 'border-red-200 bg-red-50 text-red-700'
+          a.status !== 'ACTIVE'
+            ? 'border-red-200 bg-red-50 text-red-700'
+            : canPromote
+              ? 'border-amber-300 bg-amber-50 text-amber-800'
+              : 'border-accent/30 bg-accent-soft text-accent-ink'
         "
       >
-        {{ a.status === 'ACTIVE' ? '进行中' : '已失败' }}
+        {{ a.status !== 'ACTIVE' ? '已失败' : canPromote ? '已达标 · 待升级' : '进行中' }}
       </span>
       <span class="rounded-sm border border-line px-1.5 py-0.5 text-[10px] tracking-wider text-faint uppercase">
         创建于 {{ shortInstant(a.stageStartedAt) }}
@@ -157,6 +168,20 @@ function onTrade(): void {
       >
         详情
       </button>
+      <!-- 升级：**只在考核通过时出现**（`passed` 由后端重放算出来）。
+           没通过时整颗不画 —— 画出来再置灰，人会以为「点得动、只是坏了」，
+           而真实情况是「还没考完」。 -->
+      <button
+        v-if="canPromote"
+        type="button"
+        class="col-span-2 flex items-center justify-center gap-1.5 rounded-md bg-accent py-2 text-[13px] font-medium text-white transition-colors hover:bg-accent-ink disabled:opacity-50"
+        title="余额会重置回下一阶段的账户规模（本阶段赚的钱不带过去）"
+        :disabled="busy"
+        @click="emit('promote', a.id)"
+      >
+        <Icon name="check" :size="13" />
+        {{ pending === 'promote' ? '升级中…' : `考核通过 · 升级到 ${nextStage}` }}
+      </button>
       <!-- 只在考核中给：失败的账户没有「今天的账」可结 -->
       <button
         v-if="a.status === 'ACTIVE'"
@@ -166,7 +191,7 @@ function onTrade(): void {
         :disabled="busy"
         @click="emit('settle', a.id)"
       >
-        {{ busy ? '结算中…' : '结算今日' }}
+        {{ pending === 'settle' ? '结算中…' : '结算今日' }}
       </button>
     </div>
   </article>
