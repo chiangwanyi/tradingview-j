@@ -2,18 +2,22 @@
 import { computed, onMounted, ref } from 'vue'
 
 import Icon from '@/components/Icon.vue'
+import TradingCalendar from '@/components/TradingCalendar.vue'
 import * as api from '@/data/accounts'
-import { lossLine, shortInstant, shortTime, targetProgress } from '@/data/accounts'
-import type { Account, StageLog } from '@/data/accounts'
+import { lossLine, shortInstant, shortTime } from '@/data/accounts'
+import type { Account, DayPnl, StageLog } from '@/data/accounts'
 import { drawdownLabel, pct, stageLabel, usd } from '@/data/rules'
 import { errorText } from '@/data/store'
 
 /**
- * 账户详情（整页，不是抽屉）。卡片上收走的写操作全在这里：
- * 升级 / 改名 / 删除 + 阶段流水。
+ * 账户详情（整页，不是抽屉）。版式照参考图自上而下：
  *
- * 数据自己拉（`GET /api/pf-accounts/{id}` + `/{id}/stages`），不吃列表里那份拷件 ——
- * 从列表点进来时它可能已经是几十秒前的余额。
+ *   权益进度条 → 交易日历 → 规则快照 → 账户身份 → 阶段流水 → 动作。
+ *
+ * 卡片上收走的写操作全在这里：升级 / 改名 / 删除 + 阶段流水。
+ *
+ * 数据自己拉（`GET /api/pf-accounts/{id}` + `/{id}/stages` + `/{id}/calendar`），
+ * 不吃列表里那份拷件 —— 从列表点进来时它可能已经是几十秒前的余额。
  *
  * 「继续交易」在卡片和这里都有：它开一个新标签页（`/trade/:id`），不改变本页状态 ——
  * 详情页留着不动，交易页在另一个标签里跑，两边都刷新也不会互相打断。
@@ -23,21 +27,68 @@ const emit = defineEmits<{ back: [] }>()
 
 const a = ref<Account | null>(null)
 const logs = ref<StageLog[]>([])
+/** 交易日历：后端按交易日分好组的一整天一整天的汇总。 */
+const days = ref<DayPnl[]>([])
+const calLoading = ref(true)
 const loading = ref(true)
 const err = ref('')
 const busy = ref(false)
 
-const progress = computed(() => (a.value ? targetProgress(a.value) : null))
 const gained = computed(() => (a.value ? a.value.balance - a.value.baseBalance : 0))
 /** 亏损线：口径和交易页一致（含冻结水位），见 `data/accounts.ts` 的 `lossLine`。 */
 const floor = computed(() => (a.value ? lossLine(a.value) : null))
 
+/**
+ * 进度条的三段：**左端 = 亏损线，右端 = 目标**，填充到当前余额。
+ *
+ * 为什么不从 0 画到目标：这条轨道的意义是「还剩多少空间」，左端必须是那道
+ * 会被打穿的线（亏损线），不是账户规模。参考图上左端那根 `START` 就是它。
+ *
+ * 没有盈利目标（FUNDED / PAYOUT）时右端退化成**日终峰值**：那时要盯的不是
+ * 「赚够多少」，而是「余额离峰值和亏损线各有多远」，峰值就是那条轨道的满格。
+ */
+const bar = computed(() => {
+  const acc = a.value
+  if (!acc) return null
+  const hasTarget = acc.rules.profitTarget != null
+  const start = floor.value ?? acc.baseBalance
+  const end = hasTarget
+    ? acc.baseBalance + (acc.rules.profitTarget ?? 0)
+    : Math.max(acc.eodPeakBalance, acc.balance, start)
+  const span = end - start
+  const fill = span > 0 ? Math.min(1, Math.max(0, (acc.balance - start) / span)) : 0
+  return { hasTarget, start, end, fill }
+})
+
+/** 余额还能往下走多少（正数 = 缓冲）。没有回撤规则就是 null，不编一个数。 */
+const buffer = computed(() =>
+  a.value && floor.value != null ? Math.round((a.value.balance - floor.value) * 100) / 100 : null,
+)
+
+/** 距目标还差多少；没有目标就是 null。 */
+const remaining = computed(() => {
+  const acc = a.value
+  if (!acc || acc.rules.profitTarget == null) return null
+  return Math.max(0, Math.round((acc.rules.profitTarget - gained.value) * 100) / 100)
+})
+
+/** `+$52.50` / `-$40.00`：金额一律带符号，颜色只是辅助。 */
+function signed(n: number): string {
+  const text = `$${Math.abs(n).toLocaleString('en-US', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })}`
+  return n > 0.005 ? `+${text}` : n < -0.005 ? `-${text}` : text
+}
+
 /** 只刷新数据、不清空已有内容：改名 / 升级后原地换个数字，别整页闪一下。 */
 function load(): Promise<void> {
-  return Promise.all([api.get(props.id), api.stages(props.id)])
-    .then(([acc, l]) => {
+  calLoading.value = days.value.length === 0
+  return Promise.all([api.get(props.id), api.stages(props.id), api.calendar(props.id)])
+    .then(([acc, l, d]) => {
       a.value = acc
       logs.value = l
+      days.value = d
       err.value = ''
     })
     .catch((e: unknown) => {
@@ -45,6 +96,7 @@ function load(): Promise<void> {
     })
     .finally(() => {
       loading.value = false
+      calLoading.value = false
     })
 }
 
@@ -154,6 +206,17 @@ function openTrade(): void {
             取消
           </button>
         </template>
+
+        <div class="ml-auto flex flex-wrap gap-2">
+          <button
+            type="button"
+            class="flex items-center gap-1.5 rounded-md bg-accent px-4 py-2 text-[13px] font-medium text-white transition-colors hover:bg-accent-ink"
+            title="在新标签页打开这个账户的 K 线画布"
+            @click="openTrade"
+          >
+            <Icon name="right" :size="14" />继续交易
+          </button>
+        </div>
       </div>
       <p v-else class="mt-3 text-[13px] text-faint">{{ loading ? '加载中…' : '账户不存在或已删除。' }}</p>
     </header>
@@ -162,36 +225,97 @@ function openTrade(): void {
       {{ err }}
     </p>
 
-    <div v-if="a" class="px-8 pb-10">
-      <!-- 四个数字：口径和卡片一致 -->
+    <div v-if="a" class="flex flex-col gap-3 px-8 pb-10">
+      <!-- 1. 权益进度：亏损线 ──── 当前余额 ──── 目标 -->
+      <section v-if="bar" class="rounded-xl border border-line bg-panel px-5 py-4">
+        <div class="flex flex-wrap items-baseline justify-between gap-2">
+          <p class="text-[11px] tracking-wider text-faint uppercase">本阶段权益进度</p>
+          <p class="tnum text-[11px] text-faint">
+            {{ bar.hasTarget ? `距目标还差 ${usd(remaining)}` : '本阶段没有盈利目标，盯住亏损线' }}
+          </p>
+        </div>
+
+        <!-- 轨道：[亏损线 ────── 当前 ────── 目标] -->
+        <div class="mt-3 h-2.5 w-full overflow-hidden rounded-full bg-elev">
+          <div
+            class="h-full rounded-full bg-accent/70 transition-[width] duration-500"
+            :style="{ width: `${bar.fill * 100}%` }"
+          />
+        </div>
+
+        <div class="tnum mt-2 flex flex-wrap items-center justify-between gap-x-4 gap-y-1 text-[11px] text-faint">
+          <span class="flex items-center gap-1.5">
+            <span class="h-2 w-2 rounded-full bg-down/50" />
+            亏损线 {{ usd(bar.start) }}
+          </span>
+          <span class="flex items-center gap-1.5 text-dim">
+            <span class="h-2 w-2 rounded-full bg-accent" />
+            当前 {{ usd(a.balance) }}
+          </span>
+          <span class="flex items-center gap-1.5">
+            {{ bar.hasTarget ? '目标' : '日终峰值' }} {{ usd(bar.end) }}
+            <span class="h-2 w-2 rounded-full bg-ink/30" />
+          </span>
+        </div>
+
+        <div class="mt-4 grid grid-cols-1 gap-4 border-t border-line pt-3 sm:grid-cols-3">
+          <div>
+            <p class="text-[11px] tracking-wider text-faint uppercase">回撤空间</p>
+            <p
+              class="tnum text-[20px] leading-tight font-semibold"
+              :class="buffer != null && buffer <= 0 ? 'text-down' : 'text-ink'"
+            >
+              {{ usd(buffer) }}
+            </p>
+            <p class="tnum text-[11px] text-faint">余额 − 亏损线</p>
+          </div>
+          <div>
+            <p class="text-[11px] tracking-wider text-faint uppercase">账户余额</p>
+            <p class="tnum text-[20px] leading-tight font-semibold text-ink">{{ usd(a.balance) }}</p>
+            <p class="tnum text-[11px] text-faint">
+              起点 {{ usd(a.baseBalance) }} ·
+              <span :class="gained >= 0 ? 'text-up' : 'text-down'">{{ signed(gained) }}</span>
+            </p>
+          </div>
+          <div>
+            <p class="text-[11px] tracking-wider text-faint uppercase">
+              {{ bar.hasTarget ? '距目标' : '已在峰值' }}
+            </p>
+            <p class="tnum text-[20px] leading-tight font-semibold text-ink">
+              {{ bar.hasTarget ? usd(remaining) : usd(a.eodPeakBalance) }}
+            </p>
+            <p class="tnum text-[11px] text-faint">
+              {{ bar.hasTarget ? `盈利目标 ${usd(a.rules.profitTarget)}` : '跟踪回撤的基准' }}
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <!-- 2. 交易日历：格子 = 一个交易日，点开看当天每一笔 -->
+      <TradingCalendar :days="days" :loading="calLoading" />
+
+      <!-- 3. 规则快照：开账户那一刻从模板复制过来的，之后与模板无关 -->
       <div class="grid grid-cols-2 gap-x-8 gap-y-4 rounded-xl border border-line bg-panel px-5 py-4 lg:grid-cols-4">
         <div>
-          <p class="text-[11px] tracking-wider text-faint uppercase">账户余额</p>
-          <p class="tnum text-[22px] leading-tight font-semibold text-ink">{{ usd(a.balance) }}</p>
-          <p class="tnum text-[11px] text-faint">
-            起点 {{ usd(a.baseBalance) }} ·
-            <span :class="gained >= 0 ? 'text-accent-ink' : 'text-red-600'">
-              {{ gained >= 0 ? '+' : '' }}{{ usd(gained) }}
-            </span>
-          </p>
+          <p class="text-[11px] tracking-wider text-faint uppercase">账户规模</p>
+          <p class="tnum text-[18px] leading-tight font-semibold text-ink">{{ usd(a.rules.accountSize) }}</p>
+          <p class="tnum text-[11px] text-faint">回撤口径 {{ drawdownLabel(a.rules.drawdownType) }}</p>
         </div>
         <div>
           <p class="text-[11px] tracking-wider text-faint uppercase">盈利目标</p>
-          <p class="tnum text-[22px] leading-tight font-semibold text-ink">
-            {{ usd(a.rules.profitTarget) }}
-          </p>
+          <p class="tnum text-[18px] leading-tight font-semibold text-ink">{{ usd(a.rules.profitTarget) }}</p>
           <p class="tnum text-[11px] text-faint">
-            {{ a.rules.profitTarget == null ? '本阶段无目标' : `还差 ${usd(Math.max(0, a.rules.profitTarget - gained))}` }}
+            {{ a.rules.profitTarget == null ? '本阶段无目标' : `还差 ${usd(remaining)}` }}
           </p>
         </div>
         <div>
           <p class="text-[11px] tracking-wider text-faint uppercase">最大回撤</p>
-          <p class="tnum text-[18px] font-medium text-ink">{{ usd(a.rules.maxDrawdown) }}</p>
+          <p class="tnum text-[18px] leading-tight font-semibold text-ink">{{ usd(a.rules.maxDrawdown) }}</p>
           <p class="tnum text-[11px] text-faint">亏损线 {{ usd(floor) }}</p>
         </div>
         <div>
           <p class="text-[11px] tracking-wider text-faint uppercase">一致性上限</p>
-          <p class="tnum text-[18px] font-medium text-ink">
+          <p class="tnum text-[18px] leading-tight font-semibold text-ink">
             {{ a.rules.consistencyRatio == null ? '—' : `≤${pct(a.rules.consistencyRatio)}` }}
           </p>
           <p class="tnum text-[11px] text-faint">
@@ -200,23 +324,9 @@ function openTrade(): void {
         </div>
       </div>
 
-      <div v-if="progress != null" class="mt-3 rounded-xl border border-line bg-panel px-5 py-4">
-        <div class="flex items-baseline justify-between text-[12px] text-dim">
-          <span>本阶段进度</span>
-          <span class="tnum text-ink">{{ pct(progress) }}</span>
-        </div>
-        <div class="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-elev">
-          <div class="h-full rounded-full bg-accent" :style="{ width: `${progress * 100}%` }" />
-        </div>
-        <div class="mt-1.5 flex justify-between text-[11px] tracking-wider text-faint uppercase tnum">
-          <span>起点 {{ usd(a.baseBalance) }}</span>
-          <span>目标 {{ usd(a.baseBalance + (a.rules.profitTarget ?? 0)) }}</span>
-        </div>
-      </div>
-
-      <!-- 时间与来源：账户的「身份」都在这里，卡片上放不下 -->
+      <!-- 4. 时间与来源：账户的「身份」都在这里，卡片上放不下 -->
       <dl
-        class="mt-3 grid grid-cols-1 gap-x-8 gap-y-2.5 rounded-xl border border-line bg-panel px-5 py-4 text-[13px] sm:grid-cols-2"
+        class="grid grid-cols-1 gap-x-8 gap-y-2.5 rounded-xl border border-line bg-panel px-5 py-4 text-[13px] sm:grid-cols-2"
       >
         <div class="flex justify-between gap-4">
           <dt class="text-faint">交易标的</dt>
@@ -228,6 +338,14 @@ function openTrade(): void {
         <div class="flex justify-between gap-4">
           <dt class="text-faint">起点 K 线</dt>
           <dd class="tnum text-ink">{{ shortTime(a.startBarTime) }}</dd>
+        </div>
+        <div class="flex justify-between gap-4">
+          <dt class="text-faint">盘面最新 K 线</dt>
+          <dd class="tnum text-ink">{{ shortTime(a.lastBarTime) }}</dd>
+        </div>
+        <div class="flex justify-between gap-4">
+          <dt class="text-faint">日终峰值</dt>
+          <dd class="tnum text-ink">{{ usd(a.eodPeakBalance) }}</dd>
         </div>
         <div class="flex justify-between gap-4">
           <dt class="text-faint">本阶段自</dt>
@@ -251,8 +369,8 @@ function openTrade(): void {
         </div>
       </dl>
 
-      <!-- 阶段流水：行数就是身份（1 行 = 建户时就在这个阶段，2 行 = 考过来的） -->
-      <div class="mt-3 rounded-xl border border-line bg-panel px-5 py-4">
+      <!-- 5. 阶段流水：行数就是身份（1 行 = 建户时就在这个阶段，2 行 = 考过来的） -->
+      <div class="rounded-xl border border-line bg-panel px-5 py-4">
         <p class="text-[13px] font-medium text-ink">阶段流水</p>
         <table v-if="logs.length" class="mt-2 w-full text-[12px]">
           <thead>
@@ -275,7 +393,7 @@ function openTrade(): void {
               <td class="tnum py-1.5 pr-4 text-right text-dim">{{ usd(l.balanceAtEnd) }}</td>
               <td
                 class="tnum py-1.5 pr-4 text-right"
-                :class="l.netPnl == null ? 'text-faint' : l.netPnl >= 0 ? 'text-accent-ink' : 'text-red-600'"
+                :class="l.netPnl == null ? 'text-faint' : l.netPnl >= 0 ? 'text-up' : 'text-down'"
               >
                 {{ usd(l.netPnl) }}
               </td>
@@ -286,16 +404,8 @@ function openTrade(): void {
         <p v-else class="mt-2 text-[12px] text-faint">没有阶段流水。</p>
       </div>
 
-      <!-- 动作：继续交易 + 卡片上收过来的三个 -->
-      <div class="mt-3 flex flex-wrap gap-2">
-        <button
-          type="button"
-          class="flex items-center gap-1.5 rounded-md bg-accent px-4 py-2 text-[13px] font-medium text-white transition-colors hover:bg-accent-ink"
-          title="在新标签页打开这个账户的 K 线画布"
-          @click="openTrade"
-        >
-          <Icon name="right" :size="14" />继续交易
-        </button>
+      <!-- 6. 动作：升级 / 改名 / 删除（继续交易在页头，天天要点的那个放上面） -->
+      <div class="flex flex-wrap gap-2">
         <button
           type="button"
           class="flex items-center gap-1.5 rounded-md border border-line px-4 py-2 text-[13px] text-dim transition-colors hover:border-line-strong hover:text-ink disabled:cursor-not-allowed disabled:opacity-40"
@@ -324,12 +434,11 @@ function openTrade(): void {
       </div>
 
       <!-- 占位：还没接的东西写清楚，别让人以为加载失败 -->
-      <div class="mt-6 rounded-xl border border-dashed border-line px-5 py-4">
+      <div class="rounded-xl border border-dashed border-line px-5 py-4">
         <p class="text-[13px] font-medium text-dim">这一页还差几块</p>
         <ul class="mt-1.5 list-disc space-y-1 pl-5 text-[12px] text-faint">
-          <li>成交记录与逐笔盈亏 <span class="text-faint">（`audit_event` 已落库，接口还没做）</span></li>
+          <li>权益曲线（日终余额的时间序列，后端还没存）</li>
           <li>当前规则快照的完整字段（单笔手数上限、日亏损上限等）</li>
-          <li>交易页里的下单 / 撤单 / 逐根推进 <span class="text-faint">（撮合后端还没接通，见 `README.md` §三）</span></li>
         </ul>
       </div>
     </div>

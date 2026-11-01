@@ -2,6 +2,7 @@ package com.tradingviewj.server.service;
 
 import com.tradingviewj.server.dto.AuditEventView;
 import com.tradingviewj.server.dto.ClearTradeDataResponse;
+import com.tradingviewj.server.dto.DailyPnlView;
 import com.tradingviewj.server.dto.TradeRecordView;
 import com.tradingviewj.server.entity.audit.AuditEvent;
 import com.tradingviewj.server.entity.propfirm.PropFirmAccount;
@@ -9,6 +10,7 @@ import com.tradingviewj.server.entity.record.TradeRecord;
 import com.tradingviewj.server.entity.trade.Side;
 import com.tradingviewj.server.enums.Actor;
 import com.tradingviewj.server.enums.ReplayAction;
+import com.tradingviewj.server.exception.BusinessException;
 import com.tradingviewj.server.repository.AuditEventRepository;
 import com.tradingviewj.server.repository.OrderRepository;
 import com.tradingviewj.server.repository.PropFirmAccountRepository;
@@ -25,6 +27,7 @@ import java.math.BigDecimal;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.inOrder;
@@ -123,6 +126,51 @@ class HistoryQueryServiceTest {
         history.clearTradeData();
 
         verify(events, org.mockito.Mockito.never()).deleteAllInBatch();
+    }
+
+    /**
+     * 交易日历按<strong>交易日</strong>归并：凌晨 03:10 平的那笔算前一格（{@code 10-29}），
+     * 不是它自己那天的日历日 {@code 10-30}。这条要是错了，每个月的账都会差一天。
+     */
+    @Test
+    void dailyPnlGroupsAcrossMidnightByTradingDay() {
+        when(accounts.existsById("acc-1")).thenReturn(true);
+        when(records.findByAccountIdAndClosedTrueOrderByEntryBarTimeAsc("acc-1")).thenReturn(List.of(
+                closed("2026-10-29 09:05", "2026-10-29 10:00", "100.00", "4.00"),
+                closed("2026-10-29 23:50", "2026-10-30 03:10", "-40.00", "2.00"),
+                closed("2026-10-30 09:05", "2026-10-30 09:40", "25.00", "0.00")));
+
+        List<DailyPnlView> days = history.dailyPnl("acc-1");
+
+        assertEquals(2, days.size(), "三笔落在两个交易日上（跨零点那笔不算新的一天）");
+        DailyPnlView first = days.get(0);
+        assertEquals("2026-10-29", first.day());
+        assertEquals(2, first.trades());
+        assertEquals(1, first.wins());
+        assertEquals(1, first.losses());
+        assertEquals(new BigDecimal("54.00"), first.netPnl(), "净额 = 毛利 − 手续费：(100-40) − (4+2)");
+        assertEquals(new BigDecimal("60.00"), first.grossPnl());
+        assertEquals(new BigDecimal("6.00"), first.commission());
+        assertEquals(2, first.items().size(), "点开当天能直接列出这两笔，不用再发一次请求");
+
+        assertEquals("2026-10-30", days.get(1).day());
+        assertEquals(new BigDecimal("25.00"), days.get(1).netPnl());
+    }
+
+    /** 账户不存在要报业务错，不是默默返回一份空日历（那样页面看起来像「这天没交易」）。 */
+    @Test
+    void dailyPnlRejectsUnknownAccount() {
+        assertThrows(BusinessException.class, () -> history.dailyPnl("nope"));
+    }
+
+    /** 一条已平仓的记录：开在 entry、平在 exit，毛利 + 手续费这两个数就是日历要汇总的东西。 */
+    private static TradeRecord closed(String entry, String exit, String grossPnl, String commission) {
+        TradeRecord r = TradeRecord.open("acc-1", "5 万考核号", "CME_MINI:MES1!",
+                entry, 1, Actor.HUMAN, "我");
+        r.openPosition(Side.BUY, entry, new BigDecimal("5000.00"), new BigDecimal("1"));
+        r.addCommission(new BigDecimal(commission));
+        r.closeAt(exit, new BigDecimal("5010.00"), new BigDecimal(grossPnl), 2);
+        return r;
     }
 
     private static PropFirmAccount account(String id, String name) {

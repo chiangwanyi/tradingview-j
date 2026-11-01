@@ -1,10 +1,12 @@
 package com.tradingviewj.server.controller;
 
 import com.tradingviewj.server.api.R;
+import com.tradingviewj.server.dto.DailyPnlView;
 import com.tradingviewj.server.dto.PropFirmAccountRequest;
 import com.tradingviewj.server.dto.PropFirmCursorRequest;
 import com.tradingviewj.server.entity.propfirm.PropFirmAccount;
 import com.tradingviewj.server.entity.propfirm.PropFirmStageLog;
+import com.tradingviewj.server.service.HistoryQueryService;
 import com.tradingviewj.server.service.PropFirmAccountService;
 import com.tradingviewj.server.service.TradingService;
 import com.tradingviewj.server.ws.TradeDeskService;
@@ -60,6 +62,12 @@ public class PropFirmAccountController {
      * 所以走 {@link TradeDeskService}，不在这里另拼一遍光标推进和日终结算。
      */
     private final TradeDeskService desk;
+
+    /**
+     * 交易日历是 {@code trade_record} 的一层只读聚合，和「交易记录」列表共用映射，
+     * 所以走 {@link HistoryQueryService}（账户服务不认识这张表）。
+     */
+    private final HistoryQueryService history;
 
     @Operation(summary = "账户列表", description = """
             status 可选：ACTIVE / FAILED，不传 = 全部。按建户时间倒序，新建的在前。
@@ -162,5 +170,18 @@ public class PropFirmAccountController {
     @GetMapping("/{id}/stages")
     public List<PropFirmStageLog> stages(@PathVariable String id) {
         return accounts.stageHistory(id);
+    }
+
+    @Operation(summary = "交易日历（按天汇总净额）", description = """
+            详情页那块日历的数据：每天做了几笔、净额多少，**按交易日升序**。
+            交易日 D = [D 06:00, D+1 04:45)，所以凌晨 03:10 平的那笔算前一天 ——
+            和日终结算、「结算今日」同一条口径。
+            只含**已平仓**的记录（还在手上的那笔归到哪天都不对，盈亏也还在浮动）。
+            每格自带当天的每一笔（同交易记录的摘要），点开不用再发一次请求。
+            账户不存在时返回业务错误码 10000。
+            """)
+    @GetMapping("/{id}/calendar")
+    public List<DailyPnlView> calendar(@PathVariable String id) {
+        return history.dailyPnl(id);
     }
 }

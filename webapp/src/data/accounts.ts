@@ -114,6 +114,46 @@ export const settleDay = (id: string): Promise<Account> =>
 
 export const stages = (id: string): Promise<StageLog[]> => call(`${BASE}/${id}/stages`)
 
+/**
+ * 交易日历上的一天（一个**交易日**，不是日历日）。
+ *
+ * `2026-10-29` 这一格装的是 `[10-29 06:00, 10-30 04:45)` 之间的成交，
+ * 所以凌晨 03:10 平的那笔算前一天 —— 归日口径在后端 `PropFirmClock`，
+ * 前端拿到的是已经分好组的天，不要自己再按 `entryBarTime` 切片。
+ *
+ * 金额是**净额**（已扣手续费），后端算好发过来。
+ */
+export interface DayPnl {
+  /** 交易日 `YYYY-MM-DD` */
+  day: string
+  trades: number
+  wins: number
+  losses: number
+  netPnl: number
+  grossPnl: number
+  commission: number
+  /** 这一天的每一笔（只含已平仓的），按开仓时间升序 */
+  items: DayTrade[]
+}
+
+/** 日历里一天的一笔：只留点开格子时要显示的那几列。 */
+export interface DayTrade {
+  id: string
+  side: string | null
+  quantity: number | null
+  entryBarTime: string
+  exitBarTime: string | null
+  netPnl: number | null
+}
+
+/**
+ * 这个账户的交易日历（全部历史，按交易日升序）。
+ *
+ * 只拉一次、按天分组在前端做月份筛选：一个考核号最多几百个交易日，
+ * 一个月一次请求换来的只是「切月要等一下」。切月是纯前端动作，不该发请求。
+ */
+export const calendar = (id: string): Promise<DayPnl[]> => call(`${BASE}/${id}/calendar`)
+
 /** 卡片上的进度：本阶段已赚到目标的几成。没有盈利目标（FUNDED / PAYOUT）返回 null。 */
 export function targetProgress(a: Account): number | null {
   const target = a.rules.profitTarget
