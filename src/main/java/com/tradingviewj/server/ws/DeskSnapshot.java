@@ -4,6 +4,7 @@ import com.tradingviewj.server.dto.BarView;
 import com.tradingviewj.server.dto.ClosedLotView;
 import com.tradingviewj.server.dto.OrderView;
 import com.tradingviewj.server.dto.PositionView;
+import com.tradingviewj.server.dto.PfView;
 import com.tradingviewj.server.dto.TradeView;
 
 import java.math.BigDecimal;
@@ -58,7 +59,16 @@ public record DeskSnapshot(
         PositionView position,
         /** <strong>净</strong>已实现盈亏（已扣手续费） */
         BigDecimal realizedPnl,
-        BigDecimal unrealizedPnl
+        BigDecimal unrealizedPnl,
+        /**
+         * 考核读数：余额 / 日终峰值 / 亏损线 / 权益 / 是否已冻结。
+         *
+         * <p>和上面那几个盈亏数<strong>不是一回事</strong>：{@code realizedPnl} 是「这个账户
+         * 一共赚了多少」（跨阶段、只增不减地累加），考核读数里的 {@code balance} 是
+         * <strong>本阶段</strong>的余额（升级时被重置回账户规模）。两者在第一批成交之前相等，
+         * 之后越离越远 —— 别拿一个去顶另一个。
+         */
+        PfView pf
 ) {
 
     public static DeskSnapshot of(String accountId, String accountName, String stage, String status,
@@ -66,9 +76,9 @@ public record DeskSnapshot(
                                  String day, String barTime, boolean hasNext, List<BarView> bars,
                                  List<OrderView> orders, List<TradeView> trades,
                                  List<ClosedLotView> closedLots, PositionView position,
-                                 BigDecimal realizedPnl, BigDecimal unrealizedPnl) {
+                                 BigDecimal realizedPnl, BigDecimal unrealizedPnl, PfView pf) {
         return new DeskSnapshot("snapshot", accountId, accountName, stage, status,
                 symbolId, folder, tick, tickValue, day, barTime, hasNext, bars,
-                orders, trades, closedLots, position, realizedPnl, unrealizedPnl);
+                orders, trades, closedLots, position, realizedPnl, unrealizedPnl, pf);
     }
 }

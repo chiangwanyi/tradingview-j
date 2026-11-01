@@ -2,7 +2,7 @@
 import { computed } from 'vue'
 
 import Icon from './Icon.vue'
-import { shortInstant, shortTime, targetProgress } from '@/data/accounts'
+import { lossLine, shortInstant, shortTime, targetProgress } from '@/data/accounts'
 import type { Account } from '@/data/accounts'
 import { drawdownLabel, pct, stageLabel, usd } from '@/data/rules'
 
@@ -17,10 +17,8 @@ const emit = defineEmits<{ detail: [id: string] }>()
 
 const progress = computed(() => targetProgress(props.a))
 const gained = computed(() => props.a.balance - props.a.baseBalance)
-/** 亏损线：跟踪日终口径下就是「日终峰值 − 最大回撤」。没有回撤规则就不编一个数。 */
-const lossLine = computed(() =>
-  props.a.rules.maxDrawdown == null ? null : props.a.eodPeakBalance - props.a.rules.maxDrawdown,
-)
+/** 亏损线：口径和交易页一致（含冻结水位），见 `data/accounts.ts` 的 `lossLine`。 */
+const floor = computed(() => lossLine(props.a))
 
 // ---- 继续交易 ----
 /**
@@ -100,7 +98,7 @@ function onTrade(): void {
       <div>
         <p class="text-[11px] tracking-wider text-faint uppercase">最大回撤</p>
         <p class="tnum text-[14px] font-medium text-ink">{{ usd(a.rules.maxDrawdown) }}</p>
-        <p class="tnum text-[11px] text-faint">亏损线 {{ usd(lossLine) }}</p>
+        <p class="tnum text-[11px] text-faint">亏损线 {{ usd(floor) }}</p>
       </div>
       <div>
         <p class="text-[11px] tracking-wider text-faint uppercase">一致性上限</p>

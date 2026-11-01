@@ -4,6 +4,7 @@ import com.tradingviewj.server.dto.BarView;
 import com.tradingviewj.server.dto.ClosedLotView;
 import com.tradingviewj.server.dto.OrderView;
 import com.tradingviewj.server.dto.PositionView;
+import com.tradingviewj.server.dto.PfView;
 import com.tradingviewj.server.dto.TradeView;
 import com.tradingviewj.server.enums.ReplayAction;
 
@@ -41,6 +42,14 @@ public record BarAdvancedPayload(
         PositionView position,
         BigDecimal realizedPnl,
         BigDecimal unrealizedPnl,
+        /**
+         * 考核读数（余额 / 亏损线 / 权益 …）。见 {@link PfView}。
+         *
+         * <p>它跟着 K 线一起走，所以亏损线「在日终上移」这件事，前端是在
+         * 跨交易日的那一条广播里看到它变的 —— 盘中赚到新高这条线不动，那是 EOD 口径的定义，
+         * 不是漏更新。
+         */
+        PfView pf,
         List<TradeView> fills,
         VoiceState voice
 ) implements ReplayActionPayload {

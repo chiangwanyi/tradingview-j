@@ -113,6 +113,26 @@ export function targetProgress(a: Account): number | null {
   return Math.min(1, Math.max(0, gained / target))
 }
 
+/**
+ * 亏损线（美元）：本阶段日终峰值 − 最大回撤。
+ *
+ * **有一道冻结水位**（`rules.trailingLockLevel`，LucidFlex 50K 是 52100）：峰值到过这个数
+ * 之后，亏损线停在 `水位 − 最大回撤`（50100），此后赚多少都不再上移。
+ * 漏掉这一条就会让峰值涨一点、显示的线也涨一点 —— 涨的是「以为还剩多少缓冲」，
+ * 而真实缓冲更小，正好在最危险的地方给出一个乐观数。
+ *
+ * 账户行里没有 `lossLine` 这个字段（后端只存峰值），所以这里按同一口径现算；
+ * 交易页上那一条用的是后端每次重放算出来的 `PfView.lossLine`，两边必须一致。
+ * 没有回撤规则就不编一个数，返回 `null`。
+ */
+export function lossLine(a: Account): number | null {
+  const drawdown = a.rules.maxDrawdown
+  if (drawdown == null) return null
+  const lock = a.rules.trailingLockLevel
+  const peak = lock != null && a.eodPeakBalance >= lock ? lock : a.eodPeakBalance
+  return peak - drawdown
+}
+
 /** "2024-03-04 09:00" → "2024-03-04 09:00"，截到分钟，年月日全留（跨年账户要能分辨）。 */
 export function shortTime(barTime: string): string {
   return barTime.length >= 16 ? barTime.slice(0, 16) : barTime

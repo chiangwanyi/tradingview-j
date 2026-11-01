@@ -3,6 +3,7 @@ package com.tradingviewj.server.entity.audit.payload;
 import com.tradingviewj.server.dto.ClosedLotView;
 import com.tradingviewj.server.dto.OrderView;
 import com.tradingviewj.server.dto.PositionView;
+import com.tradingviewj.server.dto.PfView;
 import com.tradingviewj.server.dto.TradeView;
 import com.tradingviewj.server.enums.ReplayAction;
 
@@ -29,7 +30,9 @@ public record FlatAllPayload(
         List<ClosedLotView> closedLots,
         PositionView position,
         BigDecimal realizedPnl,
-        BigDecimal unrealizedPnl
+        BigDecimal unrealizedPnl,
+        /** 考核读数：退仓会实现盈亏、余额当场变，所以这条广播也要带上（和 {@link OrderFilledPayload} 同理）。 */
+        PfView pf
 ) implements ReplayActionPayload {
 
     @Override

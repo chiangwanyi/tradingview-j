@@ -412,22 +412,6 @@ class PropFirmAccountServiceTest {
         assertEquals(2, service.list(null).size(), "不传 status = 全部，失败的那些也在");
     }
 
-    /** 会话算完写回：两个缓存列被追平，接口上立刻能读到。 */
-    @Test
-    void syncFromSessionWritesCachedBalanceAndPeak() {
-        PropFirmAccount account = service.open(evalTemplate(null).getId(), SYMBOL, "同步一下");
-        PropFirmSession session = mock(PropFirmSession.class);
-        when(session.balance()).thenReturn(new BigDecimal("51234.56"));
-        when(session.eodPeak()).thenReturn(new BigDecimal("51500.00"));
-
-        service.syncFromSession(account.getId(), session);
-
-        PropFirmAccount loaded = service.get(account.getId());
-        assertEquals(new BigDecimal("51234.56"), loaded.getBalance());
-        assertEquals(new BigDecimal("51500.00"), loaded.getEodPeakBalance());
-        assertEquals(new BigDecimal("1234.56"), loaded.netProfitInStage());
-    }
-
     // ---- 夹具 ----
 
     /** EVAL 模板：规模 50000、目标 3000、回撤 2000、一致性 0.5。 */

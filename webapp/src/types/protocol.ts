@@ -431,6 +431,31 @@ export interface OrdersPayload {
   orders: TradeOrder[]
 }
 
+/**
+ * 账户推到某一根 K 线时的考核读数（后端 `dto/PfView`）。
+ *
+ * 四个数**来自同一次重放**，所以别拿界面上的 `realizedPnl` 去顶 `balance`：
+ * 前者是这个账户一共赚了多少（跨阶段累加），后者是**本阶段**余额（升级时重置回账户规模）。
+ *
+ * `lossLine` 一律用后端给的这个值，**不要自己拿「峰值 − 最大回撤」再算一遍**：
+ * EOD 追踪还有一道冻结水位，越过之后这条线不再上移，自己算会算虚高。
+ */
+export interface PfView {
+  status: 'ACTIVE' | 'FAILED'
+  /** 当前余额 = 本阶段起点余额 + 本阶段已实现净额 */
+  balance: number
+  /** 本阶段「日终余额」历史最高 —— 亏损线由它（和冻结水位）推出来 */
+  eodPeakBalance: number
+  /** 当前亏损线（美元）。权益 ≤ 它即判失败 */
+  lossLine: number
+  /** 权益 = 余额 + 持仓最不利浮盈亏（多单用 low、空单用 high） */
+  equity: number
+  /** 已达标、等手动升级：持仓已平、账户不收新单 */
+  frozen: boolean
+  /** 一句话说明：还差多少达标 / 冻结或失败的原因。没有就是 undefined */
+  hint?: string
+}
+
 /** 改挂单价：多带一个「改完的那张」，操作记录里才能写清改的是谁、改成了多少 */
 export interface OrderMovedPayload {
   order: TradeOrder
@@ -455,6 +480,8 @@ export interface OrderFilledPayload {
   position: Position
   realizedPnl: number
   unrealizedPnl: number
+  /** 考核读数：成交当场就改余额，所以这条广播也带（不必等下一根） */
+  pf?: PfView
 }
 
 /**
@@ -479,6 +506,8 @@ export interface FlatAllPayload {
   position: Position
   realizedPnl: number
   unrealizedPnl: number
+  /** 考核读数：退仓会实现盈亏，余额当场变 */
+  pf?: PfView
 }
 
 export interface ControlChangedPayload {

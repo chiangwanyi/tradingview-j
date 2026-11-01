@@ -3,7 +3,7 @@ import { computed, onMounted, ref } from 'vue'
 
 import Icon from '@/components/Icon.vue'
 import * as api from '@/data/accounts'
-import { shortInstant, shortTime, targetProgress } from '@/data/accounts'
+import { lossLine, shortInstant, shortTime, targetProgress } from '@/data/accounts'
 import type { Account, StageLog } from '@/data/accounts'
 import { drawdownLabel, pct, stageLabel, usd } from '@/data/rules'
 import { errorText } from '@/data/store'
@@ -29,12 +29,8 @@ const busy = ref(false)
 
 const progress = computed(() => (a.value ? targetProgress(a.value) : null))
 const gained = computed(() => (a.value ? a.value.balance - a.value.baseBalance : 0))
-/** 亏损线：日终峰值 − 最大回撤。没有回撤规则就不编一个数。 */
-const lossLine = computed(() =>
-  a.value && a.value.rules.maxDrawdown != null
-    ? a.value.eodPeakBalance - a.value.rules.maxDrawdown
-    : null,
-)
+/** 亏损线：口径和交易页一致（含冻结水位），见 `data/accounts.ts` 的 `lossLine`。 */
+const floor = computed(() => (a.value ? lossLine(a.value) : null))
 
 /** 只刷新数据、不清空已有内容：改名 / 升级后原地换个数字，别整页闪一下。 */
 function load(): Promise<void> {
@@ -191,7 +187,7 @@ function openTrade(): void {
         <div>
           <p class="text-[11px] tracking-wider text-faint uppercase">最大回撤</p>
           <p class="tnum text-[18px] font-medium text-ink">{{ usd(a.rules.maxDrawdown) }}</p>
-          <p class="tnum text-[11px] text-faint">亏损线 {{ usd(lossLine) }}</p>
+          <p class="tnum text-[11px] text-faint">亏损线 {{ usd(floor) }}</p>
         </div>
         <div>
           <p class="text-[11px] tracking-wider text-faint uppercase">一致性上限</p>

@@ -1,11 +1,12 @@
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, watch } from 'vue'
 
 import ChartPanel from '@/components/ChartPanel.vue'
 import ChartToolbar from '@/components/ChartToolbar.vue'
 import Icon from '@/components/Icon.vue'
 import TradeDock from '@/components/TradeDock.vue'
 import TradeFloat from '@/components/TradeFloat.vue'
+import { usd } from '@/data/rules'
 import { useTradeStore } from '@/stores/trade'
 
 /**
@@ -36,6 +37,18 @@ const props = defineProps<{ id: string }>()
 
 const store = useTradeStore()
 
+/**
+ * 距亏损线还剩多少 = 权益 − 亏损线。
+ *
+ * 用**权益**而不是余额：持仓浮亏已经在扣了，只盯余额会在盘中给出一个偏乐观的缓冲。
+ * 这个减法在前端做是安全的 —— 两个数都来自同一次重放，没有口径问题；
+ * 但「亏损线在哪」不能自己算（EOD 追踪有一道冻结水位，见 `data/rules.ts` 的 `lossLine`）。
+ */
+const remaining = computed(() => {
+  const pf = store.pf
+  return pf ? pf.equity - pf.lossLine : null
+})
+
 onMounted(() => {
   document.title = '交易 · webapp'
   // 连上就开始：账户名要等快照回来才知道，所以标题在 watch 里补
@@ -56,8 +69,9 @@ onBeforeUnmount(() => store.disconnect())
 
 <template>
   <div class="flex h-screen flex-col bg-surface text-ink">
-    <!-- 只留一个返回入口：顶栏上原来那一排（账户名 / 阶段 / 余额 / 回撤 / 标的 / 日期）全部去掉，
-         盘面本身才是这一页的主体 -->
+    <!-- 只留一个返回入口：顶栏上原来那一排（阶段 / 标的 / 日期）都去掉了，
+         盘面本身才是这一页的主体。留下的三个数是**唯一**不该被藏起来的：
+         余额、亏损线、还剩多少缓冲 —— 缺了它们，盘中就不知道自己还有多危险。 -->
     <header class="flex min-h-9 shrink-0 items-center gap-3 border-b border-line bg-panel px-3 py-1">
       <a
         href="/"
@@ -75,6 +89,36 @@ onBeforeUnmount(() => store.disconnect())
       >
         连接断开，重连中…
       </span>
+
+      <!-- 考核状态：失败 / 已达标待升级都意味着「不能再下单」，必须在按按钮之前就看到 -->
+      <span
+        v-if="store.pf?.status === 'FAILED'"
+        class="rounded-sm border border-red-200 bg-red-50 px-1.5 py-0.5 text-[11px] tracking-wider text-red-700"
+        :title="store.pf?.hint ?? '权益已触及亏损线'"
+        >已失败</span
+      >
+      <span
+        v-else-if="store.pf?.frozen"
+        class="rounded-sm border border-amber-300 bg-amber-50 px-1.5 py-0.5 text-[11px] tracking-wider text-amber-800"
+        :title="store.pf?.hint ?? '已达成本阶段升级条件'"
+        >已达标 · 待升级</span
+      >
+
+      <!-- 三个考核读数：数字全部由后端算（它才是唯一口径），这里只排版 -->
+      <div v-if="store.pf" class="ml-auto flex items-center gap-3 whitespace-nowrap text-[12px] tnum">
+        <span class="text-faint">余额</span>
+        <span class="text-[13px] font-semibold text-ink">{{ usd(store.pf.balance) }}</span>
+        <span class="text-faint">亏损线</span>
+        <span class="text-[13px] text-dim">{{ usd(store.pf.lossLine) }}</span>
+        <span class="text-faint">距亏损线</span>
+        <span
+          class="text-[13px] font-semibold"
+          :class="remaining != null && remaining <= 0 ? 'text-red-600' : 'text-ink'"
+          :title="store.pf.hint ?? ''"
+        >
+          {{ remaining == null ? '—' : `${remaining < 0 ? '-' : ''}${usd(Math.abs(remaining))}` }}
+        </span>
+      </div>
     </header>
 
     <main class="relative flex min-h-0 flex-1 flex-col">

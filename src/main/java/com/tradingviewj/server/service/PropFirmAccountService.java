@@ -48,6 +48,7 @@ public class PropFirmAccountService {
     private final PropFirmTemplateRepository templates;
     private final PropFirmStageLogRepository stageLogs;
     private final PropFirmStartPicker startPicker;
+    private final PropFirmJudge judge;
 
     /**
      * 按模板开一个账户，并<strong>当场抽好起点</strong>。
@@ -105,9 +106,15 @@ public class PropFirmAccountService {
     /**
      * 拿一个<strong>可以下单</strong>的账户。
      *
-     * <p>比 {@link #requireActive} 多一条：{@link PropFirmStage#PAYOUT} 阶段虽然"开着"
-     * （还在处理出金），但它<strong>是终点，不再接受下单</strong>。画图、录音这类
-     * "看盘动作"仍然允许 —— 用户可能想在收工之后再标注一遍。
+     * <p>比 {@link #requireActive} 多两条：
+     *
+     * <ul>
+     *   <li>{@link PropFirmStage#PAYOUT} 阶段虽然"开着"（还在处理出金），但它<strong>是终点</strong>，
+     *       不再接受下单。画图、录音这类"看盘动作"仍然允许 —— 用户可能想在收工之后再标注一遍。</li>
+     *   <li><strong>已达标但还没升级</strong>的账户（{@link PropFirmJudge#requireNotFrozen}）。
+     *       达标那一刻持仓已经被平、账户被冻结，但仍处于 ACTIVE（还要回来看复盘、改名、录像），
+     *       所以这件事只能现算，不能靠 {@code status} 表达。</li>
+     * </ul>
      */
     @Transactional(readOnly = true)
     public PropFirmAccount requireTradable(String accountId) {
@@ -115,6 +122,7 @@ public class PropFirmAccountService {
         if (!account.isTradable()) {
             throw new BusinessException("PF 账户已进入 " + account.getStage() + " 阶段，不再接受下单");
         }
+        judge.requireNotFrozen(account);
         return account;
     }
 
@@ -233,20 +241,6 @@ public class PropFirmAccountService {
     public PropFirmAccount advanceCursor(String accountId, String barTime) {
         PropFirmAccount account = requireActive(accountId);
         account.advanceBarTime(barTime);
-        return accounts.save(account);
-    }
-
-    /**
-     * 把会话算出的余额 / 峰值写回账户（这两个列是缓存，见 {@code PropFirmAccount#syncComputed}）。
-     *
-     * <p>推进盘面的那一层每根 K 线之后调一次，界面就能直接读账户行显示
-     * 「距爆仓还有多少」，不必每次都重放成交。
-     */
-    @Transactional
-    public PropFirmAccount syncFromSession(String accountId, PropFirmSession session) {
-        PropFirmAccount account = accounts.findById(accountId)
-                .orElseThrow(() -> new BusinessException("PF 账户不存在: " + accountId));
-        account.syncComputed(session.balance(), session.eodPeak());
         return accounts.save(account);
     }
 

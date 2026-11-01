@@ -2,9 +2,11 @@ package com.tradingviewj.server.ws;
 
 import com.tradingviewj.server.dto.BarSeriesResponse;
 import com.tradingviewj.server.dto.BarView;
+import com.tradingviewj.server.dto.PfView;
 import com.tradingviewj.server.dto.TradeView;
 import com.tradingviewj.server.entity.audit.AuditEvent;
 import com.tradingviewj.server.entity.audit.payload.BarAdvancedPayload;
+import com.tradingviewj.server.entity.audit.payload.FlatAllPayload;
 import com.tradingviewj.server.entity.audit.payload.VoiceState;
 import com.tradingviewj.server.entity.propfirm.PropFirmAccount;
 import com.tradingviewj.server.entity.trade.Trade;
@@ -14,6 +16,7 @@ import com.tradingviewj.server.service.AuditLogService;
 import com.tradingviewj.server.service.BarCursorService;
 import com.tradingviewj.server.service.BarQueryService;
 import com.tradingviewj.server.service.PropFirmAccountService;
+import com.tradingviewj.server.service.PropFirmJudge;
 import com.tradingviewj.server.service.TradingService;
 import com.tradingviewj.server.storage.CsvBarStore;
 import com.tradingviewj.server.storage.SymbolSpec;
@@ -24,6 +27,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -68,6 +72,7 @@ public class TradeDeskService {
     private static final int VOICE_MAX_PER_BAR = 9;
 
     private final PropFirmAccountService accounts;
+    private final PropFirmJudge judge;
     private final CsvBarStore bars;
     private final BarQueryService barQuery;
     private final BarCursorService cursor;
@@ -114,13 +119,15 @@ public class TradeDeskService {
                 book.closedLots(),
                 book.position(),
                 book.realizedPnl(),
-                book.unrealizedPnl());
+                book.unrealizedPnl(),
+                // 只读地重放一遍拿读数：快照不开事务写账户，余额的落库交给「推进一根」和成交
+                judge.view(account, judge.assess(account)));
     }
 
     /**
      * 【下一根】：把盘面往后放一根，并用那根 K 线撮合挂单。
      *
-     * <p>顺序是<strong>固定的</strong>，五步都不能换：
+     * <p>顺序是<strong>固定的</strong>，六步都不能换：
      *
      * <ol>
      *   <li>找出当前这根之后的第一根（{@link BarCursorService}，会跨日文件、会跳过空文件）；</li>
@@ -132,6 +139,8 @@ public class TradeDeskService {
      *       触发判定、跳空修正、落成交，全部发生在这一根<strong>揭示之后</strong>；
      *       成交结果直接并进下面那条 {@code bar_advanced}，不另发 {@code order_filled} ——
      *       拆成两条的话，前端会在「K 线到了、成交还没到」的那一帧画出错误的持仓线。</li>
+     *   <li><strong>考核判定</strong>（{@link PropFirmJudge}）：撞线就判失败（终态）；
+     *       达标就<strong>当场平仓并冻结</strong>，等用户手动升级。余额和日终峰值在这一步写回账户。</li>
      *   <li>写 {@code BAR_ADVANCED} 流水（payload = 广播内容，见 {@link BarAdvancedPayload}）；</li>
      *   <li>返回给 Handler 广播。</li>
      * </ol>
@@ -159,7 +168,32 @@ public class TradeDeskService {
 
         // 撮合在「揭示之后」：本根挂的单本根不撮合（placedAtBar 严格早于本根），
         // 所以这里只可能成交「上一根或更早」挂的单。
-        List<Trade> fills = trading.match(account, spec, next.bar());
+        List<Trade> matched = trading.match(account, spec, next.bar());
+        List<TradeView> fills = new ArrayList<>(matched.size() + 1);
+        for (Trade fill : matched) {
+            fills.add(TradeView.of(fill));
+        }
+
+        // 考核判定：只在「推进一根」时发生（收盘余额、跨日结算、撞线都落在这里）
+        PropFirmJudge.State state = judge.assess(account);
+        if (state.failed()) {
+            // 撞线是终态：账户置 FAILED，本根 K 线照常发出去（人得看见是哪一根要了他的命）
+            accounts.fail(accountId, state.session());
+        } else if (state.frozen()) {
+            // 达标即冻结：先平仓（真实考核在通过那一刻就收手），再禁新单。
+            // 禁新单不写任何标志位 —— 它由 requireTradable 现算（见 PropFirmJudge#requireNotFrozen），
+            // 存一个布尔列反而会出现「标志和判定不一致」的第二份说法。
+            if (trading.portfolio(account).position().quantity().signum() != 0) {
+                TradingService.Event flat = trading.flatAll(accountId);
+                if (flat.payload() instanceof FlatAllPayload closed && closed.trade() != null) {
+                    fills.add(closed.trade());
+                }
+            }
+            state = judge.assess(account);
+        }
+        // 余额 / 日终峰值写回账户（这两列是缓存，真值在成交 + 规则里）
+        PfView pf = judge.settle(account, state);
+
         TradingService.Portfolio book = trading.portfolio(account);
 
         BarAdvancedPayload payload = new BarAdvancedPayload(
@@ -174,8 +208,9 @@ public class TradeDeskService {
                 book.position(),
                 book.realizedPnl(),
                 book.unrealizedPnl(),
+                pf,
                 // fills 只装这一根触发的成交（多数时候为空），trades 才是历史全量
-                fills.stream().map(TradeView::of).toList(),
+                fills,
                 new VoiceState(barTime, List.of(), 0, VOICE_MAX_PER_BAR));
 
         AuditEvent event = audit.append(accountId, spec.code(), barTime, Actor.HUMAN, payload);

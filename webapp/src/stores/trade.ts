@@ -28,6 +28,7 @@ import type {
   OrderFilledPayload,
   OrderKind,
   OrdersPayload,
+  PfView,
   Point,
   Position,
   Side,
@@ -192,6 +193,15 @@ export const useTradeStore = defineStore('trade', () => {
   const accountId = ref('')
   /** 账户上记着的「最新 K 线时间」（快照带回来的那个，每步进一根跟着更新）。 */
   const accountBarTime = ref('')
+  /**
+   * 考核读数：余额 / 亏损线 / 权益（后端每次重放算出来的，**前端一处都不算**）。
+   *
+   * 它和 `instance.realizedPnl` 不是一回事：那个是「这个账户一共赚了多少」（跨阶段累加），
+   * 这个是**本阶段**余额 —— 升级时余额重置回账户规模，两者就分开了。
+   *
+   * `null` = 还没有盘面（没连上）。读它之前先判空，别给一个假的 0。
+   */
+  const pf = ref<PfView | null>(null)
   /** 磁盘上还有没有下一根 —— 【下一根】按钮的可用性。 */
   const hasNext = ref(false)
   /** 这一天（这个日文件）还剩几根没放出来。只用来写提示，不决定按钮能不能按。 */
@@ -414,6 +424,8 @@ export const useTradeStore = defineStore('trade', () => {
     hasNext.value = snapshot.hasNext
     dayBars.value = list
     restOfDay.value = 0
+    // 重连就是「按后端的样子重建」：考核读数和盘面一起换，不给上一份留残影
+    pf.value = snapshot.pf ?? null
     pendingStep.value = false
     pendingAction.value = ''
     clearStepTimer()
@@ -500,6 +512,7 @@ export const useTradeStore = defineStore('trade', () => {
    * 只会让持仓和账户余额慢慢对不上。缺省的字段保持原样（`order_placed` 不带成交）。
    */
   function applyPortfolio(book: {
+    pf?: PfView
     orders?: TradeOrder[]
     trades?: Trade[]
     closedLots?: ClosedLot[]
@@ -507,6 +520,8 @@ export const useTradeStore = defineStore('trade', () => {
     realizedPnl?: number
     unrealizedPnl?: number
   }): void {
+    // 考核读数跟着账走：成交/退仓当场就改了余额，等下一根才更新会让人以为钱没到账
+    if (book.pf) pf.value = book.pf
     const inst = instance.value
     if (!inst) return
     instance.value = {
@@ -888,6 +903,7 @@ export const useTradeStore = defineStore('trade', () => {
     pendingStep,
     pendingAction,
     accountBarTime,
+    pf,
     displayBars,
     timeframe,
     setTimeframe,

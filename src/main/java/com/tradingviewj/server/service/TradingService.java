@@ -2,6 +2,7 @@ package com.tradingviewj.server.service;
 
 import com.tradingviewj.server.dto.ClosedLotView;
 import com.tradingviewj.server.dto.OrderView;
+import com.tradingviewj.server.dto.PfView;
 import com.tradingviewj.server.dto.PositionView;
 import com.tradingviewj.server.dto.TradeView;
 import com.tradingviewj.server.entity.audit.AuditEvent;
@@ -77,6 +78,7 @@ import java.util.List;
 public class TradingService {
 
     private final PropFirmAccountService accounts;
+    private final PropFirmJudge judge;
     private final SymbolCatalog catalog;
     private final CsvBarStore bars;
     private final OrderRepository orderRepo;
@@ -382,7 +384,8 @@ public class TradingService {
                 book.closedLots(),
                 book.position(),
                 book.realizedPnl(),
-                book.unrealizedPnl());
+                book.unrealizedPnl(),
+                judge.settle(account));
         String barTime = requireBarTime(account);
         AuditEvent event = audit.append(accountId, spec.code(), barTime, Actor.HUMAN, payload);
         log.info("账户 {} 一键退仓：平 {} 手，撤 {} 张挂单（seq={}）",
@@ -630,7 +633,9 @@ public class TradingService {
                 book.closedLots(),
                 book.position(),
                 book.realizedPnl(),
-                book.unrealizedPnl());
+                book.unrealizedPnl(),
+                // 成交当场就改了余额：把考核读数一起发出去，界面不必等下一根才更新
+                judge.settle(account));
     }
 
     /**

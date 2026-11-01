@@ -24,7 +24,7 @@
  * 一条「步进」在断线期间重发，可能让账户一次往前跳两根，而用户只按了一次。
  */
 
-import type { ClosedLot, TradeOrder, Position, Trade } from '@/types/protocol'
+import type { ClosedLot, PfView, TradeOrder, Position, Trade } from '@/types/protocol'
 
 /** 一根 K 线（和后端 `BarView` 同名）。没有 `ema20` —— 均线由前端现算。 */
 export interface DeskBar {
@@ -70,6 +70,8 @@ export interface DeskSnapshot {
   /** 净已实现盈亏（已扣手续费） */
   realizedPnl: number
   unrealizedPnl: number
+  /** 考核读数：余额 / 亏损线 / 权益。见 `types/protocol.ts` 的 `PfView` */
+  pf?: PfView
 }
 
 /**
@@ -93,6 +95,8 @@ export interface BarAdvancedPayload {
   position: Position
   realizedPnl: number
   unrealizedPnl: number
+  /** 考核读数：亏损线「只在日终上移」，所以它是在跨交易日的那一条广播里变的 */
+  pf?: PfView
   /** 只装这一根触发的成交（多数时候为空） */
   fills: Trade[]
 }

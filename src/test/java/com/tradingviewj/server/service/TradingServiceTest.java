@@ -1,5 +1,6 @@
 package com.tradingviewj.server.service;
 
+import com.tradingviewj.server.entity.audit.payload.BarAdvancedPayload;
 import com.tradingviewj.server.entity.audit.payload.OrderFilledPayload;
 import com.tradingviewj.server.entity.audit.payload.OrderPlacedPayload;
 import com.tradingviewj.server.entity.propfirm.PositionTier;
@@ -109,8 +110,12 @@ class TradingServiceTest {
 
         writeSymbols();
         // symbol 表也要有这一行：账户的 symbol_id 是真外键（清单文件只是「怎么读」的来源）
-        symbolRepo.save(com.tradingviewj.server.entity.market.Symbol.of(
-                SYMBOL, FOLDER, new BigDecimal("0.50")));
+        // 刻度必须和清单一一致：考核判定按 symbol 表的 tick/tickValue 算每点价值
+        com.tradingviewj.server.entity.market.Symbol mes = com.tradingviewj.server.entity.market.Symbol.of(
+                SYMBOL, FOLDER, new BigDecimal("0.50"));
+        mes.setTick(new BigDecimal("0.25"));
+        mes.setTickValue(new BigDecimal("0.5"));
+        symbolRepo.save(mes);
         writeDay("2024-03-04",
                 "2024-03-04 09:00,4000.00,4002.00,3998.00,4001.00,10",
                 "2024-03-04 09:05,4001.00,4005.00,3999.00,4004.00,12",
@@ -130,7 +135,6 @@ class TradingServiceTest {
     }
 
     // ---------------- 挂单 ----------------
-
     /** 挂单只是「等价格过来」的意图：落一张 OPEN 单，不产生成交，也不动持仓。 */
     @Test
     void placeCreatesOpenOrderWithoutTrade() {
@@ -539,6 +543,33 @@ class TradingServiceTest {
                         new BigDecimal("52100.00"), new BigDecimal("0.50"), null, null,
                         List.of(new PositionTier(BigDecimal.ZERO, max))));
         return accounts.open(capped.getId(), SYMBOL, "限额账户").getId();
+    }
+
+    /**
+     * 撞线：权益 ≤ 亏损线的那一根<strong>照常广播出去</strong>，账户当场判失败（终态），之后不再接单。
+     *
+     * <p>要点是「那根 K 线还得发」：人得看见是哪一根要了他的命。所以失败不是抛异常，
+     * 而是把 {@code status} 放进同一条 {@code bar_advanced} 里。
+     */
+    @Test
+    void stepFailsAccountWhenEquityTouchesLossLine() {
+        // 40 手多单 @ 4001（EVAL 的唯一档就是 0→40 手）
+        trading.market(accountId, "buy", new BigDecimal("40"), null);
+        desk.step(accountId); // 09:05，低点 3999：浮亏 160，离 48000 还远
+        desk.step(accountId); // 09:10
+
+        // 下一交易日一根 3900 的插针：权益 49980 − 8080 = 41900，直接穿线（线在 48000）
+        writeDay("2024-03-05", "2024-03-05 09:00,4000.00,4002.00,3900.00,3901.00,10");
+        TradingService.Event event = desk.step(accountId);
+
+        BarAdvancedPayload payload = (BarAdvancedPayload) event.payload();
+        assertEquals("2024-03-05 09:00", payload.bar().time(), "撞线那一根照常发出去");
+        assertEquals("FAILED", payload.pf().status());
+        assertMoney("48000", payload.pf().lossLine());
+        assertEquals(PropFirmAccount.Status.FAILED,
+                accountRepo.findById(accountId).orElseThrow().getStatus(), "账户已判失败");
+        assertThrows(BusinessException.class,
+                () -> trading.market(accountId, "buy", BigDecimal.ONE, null), "失败后不再接单");
     }
 
     /**
