@@ -30,8 +30,6 @@ function select(key: string): void {
 
 /** 有页面的几项接了 view，其余导航项给个占位。 */
 const LABEL: Record<string, string> = {
-  certificates: '证书',
-  platforms: '平台与附加项',
   profile: '我的资料',
 }
 

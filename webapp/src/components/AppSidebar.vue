@@ -1,14 +1,12 @@
 <script setup lang="ts">
 import Icon from './Icon.vue'
 
-/** 7 个导航项，和参考图同样多条数；前四个接了页面，其余是占位。 */
+/** 5 个导航项；前四个接了页面，最后一个是占位。【证书】【平台与附加项】已按需求删掉。 */
 const NAV = [
   { key: 'accounts', label: '账户总览', icon: 'chart' },
   { key: 'templates', label: '账户模板', icon: 'grid' },
   { key: 'audit', label: '操作记录', icon: 'check' },
   { key: 'records', label: '交易记录', icon: 'dollar' },
-  { key: 'certificates', label: '证书', icon: 'award' },
-  { key: 'platforms', label: '平台与附加项', icon: 'pass' },
   { key: 'profile', label: '我的资料', icon: 'user' },
 ] as const
 
