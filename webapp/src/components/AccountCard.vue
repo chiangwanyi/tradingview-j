@@ -7,11 +7,12 @@ import {
   profitTarget,
   shortInstant,
   shortTime,
+  stageBadge,
   targetProgress,
   targetRaised,
 } from '@/data/accounts'
 import type { Account } from '@/data/accounts'
-import { drawdownLabel, pct, stageLabel, usd } from '@/data/rules'
+import { drawdownLabel, pct, usd } from '@/data/rules'
 
 /**
  * 一张考核卡。版式照参考图的账户卡：身份 → 三个状态小标签 → 四个数字 → 进度条 → 动作。
@@ -37,6 +38,9 @@ const gained = computed(() => props.a.balance - props.a.baseBalance)
 const floor = computed(() => lossLine(props.a))
 /** 目标被一致性抬高了：副行要说明来源，否则「目标怎么突然变了」会变成一个疑问。 */
 const raised = computed(() => targetRaised(props.a))
+
+/** 阶段标签：「考核 → 出金号」还是「出金号」，看后端给的 `originStage`，见 `stageBadge`。 */
+const badge = computed(() => stageBadge(props.a))
 
 /** 考核通过、能升上去 —— 失败和 PAYOUT 的账户后端给的就是 false，不用在这儿再判一遍。 */
 const canPromote = computed(() => props.a.passed === true && props.a.status === 'ACTIVE')
@@ -66,8 +70,14 @@ function onTrade(): void {
         <p class="mt-0.5 truncate text-[12px] text-faint tnum">起点 {{ shortTime(a.startBarTime) }}</p>
       </div>
       <span
-        class="shrink-0 rounded border border-line bg-elev px-1.5 py-0.5 text-[11px] tracking-wider text-dim"
-        >{{ stageLabel(a.stage) }}</span
+        class="shrink-0 rounded border px-1.5 py-0.5 text-[11px] tracking-wider"
+        :class="
+          badge.earned
+            ? 'border-accent/40 bg-accent-soft text-accent-ink'
+            : 'border-line bg-elev text-dim'
+        "
+        :title="badge.hint"
+        >{{ badge.text }}</span
       >
     </header>
 

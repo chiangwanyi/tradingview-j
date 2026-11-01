@@ -376,8 +376,36 @@ public class PropFirmAccountService {
     @Transactional(readOnly = true)
     public PropFirmAccount detail(String accountId) {
         PropFirmAccount account = get(accountId);
-        fillPassed(account);
+        fillDerived(account);
         return account;
+    }
+
+    /**
+     * 把两个「读的时候才算得出来」的结论填到实体上（都不落库）：
+     * {@code originStage}（建户时在哪个阶段）和 {@code passed}（已达标待升级）。
+     *
+     * <p>放在一处是因为它们的调用时机<b>完全一样</b> —— 都只在读接口里，
+     * 都是给界面判断用的。写操作的返回里两个字段都缺（前端读到 {@code undefined}），
+     * 那些地方不需要它们，也不该为此多读一次流水、多重放一次盘面。
+     */
+    private void fillDerived(PropFirmAccount account) {
+        fillOriginStage(account);
+        fillPassed(account);
+    }
+
+    /**
+     * 填「建户时在哪个阶段」：阶段流水的第一行（{@code seq = 0}）写的那个阶段。
+     *
+     * <p>用它而不是比较 {@code stageStartedAt} 和 {@code startedAt}：那种比较依赖
+     * 「两个时刻一定不同」，而真正的事实是「这个账户建户时是哪一场考核」——
+     * 流水本来就是这份事实的档案，账户详情页的「行数就是身份」说的也是它。
+     *
+     * <p>没有流水（老数据 / 流水被清过）就留 {@code null}：那是「不知道」，
+     * 别拿现在的阶段冒充建户阶段 —— 冒充出来的结论恰好会把「考的」说成「直开的」。
+     */
+    private void fillOriginStage(PropFirmAccount account) {
+        stageLogs.findFirstByAccountIdOrderBySeqAsc(account.getId())
+                .ifPresent(log -> account.markOriginStage(log.getStage()));
     }
 
     /**
@@ -408,9 +436,10 @@ public class PropFirmAccountService {
     /**
      * 账户列表，新建的在前。
      *
-     * <p>每个元素都带上 {@code passed}（见 {@link #fillPassed}），首页据此决定
-     * 那张卡片上出不出【升级】按钮 —— 所以这个接口的重放次数 = 账户数 × 1，
-     * 和「每个账户都去交易页开一遍」是同一份代价，只是提前在一次请求里做完。
+     * <p>每个元素都带上 {@code promoted}（考出来的吗）和 {@code passed}（已达标待升级），
+     * 见 {@link #fillDerived} —— 首页据此决定阶段标签怎么写、【升级】按钮出不出来。
+     * 代价是「每账户一次流水查询 + 一次重放」，和「每个账户都去交易页开一遍」同一份量级，
+     * 只是提前在一次请求里做完。
      *
      * @param status {@code null} = 全部（含 {@code FAILED}）
      */
@@ -419,7 +448,7 @@ public class PropFirmAccountService {
         List<PropFirmAccount> all = status == null
                 ? accounts.findAllByOrderByStartedAtDesc()
                 : accounts.findByStatusOrderByStartedAtDesc(status);
-        all.forEach(this::fillPassed);
+        all.forEach(this::fillDerived);
         return all;
     }
 

@@ -72,7 +72,10 @@ public class PropFirmAccountController {
     @Operation(summary = "账户列表", description = """
             status 可选：ACTIVE / FAILED，不传 = 全部。按建户时间倒序，新建的在前。
             每个元素都带 rules 快照（规则是开账户时复制的，不是指向模板的引用），
-            以及 passed = 已达标待升级（**现算**的，不是列；首页据此决定出不出【升级】按钮）。
+            外加两个**现算**的结论（都不是列）：
+            passed = 已达标待升级（首页据此决定出不出【升级】按钮）、
+            originStage = 建户时在哪个阶段（阶段流水第一行；和 stage 一比就知道
+            「这个出金号是考出来的」还是「一开始就是出金号」）。
             """)
     @GetMapping
     public List<PropFirmAccount> list(
@@ -82,8 +85,9 @@ public class PropFirmAccountController {
 
     @Operation(summary = "取一个账户", description = """
             不存在时返回业务错误码 10000。
-            带 passed：已达成本阶段升级条件、等手动升级。它是读的时候现算的
-            （从阶段起点重放到账户停住的那根 K 线），写操作的返回里没有这个字段。
+            带两个现算字段：passed（已达成本阶段升级条件、等手动升级；从阶段起点重放到
+            账户停住的那根 K 线）、originStage（建户时的阶段，取自阶段流水第一行）。
+            写操作的返回里没有这两个字段。
             """)
     @GetMapping("/{id}")
     public PropFirmAccount get(@PathVariable String id) {

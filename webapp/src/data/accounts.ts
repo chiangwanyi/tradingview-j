@@ -9,6 +9,7 @@
  */
 
 import { call, send } from './api'
+import { stageLabel } from './rules'
 import type { Rules, Stage } from './rules'
 
 const BASE = '/api/pf-accounts'
@@ -37,6 +38,14 @@ export interface Account {
    * 在这里自己推一遍，那是第二份考核口径。
    */
   passed?: boolean
+  /**
+   * **建户时**在哪个阶段 —— 由后端从阶段流水的第一行（`seq = 0`）读出来，同样不是列。
+   *
+   * 和 `stage` 一比就知道这个号的来路：两者不同 = 升上来的；相同 = 建户时就是它。
+   * 首页那个阶段标签靠它区分「考核 → 出金号」和「一开始就是出金号」，
+   * 这一格缺（`undefined`）表示这次没算，标签退回只写当前阶段。
+   */
+  originStage?: Stage
   /** 开账户那一刻从模板复制过来的规则，之后与模板无关。 */
   rules: Rules
   /** 本阶段起点余额（升级时重置回账户规模）。 */
@@ -224,6 +233,53 @@ export function lossLine(a: Account): number | null {
   const lock = a.rules.trailingLockLevel
   const peak = lock != null && a.eodPeakBalance >= lock ? lock : a.eodPeakBalance
   return peak - drawdown
+}
+
+/** 阶段标签的三个部分：显示什么字、悬停说什么、是不是「考出来的」。 */
+export interface StageBadge {
+  text: string
+  hint: string
+  /** 现在的阶段不是建户时那个 = 这个号是靠升级走上来的（要跟「直开的」区分开）。 */
+  earned: boolean
+}
+
+/**
+ * 账户阶段标签（卡片右上角 / 详情页标题旁）。
+ *
+ * **要区分「从考核升上来的」和「一开始就是出金号的」**：两者现在的 `stage` 都是 `FUNDED`，
+ * 光看阶段说不出区别，所以拿后端给的 `originStage`（建户时的阶段，取自阶段流水第一行）
+ * 和现在的 `stage` 比对 —— 不一样就是升上来的，写成 `考核 → 出金号`。
+ *
+ * 为什么不是后端直接给一个 `promoted` 布尔：升到出金有两条来路
+ * （EVAL 一路考上来 / 建户就是出金号再升上来），一个布尔会把它们压成同一种，
+ * 而这里要写的字并不一样。事实给全，字面在这儿组。
+ *
+ * `originStage` 缺（写操作的返回里没有）时退回只写当前阶段 —— 不猜。
+ */
+export function stageBadge(a: Account): StageBadge {
+  const now = stageLabel(a.stage)
+  const from = a.originStage ? stageLabel(a.originStage) : null
+  const earned = from != null && from !== now
+  if (earned) {
+    return {
+      text: `${from} → ${now}`,
+      hint:
+        a.stage === 'FUNDED'
+          ? 'EVAL 考核通过后升上来的出金号 —— 和「一开始就是出金号」的账户不是一回事'
+          : `从${from}升到${now}（PAYOUT 是终点，不再接受下单）`,
+      earned: true,
+    }
+  }
+  return {
+    text: now,
+    hint:
+      a.stage === 'EVAL'
+        ? '考核阶段：有盈利目标，达标后升到出金号'
+        : from == null
+          ? '建户时的阶段查不到流水，这里只写现在的阶段'
+          : `建户时就是${now}（用这套模板直接开的），没经过考核`,
+    earned: false,
+  }
 }
 
 /** "2024-03-04 09:00" → "2024-03-04 09:00"，截到分钟，年月日全留（跨年账户要能分辨）。 */

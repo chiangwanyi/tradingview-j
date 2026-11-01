@@ -26,6 +26,16 @@ public interface PropFirmStageLogRepository extends JpaRepository<PropFirmStageL
     /** 最后一次进入的阶段 = 当前阶段。 */
     Optional<PropFirmStageLog> findTopByAccountIdOrderBySeqDesc(String accountId);
 
+    /**
+     * 这个账户<strong>建户时</strong>在哪个阶段（{@code seq = 0} 那一行）。
+     *
+     * <p>它是「这个出金号是考出来的、还是本来就开成出金号的」的唯一答案：
+     * 账户行自己回答不了 —— {@code stage} 是<strong>现在</strong>的阶段，
+     * {@code templateId} 在升级时也会被换掉（见 {@code PropFirmAccount#enterStage}）。
+     * 剩下的线索只有流水，而行数本来就是身份。
+     */
+    Optional<PropFirmStageLog> findFirstByAccountIdOrderBySeqAsc(String accountId);
+
     /** 还开着的那一行（{@code endedAt} 为空）。正常情况最多一条。 */
     Optional<PropFirmStageLog> findFirstByAccountIdAndEndedAtIsNullOrderBySeqDesc(String accountId);
 }

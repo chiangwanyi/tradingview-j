@@ -325,11 +325,32 @@ public class PropFirmAccount extends BaseEntity {
     private Boolean passed;
 
     /**
+     * <strong>建户时</strong>处在哪个阶段 —— 「这个号是考出来的，还是本来就开成这样的」。
+     *
+     * <p>同一类 {@code @Transient} 结论（不落库，由 service 读账户时算）：账户行自己回答不了
+     * 这个问题 —— {@link #stage} 是<b>现在</b>的阶段，{@link #templateId} 在升级时也会被换成下一套。
+     * 唯一的依据是阶段流水的第一行（{@code seq = 0}、{@code reason = CREATED}）写的那个阶段。
+     *
+     * <p>为什么给原始阶段而不是一个 {@code promoted} 布尔：升到 PAYOUT 有两种来路
+     * （EVAL 一路考上来 / 建户就是 FUNDED 再升上来），一个布尔会把它们压成同一种，
+     * 而界面上要写的字面并不一样。事实给全，字面由界面组。
+     *
+     * <p>{@code null} = 这次没算（写操作的返回里没有）。
+     */
+    @Transient
+    private PropFirmStage originStage;
+
+    /**
      * 由 service 填入「已达标待升级」的结论。不落库、不参与任何判定，
      * 只影响界面上那颗【升级】按钮。
      */
     public void markPassed(boolean passed) {
         this.passed = passed;
+    }
+
+    /** 由 service 填入「建户时在哪个阶段」。不落库。 */
+    public void markOriginStage(PropFirmStage originStage) {
+        this.originStage = originStage;
     }
 
     /** 本阶段赚了多少（已扣手续费）。可正可负。 */

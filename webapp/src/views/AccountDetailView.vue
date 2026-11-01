@@ -4,7 +4,7 @@ import { computed, onMounted, ref } from 'vue'
 import Icon from '@/components/Icon.vue'
 import TradingCalendar from '@/components/TradingCalendar.vue'
 import * as api from '@/data/accounts'
-import { lossLine, profitTarget, shortInstant, shortTime, targetRaised } from '@/data/accounts'
+import { lossLine, profitTarget, shortInstant, shortTime, stageBadge, targetRaised } from '@/data/accounts'
 import type { Account, DayPnl, StageLog } from '@/data/accounts'
 import { drawdownLabel, pct, stageLabel, usd } from '@/data/rules'
 import { errorText } from '@/data/store'
@@ -44,6 +44,9 @@ const floor = computed(() => (a.value ? lossLine(a.value) : null))
 const target = computed(() => (a.value ? profitTarget(a.value) : null))
 /** 目标被一致性抬高了：规则快照那块要同时给出模板值和抬升来源。 */
 const raised = computed(() => (a.value ? targetRaised(a.value) : false))
+
+/** 阶段标签：同一份口径，和首页卡片上那个一致（「考核 → 出金号」）。 */
+const badge = computed(() => (a.value ? stageBadge(a.value) : null))
 
 /**
  * 进度条的三段：**左端 = 亏损线，右端 = 目标**，填充到当前余额。
@@ -185,8 +188,17 @@ function openTrade(): void {
         />
         <h1 v-else class="text-[24px] font-semibold tracking-tight text-ink">{{ a.name }}</h1>
 
-        <span class="rounded border border-line bg-elev px-1.5 py-0.5 text-[11px] tracking-wider text-dim">
-          {{ stageLabel(a.stage) }}
+        <span
+          v-if="badge"
+          class="rounded border px-1.5 py-0.5 text-[11px] tracking-wider"
+          :class="
+            badge.earned
+              ? 'border-accent/40 bg-accent-soft text-accent-ink'
+              : 'border-line bg-elev text-dim'
+          "
+          :title="badge.hint"
+        >
+          {{ badge.text }}
         </span>
         <span
           class="rounded border px-1.5 py-0.5 text-[11px] tracking-wider uppercase"
