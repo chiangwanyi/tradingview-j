@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
+import { useRouter } from 'vue-router'
 
 import AccountCard from '@/components/AccountCard.vue'
 import AccountDialog from '@/components/AccountDialog.vue'
@@ -77,8 +78,16 @@ function onCreate(payload: { templateId: string; symbolId: string; name: string 
 }
 
 // ---- 卡片上的入口 ----
-/** 详情是整页切换，交给 App 管；这里只把 id 往上递。 */
-const emit = defineEmits<{ detail: [id: string] }>()
+/**
+ * 详情是整页切换，而且**是一个真地址**（`/accounts/:id`）：刷新它、把它发给别人、
+ * 从它按后退，都要落回同一个账户。所以这里直接推路由，不再往外壳 emit 一个 id ——
+ * 「看的是哪个账户」只有 URL 这一个来源。
+ */
+const router = useRouter()
+
+function openDetail(id: string): void {
+  void router.push({ name: 'account-detail', params: { id } })
+}
 
 /**
  * 卡片上正在跑的写操作（结算 / 升级）：一次只跑一个，期间那颗按钮置灰并入文案。
@@ -245,7 +254,7 @@ defineExpose({ openNew })
           :a="a"
           :busy="pendingId === a.id"
           :pending="pendingId === a.id ? pendingKind : ''"
-          @detail="emit('detail', $event)"
+          @detail="openDetail"
           @settle="onSettle"
           @promote="onPromote"
         />

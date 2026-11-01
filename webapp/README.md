@@ -14,8 +14,25 @@ npm run build   # 类型检查 + 生成 dist/
 
 | 路径 | 页面 | 说明 |
 |---|---|---|
-| `/` | `AccountsShellView` | 左菜单 + 账户总览 / 模板页 |
+| `/accounts` | `AccountsView` | 账户总览（左菜单 + 卡片网格） |
+| `/accounts/:id` | `AccountDetailView` | 单个账户详情（权益进度 / 交易日历 / 阶段流水） |
+| `/templates` | `TemplatesView` | 账户模板 |
+| `/audit` | `AuditLogView` | 操作记录 |
+| `/records` | `TradeRecordsView` | 交易记录 |
+| `/profile` | `PlaceholderView` | 我的资料（还没做） |
 | `/trade/:id` | `TradeView` | 一个账户 + 一块 K 线画布 |
+
+前六条是 `AccountsShellView` 的**子路由**（外壳 = 左菜单，右边换内容），`/` 会 redirect 到
+`/accounts`。**页面状态就是 URL**：左边菜单点亮哪一项由当前路由反推，所以 F5、直接粘地址、
+后退键都和「正在看哪一页」对得上。认不出的地址回 `/accounts`。
+
+`/trade/:id` 是独立的顶层路由，不在这层外壳里 —— 它由卡片上的【继续交易】用 `window.open`
+开成新标签页，必须能自己刷新、自己粘地址。
+
+> **部署**：history 模式要求静态托管把未知路径回退到 `index.html`（`web/` 那边由 Go 的
+> `staticHandler` 做）。`vite dev` / `vite preview` 自带这个回退；换成 nginx 要写
+> `try_files $uri $uri/ /index.html`，否则刷新 `/templates` 直接 404。
+
 
 ## 数据在哪
 
@@ -44,8 +61,8 @@ npm run build   # 类型检查 + 生成 dist/
 ```
 src/
   App.vue                    只有 <RouterView />（页面在路由里）
-  router/index.ts            / = 账户总览，/trade/:id = 交易页
-  views/AccountsShellView.vue 左右两栏；导航切换 + 「+」按当前页分流（建账户 / 建模板）
+  router/index.ts            总览外壳 + 六条子路由（/accounts /templates /audit /records /profile）、/trade/:id
+  views/AccountsShellView.vue 左右两栏；左边菜单即导航（高亮从当前路由反推），「+」按当前页分流（建账户 / 建模板）
   views/AccountsView.vue     账户总览：筛选（全部/进行中/已失败）+ 卡片网格 + 新建弹窗
   views/TradeView.vue        交易页：账户概况 + 标的/日期选择 + 画布 + 底部持仓面板
   views/TemplatesView.vue    标题 / 阶段筛选 / 卡片横向翻页 / 弹窗挂载点

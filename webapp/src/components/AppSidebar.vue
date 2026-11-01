@@ -1,7 +1,11 @@
 <script setup lang="ts">
 import Icon from './Icon.vue'
 
-/** 5 个导航项；前四个接了页面，最后一个是占位。【证书】【平台与附加项】已按需求删掉。 */
+/**
+ * 5 个导航项；前四个接了页面，最后一个是占位。【证书】【平台与附加项】已按需求删掉。
+ * `key` 同时是路由名的一半（映射在 `AccountsShellView` 的 `TAB_ROUTE` 里）：
+ * 点一下就是一次导航，高亮由 URL 反推，菜单自己不存「当前在第几项」。
+ */
 const NAV = [
   { key: 'accounts', label: '账户总览', icon: 'chart' },
   { key: 'templates', label: '账户模板', icon: 'grid' },

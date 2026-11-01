@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
+import { useRouter } from 'vue-router'
 
 import Icon from '@/components/Icon.vue'
 import TradingCalendar from '@/components/TradingCalendar.vue'
@@ -23,7 +24,17 @@ import { errorText } from '@/data/store'
  * 详情页留着不动，交易页在另一个标签里跑，两边都刷新也不会互相打断。
  */
 const props = defineProps<{ id: string }>()
-const emit = defineEmits<{ back: [] }>()
+
+/**
+ * 返回列表走 `replace` 而不是 `push`：详情是账户页里的一层，不是历史里的一个独立站点。
+ * 用 push 的话，返回后按浏览器后退又回到那个已经看完（甚至已经被删掉）的详情页，
+ * 而它一进去就得重新拉数据 —— 只能拉到一个 404。
+ */
+const router = useRouter()
+
+function goBack(): void {
+  void router.replace({ name: 'accounts' })
+}
 
 const a = ref<Account | null>(null)
 const logs = ref<StageLog[]>([])
@@ -157,7 +168,7 @@ function doPromote(): void {
 function doRemove(): void {
   if (!a.value) return
   if (!confirm(`删掉「${a.value.name}」？它的阶段流水会一起删掉（不可恢复），成交和图形保留。`)) return
-  run(() => api.remove(a.value!.id).then(() => emit('back')))
+  run(() => api.remove(a.value!.id).then(() => goBack()))
 }
 
 /** 新标签页打开交易页（和卡片上那颗按钮同一个行为，两处入口一个目的）。 */
@@ -173,7 +184,7 @@ function openTrade(): void {
       <button
         type="button"
         class="flex items-center gap-1 text-[13px] text-dim transition-colors hover:text-ink"
-        @click="emit('back')"
+        @click="goBack"
       >
         <Icon name="left" :size="14" />返回账户总览
       </button>

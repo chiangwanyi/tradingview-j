@@ -1,70 +1,84 @@
 <script setup lang="ts">
-import { nextTick, ref } from 'vue'
+import { computed, nextTick, ref } from 'vue'
+import { RouterView, useRoute, useRouter } from 'vue-router'
+
+import type { ComponentPublicInstance } from 'vue'
 
 import AppSidebar from '@/components/AppSidebar.vue'
-import AccountDetailView from '@/views/AccountDetailView.vue'
-import AccountsView from '@/views/AccountsView.vue'
-import AuditLogView from '@/views/AuditLogView.vue'
-import PlaceholderView from '@/views/PlaceholderView.vue'
-import TemplatesView from '@/views/TemplatesView.vue'
-import TradeRecordsView from '@/views/TradeRecordsView.vue'
 
 /**
- * 账户总览的外壳：左菜单 + 右内容。
+ * 账户总览的外壳：左菜单 + 右内容，右边显示什么由**子路由**决定。
  *
- * 路由上它就是 `/`。交易页是**另一个路由**（`/trade/:id`），不是这个外壳里的一层 ——
- * 它由账户卡片上的【继续交易】开成一个新标签页，和总览互不影响。
- * 所以这里不需要「进交易页」的状态，只用 `active` + `detailId` 管自己这一半。
+ * 这里不再有 `active` / `detailId` 这类状态：页面就是 URL，高亮是从当前路由
+ * **反推**出来的（路由表见 `router/index.ts` 开头）。好处是刷新、直接粘地址、
+ * 后退键三件事一次全对；代价是「切页」必须真的走一次导航，而不是改个 ref。
+ *
+ * 交易页是**另一个顶层路由**（`/trade/:id`），不在这层外壳里 —— 它由账户卡片上的
+ * 【继续交易】开成一个新标签页，和总览互不影响。
  */
 
-/** 进应用先看账户：模板是配置，账户才是每天要看的东西。 */
-const active = ref('accounts')
+/** 菜单 key → 路由名。菜单文案在 `AppSidebar` 里，这里只管「点哪一项去哪」。 */
+const TAB_ROUTE: Record<string, string> = {
+  accounts: 'accounts',
+  templates: 'templates',
+  audit: 'audit',
+  records: 'records',
+  profile: 'profile',
+}
 
-/** 详情是账户页里的一层（整页替换列表，不弹窗），存 id 不存对象 —— 切走再回来要重新拉最新余额。 */
-const detailId = ref<string | null>(null)
+/** 路由名 → 菜单 key。账户详情也算在「账户总览」这一项下面，否则点进详情左菜单就全灰了。 */
+const ROUTE_TAB: Record<string, string> = {
+  accounts: 'accounts',
+  'account-detail': 'accounts',
+  templates: 'templates',
+  audit: 'audit',
+  records: 'records',
+  profile: 'profile',
+}
+
+const route = useRoute()
+const router = useRouter()
+
+const active = computed(() => ROUTE_TAB[String(route.name)] ?? 'accounts')
 
 function select(key: string): void {
-  active.value = key
-  detailId.value = null
+  const name = TAB_ROUTE[key]
+  // 点当前这一项不该再压一条历史，否则后退键会「退到同一页」。
+  if (!name || route.name === name) return
+  void router.push({ name })
 }
 
-/** 有页面的几项接了 view，其余导航项给个占位。 */
-const LABEL: Record<string, string> = {
-  profile: '我的资料',
-}
+/**
+ * 当前页面组件实例。只为一件事存在：左边栏那个「+」要按页面分流 ——
+ * 在模板页建模板，其余一律建账户；而「怎么开新建弹窗」只有页面自己知道
+ * （各页自己的 `openNew()`，靠 `defineExpose` 露出来）。
+ */
+const page = ref<(ComponentPublicInstance & { openNew?: () => void }) | null>(null)
 
-const templates = ref<InstanceType<typeof TemplatesView>>()
-const accounts = ref<InstanceType<typeof AccountsView>>()
-
-/** 左边栏那个「+」按当前页面分流：在模板页建模板，其余一律建账户。 */
 async function add(): Promise<void> {
   if (active.value === 'templates') {
-    templates.value?.openNew()
+    page.value?.openNew?.()
     return
   }
-  // 从详情页点「+」要先退回列表，否则弹窗开在详情页下面看不见
-  if (active.value !== 'accounts' || detailId.value) {
-    active.value = 'accounts'
-    detailId.value = null
-    await nextTick()
+  // 从详情页（或别的页）点「+」要先回账户列表，否则弹窗开在上一页下面看不见
+  if (route.name !== 'accounts') {
+    await router.push({ name: 'accounts' })
+    await nextTick() // 等新页面挂上、`page` 指向它之后才调得到 openNew
   }
-  accounts.value?.openNew()
+  page.value?.openNew?.()
 }
 </script>
 
 <template>
   <div class="flex h-full min-h-0">
     <AppSidebar :active="active" @select="select" @add="add" />
-    <AccountsView v-if="active === 'accounts' && !detailId" ref="accounts" @detail="detailId = $event" />
-    <AccountDetailView
-      v-else-if="active === 'accounts' && detailId"
-      :key="detailId"
-      :id="detailId"
-      @back="detailId = null"
-    />
-    <TemplatesView v-else-if="active === 'templates'" ref="templates" />
-    <AuditLogView v-else-if="active === 'audit'" />
-    <TradeRecordsView v-else-if="active === 'records'" />
-    <PlaceholderView v-else :title="LABEL[active] ?? active" />
+    <!--
+      一个 `<RouterView>` 顶掉原来的五段 v-if。
+      `:key="route.path"` 是为了 `/accounts/a` → `/accounts/b` 时**真的重新挂载**：
+      详情页在 `onMounted` 里自己拉数据，不重挂就会拿着 a 的余额去画 b 的页面。
+    -->
+    <RouterView v-slot="{ Component }">
+      <component :is="Component" :key="route.path" ref="page" />
+    </RouterView>
   </div>
 </template>
