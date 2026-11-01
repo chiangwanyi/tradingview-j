@@ -236,9 +236,9 @@ defineExpose({ openNew })
     </p>
 
     <div class="px-8 pb-10">
-      <!-- 字号整体放大一倍后（2026-11-01）3 列会把「创建于 / 起始时间」挤成两行，
-           所以宽屏只放 2 列：宁可少看一张，也不要每张卡片都折行 -->
-      <div v-if="list.length" class="grid grid-cols-1 gap-4 xl:grid-cols-2">
+      <!-- 3 列（2026-11-01 回到 3 列）：字号收到约 1.35 倍后，431px 的卡刚好一行放得下
+           「创建于 / 起始时间」，2 列反而把 654px 的卡撑得大片留白 -->
+      <div v-if="list.length" class="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
         <AccountCard
           v-for="a in list"
           :key="a.id"
