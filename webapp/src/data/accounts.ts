@@ -9,7 +9,6 @@
  */
 
 import { call, send } from './api'
-import { stageLabel } from './rules'
 import type { Rules, Stage } from './rules'
 
 const BASE = '/api/pf-accounts'
@@ -235,51 +234,82 @@ export function lossLine(a: Account): number | null {
   return peak - drawdown
 }
 
-/** 阶段标签的三个部分：显示什么字、悬停说什么、是不是「考出来的」。 */
+/**
+ * 阶段标签的配色档位（**只有语义，具体色号在 `badgeClass`**）：
+ *
+ * - `exam`            考试号 —— 灰
+ * - `funded`          出金号（建户就是出金号）—— 绿
+ * - `funded-upgraded` 出金号（从考试号考上来的）—— 粉
+ *
+ * 「成功」「失败」不是阶段，是终态标记，画在阶段标签**旁边**（见 `AccountCard.vue`），
+ * 所以不在这里占一档。
+ */
+export type BadgeTone = 'exam' | 'funded' | 'funded-upgraded'
+
+/** 阶段标签的三个部分：显示什么字、悬停说什么、哪一档配色。 */
 export interface StageBadge {
   text: string
   hint: string
-  /** 现在的阶段不是建户时那个 = 这个号是靠升级走上来的（要跟「直开的」区分开）。 */
-  earned: boolean
+  tone: BadgeTone
+}
+
+/**
+ * 标签的样式类。卡片和详情页共用一份 —— 两处各写一遍，改颜色时必然漏一处。
+ *
+ * 用 Tailwind 的语义色 + 少量固定色号：粉（升级上来的出金号）和琥珀（成功）没有语义色，
+ * 就地写 `pink-*` / `amber-*`，别为它们往 `style.css` 里加变量（只有这一处用）。
+ */
+export function badgeClass(tone: BadgeTone): string {
+  switch (tone) {
+    case 'funded':
+      return 'border-accent/40 bg-accent-soft text-accent-ink'
+    case 'funded-upgraded':
+      return 'border-pink-300 bg-pink-50 text-pink-700'
+    default:
+      return 'border-line bg-elev text-dim'
+  }
 }
 
 /**
  * 账户阶段标签（卡片右上角 / 详情页标题旁）。
  *
- * **要区分「从考核升上来的」和「一开始就是出金号的」**：两者现在的 `stage` 都是 `FUNDED`，
+ * 字面口径（用户 2026-11-01 定的）：EVAL = **考试号**（灰）、
+ * 直开的 FUNDED = **出金号**（绿）、从考试号考上来的 FUNDED = **出金号（升级）**（粉）。
+ * PAYOUT 是「出金号走完了」这个终态，标签仍是出金号，另挂一颗【成功】（在组件里）。
+ *
+ * **要区分「从考试升上来的」和「一开始就是出金号的」**：两者现在的 `stage` 都是 `FUNDED`，
  * 光看阶段说不出区别，所以拿后端给的 `originStage`（建户时的阶段，取自阶段流水第一行）
- * 和现在的 `stage` 比对 —— 不一样就是升上来的，写成 `考核 → 出金号`。
+ * 和现在的 `stage` 比对 —— 不一样就是升上来的。
  *
  * 为什么不是后端直接给一个 `promoted` 布尔：升到出金有两条来路
  * （EVAL 一路考上来 / 建户就是出金号再升上来），一个布尔会把它们压成同一种，
  * 而这里要写的字并不一样。事实给全，字面在这儿组。
  *
- * `originStage` 缺（写操作的返回里没有）时退回只写当前阶段 —— 不猜。
+ * `originStage` 缺（写操作的返回里没有）时退回「出金号」—— 不猜它是考上的。
  */
 export function stageBadge(a: Account): StageBadge {
-  const now = stageLabel(a.stage)
-  const from = a.originStage ? stageLabel(a.originStage) : null
-  const earned = from != null && from !== now
-  if (earned) {
+  if (a.stage === 'EVAL') {
     return {
-      text: `${from} → ${now}`,
-      hint:
-        a.stage === 'FUNDED'
-          ? 'EVAL 考核通过后升上来的出金号 —— 和「一开始就是出金号」的账户不是一回事'
-          : `从${from}升到${now}（PAYOUT 是终点，不再接受下单）`,
-      earned: true,
+      text: '考试号',
+      tone: 'exam',
+      hint: '考核阶段：有盈利目标，达标后升到出金号',
     }
   }
+  const earned = a.originStage === 'EVAL'
   return {
-    text: now,
-    hint:
-      a.stage === 'EVAL'
-        ? '考核阶段：有盈利目标，达标后升到出金号'
-        : from == null
-          ? '建户时的阶段查不到流水，这里只写现在的阶段'
-          : `建户时就是${now}（用这套模板直接开的），没经过考核`,
-    earned: false,
+    text: earned ? '出金号（升级）' : '出金号',
+    tone: earned ? 'funded-upgraded' : 'funded',
+    hint: earned
+      ? '考试号考上去的出金号 —— 和「一开始就是出金号」的账户不是一回事'
+      : a.originStage == null
+        ? '建户时的阶段查不到流水，这里按出金号显示'
+        : '建户时就是出金号（用这套模板直接开的），没经过考试',
   }
+}
+
+/** 走完了：PAYOUT 是终点（出金号已完成出金），卡片上另挂一颗【成功】。 */
+export function finished(a: Account): boolean {
+  return a.stage === 'PAYOUT'
 }
 
 /** "2024-03-04 09:00" → "2024-03-04 09:00"，截到分钟，年月日全留（跨年账户要能分辨）。 */
@@ -293,4 +323,49 @@ export function shortInstant(iso: string): string {
   if (Number.isNaN(d.getTime())) return iso
   const p = (n: number) => String(n).padStart(2, '0')
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`
+}
+
+/**
+ * 这根 K 线归**哪个交易日**（`YYYY-MM-DD`）。
+ *
+ * 口径和后端 `PropFirmClock` 一致：交易日 D = `[D 06:00, D+1 04:00)`，
+ * 所以 06:00 之前的那几根（含 04:00–05:55 的禁交易段）算**前一天**。
+ * 只在这里用来数「走了几天」，不参与任何下单判断 —— 判官始终是后端。
+ */
+export function tradingDayOf(barTime: string): string {
+  const t = (barTime ?? '').trim()
+  const day = t.slice(0, 10)
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) return ''
+  if (t.length < 16 || t.slice(11, 16) >= '06:00') return day
+  const d = new Date(`${day}T00:00:00`)
+  if (Number.isNaN(d.getTime())) return day
+  d.setDate(d.getDate() - 1)
+  const p = (n: number) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`
+}
+
+/**
+ * 已进行几个**交易日**：从阶段起点那根到盘面最新那根，含两头（起点当天算第 1 天）。
+ *
+ * ⚠️ 只能按「工作日」数，不是精确的交易日：交易日历（节假日休市）不在账户行里，
+ * 前端也拿不到 —— 遇到圣诞/元旦这种整周休市，这里会多算那几天。
+ * 要精确就得让后端在重放时把交易日数算出来，那是另一件事，别在这儿补一个假的日历。
+ *
+ * 起点还是终点取不到（空串/格式不认识）时返回 `null`，卡片上写「—」而不是编一个 0。
+ */
+export function tradingDaysElapsed(a: Account): number | null {
+  const from = tradingDayOf(a.startBarTime)
+  const to = tradingDayOf(a.lastBarTime)
+  if (!from || !to) return null
+  const start = new Date(`${from}T00:00:00`)
+  const end = new Date(`${to}T00:00:00`)
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || end < start) return null
+  let days = 0
+  const d = new Date(start)
+  while (d <= end) {
+    const w = d.getDay()
+    if (w !== 0 && w !== 6) days += 1
+    d.setDate(d.getDate() + 1)
+  }
+  return Math.max(days, 1)
 }

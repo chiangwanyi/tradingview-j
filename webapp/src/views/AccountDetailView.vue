@@ -4,7 +4,7 @@ import { computed, onMounted, ref } from 'vue'
 import Icon from '@/components/Icon.vue'
 import TradingCalendar from '@/components/TradingCalendar.vue'
 import * as api from '@/data/accounts'
-import { lossLine, profitTarget, shortInstant, shortTime, stageBadge, targetRaised } from '@/data/accounts'
+import { badgeClass, lossLine, profitTarget, shortInstant, shortTime, stageBadge, targetRaised } from '@/data/accounts'
 import type { Account, DayPnl, StageLog } from '@/data/accounts'
 import { drawdownLabel, pct, stageLabel, usd } from '@/data/rules'
 import { errorText } from '@/data/store'
@@ -45,7 +45,7 @@ const target = computed(() => (a.value ? profitTarget(a.value) : null))
 /** 目标被一致性抬高了：规则快照那块要同时给出模板值和抬升来源。 */
 const raised = computed(() => (a.value ? targetRaised(a.value) : false))
 
-/** 阶段标签：同一份口径，和首页卡片上那个一致（「考核 → 出金号」）。 */
+/** 阶段标签：同一份口径，和首页卡片上那个一致（考试号 / 出金号 / 出金号（升级））。 */
 const badge = computed(() => (a.value ? stageBadge(a.value) : null))
 
 /**
@@ -191,14 +191,17 @@ function openTrade(): void {
         <span
           v-if="badge"
           class="rounded border px-1.5 py-0.5 text-[11px] tracking-wider"
-          :class="
-            badge.earned
-              ? 'border-accent/40 bg-accent-soft text-accent-ink'
-              : 'border-line bg-elev text-dim'
-          "
+          :class="badgeClass(badge.tone)"
           :title="badge.hint"
         >
           {{ badge.text }}
+        </span>
+        <span
+          v-if="a.stage === 'PAYOUT'"
+          class="rounded border border-amber-300 bg-amber-50 px-1.5 py-0.5 text-[11px] tracking-wider text-amber-700"
+          title="出金号已走完全程（PAYOUT），这笔考核结束了"
+        >
+          成功
         </span>
         <span
           class="rounded border px-1.5 py-0.5 text-[11px] tracking-wider uppercase"
