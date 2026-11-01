@@ -403,6 +403,20 @@ public final class PropFirmSession {
         return state;
     }
 
+    /**
+     * 会话现在算到了<strong>哪个交易日</strong>；还没喂过任何 K 线时为 {@code null}。
+     *
+     * <p>只给外面做一件事：判断「这一天是不是已经走完了」——
+     * {@code PropFirmJudge} 拿它和「下一根属于哪一天」比，决定要不要补一次日终结算。
+     *
+     * <p>注意它<strong>不因禁交易窗口的 K 线而前进</strong>（那些根走 {@code SKIPPED} 分支，
+     * {@code currentDay} 原样不动），这正是需要的语义：04:45–06:00 属于前一天的收尾，
+     * 不属于新的一天。
+     */
+    public LocalDate tradingDay() {
+        return currentDay;
+    }
+
     public BigDecimal balance() {
         return balance;
     }

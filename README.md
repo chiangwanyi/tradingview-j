@@ -165,7 +165,9 @@ append-only、每行带 `symbol_id` + `bar_time`）→ 快照层（当前值）�
 
 - **交易日 `[D 06:00, 次日 04:45)`**，04:45–06:00 禁交易；23:55 日历日强平、04:50 结算收尾。不做夏冬令时，
   `PropFirmClock` 是唯一实现。**逐根判爆仓**：浮亏用本根极值（多单 low / 空单 high），**等于也算失败**，
-  亏损线只在日终上移。**一致性 50%**：`目标 = max(模板目标, 单日最大净盈利 / 0.5)`。
+  亏损线只在日终上移 —— 而「日终」是**这一天走完**那一刻（推进到本交易日最后一根就结算，
+  不必等下一根，见 `PropFirmJudge#settleIfDayOver`），跟 Apex「market close 算、next session 生效」
+  同一个口径。**一致性 50%**：`目标 = max(模板目标, 单日最大净盈利 / 0.5)`。
 - **余额逐笔变、亏损线只在日终变**（两套时钟，见 `PropFirmSession`）。`service/PropFirmJudge` 把
   session 接到盘面上：每次用到就从**本阶段起点**重放一遍（十几毫秒，换来永远和成交对得上），
   结果写回 `balance` / `eod_peak_balance` 两个缓存列，并作为 `PfView` 挂在快照、`bar_advanced`、

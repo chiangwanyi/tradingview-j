@@ -64,6 +64,8 @@ public class PropFirmJudge {
     private final CsvBarStore bars;
     private final SymbolRepository symbols;
     private final TradeRepository trades;
+    /** 只问一句话：「{@code lastBarTime} 之后还有没有下一根、它属于哪一天」。 */
+    private final BarCursorService cursor;
 
     /** 推进到 {@code account.lastBarTime} 为止的判定结果。 */
     public record State(PropFirmSession session, PropFirmSession.Step step) {
@@ -76,8 +78,9 @@ public class PropFirmJudge {
         /**
          * 已达成本阶段的升级条件，等用户手动升级。
          *
-         * <p>{@link PropFirmSession} 只在<strong>日终</strong>判达标（真实考核就是这样），
-         * 所以它和「撞线」一样，只在跨交易日的那一步才会变。
+         * <p>达标只在<strong>日终</strong>判（真实考核就是这样）：赚钱的过程不算，要在这一天
+         * <strong>收完</strong>那一刻用收盘余额去比。所以它不会在盘中任何一根上翻面 ——
+         * 推进到本交易日最后一根时就会翻（见 {@code settleIfDayOver}），不必等跨日。
          */
         public boolean frozen() {
             return step != null && step.event() == PropFirmSession.Event.PROMOTED;
@@ -86,6 +89,9 @@ public class PropFirmJudge {
 
     /**
      * 把账户从阶段起点重放到 {@code lastBarTime}，返回判定结果（<strong>不写库</strong>）。
+     *
+     * <p>重放完还会检查「这一天收没收完」并补一次日终结算（{@link #settleIfDayOver}）——
+     * 手点推进的盘面走到某天最后一根就不再动了，不补这一步，最后一天永远不结算。
      *
      * <p>没有盘面（账户还没停在任何一根上、或者磁盘上没有那些日文件）时
      * {@code step} 为 {@code null}，读数退化成本阶段的起步状态 —— 不抛异常：
@@ -167,8 +173,10 @@ public class PropFirmJudge {
      * 按时间升序把 K 线喂给会话，返回最后一根的读数。
      *
      * <p>日文件按文件名（= 日期）升序读，所以「跨交易日」只会在该发生的时候发生；
-     * 缺失的日子（周末、没抓）直接没有文件，不影响 —— 日终结算只认「新的一天的第一根」，
-     * 隔了三天和隔了一天是同一件事。
+     * 缺失的日子（周末、没抓）直接没有文件，不影响 —— 隔了三天和隔了一天是同一件事。
+     *
+     * <p>喂完还要补一次「这一天收没收完」的检查（{@link #settleIfDayOver}）：
+     * 跨日结算原本只由「新一天的第一根」触发，最后一个交易日因此永远不会结算。
      */
     private PropFirmSession.Step feed(PropFirmSession session, Symbol symbol,
                                       List<Trade> stageTrades, String untilBarTime) {
@@ -194,7 +202,69 @@ public class PropFirmJudge {
                 last = session.onBar(symbol.getId(), bar);
             }
         }
-        return last;
+        if (last == null) {
+            return null;
+        }
+        PropFirmSession.Step closed = settleIfDayOver(session, symbol, untilBarTime);
+        return closed != null ? closed : last;
+    }
+
+    /**
+     * 这一天是不是<strong>已经走完</strong>了？走完了就当场补一次日终结算。
+     *
+     * <h2>为什么必须补这一步</h2>
+     *
+     * <p>{@link PropFirmSession} 只在「跨交易日的第一根」处结算（{@code onBar} 里
+     * {@code day.isAfter(currentDay)} 那个分支），而这套盘面是<strong>手点推进</strong>的：
+     * 用户推到某交易日的最后一根就停住了，从此再没有一根 K 线来触发结算 ——
+     * 峰值不更新、盈利日不计数、EVAL 达标也不冻结。
+     *
+     * <p>真实考核不是这样结算的：它在<strong>收盘那一刻</strong>就把账结了，跟"后面还有没有
+     * 行情"无关（Apex：「calculated once per day at market close」，Tradeify：
+     * 「drawdown limit only UPDATES at the end of each trading day」，dashboard 当天就刷新）。
+     *
+     * <h2>判据为什么是「紧挨着的下一根还属不属于同一天」</h2>
+     *
+     * <p>不能拿「磁盘上有没有更晚的交易日」当判据：用户可能只推到 22:00，那一天后面还有
+     * 一整夜可推。提前结算等于用一个<strong>虚构的日终余额</strong>抬高峰值，而峰值只增不减
+     * —— 抬上去就再也降不回来，回撤线被悄悄放松了。
+     *
+     * <p>只看下一根：
+     *
+     * <ul>
+     *   <li>仍是同一个交易日 → 这一天没走完，<strong>不结算</strong>；</li>
+     *   <li>属于更晚的交易日 → 这一天已经结束，结算；</li>
+     *   <li>落在禁交易窗口（{@code tradingDayOf} 返回 {@code null}）→ 它已经不属于这一天，
+     *       结算（04:45 正是「结束」这个时刻本身）；</li>
+     *   <li>磁盘上再没有下一根 → 这一天就是最后一天，结算。</li>
+     * </ul>
+     *
+     * <p>这样「用户继续推」和「用户停在这里」两条路给出同一个结果：前者走 {@code onBar}
+     * 的跨日分支，后者由本方法补上。重复调用也幂等 —— {@link #assess} 每次都是从阶段起点
+     * 完整重放，没有跨请求的游标。
+     *
+     * <p>⚠️ 因此<strong>只读快照也会算出结算后的新线</strong>：{@link #view} 用的是同一个
+     * {@link State}，打开交易页看到的就是「收盘后该有的线」。但那一列缓存
+     * （{@code prop_firm_account.eod_peak_balance}）只在 {@link #settle} 的调用方里写回，
+     * 只读快照<strong>不写库</strong> —— 所以没推进过一根之前，账户列表页按缓存列算出来的
+     * 线可能还是旧的。这不是两个口径，是「显示已更新、缓存还没落」。
+     *
+     * @return 结算后的读数；这一天还没走完、或会话已经终态时返回 {@code null}
+     */
+    private PropFirmSession.Step settleIfDayOver(PropFirmSession session, Symbol symbol,
+                                                 String untilBarTime) {
+        if (session.state() != PropFirmSession.Event.RUNNING) {
+            return null;
+        }
+        LocalDate day = session.tradingDay();
+        if (day == null) {
+            return null;
+        }
+        BarCursorService.NextBar next = cursor.next(symbol.getFolder(), untilBarTime);
+        if (next != null && day.equals(PropFirmClock.tradingDayOf(next.bar().barTime()))) {
+            return null;
+        }
+        return session.finish();
     }
 
     /** {@code "2026-10-29 03:10"} → 03:10 所在的<strong>日文件</strong>日期（就是字符串前 10 位）。 */

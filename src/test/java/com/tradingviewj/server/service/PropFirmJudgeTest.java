@@ -64,10 +64,12 @@ class PropFirmJudgeTest {
                 2024-03-04 09:00,4000.00,4001.00,3999.00,4000.00,100
                 2024-03-04 09:05,4000.00,4006.00,4000.00,4006.00,100
                 2024-03-04 09:10,4006.00,4007.00,4005.00,4006.00,100
+                2024-03-04 09:15,4006.00,4006.00,4005.00,4005.00,100
                 """);
         Files.writeString(folder.resolve("2024-03-05.csv"), """
                 time,open,high,low,close,volume
                 2024-03-05 09:00,4010.00,4011.00,4009.00,4010.00,100
+                2024-03-05 09:05,4010.00,4010.00,4009.00,4009.00,100
                 """);
         Files.writeString(folder.resolve("2024-03-06.csv"), """
                 time,open,high,low,close,volume
@@ -88,7 +90,7 @@ class PropFirmJudgeTest {
         trades = mock(TradeRepository.class);
         when(trades.findByAccountIdOrderByBarTimeAscSeqAsc(anyString())).thenReturn(List.of(open, close));
 
-        judge = new PropFirmJudge(store, symbols, trades);
+        judge = new PropFirmJudge(store, symbols, trades, new BarCursorService(store));
     }
 
     @Test
@@ -138,6 +140,45 @@ class PropFirmJudgeTest {
         // 跨到第三天：第三天的第一根到达时，第二天才结算 → 达标
         account.advanceBarTime("2024-03-06 09:00");
         assertTrue(judge.assess(account).frozen(), "日终结算达标 → 冻结、等手动升级");
+    }
+
+    /**
+     * 走到某交易日的<strong>最后一根</strong>，这一天就结算了 —— 不用等下一根来触发。
+     *
+     * <p>这是「EOD 追踪」的真实口径：结算发生在<strong>这一天收完</strong>那一刻，与「后面还有没有
+     * 行情」无关。修复前的实现只在「新交易日的第一根」处结算，于是停在 09:15 这一天，
+     * 辛苦赚来的 58 块缓冲当天进不了峰值，回撤线纹丝不动。
+     */
+    @Test
+    void daySettlesAsSoonAsItHasNoLaterBarOfItsOwn() {
+        PropFirmAccount account = account();
+
+        account.advanceBarTime("2024-03-04 09:15");
+        PfView atClose = judge.settle(account, judge.assess(account));
+        assertMoney("50058", atClose.balance());
+        assertMoney("50058", atClose.eodPeakBalance());
+        assertMoney("48058", atClose.lossLine());
+    }
+
+    /**
+     * 磁盘上<strong>再没有下一根</strong>时，最后一个交易日也要结算。
+     *
+     * <p>修复前这是最隐蔽的一条：跳空到最后一根之后，{@code onBar} 再也等不到「新一天的
+     * 第一根」，峰值永远不更新、盈利日不计数、EVAL 达标也不冻结 —— 账户赚够了还能继续下单。
+     */
+    @Test
+    void lastTradingDaySettlesWithoutAnyNextBar() {
+        Trade only = Trade.fill("acc", CODE, "o9", "2024-03-06 09:00", 3, Side.SELL,
+                new BigDecimal("4020.00"), BigDecimal.ONE, new BigDecimal("101.00"), new BigDecimal("1.00"));
+        when(trades.findByAccountIdOrderByBarTimeAscSeqAsc(anyString())).thenReturn(List.of(only));
+
+        PropFirmAccount account = account();
+
+        account.advanceBarTime("2024-03-06 09:00");
+        PfView last = judge.settle(account, judge.assess(account));
+        assertMoney("50100", last.balance());
+        assertMoney("50100", last.eodPeakBalance());
+        assertMoney("48100", last.lossLine());
     }
 
     /** EVAL 50K：规模 50000、目标 3000、回撤 2000、冻结水位 52100。 */
