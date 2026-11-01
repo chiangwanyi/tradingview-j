@@ -341,6 +341,23 @@ public class PropFirmAccount extends BaseEntity {
     private PropFirmStage originStage;
 
     /**
+     * <strong>已经走过几个交易日</strong>：从 {@link #startBarTime} 所在的交易日到
+     * {@link #lastBarTime} 所在的交易日，含两头（起点那天算第 1 天）。
+     *
+     * <p>同一类 {@code @Transient} 结论（不落库、读账户时现算），因为它问的是
+     * 「这个标的到底有哪几天开过盘」—— 那份日历<strong>不在库里</strong>，在数据目录的
+     * CSV 文件上（{@code TradingCalendar}）。存成列就要回答「谁来更新它」，而每步进一根都可能翻页。
+     *
+     * <p>为什么不按日历日 / 工作日数：休市日（圣诞、元旦、MLK）既不是周末也没有行情，
+     * 按工作日数会多算。实测 2025-01-17 → 01-24 按工作日是 6 天，真实的交易日是 5 天。
+     *
+     * <p>{@code null} = 这次没算 / 算不出来（标的目录读不到、时间格式不对），
+     * 界面上写「—」而不是编一个数字。
+     */
+    @Transient
+    private Integer tradingDays;
+
+    /**
      * 由 service 填入「已达标待升级」的结论。不落库、不参与任何判定，
      * 只影响界面上那颗【升级】按钮。
      */
@@ -351,6 +368,11 @@ public class PropFirmAccount extends BaseEntity {
     /** 由 service 填入「建户时在哪个阶段」。不落库。 */
     public void markOriginStage(PropFirmStage originStage) {
         this.originStage = originStage;
+    }
+
+    /** 由 service 填入「已走过几个交易日」。不落库。 */
+    public void markTradingDays(int tradingDays) {
+        this.tradingDays = tradingDays;
     }
 
     /** 本阶段赚了多少（已扣手续费）。可正可负。 */

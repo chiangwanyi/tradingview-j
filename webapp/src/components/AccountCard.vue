@@ -132,7 +132,7 @@ function onTrade(): void {
     <!-- 盘面现在停在哪根 + 已经走了几个交易日（原「起点 xxx」那一行） -->
     <p
       class="mt-1.5 flex flex-wrap items-baseline gap-x-2 px-4 text-[15px] text-faint tnum"
-      title="最新的那根 K 线（盘面停在这儿）；交易日数按 06:00 切日的工作日数，节假日不单独扣除"
+      title="最新的那根 K 线（盘面停在这儿）；交易日数由后端按数据目录里真实的开盘日数出来（休市日不算）"
     >
       <span>最新K线 {{ shortTime(a.lastBarTime) }}</span>
       <span class="whitespace-nowrap"

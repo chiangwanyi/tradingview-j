@@ -1,5 +1,6 @@
 package com.tradingviewj.server.service;
 
+import com.tradingviewj.server.entity.market.Symbol;
 import com.tradingviewj.server.entity.propfirm.PropFirmAccount;
 import com.tradingviewj.server.entity.propfirm.PropFirmStage;
 import com.tradingviewj.server.entity.propfirm.PropFirmStageLog;
@@ -8,12 +9,15 @@ import com.tradingviewj.server.exception.BusinessException;
 import com.tradingviewj.server.repository.PropFirmAccountRepository;
 import com.tradingviewj.server.repository.PropFirmStageLogRepository;
 import com.tradingviewj.server.repository.PropFirmTemplateRepository;
+import com.tradingviewj.server.repository.SymbolRepository;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.List;
 
 /**
@@ -43,6 +47,7 @@ import java.util.List;
  * 把这条规则写在一个有名字的方法上，下一个想加「删账户顺便删策略」的人会在改这里时先看到这段注释。
  */
 @Service
+@Slf4j
 @RequiredArgsConstructor
 public class PropFirmAccountService {
 
@@ -51,6 +56,9 @@ public class PropFirmAccountService {
     private final PropFirmStageLogRepository stageLogs;
     private final PropFirmStartPicker startPicker;
     private final PropFirmJudge judge;
+    /** 读账户时数「走过几个交易日」用；日历在数据目录上，不在库里。 */
+    private final TradingCalendar calendar;
+    private final SymbolRepository symbols;
 
     /**
      * 按模板开一个账户，并<strong>当场抽好起点</strong>。
@@ -381,16 +389,47 @@ public class PropFirmAccountService {
     }
 
     /**
-     * 把两个「读的时候才算得出来」的结论填到实体上（都不落库）：
-     * {@code originStage}（建户时在哪个阶段）和 {@code passed}（已达标待升级）。
+     * 把三个「读的时候才算得出来」的结论填到实体上（都不落库）：
+     * {@code originStage}（建户时在哪个阶段）、{@code passed}（已达标待升级）、
+     * {@code tradingDays}（已经走过几个交易日）。
      *
      * <p>放在一处是因为它们的调用时机<b>完全一样</b> —— 都只在读接口里，
-     * 都是给界面判断用的。写操作的返回里两个字段都缺（前端读到 {@code undefined}），
-     * 那些地方不需要它们，也不该为此多读一次流水、多重放一次盘面。
+     * 都是给界面判断用的。写操作的返回里三个字段都缺（前端读到 {@code undefined}），
+     * 那些地方不需要它们，也不该为此多读一次流水、多重放一次盘面、多数一遍日历。
      */
     private void fillDerived(PropFirmAccount account) {
         fillOriginStage(account);
         fillPassed(account);
+        fillTradingDays(account);
+    }
+
+    /**
+     * 填「已经走过几个交易日」：起点那根所在的交易日 → 盘面最新那根所在的交易日，含两头。
+     *
+     * <p>日历由 {@link TradingCalendar} 从数据目录回答（那天有没有属于它自己的那一场），
+     * <strong>不按日历日、也不按周一至周五数</strong>：休市日没有行情文件，按工作日数会多算。
+     *
+     * <p>算不出来（标的不在 symbol 表、目录读不到、时间格式不对）就留 {@code null}，
+     * 界面上写「—」—— 一个编出来的天数会被当成真的进度。
+     */
+    private void fillTradingDays(PropFirmAccount account) {
+        try {
+            String folder = symbols.findById(account.getSymbolId())
+                    .map(Symbol::getFolder)
+                    .orElse(null);
+            if (folder == null) {
+                return;
+            }
+            var from = LocalDate.parse(account.getStartBarTime().substring(0, 10));
+            var to = TradingCalendar.dayOfOrDate(account.getLastBarTime());
+            int days = calendar.countBetween(folder, from, to);
+            if (days > 0) {
+                account.markTradingDays(days);
+            }
+        } catch (RuntimeException e) {
+            // 行情被清理 / 时间被改脏：卡片上少一个数字，不该让整个账户列表打不开
+            log.debug("账户 {} 的交易日数算不出来", account.getId(), e);
+        }
     }
 
     /**

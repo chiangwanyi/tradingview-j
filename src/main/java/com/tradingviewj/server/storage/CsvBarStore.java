@@ -6,6 +6,7 @@ import org.springframework.stereotype.Component;
 
 import java.io.BufferedReader;
 import java.io.IOException;
+import java.io.RandomAccessFile;
 import java.io.UncheckedIOException;
 import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
@@ -14,6 +15,7 @@ import java.nio.file.Path;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.stream.Stream;
 
 /**
@@ -39,6 +41,9 @@ public class CsvBarStore {
 
     /** CSV 表头第一列。用来判断首行是不是表头（Go 版可配是否写表头）。 */
     private static final String HEADER_FIRST_COLUMN = "time";
+
+    /** {@link #lastBarTime} 从文件尾部读多少字节 —— 够装几十行，且不会因为文件变大而变慢。 */
+    private static final int TAIL_BYTES = 4096;
 
     private final Path root;
 
@@ -97,9 +102,60 @@ public class CsvBarStore {
         return bars;
     }
 
+    /**
+     * 这一天<strong>最后一根</strong> K 线的时间明文（{@code yyyy-MM-dd HH:mm}）；没有文件或空文件返回 empty。
+     *
+     * <p>只用来回答一个问题：<strong>这一天有没有属于它自己的交易日</strong>
+     * （见 {@code TradingCalendar}）。本项目的日文件是<strong>日历日</strong>切的
+     * （{@code 2024-04-19.csv} 装的是 04-19 00:00–23:55），而交易日 D 是
+     * {@code [D 06:00, D+1 04:00)} —— 于是周六那份文件里只有周五那场 00:00–04:55 的尾巴，
+     * 它<b>不是</b>一个交易日。判据就是「当天最后一根在 06:00 之后」：
+     * 有自己那一场的日子，文件里一定写到 23:55（半日市也写到午后）；只有尾巴的日子，
+     * 最后一根停在 04:55 之前。
+     *
+     * <p><strong>不读整天</strong>：只 seek 到文件尾部读最后几 KB —— 数一个账户走过的交易日
+     * 要对区间内每一天问一次，整天读会把「打开首页」变成几百次全文件解析。
+     */
+    public Optional<String> lastBarTime(String folder, LocalDate date) {
+        Path file = resolveFolder(folder).resolve(date + ".csv");
+        if (!Files.isRegularFile(file)) {
+            return Optional.empty();
+        }
+        try (RandomAccessFile raf = new RandomAccessFile(file.toFile(), "r")) {
+            long length = raf.length();
+            if (length == 0) {
+                return Optional.empty();
+            }
+            int size = (int) Math.min(TAIL_BYTES, length);
+            byte[] buf = new byte[size];
+            raf.seek(length - size);
+            raf.readFully(buf);
+            String[] lines = new String(buf, StandardCharsets.UTF_8).split("\\R");
+            for (int i = lines.length - 1; i >= 0; i--) {
+                String line = lines[i].trim();
+                if (line.isEmpty()) {
+                    continue;
+                }
+                int comma = line.indexOf(',');
+                String time = (comma > 0 ? line.substring(0, comma) : line).trim();
+                // 文件太小、尾部那段从半行开始时，这条会是残行；格式不对就继续往上找
+                if (time.length() >= 16 && time.charAt(4) == '-' && time.charAt(10) == ' ') {
+                    return Optional.of(time.substring(0, 16));
+                }
+            }
+            return Optional.empty();
+        } catch (IOException e) {
+            throw new UncheckedIOException("读取 K 线文件尾部失败: " + file, e);
+        }
+    }
+
+    /** 这一天有没有 K 线文件（休市日没有文件，这是正常状态而不是错误）。 */
+    public boolean hasDay(String folder, LocalDate date) {
+        return Files.isRegularFile(resolveFolder(folder).resolve(date + ".csv"));
+    }
+
     /** {@code time,open,high,low,close,volume}；解析不了返回 null（由调用方计数）。 */
-    private static Bar parse(String line) {
-        String[] parts = line.split(",");
+    private static Bar parse(String line) {        String[] parts = line.split(",");
         if (parts.length < 5) {
             return null;
         }

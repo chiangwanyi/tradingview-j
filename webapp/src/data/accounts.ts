@@ -45,6 +45,14 @@ export interface Account {
    * 这一格缺（`undefined`）表示这次没算，标签退回只写当前阶段。
    */
   originStage?: Stage
+  /**
+   * **已经走过几个交易日**（起点那根所在交易日 → `lastBarTime` 所在交易日，含两头）。
+   *
+   * 由后端按数据目录里**真实的开盘日**数出来（`TradingCalendar`），不是日历日、
+   * 也不是「周一到周五」—— 休市日没有行情文件，按工作日数会多算。
+   * 和 `passed` 一样是现算字段，写操作的返回里没有（读到 `undefined`）。
+   */
+  tradingDays?: number
   /** 开账户那一刻从模板复制过来的规则，之后与模板无关。 */
   rules: Rules
   /** 本阶段起点余额（升级时重置回账户规模）。 */
@@ -326,46 +334,15 @@ export function shortInstant(iso: string): string {
 }
 
 /**
- * 这根 K 线归**哪个交易日**（`YYYY-MM-DD`）。
+ * 已进行几个**交易日**（含起点那天）。
  *
- * 口径和后端 `PropFirmClock` 一致：交易日 D = `[D 06:00, D+1 04:00)`，
- * 所以 06:00 之前的那几根（含 04:00–05:55 的禁交易段）算**前一天**。
- * 只在这里用来数「走了几天」，不参与任何下单判断 —— 判官始终是后端。
- */
-export function tradingDayOf(barTime: string): string {
-  const t = (barTime ?? '').trim()
-  const day = t.slice(0, 10)
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) return ''
-  if (t.length < 16 || t.slice(11, 16) >= '06:00') return day
-  const d = new Date(`${day}T00:00:00`)
-  if (Number.isNaN(d.getTime())) return day
-  d.setDate(d.getDate() - 1)
-  const p = (n: number) => String(n).padStart(2, '0')
-  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`
-}
-
-/**
- * 已进行几个**交易日**：从阶段起点那根到盘面最新那根，含两头（起点当天算第 1 天）。
+ * ⚠️ **这个数只由后端给**（`tradingDays`）：交易日历是「数据目录里哪几天真的开了盘」，
+ * 前端拿不到 —— 按日历日或多按「周一到周五」数会把圣诞、元旦、MLK 这些休市日算进去。
+ * 所以这里不再自己数，缺了就返回 `null`，卡片上写「—」而不是编一个数字。
  *
- * ⚠️ 只能按「工作日」数，不是精确的交易日：交易日历（节假日休市）不在账户行里，
- * 前端也拿不到 —— 遇到圣诞/元旦这种整周休市，这里会多算那几天。
- * 要精确就得让后端在重放时把交易日数算出来，那是另一件事，别在这儿补一个假的日历。
- *
- * 起点还是终点取不到（空串/格式不认识）时返回 `null`，卡片上写「—」而不是编一个 0。
+ * 代价和 `passed` 一样：**写操作的返回里没有这个字段**（后端只在读接口里现算），
+ * 但卡片永远吃的是 `list()` 的结果，所以界面上不会缺。
  */
 export function tradingDaysElapsed(a: Account): number | null {
-  const from = tradingDayOf(a.startBarTime)
-  const to = tradingDayOf(a.lastBarTime)
-  if (!from || !to) return null
-  const start = new Date(`${from}T00:00:00`)
-  const end = new Date(`${to}T00:00:00`)
-  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || end < start) return null
-  let days = 0
-  const d = new Date(start)
-  while (d <= end) {
-    const w = d.getDay()
-    if (w !== 0 && w !== 6) days += 1
-    d.setDate(d.getDate() + 1)
-  }
-  return Math.max(days, 1)
+  return a.tradingDays ?? null
 }
