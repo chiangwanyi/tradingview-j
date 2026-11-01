@@ -8,7 +8,6 @@ import com.tradingviewj.server.entity.trade.Trade;
 import com.tradingviewj.server.storage.Bar;
 
 import java.math.BigDecimal;
-import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -362,30 +361,15 @@ public final class PropFirmSession {
     }
 
     /**
-     * 一致性抬高之后的真实通关目标。
+     * 一致性抬高之后的真实通关目标 —— <strong>公式在 {@link PropFirmRules#effectiveProfitTarget}
+     * 一处</strong>，这里只是把会话里的「单日最大净盈利」喂进去。
      *
-     * <p>{@code 目标 = max(模板目标, 单日最大净盈利 / 一致性比例)}。
-     * 例：单日赚 1800、比例 50% → 3600，比模板的 3000 高，所以目标被抬到 3600。
-     *
-     * <p>只要总盈利够大，这个比值自然降下来 —— 这正是「继续交易直到占比降回 50% 以下」
-     * 那句话的算术表达，不需要一个"违规了"的中间状态。
+     * <p>例：单日赚 1800、比例 50% → 3600，比模板的 3000 高，所以目标被抬到 3600。
      *
      * @return {@code null} = 这套规则没有盈利目标（FUNDED）
      */
     private BigDecimal effectiveTarget() {
-        BigDecimal target = rules.getProfitTarget();
-        BigDecimal ratio = rules.getConsistencyRatio();
-        if (ratio == null || ratio.signum() <= 0) {
-            return target;
-        }
-        if (maxDayNet.signum() <= 0) {
-            return target;
-        }
-        BigDecimal need = maxDayNet.divide(ratio, 2, RoundingMode.HALF_UP);
-        if (target == null) {
-            return need;
-        }
-        return need.compareTo(target) > 0 ? need : target;
+        return rules.effectiveProfitTarget(maxDayNet);
     }
 
     private Step terminal(String barTime) {

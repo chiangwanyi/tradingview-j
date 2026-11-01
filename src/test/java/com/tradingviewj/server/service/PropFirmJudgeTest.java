@@ -181,6 +181,38 @@ class PropFirmJudgeTest {
         assertMoney("48100", last.lossLine());
     }
 
+    /**
+     * 一致性上限会把通关目标<strong>抬高</strong>：单日赚 2750、比例 50% → 目标 5500，
+     * 于是「总盈利 3250 已经过了模板的 3000」也不能升级。
+     *
+     * <p>钉三件事：
+     *
+     * <ul>
+     *   <li>判定用的是抬高后的目标（3250 &lt; 5500 → 不冻结）；</li>
+     *   <li>本阶段单日最大净盈利被写回账户缓存列（界面上的「目标为什么是 5500」靠它回答）；</li>
+     *   <li>账户派生出来的 {@code effectiveProfitTarget} 与判定口径一致 —— 两处一旦分叉，
+     *       界面就会显示一个自己达不到的数字。</li>
+     * </ul>
+     */
+    @Test
+    void consistencyRaisesTheTargetBeyondTheTemplateOne() {
+        // 第一天净赚 2750（2751 − 1 手续费），第三天再净赚 500：合计 3250
+        Trade day1 = Trade.fill("acc", CODE, "o1", "2024-03-04 09:05", 1, Side.SELL,
+                new BigDecimal("4000.00"), BigDecimal.ONE, new BigDecimal("2751.00"), new BigDecimal("1.00"));
+        Trade day3 = Trade.fill("acc", CODE, "o2", "2024-03-06 09:00", 2, Side.SELL,
+                new BigDecimal("4020.00"), BigDecimal.ONE, new BigDecimal("501.00"), new BigDecimal("1.00"));
+        when(trades.findByAccountIdOrderByBarTimeAscSeqAsc(anyString())).thenReturn(List.of(day1, day3));
+
+        PropFirmAccount account = account();
+        account.advanceBarTime("2024-03-06 09:00");
+        PfView view = judge.settle(account, judge.assess(account));
+
+        assertMoney("53250", view.balance());
+        assertMoney("2750", account.getMaxDayNetBalance());
+        assertMoney("5500", account.getEffectiveProfitTarget());
+        assertFalse(view.frozen(), "3250 只过了模板的 3000，一致性把目标抬到 5500 了");
+    }
+
     /** EVAL 50K：规模 50000、目标 3000、回撤 2000、冻结水位 52100。 */
     private PropFirmAccount account() {
         PropFirmRules rules = new PropFirmRules(new BigDecimal("50000.00"), new BigDecimal("3000.00"),

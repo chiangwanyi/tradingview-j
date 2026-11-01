@@ -118,7 +118,8 @@ public class PropFirmJudge {
      * 「记成交」必须在同一个事务里，分开就会出现「成交落了库、余额没跟上」。
      */
     public PfView settle(PropFirmAccount account, State state) {
-        account.syncComputed(state.session().balance(), state.session().eodPeak());
+        account.syncComputed(state.session().balance(), state.session().eodPeak(),
+                state.session().maxDayNet());
         return view(account, state);
     }
 

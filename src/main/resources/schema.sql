@@ -112,6 +112,13 @@ CREATE TABLE IF NOT EXISTS prop_firm_account (
     -- ↑↑
     base_balance         TEXT NOT NULL,  -- 本阶段起点余额（= account_size）
     eod_peak_balance     TEXT NOT NULL,  -- 本阶段"日终余额"的历史最高，初值 = base_balance
+    -- 本阶段**单日净盈利的最大值**（2026-11-01 加，已扣手续费），初值 = 0。
+    -- 一致性规则（consistency_ratio）的输入：真实通关目标 = max(profit_target,
+    -- 这个数 / consistency_ratio)。例：单日赚 2750、比例 0.4 → 目标 6875 而不是 3000。
+    -- 和 eod_peak_balance 一样是**缓存**：真值在成交流水里，权威是
+    -- PropFirmSession#maxDayNet()（只在日终更新）；存下来是因为账户列表要显示
+    -- 「还差多少过关」，不能每张卡片都去扫一遍成交。升级换阶段时清零。
+    max_day_net_balance  TEXT NOT NULL,
     balance              TEXT NOT NULL,  -- 当前余额 = base_balance + 本阶段已实现净额
     stage_started_at     INTEGER NOT NULL,
     -- 起点（2026-10-29）：**模拟时间的零点**，由 PropFirmStartPicker 在开账户时

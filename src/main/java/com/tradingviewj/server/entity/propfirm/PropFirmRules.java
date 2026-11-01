@@ -12,6 +12,7 @@ import lombok.NoArgsConstructor;
 import lombok.Setter;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.util.List;
 
 /**
@@ -119,6 +120,36 @@ public class PropFirmRules {
         this.minProfitDays = minProfitDays;
         this.profitDayThreshold = profitDayThreshold;
         this.positionTiers = positionTiers == null ? List.of() : List.copyOf(positionTiers);
+    }
+
+    /**
+     * 一致性抬高之后的<strong>真实通关目标</strong>：{@code max(profitTarget, 单日最大净盈利 / 一致性比例)}。
+     *
+     * <p>例：目标 3000、一致性 40%、某天赚了 2750 → 目标被抬到 6875
+     * （2750 / 0.4）。只要后面继续赚，这个比值自然降下来 —— 这就是「继续交易直到
+     * 单日占比降回 40% 以下」的算术表达，不需要一个"违规了"的中间状态。
+     *
+     * <p><strong>公式只在这里写一次。</strong>推进（{@code PropFirmSession}）用它判达标，
+     * 账户实体（{@link PropFirmAccount#getEffectiveProfitTarget()}）用它回答界面 ——
+     * 两处各写一遍迟早会在舍入或退化分支上分叉，而分叉的是「还差多少过关」。
+     *
+     * @param maxDayNet 本阶段<strong>单日净盈利</strong>的最大值（已扣手续费）；{@code null} / 非正 = 还没赚过
+     * @return {@code null} = 这套规则没有盈利目标（FUNDED / PAYOUT）
+     */
+    public BigDecimal effectiveProfitTarget(BigDecimal maxDayNet) {
+        BigDecimal target = this.profitTarget;
+        BigDecimal ratio = this.consistencyRatio;
+        if (ratio == null || ratio.signum() <= 0) {
+            return target;
+        }
+        if (maxDayNet == null || maxDayNet.signum() <= 0) {
+            return target;
+        }
+        BigDecimal need = maxDayNet.divide(ratio, 2, RoundingMode.HALF_UP);
+        if (target == null) {
+            return need;
+        }
+        return need.compareTo(target) > 0 ? need : target;
     }
 
     /**

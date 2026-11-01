@@ -115,6 +115,20 @@ public class PropFirmAccount extends BaseEntity {
     @Column(nullable = false)
     private BigDecimal eodPeakBalance;
 
+    /**
+     * 本阶段<strong>单日净盈利的最大值</strong>（已扣手续费）。一致性规则的输入，升级时重置。
+     *
+     * <p>和 {@link #eodPeakBalance} 是同一个性质的<strong>缓存</strong>：真值在「本阶段成交」
+     * 里，权威算出来的是 {@code PropFirmSession#maxDayNet()}（只在日终更新 —— 当天的净额
+     * 要等这一天收完才算数）。之所以存下来而不是每次现算：账户列表要显示「一致性把目标抬到多少」，
+     * 每个账户都去扫一遍成交流水不值当。
+     *
+     * <p>⚠️ 少了这一列，界面只能显示模板上的静态目标（3000），而真实通关目标可能是
+     * 单日最大净盈利 / 一致性比例（2750 / 0.4 = 6875）—— 人会以为「还差 40 就过关」。
+     */
+    @Column(nullable = false)
+    private BigDecimal maxDayNetBalance;
+
     /** 当前余额 = {@link #baseBalance} + 本阶段已实现净额（已扣手续费）。 */
     @Column(nullable = false)
     private BigDecimal balance;
@@ -219,6 +233,7 @@ public class PropFirmAccount extends BaseEntity {
         account.rules = template.getRules().copy();
         account.baseBalance = template.getRules().getAccountSize();
         account.eodPeakBalance = account.baseBalance;
+        account.maxDayNetBalance = BigDecimal.ZERO;
         account.balance = account.baseBalance;
         account.stageStartedAt = now;
         account.status = Status.ACTIVE;
@@ -295,11 +310,27 @@ public class PropFirmAccount extends BaseEntity {
     }
 
     /**
-     * 把权威实现（{@code service.PropFirmSession}）算出来的余额和峰值同步过来。
+     * 界面该显示的<strong>真实盈利目标</strong> —— 已经过一致性抬高。
      *
-     * <p>这两个列是<strong>缓存</strong>：真值在「成交流水 + 规则快照」里，
+     * <p>不是模板上的 {@code rules.profitTarget}：单日赚 2750、一致性 40% 时，
+     * 目标是 6875 而不是 3000。公式在 {@link PropFirmRules#effectiveProfitTarget}
+     * 一处，这里只补上本阶段的单日最大值（{@link #maxDayNetBalance}）。
+     *
+     * <p>{@code null} = 这个阶段没有盈利目标（FUNDED / PAYOUT）。
+     */
+    public BigDecimal getEffectiveProfitTarget() {
+        if (rules == null) {
+            return null;
+        }
+        return rules.effectiveProfitTarget(maxDayNetBalance);
+    }
+
+    /**
+     * 把权威实现（{@code service.PropFirmSession}）算出来的余额、峰值和单日最大净盈利同步过来。
+     *
+     * <p>这三列是<strong>缓存</strong>：真值在「阶段起点 + 成交流水 + 规则快照」里，
      * 任何时候都可以从阶段起点重算一遍。写成缓存而不是每次现算，是因为界面上
-     * 「还剩多少回撤」要显示在每一根 K 线上，每根都扫一遍成交不划算。
+     * 「还剩多少回撤」「一致性把目标抬到多少」要显示在每一根 K 线上，每根都扫一遍成交不划算。
      *
      * <p><strong>这是修改余额的唯一入口，而且只用来「追平一个已经算好的结果」。</strong>
      * 曾经有一个 {@code applyNetPnl(netPnl)} 做增量累加，已经删掉 —— 它和这里
@@ -307,13 +338,18 @@ public class PropFirmAccount extends BaseEntity {
      * （开仓的已实现盈亏是 0、净额是 {@code -commission}，只在平仓时累加就只扣了一半）。
      *
      * <p>想让余额变，正确做法是产生成交，然后重算并调这个方法。
+     *
+     * @param maxDayNet 本阶段单日净盈利的最大值；{@code null} = 这次没算（保持原值）
      */
-    public void syncComputed(BigDecimal balance, BigDecimal eodPeak) {
+    public void syncComputed(BigDecimal balance, BigDecimal eodPeak, BigDecimal maxDayNet) {
         if (balance != null) {
             this.balance = Money.round(balance);
         }
         if (eodPeak != null) {
             this.eodPeakBalance = Money.round(eodPeak);
+        }
+        if (maxDayNet != null) {
+            this.maxDayNetBalance = Money.round(maxDayNet);
         }
     }
 
@@ -352,6 +388,9 @@ public class PropFirmAccount extends BaseEntity {
             this.rules = next.getRules().copy();
             this.baseBalance = next.getRules().getAccountSize();
             this.eodPeakBalance = this.baseBalance;
+            // 单日最大净盈利是"这一阶段"的统计量：换阶段即换一本账，不清零会拿上一阶段的
+            // 2750 去抬新阶段的目标（而那笔钱早被拨回账户规模了）。
+            this.maxDayNetBalance = BigDecimal.ZERO;
             this.balance = this.baseBalance;
         }
         this.stageStartedAt = at;

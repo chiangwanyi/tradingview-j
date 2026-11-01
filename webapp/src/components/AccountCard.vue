@@ -2,7 +2,14 @@
 import { computed } from 'vue'
 
 import Icon from './Icon.vue'
-import { lossLine, shortInstant, shortTime, targetProgress } from '@/data/accounts'
+import {
+  lossLine,
+  profitTarget,
+  shortInstant,
+  shortTime,
+  targetProgress,
+  targetRaised,
+} from '@/data/accounts'
 import type { Account } from '@/data/accounts'
 import { drawdownLabel, pct, stageLabel, usd } from '@/data/rules'
 
@@ -11,14 +18,21 @@ import { drawdownLabel, pct, stageLabel, usd } from '@/data/rules'
  *
  * 卡片只留两个入口：继续交易 / 详情。升级、改名、删除、阶段流水全在详情页 ——
  * 卡片是「一眼看进度」的地方，写操作不该跟数字抢位置。
+ *
+ * ⚠️ 盈利目标一律用 `profitTarget(a)`（后端算好的**一致性抬升后**的值），
+ * 不能用 `a.rules.profitTarget`：单日赚 2750、一致性 40% 时真实目标是 6875，
+ * 而模板上写的是 3000 —— 拿模板的值会显示「还差 40 就过关」，那是错的。
  */
 const props = defineProps<{ a: Account; busy?: boolean }>()
 const emit = defineEmits<{ detail: [id: string]; settle: [id: string] }>()
 
+const target = computed(() => profitTarget(props.a))
 const progress = computed(() => targetProgress(props.a))
 const gained = computed(() => props.a.balance - props.a.baseBalance)
 /** 亏损线：口径和交易页一致（含冻结水位），见 `data/accounts.ts` 的 `lossLine`。 */
 const floor = computed(() => lossLine(props.a))
+/** 目标被一致性抬高了：副行要说明来源，否则「目标怎么突然变了」会变成一个疑问。 */
+const raised = computed(() => targetRaised(props.a))
 
 // ---- 继续交易 ----
 /**
@@ -89,10 +103,14 @@ function onTrade(): void {
       <div>
         <p class="text-[11px] tracking-wider text-faint uppercase">盈利目标</p>
         <p class="tnum text-[18px] leading-tight font-semibold text-ink">
-          {{ usd(a.rules.profitTarget) }}
+          {{ usd(target) }}
         </p>
         <p class="tnum text-[11px] text-faint">
-          {{ a.rules.profitTarget == null ? '本阶段无目标' : `还差 ${usd(Math.max(0, a.rules.profitTarget - gained))}` }}
+          {{ target == null ? '本阶段无目标' : `还差 ${usd(Math.max(0, target - gained))}` }}
+        </p>
+        <!-- 一致性抬升：目标 > 模板上的那个数时说明原因，否则会被当成 bug -->
+        <p v-if="raised" class="tnum text-[11px] text-accent-ink" title="单日最大净盈利 ÷ 一致性比例">
+          一致性抬升 · 单日最大 {{ usd(a.maxDayNetBalance) }}
         </p>
       </div>
       <div>
@@ -119,7 +137,7 @@ function onTrade(): void {
       <div class="mt-1 flex justify-between text-[10px] tracking-wider text-faint uppercase tnum">
         <span>起点 {{ usd(a.baseBalance) }}</span>
         <span>{{ pct(progress) }}</span>
-        <span>目标 {{ usd(a.baseBalance + (a.rules.profitTarget ?? 0)) }}</span>
+        <span>目标 {{ usd(a.baseBalance + (target ?? 0)) }}</span>
       </div>
     </div>
 

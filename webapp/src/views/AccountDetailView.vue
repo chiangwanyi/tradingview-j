@@ -4,7 +4,7 @@ import { computed, onMounted, ref } from 'vue'
 import Icon from '@/components/Icon.vue'
 import TradingCalendar from '@/components/TradingCalendar.vue'
 import * as api from '@/data/accounts'
-import { lossLine, shortInstant, shortTime } from '@/data/accounts'
+import { lossLine, profitTarget, shortInstant, shortTime, targetRaised } from '@/data/accounts'
 import type { Account, DayPnl, StageLog } from '@/data/accounts'
 import { drawdownLabel, pct, stageLabel, usd } from '@/data/rules'
 import { errorText } from '@/data/store'
@@ -37,6 +37,13 @@ const busy = ref(false)
 const gained = computed(() => (a.value ? a.value.balance - a.value.baseBalance : 0))
 /** 亏损线：口径和交易页一致（含冻结水位），见 `data/accounts.ts` 的 `lossLine`。 */
 const floor = computed(() => (a.value ? lossLine(a.value) : null))
+/**
+ * **真实**盈利目标（一致性抬高之后）。不用 `a.rules.profitTarget`：
+ * 单日赚 2750、一致性 40% 时目标是 6875，模板上那个 3000 会让人以为还差 40 就过关。
+ */
+const target = computed(() => (a.value ? profitTarget(a.value) : null))
+/** 目标被一致性抬高了：规则快照那块要同时给出模板值和抬升来源。 */
+const raised = computed(() => (a.value ? targetRaised(a.value) : false))
 
 /**
  * 进度条的三段：**左端 = 亏损线，右端 = 目标**，填充到当前余额。
@@ -50,10 +57,10 @@ const floor = computed(() => (a.value ? lossLine(a.value) : null))
 const bar = computed(() => {
   const acc = a.value
   if (!acc) return null
-  const hasTarget = acc.rules.profitTarget != null
+  const hasTarget = target.value != null
   const start = floor.value ?? acc.baseBalance
   const end = hasTarget
-    ? acc.baseBalance + (acc.rules.profitTarget ?? 0)
+    ? acc.baseBalance + (target.value ?? 0)
     : Math.max(acc.eodPeakBalance, acc.balance, start)
   const span = end - start
   const fill = span > 0 ? Math.min(1, Math.max(0, (acc.balance - start) / span)) : 0
@@ -65,11 +72,11 @@ const buffer = computed(() =>
   a.value && floor.value != null ? Math.round((a.value.balance - floor.value) * 100) / 100 : null,
 )
 
-/** 距目标还差多少；没有目标就是 null。 */
+/** 距目标还差多少；没有目标就是 null。目标用一致性抬高后的真实值。 */
 const remaining = computed(() => {
-  const acc = a.value
-  if (!acc || acc.rules.profitTarget == null) return null
-  return Math.max(0, Math.round((acc.rules.profitTarget - gained.value) * 100) / 100)
+  const t = target.value
+  if (t == null) return null
+  return Math.max(0, Math.round((t - gained.value) * 100) / 100)
 })
 
 /** `+$52.50` / `-$40.00`：金额一律带符号，颜色只是辅助。 */
@@ -285,7 +292,10 @@ function openTrade(): void {
               {{ bar.hasTarget ? usd(remaining) : usd(a.eodPeakBalance) }}
             </p>
             <p class="tnum text-[11px] text-faint">
-              {{ bar.hasTarget ? `盈利目标 ${usd(a.rules.profitTarget)}` : '跟踪回撤的基准' }}
+              {{ bar.hasTarget ? `盈利目标 ${usd(target)}` : '跟踪回撤的基准' }}
+            </p>
+            <p v-if="raised" class="tnum text-[11px] text-accent-ink">
+              一致性抬升 · 单日最大 {{ usd(a.maxDayNetBalance) }}
             </p>
           </div>
         </div>
@@ -303,9 +313,12 @@ function openTrade(): void {
         </div>
         <div>
           <p class="text-[11px] tracking-wider text-faint uppercase">盈利目标</p>
-          <p class="tnum text-[18px] leading-tight font-semibold text-ink">{{ usd(a.rules.profitTarget) }}</p>
+          <p class="tnum text-[18px] leading-tight font-semibold text-ink">{{ usd(target) }}</p>
           <p class="tnum text-[11px] text-faint">
-            {{ a.rules.profitTarget == null ? '本阶段无目标' : `还差 ${usd(remaining)}` }}
+            {{ target == null ? '本阶段无目标' : `还差 ${usd(remaining)}` }}
+          </p>
+          <p v-if="raised" class="tnum text-[11px] text-accent-ink" title="单日最大净盈利 ÷ 一致性比例">
+            模板 {{ usd(a.rules.profitTarget) }} → 抬到 {{ usd(target) }}
           </p>
         </div>
         <div>
@@ -321,6 +334,7 @@ function openTrade(): void {
           <p class="tnum text-[11px] text-faint">
             {{ a.rules.minProfitDays == null ? '不查盈利日' : `盈利日 ${a.rules.minProfitDays} 天` }}
           </p>
+          <p class="tnum text-[11px] text-faint">单日最大 {{ usd(a.maxDayNetBalance) }}</p>
         </div>
       </div>
 

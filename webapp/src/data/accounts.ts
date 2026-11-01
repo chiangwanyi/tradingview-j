@@ -34,6 +34,22 @@ export interface Account {
   baseBalance: number
   /** 本阶段「日终余额」历史最高，跟踪回撤靠它。 */
   eodPeakBalance: number
+  /**
+   * 本阶段**单日净盈利的最大值**（已扣手续费）。一致性规则的输入。
+   *
+   * 后端在日终结算时写回（`PropFirmSession#maxDayNet`），所以它是一个缓存的统计量，
+   * 和 `eodPeakBalance` 同一个性质 —— 当天没结算之前，这一天还不参与「最大」。
+   */
+  maxDayNetBalance: number
+  /**
+   * **真实**盈利目标 = max(rules.profitTarget, 单日最大净盈利 / 一致性比例)。
+   *
+   * 后端算好发过来（`PropFirmAccount#getEffectiveProfitTarget()`），前端**不要自己算**：
+   * 单日赚 2750、一致性 40% 时目标是 6875，而 `rules.profitTarget` 还是 3000 ——
+   * 拿那个数显示就会得出「还差 40 就过关」的错结论。
+   * `null`（被 non_null 省掉 = undefined）表示本阶段没有盈利目标（FUNDED / PAYOUT）。
+   */
+  effectiveProfitTarget?: number | null
   balance: number
   /** 进入当前阶段的时刻（ISO 字符串）。 */
   stageStartedAt: string
@@ -154,9 +170,28 @@ export interface DayTrade {
  */
 export const calendar = (id: string): Promise<DayPnl[]> => call(`${BASE}/${id}/calendar`)
 
+/**
+ * 当前该拿哪个数当「盈利目标」：**一致性抬高之后的目标**（后端给的 `effectiveProfitTarget`）。
+ *
+ * 退化到 `rules.profitTarget` 只发生在后端还没升级的时候 —— 那时至少显示模板目标，
+ * 而不是空白。`null` = 本阶段没有目标（FUNDED / PAYOUT），调用方要自己处理。
+ */
+export function profitTarget(a: Account): number | null {
+  const effective = a.effectiveProfitTarget
+  if (effective != null) return effective
+  return a.rules.profitTarget ?? null
+}
+
+/** 一致性把目标抬高了吗？（抬高了界面上要说明「为什么不是模板上那个 3000」） */
+export function targetRaised(a: Account): boolean {
+  const base = a.rules.profitTarget
+  const real = profitTarget(a)
+  return base != null && real != null && real > base + 0.005
+}
+
 /** 卡片上的进度：本阶段已赚到目标的几成。没有盈利目标（FUNDED / PAYOUT）返回 null。 */
 export function targetProgress(a: Account): number | null {
-  const target = a.rules.profitTarget
+  const target = profitTarget(a)
   if (target == null || target <= 0) return null
   const gained = a.balance - a.baseBalance
   return Math.min(1, Math.max(0, gained / target))

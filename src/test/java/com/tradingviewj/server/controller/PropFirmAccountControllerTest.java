@@ -154,7 +154,7 @@ class PropFirmAccountControllerTest {
     void settleDayDelegatesToDeskAndReturnsAccount() throws Exception {
         PropFirmAccount settled = evalAccount();
         settled.advanceBarTime("2024-03-05 09:00");
-        settled.syncComputed(new BigDecimal("51200"), new BigDecimal("51200"));
+        settled.syncComputed(new BigDecimal("51200"), new BigDecimal("51200"), BigDecimal.ZERO);
         when(desk.settleTradingDay("a1")).thenReturn(settled);
 
         mvc.perform(post("/api/pf-accounts/a1/settle-day"))
