@@ -135,6 +135,13 @@ public final class PropFirmSession {
             throw new IllegalArgumentException("K 线不能为空");
         }
         if (state != Event.RUNNING) {
+            // 会话已经终态，但盘面还在往后走（考挂之后照样能一页页翻历史），
+            // **成交仍然要记账**：撞线之后才有成交是常态 —— 收摊那笔平仓就落在「判定那根之后的
+            // 下一根」上。这里若直接返回，那笔成交进了库却永远进不了余额，
+            // 于是账上出现「已经失败、余额却还在亏损线之上」的自相矛盾。
+            //
+            // 只补余额 / 当日净额，不重判：终态是终态，权益再高也不复活。
+            applyTradesUpTo(bar.barTime());
             return terminal(bar.barTime());
         }
 
