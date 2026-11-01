@@ -573,6 +573,83 @@ class TradingServiceTest {
     }
 
     /**
+     * 撞线那一刻<strong>自动收摊</strong>：市价平掉持仓、撤光挂单，平仓成交并进那一根。
+     *
+     * <p>为什么必须在判失败<strong>之前</strong>做完：失败之后账户就不能下单了，
+     * 留一个仓位在账上就永远平不掉 —— 余额一直带着浮动盈亏漂，阶段流水里的结束余额也跟着失真。
+     */
+    @Test
+    void stepClosesOutPositionAndOrdersWhenAccountFails() {
+        trading.market(accountId, "buy", new BigDecimal("40"), null);          // 40 手多单 @ 4001
+        trading.place(accountId, "sell", "limit", new BigDecimal("4300.00"), BigDecimal.ONE); // 远处挂单，不成交
+        desk.step(accountId); // 09:05
+        desk.step(accountId); // 09:10
+
+        writeDay("2024-03-05",
+                "2024-03-05 09:00,4000.00,4002.00,3900.00,3901.00,10",
+                "2024-03-05 09:05,3901.00,3910.00,3895.00,3905.00,8");
+        TradingService.Event event = desk.step(accountId);
+
+        BarAdvancedPayload payload = (BarAdvancedPayload) event.payload();
+        assertEquals("FAILED", payload.pf().status());
+        assertEquals("flat", payload.position().side(), "撞线当场市价平仓，仓位不留到失败之后");
+        assertEquals(0, payload.orders().stream().filter(o -> "open".equals(o.status())).count(),
+                "撞线当场撤掉全部挂单");
+        assertEquals(1, payload.fills().size(), "平仓那笔并进这一根，不另发 flat_all");
+        assertMoney("3901.00", payload.fills().get(0).price(), "平在撞线那一根的收盘价");
+        assertEquals("flat", trading.portfolio(accountId).position().side(), "库里也是平的");
+
+        // 判死之后立刻再按【下一根】：这是用户真要做的动作（撞线那一根之后接着复盘）。
+        // 失败是终态，这一根会重新判出 FAILED —— 但不能再"判死一次"，也不能抛。
+        BarAdvancedPayload after = (BarAdvancedPayload) desk.step(accountId).payload();
+        assertEquals("2024-03-05 09:05", after.bar().time(), "撞线之后还能继续往后推 K 线");
+        assertEquals("FAILED", after.pf().status());
+        assertEquals("flat", after.position().side());
+        assertEquals(0, after.fills().size(), "空仓推盘面不再产生成交");
+        assertEquals(PropFirmAccount.Status.FAILED,
+                accountRepo.findById(accountId).orElseThrow().getStatus());
+    }
+
+    /**
+     * 判失败之后账户<strong>仍然打得开、仍然能往后推 K 线</strong>，只有挂单 / 市价单被拒。
+     *
+     * <p>这是 2026-11-01 改的口径：「考挂了」不等于「这一场录像不许再看」。推盘面不改账、
+     * 不改状态，只是「看到哪了」—— 而新单已经被 {@code requireTradable} 拦死了。
+     *
+     * <p>必须验<strong>连推多根</strong>而不是一根：失败是终态，每一根都会重新判出
+     * {@code FAILED}，一旦哪一步忘了「账户已经不 OPEN 就别再判死一次」，第二根就会抛异常
+     * —— 只推一根的用例发现不了这个。
+     */
+    @Test
+    void failedAccountStillLoadsAndStepsButRejectsOrders() {
+        trading.failAccount(accountId);
+
+        com.tradingviewj.server.ws.DeskSnapshot snap = desk.snapshot(accountId);
+        assertEquals("FAILED", snap.status(), "失败的账户也能拿到快照");
+        assertFalse(snap.bars().isEmpty(), "K 线照常给");
+        assertEquals("2024-03-04 09:00", snap.barTime(), "停在撞线/判死那一根");
+
+        assertEquals("bar_advanced", desk.step(accountId).action().wire(), "失败之后还能往后翻一根（复盘）");
+        assertEquals("bar_advanced", desk.step(accountId).action().wire(), "连推第二根也不许抛");
+
+        PropFirmAccount after = accountRepo.findById(accountId).orElseThrow();
+        assertEquals("2024-03-04 09:10", after.getLastBarTime(), "盘面时间真的往前走了两根");
+        assertEquals(PropFirmAccount.Status.FAILED, after.getStatus(), "推盘面不会把账户「救活」");
+        assertEquals(0, tradeRepo.count(), "空仓推盘面不产生任何成交");
+
+        // 走到磁盘上最后一根，报的是「没有下一根」，不是「账户不能操作」
+        BusinessException end = assertThrows(BusinessException.class, () -> desk.step(accountId));
+        assertTrue(end.getMessage().contains("已经是磁盘上最后一根"), end.getMessage());
+
+        BusinessException e = assertThrows(BusinessException.class,
+                () -> trading.market(accountId, "buy", BigDecimal.ONE, null), "失败后不接市价单");
+        assertTrue(e.getMessage().contains("已判失败"), e.getMessage());
+        assertThrows(BusinessException.class,
+                () -> trading.place(accountId, "buy", "limit", new BigDecimal("3998.00"), BigDecimal.ONE),
+                "失败后不接挂单");
+    }
+
+    /**
      * 金额断言：按 {@code compareTo} 比，忽略 scale。
      *
      * <p>{@code BigDecimal.equals} 会把 {@code 12} 和 {@code 12.0000000000} 判成不同 ——

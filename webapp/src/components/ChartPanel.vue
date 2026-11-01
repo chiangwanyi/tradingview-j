@@ -1408,6 +1408,14 @@ function menuOrder(side: Side, quantity = store.orderQuantity): void {
     closeMenu()
     return
   }
+  if (!store.canTrade) {
+    // 失败 / 冻结的账户只能看：后端会拒，但先说清楚，别让人以为菜单坏了
+    showToast(store.pf?.status === 'FAILED'
+      ? '账户已判失败：只能看盘，不能再下单'
+      : '已达标待升级：持仓已平、暂停下单')
+    closeMenu()
+    return
+  }
   const kind = orderKindFor(side, m.price, lastPrice.value)
   store.placeOrder(side, kind, m.price, quantity)
   closeMenu()

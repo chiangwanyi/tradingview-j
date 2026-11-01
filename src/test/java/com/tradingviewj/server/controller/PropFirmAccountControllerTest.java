@@ -6,6 +6,7 @@ import com.tradingviewj.server.entity.propfirm.PropFirmStage;
 import com.tradingviewj.server.entity.propfirm.PropFirmTemplate;
 import com.tradingviewj.server.exception.BusinessException;
 import com.tradingviewj.server.service.PropFirmAccountService;
+import com.tradingviewj.server.service.TradingService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
@@ -41,6 +42,10 @@ class PropFirmAccountControllerTest {
 
     @MockitoBean
     private PropFirmAccountService accounts;
+
+    /** 判失败要和「收摊」一起做，所以这个入口走 {@link TradingService#failAccount}。 */
+    @MockitoBean
+    private TradingService trading;
 
     /** 一个 EVAL 账户：规模 50000、目标 3000，标的 MES。 */
     private static PropFirmAccount evalAccount() {
@@ -123,5 +128,19 @@ class PropFirmAccountControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(0))
                 .andExpect(jsonPath("$.data").doesNotExist());
+    }
+
+    /** 判失败：先收摊（平仓 + 撤单）再置 FAILED，所以必须走 TradingService 的那一条路。 */
+    @Test
+    void failDelegatesToTradingServiceSoPositionIsClosedOut() throws Exception {
+        PropFirmAccount failed = evalAccount();
+        failed.markFailed();
+        when(trading.failAccount("a1")).thenReturn(failed);
+
+        mvc.perform(post("/api/pf-accounts/a1/fail"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("FAILED"));
+
+        verify(trading).failAccount("a1");
     }
 }

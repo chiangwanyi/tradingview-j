@@ -189,8 +189,21 @@ function submitNatrMarket(dir: Side): void {
   store.marketOrder(dir, plan.value.lots, plan.value.stopDistance)
 }
 
+/**
+ * 不能下单的原因（`null` = 能下单）。
+ *
+ * 后端才是判官（`requireTradable` 每次现算），这里只为了把按钮提前关掉并说明为什么 ——
+ * 让用户点下去再收到一条报错，等于把「已判失败」写在错误弹窗里而不是按钮上。
+ */
+const orderBlocked = computed(() => {
+  const pf = store.pf
+  if (pf?.status === 'FAILED') return '账户已判失败（撞了亏损线）：只能看盘，挂单和市价单已禁用'
+  if (pf?.frozen) return '已达标待升级：持仓已平、暂停下单，去账户详情页点「升级」'
+  return null
+})
+
 const natrDisabled = computed(
-  () => !store.canOperate || !inst.value || !plan.value || !(currentPrice.value > 0),
+  () => !store.canOperate || !store.canTrade || !inst.value || !plan.value || !(currentPrice.value > 0),
 )
 
 /**
@@ -410,6 +423,14 @@ const inputClass =
       </div>
 
       <div class="flex flex-col gap-1.5 p-2">
+        <!-- 不能再下单时先说清楚为什么：按钮置灰而不解释，看起来像坏了 -->
+        <p
+          v-if="orderBlocked"
+          class="rounded border border-red-200 bg-red-50 px-1.5 py-1 text-[11px] leading-4 text-red-700"
+        >
+          {{ orderBlocked }}
+        </p>
+
         <div class="grid grid-cols-2 gap-1.5">
           <select v-model="side" :class="inputClass">
             <option value="buy">买入 / 做多</option>
@@ -456,7 +477,8 @@ const inputClass =
           <button
             type="button"
             class="ml-auto rounded bg-amber-600 px-3 py-1 text-[13px] font-medium text-white hover:bg-amber-500 disabled:cursor-not-allowed disabled:opacity-40"
-            :disabled="!store.canOperate || !inst"
+            :disabled="!store.canOperate || !inst || !store.canTrade"
+            :title="orderBlocked ?? '在当前这根 K 线上挂一张限价 / 止损单（本根挂的下一根才撮合）'"
             @click="submit"
           >
             挂单
@@ -472,8 +494,8 @@ const inputClass =
           <button
             type="button"
             class="rounded bg-up px-2 py-1 text-[13px] font-medium whitespace-nowrap text-white transition hover:bg-up/90 disabled:cursor-not-allowed disabled:opacity-40"
-            :disabled="!store.canOperate || !inst || !(currentPrice > 0)"
-            :title="`市价买入 ${store.orderQuantity} 手：按现价 ${priceText} 立即成交，不使用上面填的价格`"
+            :disabled="!store.canOperate || !store.canTrade || !inst || !(currentPrice > 0)"
+            :title="orderBlocked ?? `市价买入 ${store.orderQuantity} 手：按现价 ${priceText} 立即成交，不使用上面填的价格`"
             @click="submitMarket('buy')"
           >
             市价买入 {{ store.orderQuantity }} 手
@@ -481,8 +503,8 @@ const inputClass =
           <button
             type="button"
             class="rounded bg-down px-2 py-1 text-[13px] font-medium whitespace-nowrap text-white transition hover:bg-down/90 disabled:cursor-not-allowed disabled:opacity-40"
-            :disabled="!store.canOperate || !inst || !(currentPrice > 0)"
-            :title="`市价卖出 ${store.orderQuantity} 手：按现价 ${priceText} 立即成交，不使用上面填的价格`"
+            :disabled="!store.canOperate || !store.canTrade || !inst || !(currentPrice > 0)"
+            :title="orderBlocked ?? `市价卖出 ${store.orderQuantity} 手：按现价 ${priceText} 立即成交，不使用上面填的价格`"
             @click="submitMarket('sell')"
           >
             市价卖出 {{ store.orderQuantity }} 手

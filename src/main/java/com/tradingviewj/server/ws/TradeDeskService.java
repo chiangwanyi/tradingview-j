@@ -46,10 +46,16 @@ import java.util.List;
  *
  * <h2>为什么每个动作都要「先读账户再动手」</h2>
  *
- * <p>{@link PropFirmAccountService#requireActive}（下单类动作是 {@code requireTradable}）
- * 是三条业务规则的唯一落点（账户必须存在、必须还在考核中）。绕过它直接读库，
- * 一个已判失败的账户就会继续往后放 K 线、继续写流水 —— 而那些流水事后会被算进它的
- * 交易日和盈利日。
+ * <p>{@link PropFirmAccountService#requireExisting}（下单类动作是 {@code requireTradable}）
+ * 是「账户必须存在」的唯一落点。这里刻意<strong>不按状态拦</strong>：失败的账户仍然要
+ * 打得开、能看盘、能步进、能收尾，只有下单被 {@code requireTradable} 拒绝
+ * （见 {@code PropFirmAccountService} 里两道闸门的分工）。
+ *
+ * <h2>撞线那一刻要收摊</h2>
+ *
+ * <p>判出失败时当根就市价平掉持仓、撤掉全部挂单（{@link TradingService#closeOut}）——
+ * 收摊必须在置 FAILED <strong>之前</strong>做完，因为失败之后账户就不能再下单了，
+ * 留一个仓位在账上就永远平不掉，余额会一直带着浮动盈亏漂。
  *
  * <h2>消息一览</h2>
  *
@@ -91,7 +97,8 @@ public class TradeDeskService {
      */
     @Transactional(readOnly = true)
     public DeskSnapshot snapshot(String accountId) {
-        PropFirmAccount account = accounts.requireActive(accountId);
+        // 失败的账户也要能打开：考挂那一场是复盘素材，锁死等于把录像一起锁了
+        PropFirmAccount account = accounts.requireExisting(accountId);
         SymbolSpec spec = trading.spec(account.getSymbolId());
         String stoppedAt = account.getLastBarTime();
 
@@ -139,7 +146,8 @@ public class TradeDeskService {
      *       触发判定、跳空修正、落成交，全部发生在这一根<strong>揭示之后</strong>；
      *       成交结果直接并进下面那条 {@code bar_advanced}，不另发 {@code order_filled} ——
      *       拆成两条的话，前端会在「K 线到了、成交还没到」的那一帧画出错误的持仓线。</li>
-     *   <li><strong>考核判定</strong>（{@link PropFirmJudge}）：撞线就判失败（终态）；
+     *   <li><strong>考核判定</strong>（{@link PropFirmJudge}）：撞线就<strong>当场收摊
+     *       （市价平仓 + 撤光挂单）再判失败</strong>（终态，之后只能看）；
      *       达标就<strong>当场平仓并冻结</strong>，等用户手动升级。余额和日终峰值在这一步写回账户。</li>
      *   <li>写 {@code BAR_ADVANCED} 流水（payload = 广播内容，见 {@link BarAdvancedPayload}）；</li>
      *   <li>返回给 Handler 广播。</li>
@@ -152,7 +160,7 @@ public class TradeDeskService {
      */
     @Transactional
     public TradingService.Event step(String accountId) {
-        PropFirmAccount account = accounts.requireActive(accountId);
+        PropFirmAccount account = accounts.requireExisting(accountId);
         SymbolSpec spec = trading.spec(account.getSymbolId());
         String stoppedAt = account.getLastBarTime();
 
@@ -176,9 +184,17 @@ public class TradeDeskService {
 
         // 考核判定：只在「推进一根」时发生（收盘余额、跨日结算、撞线都落在这里）
         PropFirmJudge.State state = judge.assess(account);
-        if (state.failed()) {
-            // 撞线是终态：账户置 FAILED，本根 K 线照常发出去（人得看见是哪一根要了他的命）
+        if (state.failed() && account.isOpen()) {
+            // 撞线是终态。顺序：先收摊（市价平仓 + 撤单），再置 FAILED，最后重放一遍拿余额。
+            // 收摊必须在置 FAILED 之前 —— 失败之后就不能下单了，留个仓位就永远平不掉。
+            TradingService.CloseOut out = trading.closeOut(account);
+            if (out.closeTrade() != null) {
+                // 平仓成交并进这一根：不另发 flat_all，前端就不会在「K 线到了、仓位还在」那一帧画错
+                fills.add(TradeView.of(out.closeTrade()));
+            }
+            state = judge.assess(account);
             accounts.fail(accountId, state.session());
+            // 本根 K 线照常发出去：人得看见是哪一根要了他的命
         } else if (state.frozen()) {
             // 达标即冻结：先平仓（真实考核在通过那一刻就收手），再禁新单。
             // 禁新单不写任何标志位 —— 它由 requireTradable 现算（见 PropFirmJudge#requireNotFrozen），

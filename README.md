@@ -173,6 +173,11 @@ append-only、每行带 `symbol_id` + `bar_time`）→ 快照层（当前值）�
   `trailing_lock_level` 冻结水位，自己算会算虚高）。
 - **达标即冻结**：日终判出达标 → 当根市价平仓 + 撤掉全部挂单 + 拒绝新单（`requireNotFrozen` 现算，
   **不存标志位**），用户到账户页手动点「升级」。
+- **撞线即收摊**：判出失败那一刻**先**市价平掉持仓 + 撤光挂单（`TradingService#closeOut`，和「一键
+  退仓」共用同一份实现），**再**置 `FAILED` —— 顺序不能反，失败之后就不能下单了，留个仓位就永远平不掉。
+  平仓那笔成交并进撞线那一条 `bar_advanced`，不另发 `flat_all`。
+- **失败≠冻结整页**：`FAILED` 只关「下单」这一件事（`requireTradable` 现算）。看盘、画线、录音、
+  改盘面时间（【下一根】）、撤单、退仓一律照旧（`requireExisting`），因为考挂那一场本身就是复盘素材。
 - **手数分档只属于 FUNDED**（利润 0→20 / 1000→30 / 2000→40），EVAL 固定上限 40。`PAYOUT` 只是「不能再
   下单」，账户仍 ACTIVE → `Status` 只有 ACTIVE / FAILED。
 

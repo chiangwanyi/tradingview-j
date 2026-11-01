@@ -126,10 +126,12 @@ public class TradingService {
      *
      * <p>没有仓位、没有成交时返回空数组而不是 null / 省略字段：前端拿到的一定是
      * 「确实是空的」，不是「没给我」。
+     *
+     * <p>失败的账户照样能读（{@code requireExisting}）：账是事实，不会因为账户考挂了就看不见。
      */
     @Transactional(readOnly = true)
     public Portfolio portfolio(String accountId) {
-        PropFirmAccount account = accounts.requireActive(accountId);
+        PropFirmAccount account = accounts.requireExisting(accountId);
         return portfolio(account);
     }
 
@@ -268,14 +270,14 @@ public class TradingService {
      * 已成交的单撤不掉（那是成交，不是撤销），已撤销的再撤一次也不成立 ——
      * 两种情况都报错，而不是静默成功：静默成功会让「撤单按钮坏了」和「它本来就没了」分不清。
      *
-     * <p>用 {@code requireActive} 而不是 {@code requireTradable}：PAYOUT 阶段不能再开新仓，
-     * 但撤掉一张旧挂单是<strong>减少</strong>风险，没有理由拒绝。
+     * <p>用 {@code requireExisting} 而不是 {@code requireTradable}：撤掉一张旧挂单是
+     * <strong>减少</strong>风险，PAYOUT 阶段、甚至判失败之后都没有理由拒绝。
      *
      * @throws BusinessException 账户不存在 / 单据不属于这个账户 / 单据当前不是 OPEN
      */
     @Transactional
     public Event cancel(String accountId, String orderId) {
-        PropFirmAccount account = accounts.requireActive(accountId);
+        PropFirmAccount account = accounts.requireExisting(accountId);
         TradeOrder order = requireOrder(account, orderId);
         if (!order.isOpen()) {
             throw new BusinessException("这张单当前是 " + order.getStatus() + "，撤不了"
@@ -303,7 +305,7 @@ public class TradingService {
      */
     @Transactional
     public Event move(String accountId, String orderId, BigDecimal price) {
-        PropFirmAccount account = accounts.requireActive(accountId);
+        PropFirmAccount account = accounts.requireExisting(accountId);
         TradeOrder order = requireOrder(account, orderId);
         if (!order.isOpen()) {
             throw new BusinessException("这张单当前是 " + order.getStatus() + "，不能改价");
@@ -325,6 +327,16 @@ public class TradingService {
     }
 
     /**
+     * 「收摊」的结果：平掉的那张市价单 + 它的成交（本来就空仓时两个都是 {@code null}）+ 撤掉的挂单张数。
+     *
+     * @param closeOrder      平仓用的那张市价单；{@code null} = 当时没有仓位（或者连收盘价都读不到）
+     * @param closeTrade      那张单的成交，广播里用它
+     * @param cancelledOrders 撤掉的挂单张数
+     */
+    public record CloseOut(TradeOrder closeOrder, Trade closeTrade, int cancelledOrders) {
+    }
+
+    /**
      * 一键退仓：按现价平掉整个仓位，并撤掉<strong>全部</strong>挂单。
      *
      * <p>顺序是<strong>先平仓、后撤单</strong>，理由是失败时不留半截状态：平仓是唯一可能失败的
@@ -337,48 +349,28 @@ public class TradingService {
      * <p>空仓 + 零挂单时报错而不是静默成功：那种静默会让「按钮没反应」和
      * 「真的没事可做」分不清。
      *
+     * <p>用 {@code requireExisting} 而不是 {@code requireTradable}：退仓是<strong>减少</strong>风险，
+     * 失败 / PAYOUT 的账户也该能收尾。
+     *
      * @throws BusinessException 什么都没有可退 / 盘面没有可成交的收盘价
      */
     @Transactional
     public Event flatAll(String accountId) {
-        PropFirmAccount account = accounts.requireActive(accountId);
+        PropFirmAccount account = accounts.requireExisting(accountId);
         SymbolSpec spec = spec(account.getSymbolId());
         List<Trade> history = new ArrayList<>(
                 tradeRepo.findByAccountIdOrderByBarTimeAscSeqAsc(accountId));
-        Position position = TradeLedger.replay(history, pointValue(spec)).position();
 
-        TradeOrder closeOrder = null;
-        Trade closeTrade = null;
-        if (!position.isFlat()) {
-            Bar bar = currentBar(account, spec);
-            BigDecimal price = TradingEngine.roundPrice(bar.close(), spec.tick());
-            if (price.signum() <= 0) {
-                throw new BusinessException("当前 K 线（" + bar.barTime() + "）没有可成交的收盘价，退不了仓");
-            }
-            Side side = position.quantity().signum() > 0 ? Side.SELL : Side.BUY;
-            closeOrder = TradeOrder.place(accountId, spec.code(), side, TradeOrder.Type.MARKET, price,
-                    position.quantity().abs(), bar.barTime());
-            closeOrder.markFilled(bar.barTime(), price);
-            orderRepo.save(closeOrder);
-            closeTrade = recordFill(account, spec, closeOrder, price, bar.barTime(), history);
-        }
-
-        int cancelled = 0;
-        for (TradeOrder order : orderRepo.findByAccountIdAndStatusOrderByPlacedAtBarAsc(
-                accountId, TradeOrder.Status.OPEN)) {
-            order.cancel();
-            orderRepo.save(order);
-            cancelled++;
-        }
-        if (closeOrder == null && cancelled == 0) {
+        CloseOut out = closeOut(account, spec, history, true);
+        if (out.closeOrder() == null && out.cancelledOrders() == 0) {
             throw new BusinessException("现在既没有仓位、也没有挂单，不用退仓");
         }
 
         Portfolio book = book(account, spec, history);
         FlatAllPayload payload = new FlatAllPayload(
-                closeOrder == null ? null : OrderView.of(closeOrder),
-                closeTrade == null ? null : TradeView.of(closeTrade),
-                cancelled,
+                out.closeOrder() == null ? null : OrderView.of(out.closeOrder()),
+                out.closeTrade() == null ? null : TradeView.of(out.closeTrade()),
+                out.cancelledOrders(),
                 book.orders(),
                 book.trades(),
                 book.closedLots(),
@@ -389,8 +381,48 @@ public class TradingService {
         String barTime = requireBarTime(account);
         AuditEvent event = audit.append(accountId, spec.code(), barTime, Actor.HUMAN, payload);
         log.info("账户 {} 一键退仓：平 {} 手，撤 {} 张挂单（seq={}）",
-                accountId, closeTrade == null ? 0 : closeTrade.getQuantity(), cancelled, event.getSeq());
+                accountId, out.closeTrade() == null ? 0 : out.closeTrade().getQuantity(),
+                out.cancelledOrders(), event.getSeq());
         return new Event(accountId, payload.action(), payload, event.getSeq());
+    }
+
+    /**
+     * 判失败并收摊：<strong>先市价平掉持仓 + 撤掉全部挂单，再置 FAILED</strong>。
+     *
+     * <p>顺序不能反：收摊要做的事（读盘面拿成交价、写一笔平仓成交、封掉交易记录）在语义上都属于
+     * 「这个账户还能交易的最后一刻」；一旦置了 FAILED，账户就只剩「看」的权限了。
+     * 先判死再收摊，等于让收摊去走一条已经被自己关掉的路。
+     *
+     * <p>先收摊还有一个更硬的理由：<strong>失败之后没人能再替你平仓</strong>。
+     * 失败账户不能再下市价单，一个留在账上的仓位就永远平不掉、余额永远带着浮盈浮亏，
+     * 后面所有读数（余额、回撤、阶段流水里的结束余额）都会跟着漂。
+     *
+     * @return 置为 FAILED 后的账户
+     */
+    @Transactional
+    public PropFirmAccount failAccount(String accountId) {
+        PropFirmAccount account = accounts.requireActive(accountId);
+        closeOut(account);
+        // 平仓会改余额：判定必须在收摊之后重放一遍，阶段流水里记的才是真的结束余额
+        PropFirmJudge.State state = judge.assess(account);
+        judge.settle(account, state);
+        return accounts.fail(accountId, state.session());
+    }
+
+    /**
+     * 收摊：市价平掉整个仓位 + 撤掉全部挂单，<strong>不改账户状态</strong>。
+     *
+     * <p>行情读不到（账户停的那根没有日文件 / 被清理）时<strong>只撤单、不平仓</strong>并记一条
+     * warn，<strong>不抛异常</strong>：这个入口出现在「判失败」的路径上，
+     * 因为行情缺失而判不了失败，会让账户卡在一个既没死也没活的状态上 —— 那比留一个
+     * 平不掉的仓位更糟（账户已经不能下单，仓位只影响显示）。
+     */
+    @Transactional
+    public CloseOut closeOut(PropFirmAccount account) {
+        SymbolSpec spec = spec(account.getSymbolId());
+        List<Trade> history = new ArrayList<>(
+                tradeRepo.findByAccountIdOrderByBarTimeAscSeqAsc(account.getId()));
+        return closeOut(account, spec, history, false);
     }
 
     // ------------------------------------------------------------------
@@ -465,6 +497,53 @@ public class TradingService {
     // ------------------------------------------------------------------
     // 内部
     // ------------------------------------------------------------------
+
+    /**
+     * 平仓 + 撤单的实际动作，<strong>全类唯一一份</strong>。
+     *
+     * <p>「一键退仓」和「判失败收摊」都走这里：两条路如果各写一遍，总有一天会出现
+     * 「退仓按收盘价、失败按别的价」这种两套口径，而那时没有任何办法判断谁对。
+     *
+     * <p>先平后撤的理由见 {@link #flatAll}。{@code strict} 决定「读不到当前收盘价」时
+     * 怎么办：退仓必须报错（用户按了按钮，得知道没成），收摊则降级成只撤单（见
+     * {@link #closeOut(PropFirmAccount)}）。
+     *
+     * @param history 调用方持有的成交流水，会被原地追加（平仓那一笔）
+     */
+    private CloseOut closeOut(PropFirmAccount account, SymbolSpec spec,
+                              List<Trade> history, boolean strict) {
+        Position position = TradeLedger.replay(history, pointValue(spec)).position();
+        TradeOrder closeOrder = null;
+        Trade closeTrade = null;
+        if (!position.isFlat()) {
+            Bar bar = strict ? currentBar(account, spec) : barOrNull(account, spec);
+            BigDecimal price = bar == null ? null : TradingEngine.roundPrice(bar.close(), spec.tick());
+            if (price == null || price.signum() <= 0) {
+                if (strict) {
+                    throw new BusinessException("账户停在 " + account.getLastBarTime()
+                            + "，但读不到这一根 K 线的收盘价（那天没抓 / 被清理）：退不了仓");
+                }
+                log.warn("账户 {} 手里还有 {} 手，但停在 {} 读不到收盘价：这次收摊只撤单、不平仓",
+                        account.getId(), position.quantity().toPlainString(), account.getLastBarTime());
+            } else {
+                Side side = position.quantity().signum() > 0 ? Side.SELL : Side.BUY;
+                closeOrder = TradeOrder.place(account.getId(), spec.code(), side, TradeOrder.Type.MARKET,
+                        price, position.quantity().abs(), bar.barTime());
+                closeOrder.markFilled(bar.barTime(), price);
+                orderRepo.save(closeOrder);
+                closeTrade = recordFill(account, spec, closeOrder, price, bar.barTime(), history);
+            }
+        }
+
+        int cancelled = 0;
+        for (TradeOrder order : orderRepo.findByAccountIdAndStatusOrderByPlacedAtBarAsc(
+                account.getId(), TradeOrder.Status.OPEN)) {
+            order.cancel();
+            orderRepo.save(order);
+            cancelled++;
+        }
+        return new CloseOut(closeOrder, closeTrade, cancelled);
+    }
 
     /**
      * 记一笔成交并落库。

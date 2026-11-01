@@ -290,6 +290,22 @@ export const useTradeStore = defineStore('trade', () => {
   const canOperate = computed(() => true)
   const isOperator = computed(() => true)
 
+  /**
+   * 还能不能下单（挂单 / 市价）。
+   *
+   * 两种情况置灰：**已判失败**（撞了亏损线）和**已达标待升级**（冻结）。
+   * 判官始终是后端（`requireTradable` 每次现算），这里只是把按钮提前关掉 ——
+   * 少了它，用户点下去只会收到一条报错，而报错里那句「已判失败」本来应该在按钮上就看见。
+   *
+   * ⚠️ 它**只**管下单。看盘、画线、撤单、退仓、往后翻 K 线在失败的账户上照常可用：
+   * 考挂了不等于这一场的录像不许再看。
+   */
+  const canTrade = computed(() => {
+    const p = pf.value
+    if (!p) return false
+    return p.status !== 'FAILED' && !p.frozen
+  })
+
   const openOrders = computed(() => (instance.value?.orders ?? []).filter((o) => o.status === 'open'))
 
   const atrValue = computed<number | null>(() => {
@@ -904,6 +920,7 @@ export const useTradeStore = defineStore('trade', () => {
     pendingAction,
     accountBarTime,
     pf,
+    canTrade,
     displayBars,
     timeframe,
     setTimeframe,

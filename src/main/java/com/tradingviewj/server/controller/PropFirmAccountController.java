@@ -6,6 +6,7 @@ import com.tradingviewj.server.dto.PropFirmCursorRequest;
 import com.tradingviewj.server.entity.propfirm.PropFirmAccount;
 import com.tradingviewj.server.entity.propfirm.PropFirmStageLog;
 import com.tradingviewj.server.service.PropFirmAccountService;
+import com.tradingviewj.server.service.TradingService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
@@ -42,6 +43,15 @@ import java.util.List;
 public class PropFirmAccountController {
 
     private final PropFirmAccountService accounts;
+
+    /**
+     * 判失败要连同「收摊」一起做（市价平仓 + 撤单），而收摊是账务动作，
+     * 实现和「一键退仓」共用一份（{@link TradingService#closeOut}）。
+     * 所以这一个入口交给 {@link TradingService#failAccount} 串起来，不在这里拼两步 ——
+     * 拼在这里的话，将来「撞线自动判失败」那条路（{@code TradeDeskService#step}）
+     * 就会和手动这条路各写一遍收摊。
+     */
+    private final TradingService trading;
 
     @Operation(summary = "账户列表", description = """
             status 可选：ACTIVE / FAILED，不传 = 全部。按建户时间倒序，新建的在前。
@@ -104,12 +114,15 @@ public class PropFirmAccountController {
     }
 
     @Operation(summary = "判失败", description = """
-            撞了亏损线：账户置 FAILED（终态，之后不接受任何操作），当前阶段流水记 FAILED。
+            撞了亏损线：**先市价平掉持仓、撤掉全部挂单**（和交易页撞线自动触发的那一套完全相同），
+            再置 FAILED（终态），当前阶段流水记 FAILED。
+            失败之后账户**仍然打得开**（看盘、标注、改名、继续往后翻 K 线），
+            只有挂单 / 市价单被拒绝。
             失败不会自动重开 —— 重考要新建账户，这样两次考核的成交不会混在一个 accountId 下。
             """)
     @PostMapping("/{id}/fail")
     public PropFirmAccount fail(@PathVariable String id) {
-        return accounts.fail(id, null);
+        return trading.failAccount(id);
     }
 
     @Operation(summary = "步进一根（记录盘面最新时间）", description = """

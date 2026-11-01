@@ -22,9 +22,11 @@ import java.util.List;
  * <p>这个类是<strong>三条业务规则的唯一落点</strong>：
  *
  * <ol>
- *   <li><strong>必须先有账户才能操作。</strong> 任何下单、画图、录音、启动机器人的入口，
- *       第一步都该调 {@link #requireActive}。领域方法（各实体的工厂方法）保证「不给账户就
- *       造不出对象」，这个方法保证「给的那个账户真的存在、真的还在考核中」。</li>
+ *   <li><strong>必须先有账户才能操作。</strong> 任何入口第一步都该过一道闸门，但
+ *       <strong>两道闸门不混用</strong>：{@link #requireExisting} 只要账户存在
+ *       （看盘、步进、撤单、退仓 —— 失败的账户也能做），
+ *       {@link #requireTradable} 才管下单（失败的账户一律拒绝）。领域方法（各实体的工厂方法）
+ *       保证「不给账户就造不出对象」，这两个方法保证「给的那个账户真的能这么用」。</li>
  *   <li><strong>删账户只删「账户本身」，盘面数据不删。</strong> {@link #delete} 删的是
  *       {@code prop_firm_account} 这一行 + 属于它的 {@code prop_firm_stage_log} 流水。
  *       图形、挂单、成交、语音、操作记录、机器人、交易记录、指标<strong>全部保留</strong>，
@@ -88,15 +90,32 @@ public class PropFirmAccountService {
     }
 
     /**
-     * 拿一个<strong>可以往上挂操作</strong>的账户，拿不到就抛业务异常。
+     * 拿一个<strong>存在</strong>的账户 —— <strong>不看状态</strong>：失败（{@code FAILED}）的账户也放行。
      *
-     * <p>所有操作类入口（下单、画图、录音、启动机器人、开交易记录）都该先过这一关：
-     * 「账户不存在」和「账户已经不是 ACTIVE」都要在动手之前拦住。
+     * <p>这是「看盘与收摊」这一类动作的入口：加载盘面（快照）、【下一根】、浮盈浮亏、
+     * 以及撤单 / 改价 / 一键退仓。理由是<strong>它们都不会让一个已经考挂的账户变得更糟</strong>：
+     * 失败那一刻持仓已经被市价平掉、挂单已经撤光（见 {@code TradingService#closeOut}），
+     * 之后这些动作都是空转或者收尾。而人还需要回到那个账户上看复盘、标注、改名 ——
+     * 把整页锁死等于把「考挂那一场」的录像也一起锁了，那是另一笔损失。
+     *
+     * <p>⚠️ <strong>下单不能走这里</strong>，必须走 {@link #requireTradable}：
+     * 「能看」和「能下单」是本系统里唯一需要分开的两件事。
+     */
+    @Transactional(readOnly = true)
+    public PropFirmAccount requireExisting(String accountId) {
+        return accounts.findById(accountId)
+                .orElseThrow(() -> new BusinessException("PF 账户不存在，请先创建账户: " + accountId));
+    }
+
+    /**
+     * 拿一个<strong>还在考核中</strong>的账户（{@code ACTIVE}），拿不到就抛业务异常。
+     *
+     * <p>用于那些「这件事发生了就再也改不掉」的入口：判失败、升级、推盘面时间
+     * （改的是账户自己的状态位，不是盘面上的事实）。
      */
     @Transactional(readOnly = true)
     public PropFirmAccount requireActive(String accountId) {
-        PropFirmAccount account = accounts.findById(accountId)
-                .orElseThrow(() -> new BusinessException("PF 账户不存在，请先创建账户: " + accountId));
+        PropFirmAccount account = requireExisting(accountId);
         if (!account.isOpen()) {
             throw new BusinessException("PF 账户当前是 " + account.getStatus() + "，不能再产生新的操作");
         }
@@ -104,11 +123,13 @@ public class PropFirmAccountService {
     }
 
     /**
-     * 拿一个<strong>可以下单</strong>的账户。
+     * 拿一个<strong>可以下单</strong>的账户 —— 挂单、市价单的唯一闸门。
      *
-     * <p>比 {@link #requireActive} 多两条：
+     * <p>三条都要过：
      *
      * <ul>
+     *   <li><strong>已判失败</strong>（撞了亏损线）。失败是终态：账户仍可打开、看盘、标注，
+     *       但<strong>不再接受任何新单</strong> —— 这正是 {@link #requireExisting} 与这里的分界。</li>
      *   <li>{@link PropFirmStage#PAYOUT} 阶段虽然"开着"（还在处理出金），但它<strong>是终点</strong>，
      *       不再接受下单。画图、录音这类"看盘动作"仍然允许 —— 用户可能想在收工之后再标注一遍。</li>
      *   <li><strong>已达标但还没升级</strong>的账户（{@link PropFirmJudge#requireNotFrozen}）。
@@ -118,7 +139,11 @@ public class PropFirmAccountService {
      */
     @Transactional(readOnly = true)
     public PropFirmAccount requireTradable(String accountId) {
-        PropFirmAccount account = requireActive(accountId);
+        PropFirmAccount account = requireExisting(accountId);
+        if (!account.isOpen()) {
+            throw new BusinessException("账户「" + account.getName() + "」已判失败（撞了亏损线）"
+                    + "，只能看盘、标注和收尾，不能再下单 —— 要重新考一次请新建一个账户");
+        }
         if (!account.isTradable()) {
             throw new BusinessException("PF 账户已进入 " + account.getStage() + " 阶段，不再接受下单");
         }
@@ -215,8 +240,17 @@ public class PropFirmAccountService {
     /**
      * 判失败：撞了亏损线。账户置 {@code FAILED}，当前阶段流水记 {@code FAILED}。
      *
+     * <p><strong>本方法只改状态位，不收摊。</strong> 「平仓 + 撤单」在
+     * {@code TradingService#closeOut} 里，必须先于本方法调用 —— 那一步要读盘面拿成交价，
+     * 而且和「一键退仓」共用同一段实现（一条平仓路径，账才只有一份口径）。
+     * 两个入口（{@code step} 撞线、{@code POST /fail} 手动判死）都由
+     * {@code TradingService#failAccount} 串起来，别在这里另开一遍。
+     *
      * <p>失败<strong>不再升级、也不会自动重开</strong> —— 重考要新建一个账户，
      * 这样两次考核的成交天然不会混在一个 {@code accountId} 下。
+     *
+     * <p>失败之后账户<strong>仍然打得开</strong>（看盘、标注、改名），下单由
+     * {@link #requireTradable} 逐次拒绝。
      */
     @Transactional
     public PropFirmAccount fail(String accountId, PropFirmSession session) {
@@ -231,15 +265,16 @@ public class PropFirmAccountService {
      *
      * <p>写的是 {@link PropFirmAccount#getLastBarTime()} —— 「继续交易」打开交易页时
      * 就揭示到这一根。规则在实体上：<strong>只能往后走</strong>（见
-     * {@link PropFirmAccount#advanceBarTime(String)}），这里只负责「账户得还在考核中」。
+     * {@link PropFirmAccount#advanceBarTime(String)}），这里只负责「账户得存在」。
      *
-     * <p>只有 {@code ACTIVE} 账户能推进：考挂了的账户不该再往前走。
+     * <p><strong>失败的账户也能推</strong>（2026-11-01）：考挂之后盘面还是一页历史，
+     * 继续往后看是复盘，不是交易 —— 反正新单已经被 {@link #requireTradable} 拦死了。
      *
-     * @throws BusinessException 账户不存在 / 已失败，或时间格式不对、比当前值更早
+     * @throws BusinessException 账户不存在，或时间格式不对、比当前值更早
      */
     @Transactional
     public PropFirmAccount advanceCursor(String accountId, String barTime) {
-        PropFirmAccount account = requireActive(accountId);
+        PropFirmAccount account = requireExisting(accountId);
         account.advanceBarTime(barTime);
         return accounts.save(account);
     }

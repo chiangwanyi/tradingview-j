@@ -315,8 +315,15 @@ class PropFirmAccountServiceTest {
                 service.stageHistory(account.getId()).get(0).getEndReason());
 
         assertThrows(BusinessException.class, () -> service.requireActive(account.getId()));
-        assertThrows(BusinessException.class, () -> service.requireTradable(account.getId()));
         assertThrows(BusinessException.class, () -> service.fail(account.getId(), null));
+        // 但「账户存在」这道闸门照旧放行：失败的账户还要能打开看盘、标注、翻 K 线
+        assertEquals(PropFirmAccount.Status.FAILED,
+                service.requireExisting(account.getId()).getStatus());
+
+        // 下单被拒，而且要把原因说清楚（「已判失败」，不是笼统的「不能再产生新的操作」）
+        BusinessException noOrder = assertThrows(BusinessException.class,
+                () -> service.requireTradable(account.getId()));
+        assertTrue(noOrder.getMessage().contains("已判失败"));
     }
 
     /**
@@ -348,14 +355,19 @@ class PropFirmAccountServiceTest {
                 () -> service.advanceCursor(account.getId(), "2024-03-04"));
     }
 
-    /** 考挂了的账户不能再往前走（推进盘面也是「还在考核中」才做的事）。 */
+    /**
+     * 考挂了的账户<strong>还能</strong>往后翻 K 线（2026-11-01 改的口径）。
+     *
+     * <p>推进盘面不改账、不改状态，只是「看到哪了」；考挂之后继续往下看是复盘，
+     * 不是交易 —— 新单已经被 {@code requireTradable} 拦死了。
+     */
     @Test
-    void advanceCursorRejectsFailedAccount() {
+    void advanceCursorStillWorksOnFailedAccount() {
         PropFirmAccount account = service.open(evalTemplate(null).getId(), SYMBOL, "考挂了");
         service.fail(account.getId(), null);
 
-        assertThrows(BusinessException.class,
-                () -> service.advanceCursor(account.getId(), "2024-03-04 09:05"));
+        service.advanceCursor(account.getId(), "2024-03-04 09:05");
+        assertEquals("2024-03-04 09:05", service.get(account.getId()).getLastBarTime());
     }
 
     /** 删账户 = 删账户行 + 删它自己的阶段流水（流水是账户的时间轴，账户没了读不到）。 */
