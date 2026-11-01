@@ -108,6 +108,7 @@ class TradingServiceTest {
         templateRepo.deleteAll();
         symbolRepo.deleteAll();
 
+        clearBars();
         writeSymbols();
         // symbol 表也要有这一行：账户的 symbol_id 是真外键（清单文件只是「怎么读」的来源）
         // 刻度必须和清单一一致：考核判定按 symbol 表的 tick/tickValue 算每点价值
@@ -665,6 +666,109 @@ class TradingServiceTest {
         assertNotNull(actual, message + "（金额不该是 null，期望 " + expected + "）");
         assertEquals(0, new BigDecimal(expected).compareTo(actual),
                 message + "：期望 " + expected + "，实际 " + actual);
+    }
+
+    // ---------------- 日终强平：禁止交易时段 04:00–06:00 ----------------
+
+    /**
+     * 03:55 开仓 → 步进到 04:00：按 <b>04:00 的收盘价</b>市价平掉，挂单一起撤；
+     * 04:00 那一根即便能扫到挂单，也<b>一笔都不许成交</b>（用户 2026-11-01 的规则）。
+     *
+     * <p>平仓价必须是 04:00 的 {@code close}（4006），不是 06:00 的开盘 4007，也不是 03:55 的 4011 ——
+     * 04:00 是这一天最后一刻，账就停在那一刻的价上，缺口那段不该由用户承担。
+     */
+    @Test
+    void sessionEndForceClosesAtTheFourOClockClose() {
+        writeDay("2024-03-05",
+                "2024-03-05 03:55,4010.00,4012.00,4009.00,4011.00,10",
+                "2024-03-05 04:00,4011.00,4013.00,4005.00,4006.00,20",
+                "2024-03-05 06:00,4007.00,4009.00,4006.00,4008.00,30",
+                "2024-03-05 06:05,4008.00,4010.00,4007.00,4009.00,40");
+
+        desk.step(accountId); // 09:05
+        desk.step(accountId); // 09:10
+        desk.step(accountId); // 03:55 —— 仍属于交易日 03-04，可交易
+        trading.market(accountId, "buy", BigDecimal.ONE, null); // @4011
+        // 一张在 04:00 一定会被扫到的买单：那一根 low = 4005，挂 4010 必触发
+        trading.place(accountId, "buy", "limit", new BigDecimal("4010.00"), BigDecimal.ONE);
+        assertEquals(1, tradeRepo.count(), "挂单不成交");
+
+        desk.step(accountId); // 04:00 —— 走进禁交易时段
+
+        List<Trade> trades = tradeRepo.findByAccountIdOrderByBarTimeAscSeqAsc(accountId);
+        assertEquals(2, trades.size(), "开仓 1 笔 + 日终强平 1 笔；那张挂单**不许**成交");
+        Trade close = trades.get(1);
+        assertEquals("2024-03-05 04:00", close.getBarTime(), "平仓记在 04:00 这一根上");
+        assertMoney("4006.00", close.getPrice());
+        assertMoney("-10", close.getRealizedPnl(), "(4006 − 4011) × 1 手 × 每点 2 美元");
+        assertMoney("0.50", close.getCommission(), "手续费按每手每边收，是正数");
+        assertMoney("-10.50", close.netPnl());
+
+        assertEquals("flat", trading.portfolio(accountId).position().side(), "日终必须空仓");
+
+        TradeOrder limit = orderRepo.findByAccountIdOrderByPlacedAtBarAsc(accountId).stream()
+                .filter(o -> o.getType() == TradeOrder.Type.LIMIT)
+                .findFirst().orElseThrow();
+        assertEquals(TradeOrder.Status.CANCELLED, limit.getStatus(), "挂单在日终一起撤掉");
+    }
+
+    /**
+     * 禁交易时段内下单：后端在 {@code requireTradable} 这一道闸上拒掉；06:05 之后恢复。
+     *
+     * <p>06:00 那根<b>归新的一天</b>（跨日结算发生在它身上），但它<b>同样不可交易</b> ——
+     * 「归哪一天」和「能不能下单」是两件事。
+     */
+    @Test
+    void ordersAreRejectedInsideTheClosedWindow() {
+        writeDay("2024-03-05",
+                "2024-03-05 03:55,4010.00,4012.00,4009.00,4011.00,10",
+                "2024-03-05 04:00,4011.00,4013.00,4005.00,4006.00,20",
+                "2024-03-05 06:00,4007.00,4009.00,4006.00,4008.00,30",
+                "2024-03-05 06:05,4008.00,4010.00,4007.00,4009.00,40");
+        desk.step(accountId);
+        desk.step(accountId);
+        desk.step(accountId); // 03:55
+        desk.step(accountId); // 04:00
+
+        BusinessException atFour = assertThrows(BusinessException.class,
+                () -> trading.market(accountId, "buy", BigDecimal.ONE, null));
+        assertTrue(atFour.getMessage().contains("禁止交易时段"), atFour.getMessage());
+
+        desk.step(accountId); // 06:00 —— 也关着
+        BusinessException atSix = assertThrows(BusinessException.class, () -> trading.place(
+                accountId, "buy", "limit", new BigDecimal("4010.00"), BigDecimal.ONE));
+        assertTrue(atSix.getMessage().contains("禁止交易时段"), atSix.getMessage());
+
+        desk.step(accountId); // 06:05 —— 新交易日第一根可交易的 K 线
+        assertEquals("order_placed", trading.place(accountId, "buy", "limit",
+                new BigDecimal("4010.00"), BigDecimal.ONE).action().wire());
+    }
+
+    /**
+     * 清掉上一条用例写下的日文件。
+     *
+     * <p>这些用例<strong>共用一个数据目录</strong>（整个类只有一个临时目录），
+     * 而「磁盘上还有没有下一根」正是好几条用例的断言前提。少清一次，先跑过的用例
+     * 写下的 {@code 2024-03-05.csv} 就会让后一条用例的「已经走到最后一根」变成假 ——
+     * 而且失败信息会指向一个跟改动无关的地方。
+     */
+    private void clearBars() {
+        if (!Files.exists(dataDir)) {
+            return;
+        }
+        try (var walk = Files.walk(dataDir)) {
+            walk.sorted(Comparator.reverseOrder())
+                    .filter(p -> !p.equals(dataDir))
+                    .forEach(p -> {
+                        try {
+                            Files.deleteIfExists(p);
+                        } catch (IOException ignored) {
+                            // 删不掉就留着：后面 writeDay 覆盖写，不影响断言
+                        }
+                    });
+        } catch (IOException ignored) {
+            // 同上
+        }
     }
 
     private void writeSymbols() {

@@ -16,6 +16,7 @@ import com.tradingviewj.server.service.AuditLogService;
 import com.tradingviewj.server.service.BarCursorService;
 import com.tradingviewj.server.service.BarQueryService;
 import com.tradingviewj.server.service.PropFirmAccountService;
+import com.tradingviewj.server.service.PropFirmClock;
 import com.tradingviewj.server.service.PropFirmJudge;
 import com.tradingviewj.server.service.TradingService;
 import com.tradingviewj.server.storage.CsvBarStore;
@@ -145,7 +146,9 @@ public class TradeDeskService {
      *   <li><strong>用这根 K 线撮合挂单</strong>（{@link TradingService#match}）：
      *       触发判定、跳空修正、落成交，全部发生在这一根<strong>揭示之后</strong>；
      *       成交结果直接并进下面那条 {@code bar_advanced}，不另发 {@code order_filled} ——
-     *       拆成两条的话，前端会在「K 线到了、成交还没到」的那一帧画出错误的持仓线。</li>
+     *       拆成两条的话，前端会在「K 线到了、成交还没到」的那一帧画出错误的持仓线。
+     *       <strong>禁交易时段（04:00–06:00）跳过这一步</strong>：那一段任何成交都不许发生，
+     *       改为按这一根的收盘价日终强平（{@link #sessionEndClose}）。</li>
      *   <li><strong>考核判定</strong>（{@link PropFirmJudge}）：撞线就<strong>当场收摊
      *       （市价平仓 + 撤光挂单）再判失败</strong>（终态，之后只能看）；
      *       达标就<strong>当场平仓并冻结</strong>，等用户手动升级。余额和日终峰值在这一步写回账户。</li>
@@ -155,6 +158,10 @@ public class TradeDeskService {
      *
      * <p><strong>没有下一根时抛业务异常</strong>，不返回 null：走到磁盘上最后一根是一个
      * 用户需要被告知的状态（「等再抓一段行情」），静默成功会让按钮看起来坏了。
+     *
+     * <p>⚠️ 日终强平（{@link #sessionEndClose}）发生在<strong>撮合位置、考核判定之前</strong>：
+     * 那笔平仓要让 {@code judge.assess} 看见，否则这一天结算的是「平仓前」的余额，
+     * 峰值和亏损线会差一整笔浮亏。
      *
      * @throws BusinessException 账户不能操作 / 标的读不到 / 已经是最后一根
      */
@@ -174,9 +181,16 @@ public class TradeDeskService {
         String barTime = next.bar().barTime();
         accounts.advanceCursor(accountId, barTime);
 
-        // 撮合在「揭示之后」：本根挂的单本根不撮合（placedAtBar 严格早于本根），
-        // 所以这里只可能成交「上一根或更早」挂的单。
-        List<Trade> matched = trading.match(account, spec, next.bar());
+        List<Trade> matched;
+        if (PropFirmClock.tradable(barTime)) {
+            // 撮合在「揭示之后」：本根挂的单本根不撮合（placedAtBar 严格早于本根），
+            // 所以这里只可能成交「上一根或更早」挂的单。
+            matched = trading.match(account, spec, next.bar());
+        } else {
+            // 禁止交易时段（04:00–06:00，两端都关）：这一根**一张挂单都不撮合**，
+            // 哪怕它的 high / low 扫过了某张单 —— 然后当场收摊。
+            matched = sessionEndClose(account, barTime);
+        }
         List<TradeView> fills = new ArrayList<>(matched.size() + 1);
         for (Trade fill : matched) {
             fills.add(TradeView.of(fill));
@@ -236,10 +250,48 @@ public class TradeDeskService {
     }
 
     /**
-     * 【结算今日】：一步把盘面推到<strong>下一个交易日</strong>的第一根，让上一个交易日当场结算
+     * 盘面走进禁止交易时段那一根时<strong>强制收摊</strong>：按这一根的收盘价市价平掉全部仓位、
+     * 撤掉全部挂单，返回那笔平仓成交（本来就空仓无挂单时返回空）。
+     *
+     * <h2>为什么平仓价取「这一根」的收盘价</h2>
+     *
+     * <p>{@code advanceCursor} 已经先把账户推到这一根，所以 {@code trading.closeOut} 内部读到的
+     * 「当前 K 线」正是它 —— 用户 2026-11-01 定的规则是「03:55 开仓、步进到 04:00 时
+     * 以 <b>04:00 收盘价</b>平掉」。用 04:00 的 {@code close} 而不是新交易日的开盘价：
+     * 04:00 是这一天的最后一刻，用它收摊，账就停在「这一天结束时」的价位上，
+     * 04:00–06:00 那段真空里的跳空不该由用户承担。
+     *
+     * <h2>为什么这一根不撮合</h2>
+     *
+     * <p>同一根 K 线的 high / low 可能扫过某张挂了很久的止损单 —— 但这段窗口里
+     * <strong>任何成交都不允许发生</strong>（规则原文：「即使 04:00 能触发某些挂单也不得成交」）。
+     * 所以调用方在禁交易时段<b>根本不调</b> {@code trading.match}，这里只负责收摊。
+     *
+     * <h2>幂等</h2>
+     *
+     * <p>收摊之后再走到 04:05、06:00 这些根，账户已经是空仓 + 零挂单，
+     * 这里直接返回空列表，不会重复记账、也不会凭空多出流水。
+     */
+    private List<Trade> sessionEndClose(PropFirmAccount account, String barTime) {
+        TradingService.Portfolio book = trading.portfolio(account);
+        boolean flat = book.position().quantity().signum() == 0;
+        boolean noOrders = book.orders().stream().noneMatch(o -> "open".equals(o.status()));
+        if (flat && noOrders) {
+            return List.of();
+        }
+        TradingService.CloseOut out = trading.closeOut(account);
+        log.info("账户 {} 走到 {}（禁止交易时段）：日终收摊 —— 平 {} 手，撤 {} 张挂单",
+                account.getId(), barTime,
+                out.closeTrade() == null ? "0" : out.closeTrade().getQuantity().toPlainString(),
+                out.cancelledOrders());
+        return out.closeTrade() == null ? List.of() : List.of(out.closeTrade());
+    }
+
+    /**
+     * 【结算今日】：一步把盘面推到<strong>下一个交易日</strong>的可交易位置，让上一个交易日当场结算
      * （日终余额进峰值 → 亏损线上移）。
      *
-     * <p>落点按<strong>交易日</strong>算，不是日历日：交易日 D = {@code [D 06:00, D+1 04:45)}，
+     * <p>落点按<strong>交易日</strong>算，不是日历日：交易日 D = {@code [D 06:00, D+1 04:00)}，
      * 所以从 {@code D+1 02:00} 出发的「下一个交易日」是 {@code D+1}，不是 {@code D+2}。
      *
      * <p><strong>手上不是空的就拒绝</strong>：这一天会被整段跳过，中途每一根本该触发的止损 / 限价

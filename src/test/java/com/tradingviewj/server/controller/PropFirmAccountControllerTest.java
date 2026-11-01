@@ -5,6 +5,7 @@ import com.tradingviewj.server.entity.propfirm.PropFirmRules;
 import com.tradingviewj.server.entity.propfirm.PropFirmStage;
 import com.tradingviewj.server.entity.propfirm.PropFirmTemplate;
 import com.tradingviewj.server.exception.BusinessException;
+import com.tradingviewj.server.service.HistoryQueryService;
 import com.tradingviewj.server.service.PropFirmAccountService;
 import com.tradingviewj.server.service.TradingService;
 import com.tradingviewj.server.ws.TradeDeskService;
@@ -51,6 +52,16 @@ class PropFirmAccountControllerTest {
     /** 「结算今日」推光标 + 结算，和交易页【下一根】是同一份实现。 */
     @MockitoBean
     private TradeDeskService desk;
+
+    /**
+     * 日历那一格（{@code GET /{id}/calendar}）要它。
+     *
+     * <p>这个切片测试只拉 {@link PropFirmAccountController} 一个 bean，构造参数里缺一个
+     * 没有 mock 的类型就会整个上下文起不来（7 条用例全 ERROR，报的却是一句
+     * 「Unsatisfied dependency」）。控制器加了新依赖就得在这里补一行。
+     */
+    @MockitoBean
+    private HistoryQueryService history;
 
     /** 一个 EVAL 账户：规模 50000、目标 3000，标的 MES。 */
     private static PropFirmAccount evalAccount() {

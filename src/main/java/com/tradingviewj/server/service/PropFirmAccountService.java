@@ -125,17 +125,23 @@ public class PropFirmAccountService {
     /**
      * 拿一个<strong>可以下单</strong>的账户 —— 挂单、市价单的唯一闸门。
      *
-     * <p>三条都要过：
+     * <p>四条都要过：
      *
      * <ul>
      *   <li><strong>已判失败</strong>（撞了亏损线）。失败是终态：账户仍可打开、看盘、标注，
      *       但<strong>不再接受任何新单</strong> —— 这正是 {@link #requireExisting} 与这里的分界。</li>
      *   <li>{@link PropFirmStage#PAYOUT} 阶段虽然"开着"（还在处理出金），但它<strong>是终点</strong>，
      *       不再接受下单。画图、录音这类"看盘动作"仍然允许 —— 用户可能想在收工之后再标注一遍。</li>
+     *   <li><strong>盘面停在禁止交易时段</strong>（{@link #requireOpenSession}）。这是 2026-11-01 新增的：
+     *       {@code [04:00, 06:00]} 两端都关，最早可交易 06:05、最晚 03:55。</li>
      *   <li><strong>已达标但还没升级</strong>的账户（{@link PropFirmJudge#requireNotFrozen}）。
      *       达标那一刻持仓已经被平、账户被冻结，但仍处于 ACTIVE（还要回来看复盘、改名、录像），
      *       所以这件事只能现算，不能靠 {@code status} 表达。</li>
      * </ul>
+     *
+     * <p>⚠️ <strong>禁交易时段的拦截只加在下单路径上</strong>（挂单 / 市价）。
+     * 撤单、改价、一键退仓走 {@link #requireExisting}，在这个时段里照常可用 ——
+     * 它们只会<strong>减少</strong>风险，锁掉它们等于让人对着一个平不掉的仓位干瞪眼。
      */
     @Transactional(readOnly = true)
     public PropFirmAccount requireTradable(String accountId) {
@@ -147,8 +153,38 @@ public class PropFirmAccountService {
         if (!account.isTradable()) {
             throw new BusinessException("PF 账户已进入 " + account.getStage() + " 阶段，不再接受下单");
         }
+        requireOpenSession(account);
         judge.requireNotFrozen(account);
         return account;
+    }
+
+    /**
+     * 盘面现在这一根是不是落在禁交易时段里，落在里面就拒绝下单。
+     *
+     * <p>判据是账户的 {@code lastBarTime}（用户看到的「现在」），不是服务器真实时钟 ——
+     * 这是复盘盘，时间由【下一根】推着走，跟北京时间没有关系。
+     *
+     * <p>账户还没有盘面（{@code lastBarTime} 为空）时放行：那种情况下连市价单都取不到收盘价，
+     * 后面的行情检查会给出更准确的报错，在这里拦一句「禁止交易时段」只会误导。
+     */
+    private static void requireOpenSession(PropFirmAccount account) {
+        String at = account.getLastBarTime();
+        if (at == null || at.length() < 16) {
+            return;
+        }
+        boolean tradable;
+        try {
+            tradable = PropFirmClock.tradable(at);
+        } catch (RuntimeException e) {
+            // 时间格式坏了不是「能不能交易」的问题，交给后面的行情逻辑报错
+            return;
+        }
+        if (tradable) {
+            return;
+        }
+        throw new BusinessException("盘面现在停在 " + at + "，落在禁止交易时段 04:00–06:00 内："
+                + "这段时间只能平仓和撤单，不能挂单、不能市价开仓。"
+                + "按【下一根】走到 06:05 之后再下单（每天最早 06:05、最晚 03:55）");
     }
 
     /**

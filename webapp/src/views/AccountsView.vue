@@ -133,6 +133,75 @@ defineExpose({ openNew })
       </div>
     </header>
 
+    <!--
+      公共公告栏（2026-11-01）。
+
+      规则<b>写死在前端</b>：现在只有这一条、也不会按账户或模板变，做成后端配置就得先想清楚
+      「谁能改」「改了历史账户怎么办」。等真要出多套时段时，再把这里换成接口返回的列表。
+
+      文案和后端是对齐的：口径唯一来源是 `PropFirmClock`（交易日 [D 06:00, D+1 04:00)）、
+      执行点是 `TradeDeskService#step`（走到 04:00 强平）与 `requireTradable`（禁区内拒单）。
+      这里改了文案而没改规则，或者反过来，都会让用户看到一套、遇到另一套。
+    -->
+    <section class="px-8 pb-4">
+      <div class="rounded-lg border border-line bg-panel">
+        <div class="flex flex-wrap items-center gap-2 border-b border-line px-4 py-2.5">
+          <span class="h-3.5 w-1 rounded-full bg-accent"></span>
+          <h2 class="text-[14px] font-medium text-ink">交易时段公告</h2>
+          <span class="rounded bg-accent-soft px-1.5 py-0.5 text-[11px] text-accent-ink">全体账户生效</span>
+          <span class="ml-auto text-[11px] text-faint">日终 04:00 · 开盘 06:00（北京时间）</span>
+        </div>
+
+        <dl class="grid gap-x-8 gap-y-3 px-4 py-3.5 text-[13px] leading-relaxed lg:grid-cols-2">
+          <div class="flex gap-3">
+            <dt class="w-[5rem] shrink-0 text-faint">交易日</dt>
+            <dd class="min-w-0 text-dim">
+              <b class="font-medium text-ink">06:00 开盘，次日 04:00 收盘</b>
+              —— 跨零点，不是日历日。凌晨 03:10 那笔算前一天。
+            </dd>
+          </div>
+          <div class="flex gap-3">
+            <dt class="w-[5rem] shrink-0 text-faint">禁止交易</dt>
+            <dd class="min-w-0 text-dim">
+              <b class="font-medium text-ink">04:00 – 06:00</b>
+              （含 04:00 与 06:00 本身）。这 2 小时不能挂单、不能市价开仓。
+            </dd>
+          </div>
+          <div class="flex gap-3">
+            <dt class="w-[5rem] shrink-0 text-faint">可下单</dt>
+            <dd class="min-w-0 text-dim">
+              <b class="font-medium text-ink tnum">每天 06:05 起，最晚 03:55</b>
+              —— 5 分钟一根 K 线，两头的边界各占掉一根。
+            </dd>
+          </div>
+          <div class="flex gap-3">
+            <dt class="w-[5rem] shrink-0 text-faint">日终强平</dt>
+            <dd class="min-w-0 text-dim">
+              盘面走到 <b class="font-medium text-ink">04:00</b> 那根时，
+              <b class="font-medium text-ink">按该根收盘价</b>市价平掉全部持仓、撤销全部挂单。
+            </dd>
+          </div>
+          <div class="flex gap-3">
+            <dt class="w-[5rem] shrink-0 text-faint">禁区内成交</dt>
+            <dd class="min-w-0 text-dim">
+              04:00 那一根即便高低点扫过挂单，也<b class="font-medium text-ink">一笔都不会成交</b>，
+              挂单一律作废。
+            </dd>
+          </div>
+          <div class="flex gap-3">
+            <dt class="w-[5rem] shrink-0 text-faint">仍然允许</dt>
+            <dd class="min-w-0 text-dim">
+              撤单、一键退仓随时可用 —— 它们只会减少风险，禁交易时段也不例外。
+            </dd>
+          </div>
+        </dl>
+
+        <p class="border-t border-line px-4 py-2 text-[12px] text-faint">
+          以上规则由后端强制：禁交易时段的下单会被接口直接拒绝，交易页的下单按钮也会提前置灰。
+        </p>
+      </div>
+    </section>
+
     <p
       v-if="error"
       class="mx-8 mb-3 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-[12px] text-red-700"

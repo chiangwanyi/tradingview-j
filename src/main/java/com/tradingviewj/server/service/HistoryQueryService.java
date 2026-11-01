@@ -108,14 +108,14 @@ public class HistoryQueryService {
      * <h2>口径：交易日，不是日历日</h2>
      *
      * <p>归日走 {@link PropFirmClock#tradingDayOf(String)} —— 和日终结算、判失败、
-     * 「结算今日」同一条：交易日 D = {@code [D 06:00, D+1 04:45)}。
+     * 「结算今日」同一条：交易日 D = {@code [D 06:00, D+1 04:00)}。
      * 所以 10-30 凌晨 03:10 平的那笔落在 <strong>10-29</strong> 那一格。
      * 这里绝不自己拿 {@code entry_bar_time} 的前 10 个字符当日期 ——
      * 那样每个月会有四五个晚上，日历上的钱和账户余额对不上。
      *
      * <p>只统计<strong>已平仓</strong>（{@code closed = true}）的记录：还在手上的那笔
      * 归到哪一天都不对，盈亏也还在浮动。唯一例外是 {@code tradingDayOf} 返回
-     * {@code null}（落在 04:45–06:00 的禁交易窗口，PF 本该拒绝这种成交）——
+     * {@code null}（落在 04:00–06:00 的禁交易窗口，PF 本该拒绝这种成交）——
      * 那种数据按日历日归到当天，宁可显示得难看，也不要让它从日历上消失。
      */
     @Transactional(readOnly = true)

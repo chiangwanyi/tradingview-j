@@ -10,15 +10,19 @@ import java.time.format.DateTimeParseException;
 /**
  * 交易日的唯一口径。整个 PF 考核里「今天」「日终」「今天赚了多少」全部从这里来。
  *
- * <h2>口径（用户 2026-10-29 确认）</h2>
+ * <h2>口径（用户 2026-11-01 确认，取代 2026-10-29 的 04:45 版本）</h2>
  *
  * <pre>
- *   交易日 D = [D 06:00, (D+1) 04:45)         ← 这中间有成交
- *   禁交易窗口 = [D 04:45, D 06:00)           ← 75 分钟，不允许交易，不属于任何交易日
+ *   交易日 D = [D 06:00, (D+1) 04:00)         ← 这中间有成交
+ *   禁交易窗口 = [D 04:00, D 06:00]           ← 两端都禁，谁都不属于
  * </pre>
  *
  * <p>所以「2026-10-29 03:10 的成交」属于交易日 <b>10-28</b>；
- * 「10-29 06:00」属于 <b>10-29</b>；「10-29 05:00」<b>不属于任何一天</b>，它落在禁交易窗口里。
+ * 「10-29 06:00」<b>属于</b>交易日 10-29（那是新一天的起点），但它本身<b>不可交易</b> ——
+ * 「归哪一天」和「能不能下单」是两个问题，见 {@link #tradingDayOf} 与 {@link #tradable}。
+ *
+ * <p>由此推出每个交易日的第一根可交易 K 线是 <b>06:05</b>、最后一根是 <b>03:55</b>
+ * （K 线是 5 分钟一根，04:00 那根就落在窗口里了）。
  *
  * <p><strong>不做夏/冬令时换算</strong>：用户明确要求简化为这两个固定时刻。
  * 换来的是「这根 K 线归哪天」变成一个字符串比较，不会在某天早上整体偏移一小时。
@@ -38,10 +42,15 @@ public final class PropFirmClock {
     private static final DateTimeFormatter MINUTE =
             DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");
 
-    /** 当日截止（不含）：04:45 之后的成交算下一天 —— 但 04:45–06:00 谁都不算。 */
-    public static final LocalTime SESSION_END = LocalTime.of(4, 45);
+    /**
+     * 交易日结束时刻：<b>04:00</b>。
+     *
+     * <p>这一天在这一刻收摊 —— 日终结算发生在这里，手上的仓位也在这里被市价平掉。
+     * 注意这一根 K 线<b>自己</b>已经在窗口里了，所以它只能用来平仓，不能用来开仓。
+     */
+    public static final LocalTime SESSION_END = LocalTime.of(4, 0);
 
-    /** 下一交易日开始：06:00。 */
+    /** 下一交易日开始：<b>06:00</b>。这一根归新的一天，但同样不可交易。 */
     public static final LocalTime SESSION_START = LocalTime.of(6, 0);
 
     /** 全项目唯一的时区假设。CSV 明文就是这个时区的时间。 */
@@ -67,13 +76,14 @@ public final class PropFirmClock {
     }
 
     /**
-     * 这个时刻能不能交易（是否落在 04:45–05:59 的禁交易窗口之外）。
+     * 这个时刻能不能交易 —— <b>禁交易窗口 {@code [04:00, 06:00]} 两端都算关</b>。
      *
-     * <p>窗口边界按「含头不含尾」处理：04:45:00 属于窗口（不能交易），06:00:00 已经能交易。
+     * <p>04:00:00 不能（那是收盘那一刻，只许平仓），06:00:00 也不能（新的一天开始，
+     * 但要等第一根完整的 5 分钟 K 线走完）。所以最早可交易是 <b>06:05</b>、最晚是 <b>03:55</b>。
      */
     public static boolean tradable(LocalDateTime at) {
         LocalTime time = at.toLocalTime();
-        return !(time.compareTo(SESSION_END) >= 0 && time.compareTo(SESSION_START) < 0);
+        return time.isBefore(SESSION_END) || time.isAfter(SESSION_START);
     }
 
     public static boolean tradable(String barTime) {
@@ -83,15 +93,21 @@ public final class PropFirmClock {
     /**
      * 这根 K 线属于哪个交易日。
      *
+     * <p>⚠️ 它和 {@link #tradable} <b>不是</b>同一件事，别互相推导：
+     * 06:00 那根<b>归新的一天</b>（它是这一天的第一根，跨日结算就发生在它身上），
+     * 但<b>不可交易</b>。
+     *
      * @return 交易日；{@code null} = 落在禁交易窗口里，不属于任何交易日
      */
     public static LocalDate tradingDayOf(LocalDateTime at) {
-        if (!tradable(at)) {
+        LocalTime time = at.toLocalTime();
+        LocalDate date = at.toLocalDate();
+        if (!time.isBefore(SESSION_END) && time.isBefore(SESSION_START)) {
+            // [04:00, 06:00) 属于「上一个交易日已经结束、下一个还没开始」的那段真空
             return null;
         }
-        LocalDate date = at.toLocalDate();
-        // 06:00 之前（也就是 00:00–04:44）算前一天 —— 那是"昨天那场"的尾巴
-        return at.toLocalTime().isBefore(SESSION_START) ? date.minusDays(1) : date;
+        // 06:00 之前（也就是 00:00–03:59）算前一天 —— 那是"昨天那场"的尾巴
+        return time.isBefore(SESSION_START) ? date.minusDays(1) : date;
     }
 
     public static LocalDate tradingDayOf(String barTime) {
@@ -99,7 +115,7 @@ public final class PropFirmClock {
     }
 
     /**
-     * 某个交易日的截止时刻 = 次日 04:45。
+     * 某个交易日的截止时刻 = 次日 04:00。
      *
      * <p>阶段升级、日终结算都在这一刻发生：它既是「这一天的账结清」的时刻，
      * 也是「下一阶段开始」的时刻。

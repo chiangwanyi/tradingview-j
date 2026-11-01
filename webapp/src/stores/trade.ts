@@ -7,6 +7,7 @@ import { sanitizeBarCount, type BarCountSettings } from '@/components/chart/barc
 import { sanitizeIndicator, type IndicatorSettings } from '@/components/chart/indicators'
 import { DEFAULT_INDICATOR_PREFS, loadPrefs, savePrefs } from '@/lib/indicatorPrefs'
 import { DEFAULT_NATR, planNatr, sanitizeNatr, type NatrSettings } from '@/lib/natr'
+import { isTradableBar } from '@/lib/session'
 import {
   openDesk,
   type BarAdvancedPayload,
@@ -291,19 +292,33 @@ export const useTradeStore = defineStore('trade', () => {
   const isOperator = computed(() => true)
 
   /**
+   * 盘面现在这一根是不是落在**禁止交易时段**（04:00–06:00，两端都关）。
+   *
+   * 判据是「账户停在哪一根」（`currentTime`），不是浏览器时钟 —— 这是复盘盘，
+   * 时间由【下一根】推着走，跟今天几点没有关系。
+   *
+   * 真正的执行在后端（`PropFirmClock.tradable` + `requireTradable`）：走到 04:00 那一刻，
+   * 后端会按 04:00 的收盘价把仓位市价平掉、挂单全撤；这里只负责把按钮提前关上。
+   */
+  const tradingLocked = computed(() => !isTradableBar(currentTime.value))
+
+  /**
    * 还能不能下单（挂单 / 市价）。
    *
-   * 两种情况置灰：**已判失败**（撞了亏损线）和**已达标待升级**（冻结）。
+   * 三种情况置灰：**已判失败**（撞了亏损线）、**已达标待升级**（冻结）、
+   * 以及**盘面落进禁交易时段**（04:00–06:00）。
    * 判官始终是后端（`requireTradable` 每次现算），这里只是把按钮提前关掉 ——
    * 少了它，用户点下去只会收到一条报错，而报错里那句「已判失败」本来应该在按钮上就看见。
    *
    * ⚠️ 它**只**管下单。看盘、画线、撤单、退仓、往后翻 K 线在失败的账户上照常可用：
-   * 考挂了不等于这一场的录像不许再看。
+   * 考挂了不等于这一场的录像不许再看。禁交易时段同理 —— 那个时段允许平仓和撤单，
+   * 只拦开新仓。
    */
   const canTrade = computed(() => {
     const p = pf.value
     if (!p) return false
-    return p.status !== 'FAILED' && !p.frozen
+    if (p.status === 'FAILED' || p.frozen) return false
+    return !tradingLocked.value
   })
 
   const openOrders = computed(() => (instance.value?.orders ?? []).filter((o) => o.status === 'open'))
@@ -921,6 +936,7 @@ export const useTradeStore = defineStore('trade', () => {
     accountBarTime,
     pf,
     canTrade,
+    tradingLocked,
     displayBars,
     timeframe,
     setTimeframe,

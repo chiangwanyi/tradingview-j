@@ -91,8 +91,12 @@ public class BarCursorService {
     /**
      * <strong>下一个交易日</strong>的第一根 —— 【结算今日】一步跨过当天剩下的 K 线。
      *
-     * <p>判据是交易日而不是日历日：交易日 D = {@code [D 06:00, D+1 04:45)}，
+     * <p>判据是交易日而不是日历日：交易日 D = {@code [D 06:00, D+1 04:00)}，
      * {@code D+1 00:30} 那根仍然属于 D，不能在这里停下。
+     *
+     * <p><strong>落点还要落在禁交易窗口之外。</strong> 新交易日的第一根是 {@code 06:00}，
+     * 但它落在 {@code [04:00, 06:00]} 这段窗口里、不能交易 —— 把账户丢在那一根上，
+     * 用户会看到一个「什么都点不动」的盘面。所以继续往后走到第一根可交易的 K 线（{@code 06:05}）。
      *
      * @return 落点；磁盘上已经没有更晚的交易日时返回 null
      */
@@ -105,7 +109,8 @@ public class BarCursorService {
                 return null;
             }
             LocalDate nextDay = tradingDayOfOrNull(next.bar().barTime());
-            if (day == null || (nextDay != null && !nextDay.equals(day))) {
+            boolean crossed = day == null || (nextDay != null && !nextDay.equals(day));
+            if (crossed && PropFirmClock.tradable(next.bar().barTime())) {
                 return next;
             }
             at = next.bar().barTime();

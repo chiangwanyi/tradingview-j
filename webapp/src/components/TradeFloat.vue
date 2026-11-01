@@ -2,6 +2,7 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 
 import { atrLegend } from '@/components/chart/atr'
+import { sessionBlockReason } from '@/lib/session'
 import { useTradeStore } from '@/stores/trade'
 import type { OrderKind, Side } from '@/types/protocol'
 
@@ -101,6 +102,12 @@ function useCurrentPrice(): void {
 
 function submit(): void {
   if (!inst.value || !store.canOperate) return
+  // 禁交易时段 / 已判失败 / 已达标：按钮本来就灰了，这里再挡一次 ——
+  // 回车和快捷键也会走到这个函数，按钮的 disabled 拦不住它们
+  if (!store.canTrade) {
+    store.noteError(orderBlocked.value ?? '现在不能下单')
+    return
+  }
   if (!(price.value > 0)) {
     store.noteError('挂单价格必须大于 0')
     return
@@ -118,6 +125,10 @@ function submit(): void {
  */
 function submitMarket(dir: Side): void {
   if (!inst.value || !store.canOperate) return
+  if (!store.canTrade) {
+    store.noteError(orderBlocked.value ?? '现在不能下单')
+    return
+  }
   if (!(currentPrice.value > 0) || !(store.orderQuantity > 0)) return
   store.marketOrder(dir, store.orderQuantity)
 }
@@ -185,6 +196,10 @@ function onNatrMaxLoss(e: Event): void {
  */
 function submitNatrMarket(dir: Side): void {
   if (!store.canOperate || !plan.value) return
+  if (!store.canTrade) {
+    store.noteError(orderBlocked.value ?? '现在不能下单')
+    return
+  }
   if (!(currentPrice.value > 0)) return
   store.marketOrder(dir, plan.value.lots, plan.value.stopDistance)
 }
@@ -199,7 +214,7 @@ const orderBlocked = computed(() => {
   const pf = store.pf
   if (pf?.status === 'FAILED') return '账户已判失败（撞了亏损线）：只能看盘，挂单和市价单已禁用'
   if (pf?.frozen) return '已达标待升级：持仓已平、暂停下单，去账户详情页点「升级」'
-  return null
+  return sessionBlockReason(store.currentTime)
 })
 
 const natrDisabled = computed(

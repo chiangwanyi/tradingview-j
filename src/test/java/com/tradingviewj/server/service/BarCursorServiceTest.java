@@ -112,13 +112,14 @@ class BarCursorServiceTest {
                 time,open,high,low,close,volume
                 2024-03-06 02:00,5120.00,5121.00,5119.50,5120.50,700
                 2024-03-06 06:00,5122.00,5123.00,5121.50,5122.50,600
+                2024-03-06 06:05,5122.50,5123.50,5122.00,5123.00,500
                 """);
 
         // 03-04 还有一根 09:05，不能停在它上面
         assertEquals("2024-03-05 09:00", cursor.nextTradingDay(FOLDER, "2024-03-04 09:00").bar().barTime());
-        // 03-06 02:00 属于交易日 03-05，跳过去；06:00 才是 03-06
-        assertEquals("2024-03-06 06:00", cursor.nextTradingDay(FOLDER, "2024-03-05 09:00").bar().barTime());
+        // 03-06 02:00 属于交易日 03-05，跳过去；06:00 属于 03-06 但落在禁交易窗口里，再往后走到 06:05
+        assertEquals("2024-03-06 06:05", cursor.nextTradingDay(FOLDER, "2024-03-05 09:00").bar().barTime());
         // 已经是最后一根：没有下一个交易日
-        assertNull(cursor.nextTradingDay(FOLDER, "2024-03-06 06:00"));
+        assertNull(cursor.nextTradingDay(FOLDER, "2024-03-06 06:05"));
     }
 }

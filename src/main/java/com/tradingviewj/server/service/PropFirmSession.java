@@ -147,9 +147,15 @@ public final class PropFirmSession {
 
         LocalDate day = PropFirmClock.tradingDayOf(bar.barTime());
         if (day == null) {
-            // 04:45–06:00：不允许交易，既不属于前一天也不属于后一天。K 线本身也不该存在。
-            lastStep = new Step(Event.SKIPPED, bar.barTime(), null, balance, balance, floor(),
-                    dayNet, maxDayNet, effectiveTarget(), profitDays, "禁交易窗口，跳过");
+            // 04:00–06:00：不允许交易，既不属于前一天也不属于后一天。
+            //
+            // ⚠️ 这里**必须记账**：日终强平那笔平仓就记在 04:00 这一根上（用 04:00 的收盘价，
+            // 见 TradeDeskService#step）。如果像以前那样直接 return，那笔成交永远进不了余额，
+            // 紧接着 settleIfDayOver 的日终结算就会结在「平仓之前」的数上 ——
+            // 账面上等于这次强平没发生过。SKIPPED 只表示「这根没有新行情可交易」，不表示「这根没有账」。
+            applyTradesUpTo(bar.barTime());
+            lastStep = new Step(Event.SKIPPED, bar.barTime(), null, balance, equity(), floor(),
+                    dayNet, maxDayNet, effectiveTarget(), profitDays, "禁止交易时段，跳过");
             return lastStep;
         }
 
@@ -401,7 +407,7 @@ public final class PropFirmSession {
      * {@code PropFirmJudge} 拿它和「下一根属于哪一天」比，决定要不要补一次日终结算。
      *
      * <p>注意它<strong>不因禁交易窗口的 K 线而前进</strong>（那些根走 {@code SKIPPED} 分支，
-     * {@code currentDay} 原样不动），这正是需要的语义：04:45–06:00 属于前一天的收尾，
+     * {@code currentDay} 原样不动），这正是需要的语义：04:00–06:00 是前一天的收尾，
      * 不属于新的一天。
      */
     public LocalDate tradingDay() {

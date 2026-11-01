@@ -18,6 +18,7 @@ import { nearestOHLC, snapAtCursor, OHLC_LABEL } from '@/components/chart/snap'
 import { type ClosedTrade } from '@/components/chart/trades'
 import { chartNav, chartViewport } from '@/components/chart/viewport'
 import TradeTipCard from '@/components/TradeTipCard.vue'
+import { sessionBlockReason } from '@/lib/session'
 import { TOOL_LABEL, isDrawTool, useTradeStore, type DrawTool } from '@/stores/trade'
 import type { TradeOrder, OrderKind, Point, Side } from '@/types/protocol'
 
@@ -1409,10 +1410,14 @@ function menuOrder(side: Side, quantity = store.orderQuantity): void {
     return
   }
   if (!store.canTrade) {
-    // 失败 / 冻结的账户只能看：后端会拒，但先说清楚，别让人以为菜单坏了
-    showToast(store.pf?.status === 'FAILED'
-      ? '账户已判失败：只能看盘，不能再下单'
-      : '已达标待升级：持仓已平、暂停下单')
+    // 失败 / 冻结 / 禁交易时段：后端都会拒，但先说清楚，别让人以为菜单坏了
+    if (store.tradingLocked) {
+      showToast(sessionBlockReason(store.currentTime) ?? '禁止交易时段：现在不能下单')
+    } else if (store.pf?.status === 'FAILED') {
+      showToast('账户已判失败：只能看盘，不能再下单')
+    } else {
+      showToast('已达标待升级：持仓已平、暂停下单')
+    }
     closeMenu()
     return
   }
