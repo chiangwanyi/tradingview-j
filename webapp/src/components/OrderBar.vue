@@ -3,7 +3,7 @@ import { computed, ref } from 'vue'
 
 import { atrLegend } from '@/components/chart/atr'
 import { sessionBlockReason } from '@/lib/session'
-import { useTradeStore } from '@/stores/trade'
+import { ORDER_QTY_MAX, useTradeStore } from '@/stores/trade'
 import type { Side } from '@/types/protocol'
 
 /**
@@ -261,15 +261,16 @@ const sep = 'h-4 w-px shrink-0 bg-line'
 
     <!-- 1. 手数 + 两个市价按钮：方向写死在按钮里，方便反手 -->
     <div class="flex items-center gap-1">
-      <label class="flex items-center gap-1" title="手数只能是整数：1、2、3…（没有 0.5 手）；nATR 的手数由参数算，不看这里">
+      <label class="flex items-center gap-1" title="手数只能是整数：1～99（没有 0.5 手，也最多两位数）；nATR 的手数由参数算，不看这里">
         <span class="text-faint">数量</span>
         <input
           v-model.number="store.orderQuantity"
           type="number"
           min="1"
+          :max="ORDER_QTY_MAX"
           step="1"
           :class="field"
-          class="w-[3.4rem]"
+          class="w-[3.4rem] shrink-0"
         />
       </label>
       <button
@@ -279,7 +280,7 @@ const sep = 'h-4 w-px shrink-0 bg-line'
         :title="orderBlocked ?? `市价买入 ${store.orderQuantity} 手：按现价 ${priceText} 立即成交`"
         @click="submitMarket('buy')"
       >
-        市价买入 {{ store.orderQuantity }} 手
+        市价买入<span class="tnum inline-block w-[1.5rem] text-center">{{ store.orderQuantity }}</span>手
       </button>
       <button
         type="button"
@@ -288,7 +289,7 @@ const sep = 'h-4 w-px shrink-0 bg-line'
         :title="orderBlocked ?? `市价卖出 ${store.orderQuantity} 手：按现价 ${priceText} 立即成交`"
         @click="submitMarket('sell')"
       >
-        市价卖出 {{ store.orderQuantity }} 手
+        市价卖出<span class="tnum inline-block w-[1.5rem] text-center">{{ store.orderQuantity }}</span>手
       </button>
     </div>
 
@@ -374,7 +375,7 @@ const sep = 'h-4 w-px shrink-0 bg-line'
         :title="natrButtonTitle"
         @click="submitNatrMarket('buy')"
       >
-        买入 {{ natrLots }} 手
+        买入<span class="tnum inline-block w-[1.5rem] text-center">{{ natrLots }}</span>手
       </button>
       <button
         type="button"
@@ -383,7 +384,7 @@ const sep = 'h-4 w-px shrink-0 bg-line'
         :title="natrButtonTitle"
         @click="submitNatrMarket('sell')"
       >
-        卖出 {{ natrLots }} 手
+        卖出<span class="tnum inline-block w-[1.5rem] text-center">{{ natrLots }}</span>手
       </button>
     </div>
 

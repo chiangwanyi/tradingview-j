@@ -44,8 +44,13 @@ export const DEFAULT_NATR: NatrSettings = {
 export const NATR_N_MAX = 100
 /** 最大亏损上限（美元）。写大一点，别挡着做股指期货的人。 */
 export const NATR_MAX_LOSS_MAX = 10_000_000
-/** 手数上限：和 store 的 `orderQuantity` 同一个数，再大后端也不会接。 */
-export const NATR_LOTS_MAX = 10_000
+/**
+ * 手数上限：**和 store 的 `ORDER_QTY_MAX` 同一个数（99）** —— 两位数，界面定宽显示。
+ *
+ * 这一份是**重复的字面量**而不是 import：`stores/trade.ts` 反过来 import 了本文件，
+ * 相互引用会成环。改一边必须改另一边（`OrderBar` 那两个按手数按钮同时受两边约束）。
+ */
+export const NATR_LOTS_MAX = 99
 
 /**
  * 夹到合法区间。和 `sanitizeAtr` / `sanitizeIndicator` 同一个理由：

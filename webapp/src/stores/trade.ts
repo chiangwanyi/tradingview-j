@@ -87,6 +87,18 @@ export type ChartTool = 'select' | DrawTool
 export type DrawTool = 'trend' | 'ray' | 'rect' | 'arrow' | 'fib'
 
 /**
+ * 手数上限：**两位数**（1..99）。下限自然是 1 —— 期货没有 0 手，也没有半手。
+ *
+ * 为什么是两位数：这一格和两个「市价买入 N 手」按钮挤在同一行，手数是**定宽**显示的
+ * （`OrderBar` 给数字套了一层固定宽度的 span），上限压到两位，位数再怎么变也不会
+ * 把整行推来推去。业务上也没有「一次开三位数手数」的场景。
+ *
+ * 注意这**不是**后端的校验上限（Go 侧 `internal/replay/instance.go` 的
+ * `maxOrderQuantity` 是 10000）：这里只是前端不给填，最终把关的仍然是后端。
+ */
+export const ORDER_QTY_MAX = 99
+
+/**
  * 五种绘图工具。顺序就是工具栏上的顺序，也是模板列表的分组顺序。
  *
  * 字符串就是协议里的 `kind`，和后端 `Drawing.Kind` 的常量名（小写）一一对应。
@@ -269,7 +281,7 @@ export const useTradeStore = defineStore('trade', () => {
     get: () => orderQuantityRaw.value,
     set: (v) => {
       const n = Math.round(Number(v))
-      orderQuantityRaw.value = Number.isFinite(n) && n >= 1 ? Math.min(n, 10000) : 1
+      orderQuantityRaw.value = Number.isFinite(n) && n >= 1 ? Math.min(n, ORDER_QTY_MAX) : 1
     },
   })
 
