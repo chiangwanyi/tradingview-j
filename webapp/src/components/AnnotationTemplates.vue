@@ -14,7 +14,8 @@ import { ANNOTATION_COLORS, type AnnotationStyle, type DashStyle, type Template 
  *   - ＋ = 复制当前模板另建一条；
  *   - 改 / 删 = 改当前这条。
  *
- * 模板存在后端（`replay-templates.json`），换实例、重启、换浏览器都还在；
+ * 模板存在后端（`annotation_template` 表，全局一份，不属于账户也不属于标的），
+ * 换账户、重启、换浏览器都还在；
  * 这里只管编辑，保存后等后端把整份列表广播回来 —— 不在前端做乐观更新，
  * 免得两份状态不一致（列表是唯一的真相）。
  */

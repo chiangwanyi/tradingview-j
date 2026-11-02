@@ -3,6 +3,7 @@ import { computed, onBeforeUnmount, onMounted, watch } from 'vue'
 
 import ChartPanel from '@/components/ChartPanel.vue'
 import ChartToolbar from '@/components/ChartToolbar.vue'
+import DrawToolbarFloat from '@/components/DrawToolbarFloat.vue'
 import Icon from '@/components/Icon.vue'
 import TradeDock from '@/components/TradeDock.vue'
 import TradeFloat from '@/components/TradeFloat.vue'
@@ -125,6 +126,7 @@ onBeforeUnmount(() => store.disconnect())
       <ChartToolbar />
       <div class="relative min-h-0 flex-1">
         <ChartPanel />
+        <DrawToolbarFloat />
 
         <!-- 一天都没有 K 线（休市 / 没抓）时别留一块白板，说清楚是什么情况 -->
         <div

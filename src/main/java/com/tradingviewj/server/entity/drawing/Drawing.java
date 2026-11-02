@@ -117,6 +117,28 @@ public class Drawing extends BaseEntity {
     }
 
     /**
+     * 用<strong>前端给的 id</strong>建一个图形。
+     *
+     * <p>为什么这个聚合允许客户端指定主键（别的实体都让数据库发）：
+     * 图形画下去那一刻界面上就要有它 —— 选中、拖动命中测试、删除都按 id 走。
+     * 等一个往返还回 id，新线会在那一瞬间「点不中」，而用户的手已经按在它上面了。
+     *
+     * <p>重号由调用方校验（{@code AnnotationService}）：重号的后果不是报错，
+     * 是「拖一条线，另一条跟着动」—— 那种问题事后极难对上号。
+     *
+     * @throws IllegalArgumentException id 为空
+     */
+    public static Drawing of(String id, String symbolId, Kind kind,
+                            Anchor start, Anchor end, String createdBy) {
+        Drawing drawing = of(symbolId, kind, start, end, createdBy);
+        if (id == null || id.isBlank()) {
+            throw new IllegalArgumentException("用前端给的 id 建图形时 id 不能为空");
+        }
+        drawing.useId(id);
+        return drawing;
+    }
+
+    /**
      * 拖动端点。{@code modify} 时两端都要给 —— 只改一端会让射线/矩形的另一端
      * 停在用户没预期的地方。
      */

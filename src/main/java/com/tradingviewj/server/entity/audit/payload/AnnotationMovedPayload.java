@@ -1,6 +1,6 @@
 package com.tradingviewj.server.entity.audit.payload;
 
-import com.tradingviewj.server.entity.drawing.Drawing;
+import com.tradingviewj.server.dto.AnnotationView;
 import com.tradingviewj.server.enums.ReplayAction;
 
 /**
@@ -13,7 +13,7 @@ import com.tradingviewj.server.enums.ReplayAction;
  * {@code switch} 上不必再区分「加的」还是「挪的」。
  */
 public record AnnotationMovedPayload(
-        Drawing annotation
+        AnnotationView annotation
 ) implements ReplayActionPayload {
 
     @Override

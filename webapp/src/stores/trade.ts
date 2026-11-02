@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
 import { computed, ref, watch } from 'vue'
 
-import { defaultStyle, resolveStyle } from '@/components/chart/annotations'
+import { resolveStyle } from '@/components/chart/annotations'
 import { atrSeries, sanitizeAtr, type AtrSettings } from '@/components/chart/atr'
 import { sanitizeBarCount, type BarCountSettings } from '@/components/chart/barcount'
 import { sanitizeIndicator, type IndicatorSettings } from '@/components/chart/indicators'
@@ -19,7 +19,9 @@ import {
 import { TIMEFRAMES } from '@/types/protocol'
 import type {
   Annotation,
+  AnnotationDeletedPayload,
   AnnotationKind,
+  AnnotationPayload,
   AnnotationStyle,
   Bar,
   ClosedLot,
@@ -84,6 +86,11 @@ export type ChartTool = 'select' | DrawTool
 /** 五种绘图工具（不含指针）。模板、样式、绘制规则都按它分类。 */
 export type DrawTool = 'trend' | 'ray' | 'rect' | 'arrow' | 'fib'
 
+/**
+ * 五种绘图工具。顺序就是工具栏上的顺序，也是模板列表的分组顺序。
+ *
+ * 字符串就是协议里的 `kind`，和后端 `Drawing.Kind` 的常量名（小写）一一对应。
+ */
 export const DRAW_TOOLS: DrawTool[] = ['trend', 'ray', 'rect', 'arrow', 'fib']
 
 /** 工具名。界面上的中文只在这里写一次。 */
@@ -98,17 +105,6 @@ export const TOOL_LABEL: Record<ChartTool, string> = {
 
 export function isDrawTool(tool: ChartTool): tool is DrawTool {
   return tool !== 'select'
-}
-
-/** 五种工具各给一条出厂模板：没有它，第一次画线时模板条是空的。 */
-function seedTemplates(): Template[] {
-  return DRAW_TOOLS.map((kind, i) => ({
-    id: `local-${kind}`,
-    kind,
-    name: '默认',
-    style: defaultStyle(kind),
-    createdAt: i,
-  }))
 }
 
 /** `"2024-03-04 09:35"` → 当天第几分钟。解析不了返回 NaN（聚合时整根丢掉）。 */
@@ -238,12 +234,20 @@ export const useTradeStore = defineStore('trade', () => {
     selectedAnnotation.value = id
   }
 
-  /** 模板：本页内存里的一套（每种工具一条出厂模板，可以自己再加）。 */
-  const templates = ref<Template[]>(seedTemplates())
+  /**
+   * 模板：**后端的全局一份**（`annotation_template` 表），不在本页内存里攒。
+   *
+   * 初值是空数组，不是出厂模板 —— 表里还没有模板时界面显示「没有模板，用出厂样式」，
+   * 而 `resolveStyle()` 兜底画出来的线和有一条「默认」模板时一模一样。
+   * 这样就不需要「首次启动塞 5 条预置」：塞了之后用户删光，重启又冒出来，
+   * 要解决还得再加一个「已初始化」标记 —— 一个纯粹为兜底而生的状态。
+   *
+   * 列表本身只有一条来路：后端 `templates` 整份广播（{@link applyTemplates}）。
+   * 改模板是「发一条命令 + 等广播」，本页**不做乐观更新** —— 两份状态迟早对不上。
+   */
+  const templates = ref<Template[]>([])
+  /** 每个工具当前选中哪条模板。这是「我现在想用什么」，属于本机，不落库。 */
   const activeTemplate = ref<Record<string, string>>({})
-  /** 本页内存里的自增 id：模板和图形各一个，别共用 —— 共用会让 id 看起来毫无规律。 */
-  let templateSeq = 0
-  let annotationSeq = 0
 
   /**
    * 指标设置（EMA / ATR / Doji X + ZigZag / Bar Count）。
@@ -406,6 +410,7 @@ export const useTradeStore = defineStore('trade', () => {
     desk = openDesk(id, {
       onSnapshot: (snapshot) => applySnapshot(snapshot),
       onEvent: (event) => applyEvent(event),
+      onTemplates: (message) => applyTemplates(message.templates, message.lastSavedId),
       onError: (message) => {
         pendingStep.value = false
         pendingAction.value = ''
@@ -473,7 +478,8 @@ export const useTradeStore = defineStore('trade', () => {
       bars: list,
       hiddenBars: 0,
       hasMore: snapshot.hasNext,
-      annotations: [],
+      // 图形和 K 线一起装：重连后必须同时成立，否则会出现「K 线是新的、线还是断线前那批」
+      annotations: snapshot.annotations ?? [],
       // 账和 K 线一起来（重连后整块重建）；数组永远给，空就是「确实是空的」
       orders: snapshot.orders ?? [],
       trades: snapshot.trades ?? [],
@@ -528,6 +534,19 @@ export const useTradeStore = defineStore('trade', () => {
       case 'order_filled':
       case 'flat_all':
         applyPortfolio(event.payload as OrderFilledPayload | FlatAllPayload)
+        return
+      case 'annotation_added':
+      case 'annotation_moved':
+      case 'annotation_styled':
+        // 三条动作的负载形状相同（改完之后的那个图形），处理也就相同：
+        // 按 id upsert。分三条动作只为了让「挪过」和「换过颜色」在流水里分得清
+        upsertAnnotation((event.payload as AnnotationPayload).annotation)
+        return
+      case 'annotation_deleted':
+        removeAnnotation((event.payload as AnnotationDeletedPayload).annotationId)
+        return
+      case 'annotation_cleared':
+        clearAnnotationList()
         return
       default:
         // 收到一个还不认识的动作：说明协议变了，得说出来，不能装作没事
@@ -648,11 +667,18 @@ export const useTradeStore = defineStore('trade', () => {
     noteNotice('指标已恢复默认（存到这台电脑的浏览器里）')
   }
 
-  // ---------------- 标注模板 ----------------
+  // ---------------- 标注模板（后端持久化） ----------------
   function templatesFor(kind: DrawTool): Template[] {
     return templates.value.filter((t) => t.kind === kind)
   }
 
+  /**
+   * 这个工具当前该用哪条模板。
+   *
+   * 没选中过（或者选中的那条被删了）就落到该工具的第一条 —— 这样刷新页面之后
+   * 模板条上仍然亮着一个，而不是「列表里有三条、一条都没选中」。
+   * 一条都没有时返回 `null`，调用方走 `resolveStyle()` 的出厂样式。
+   */
   function templateFor(kind: DrawTool): Template | null {
     const list = templatesFor(kind)
     const id = activeTemplate.value[kind]
@@ -663,38 +689,110 @@ export const useTradeStore = defineStore('trade', () => {
     activeTemplate.value = { ...activeTemplate.value, [kind]: id }
   }
 
-  /** 新建（不带 id）或就地修改（带 id）。存在本页内存，刷新即回到出厂那五条。 */
+  /**
+   * 装上后端那份列表。**唯一改 `templates` 的地方。**
+   *
+   * 整份替换，不做增量合并 —— 后端每次发的都是全量（每个工具几条），
+   * 合并逻辑省下的那点流量换来的是「少合并一条不会报错、只会让列表慢慢不对」。
+   *
+   * `lastSavedId` 是刚存下来的那条：新建时 id 由后端分配，前端本来不知道，
+   * 靠它把新模板立刻选中。同时顺手清理失效的选中（那条可能刚被别人删掉）。
+   */
+  function applyTemplates(list: Template[], lastSavedId?: string): void {
+    templates.value = list
+    const next: Record<string, string> = { ...activeTemplate.value }
+    const saved = lastSavedId ? list.find((t) => t.id === lastSavedId) : undefined
+    if (saved) next[saved.kind] = saved.id
+    for (const kind of DRAW_TOOLS) {
+      if (next[kind] && !list.some((t) => t.id === next[kind] && t.kind === kind)) {
+        delete next[kind]
+      }
+    }
+    activeTemplate.value = next
+  }
+
+  /** 新建（不带 id）或就地修改（带 id）。发命令，等后端把整份列表广播回来。 */
   function saveTemplate(input: { id?: string; kind: DrawTool; name: string; style: AnnotationStyle }): void {
     const style = resolveStyle({ kind: input.kind, style: input.style })
-    const existing = input.id ? templates.value.find((t) => t.id === input.id) : undefined
-    if (existing) {
-      templates.value = templates.value.map((t) =>
-        t.id === existing.id ? { ...t, name: input.name, style } : t,
-      )
-      noteNotice(`模板「${input.name}」已更新（本页有效，刷新即失）`)
-      return
-    }
-    const t: Template = {
-      id: `local-t${++templateSeq}`,
-      kind: input.kind,
-      name: input.name,
-      style,
-      createdAt: Date.now(),
-    }
-    templates.value = [...templates.value, t]
-    selectTemplate(input.kind, t.id)
-    noteNotice(`模板「${t.name}」已添加（本页有效，刷新即失）`)
+    sendQuiet(
+      'template_save',
+      {
+        template: { id: input.id, kind: input.kind, name: input.name, style },
+      },
+      false,
+    )
   }
 
   function deleteTemplate(id: string): void {
-    templates.value = templates.value.filter((t) => t.id !== id)
+    sendQuiet('template_delete', { templateId: id }, false)
   }
 
-  // ---------------- 标注（本页内存） ----------------
-  function patchAnnotations(fn: (list: Annotation[]) => Annotation[]): void {
+  // ---------------- 图形（后端持久化） ----------------
+
+  /**
+   * 发一条「改盘面但不涉及钱」的消息：画线、挪线、换样式、删线、模板。
+   *
+   * **不走 `sendAction` 的那套 8 秒 pending 护栏**：那条护栏是给下单用的（防一手重复成交），
+   * 而画线是视觉动作，连着画五条是常态 —— 被「上一条还没回应」拦住会很烦人。
+   * 代价是画线失败时只能在日志里看到 `error`，界面不会转圈 —— 可以接受：
+   * 画不上去，用户第一反应就是再画一次。
+   *
+   * `withAccount=false` 是模板用的：它是全局偏好，消息里不带账户。
+   */
+  function sendQuiet(type: string, extra: Record<string, unknown> = {}, withAccount = true): boolean {
+    if (withAccount && !instance.value) {
+      noteError('还没有盘面，先打开一个账户')
+      return false
+    }
+    if (socketState.value !== 'open' || !desk) {
+      noteError('和交易服务的连接断了，正在重连：连上之后再试')
+      return false
+    }
+    const message = withAccount ? { type, accountId: accountId.value, ...extra } : { type, ...extra }
+    if (!desk.send(message)) {
+      noteError('这条消息没发出去（连接刚断），稍后重试')
+      return false
+    }
+    return true
+  }
+
+  /**
+   * 图形 id 由**前端**生成，不等后端发。
+   *
+   * 图形画下去那一刻界面上就要有它：选中、拖动命中测试、删除全按 id 走。
+   * 等一个往返还回 id，新线会在那一瞬间「点不中」，而用户的手已经按在它上面了。
+   * 后端会校验不重复（重号的后果是「拖一条线，另一条跟着动」）。
+   */
+  function newAnnotationId(): string {
+    const uuid = globalThis.crypto?.randomUUID?.()
+    return uuid ?? `a-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
+  }
+
+  /** 按 id 落一条图形：有就换掉，没有就追加。三条动作（新增/挪动/换样式）共用。 */
+  function upsertAnnotation(annotation: Annotation): void {
     const inst = instance.value
     if (!inst) return
-    instance.value = { ...inst, annotations: fn(inst.annotations) }
+    const exists = inst.annotations.some((a) => a.id === annotation.id)
+    instance.value = {
+      ...inst,
+      annotations: exists
+        ? inst.annotations.map((a) => (a.id === annotation.id ? annotation : a))
+        : [...inst.annotations, annotation],
+    }
+  }
+
+  function removeAnnotation(id: string): void {
+    if (editingId.value === id) selectAnnotation(null)
+    const inst = instance.value
+    if (!inst) return
+    instance.value = { ...inst, annotations: inst.annotations.filter((a) => a.id !== id) }
+  }
+
+  function clearAnnotationList(): void {
+    selectAnnotation(null)
+    const inst = instance.value
+    if (!inst) return
+    instance.value = { ...inst, annotations: [] }
   }
 
   function addAnnotation(input: {
@@ -705,39 +803,48 @@ export const useTradeStore = defineStore('trade', () => {
     snap: boolean
   }): void {
     if (!instance.value) return
-    const a: Annotation = {
-      id: `local-a${++annotationSeq}`,
-      kind: input.kind,
-      start: input.start,
-      end: input.end,
-      style: resolveStyle({ kind: input.kind, style: input.style }),
-      snapped: input.snap,
-      createdBy: 'local',
-      createdAt: Date.now(),
-    }
-    patchAnnotations((list) => [...list, a])
+    sendQuiet('annotation_added', {
+      annotation: {
+        id: newAnnotationId(),
+        kind: input.kind,
+        start: input.start,
+        end: input.end,
+        style: resolveStyle({ kind: input.kind, style: input.style }),
+        snapped: input.snap,
+      },
+    })
   }
 
+  /** 拖动端点松手。**两端一起发** —— 只改一端会让射线/矩形的另一端停在没预期的地方。 */
   function moveAnnotation(id: string, start: Point, end: Point, snap: boolean): void {
-    patchAnnotations((list) =>
-      list.map((a) => (a.id === id ? { ...a, start, end, snapped: snap } : a)),
-    )
+    const a = instance.value?.annotations.find((x) => x.id === id)
+    if (!a) return
+    sendQuiet('annotation_moved', {
+      annotation: { id, kind: a.kind, start, end, snapped: snap },
+    })
   }
 
   function deleteAnnotation(id: string): void {
-    if (editingId.value === id) selectAnnotation(null)
-    patchAnnotations((list) => list.filter((a) => a.id !== id))
+    sendQuiet('annotation_deleted', { annotationId: id })
   }
 
   function restyleAnnotation(id: string, style: AnnotationStyle): void {
-    patchAnnotations((list) =>
-      list.map((a) => (a.id === id ? { ...a, style: resolveStyle({ kind: a.kind, style }) } : a)),
-    )
+    const a = instance.value?.annotations.find((x) => x.id === id)
+    if (!a) return
+    sendQuiet('annotation_styled', {
+      annotation: {
+        id,
+        kind: a.kind,
+        start: a.start,
+        end: a.end,
+        style: resolveStyle({ kind: a.kind, style }),
+        snapped: a.snapped,
+      },
+    })
   }
 
   function clearAnnotations(): void {
-    selectAnnotation(null)
-    patchAnnotations(() => [])
+    sendQuiet('annotation_cleared')
   }
 
   // ---------------- 交易动作：发意图 → 后端算 → 等广播 ----------------

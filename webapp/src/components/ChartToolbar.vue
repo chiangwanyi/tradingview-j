@@ -4,14 +4,15 @@ import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import AnnotationEditTemplates from '@/components/AnnotationEditTemplates.vue'
 import { ATR_SMOOTHINGS, type AtrSmoothing } from '@/components/chart/atr'
 import AnnotationTemplates from '@/components/AnnotationTemplates.vue'
-import { TOOL_LABEL, isDrawTool, useTradeStore, type DrawTool } from '@/stores/trade'
+import { isDrawTool, useTradeStore, type DrawTool } from '@/stores/trade'
 import { TIMEFRAMES, type Timeframe } from '@/types/protocol'
 
 /**
  * 图表上方的操作条。
  *
- * 从 web/（复盘）搬过来，形状基本没变：左边五种绘图工具 + 模板条，中间周期和指标，
- * 右边这一块盘面的概况。**改掉的只有「谁来执行」**：
+ * 从 web/（复盘）搬过来，形状基本没变：中间周期和指标，右边这一块盘面的概况；
+ * 五种绘图工具不在这里，它们在画布上的浮窗里（`DrawToolbarFloat`）。
+ * **改掉的只有「谁来执行」**：
  *
  *   - 旧版里步进 / 接管 / 机器人 / 录音都是发消息给 Go 复盘服务，由后端执行再广播回来；
  *   - 这里只保留【下一根】这一个走后端的动作（WebSocket `/ws`，后端读 CSV + 落库 + 广播），
@@ -25,18 +26,6 @@ import { TIMEFRAMES, type Timeframe } from '@/types/protocol'
  * 标签页的内存里，刷新就没了。
  */
 const store = useTradeStore()
-
-const drawTools: DrawTool[] = ['trend', 'ray', 'rect', 'arrow', 'fib']
-
-const drawHint: Record<DrawTool, string> = {
-  trend: '趋势线：两次单击（起点 → 终点），按住 Shift 画水平线',
-  ray: '射线：单击一下就画出一条水平朝右的射线；按住 Shift 改成两次单击画斜射线',
-  rect: '矩形：两次单击定两个对角点',
-  arrow: '箭头线：两次单击，终点带箭头；Shift 画水平箭头',
-  fib: '斐波那契回撤：两次单击定价格区间，四条水平线 -1 / 0 / 1 / 2 自动排开',
-}
-
-const canEdit = computed(() => store.canOperate)
 
 /** 当前是不是绘图工具 —— 模板条只在绘图工具下出现（v-if 用得到，也顺手做类型收窄） */
 const drawKind = computed<DrawTool | null>(() => (isDrawTool(store.tool) ? store.tool : null))
@@ -224,24 +213,7 @@ onBeforeUnmount(() => {
 
 <template>
   <div class="relative flex flex-wrap items-center gap-2 border-b border-line px-2 py-1.5">
-    <div class="flex items-center gap-1">
-      <!--
-        只有绘图工具。指针 / 修改两个按钮已经删掉：
-        「没拿笔」本身就是指针状态（画完自动交回），「改一个图形」靠直接点它。
-      -->
-      <button
-        v-for="t in drawTools"
-        :key="t"
-        type="button"
-        :title="drawHint[t]"
-        :class="[btn, store.tool === t ? btnActive : btnIdle]"
-        :disabled="!canEdit"
-        @click="store.tool = store.tool === t ? 'select' : t"
-      >
-        {{ TOOL_LABEL[t] }}
-      </button>
-    </div>
-
+    <!-- 五种绘图工具已经搬到画布上的浮窗（`DrawToolbarFloat`） -->
     <!-- 模板条：每个工具各有自己的一组（后端持久化，换实例也不会丢） -->
     <AnnotationTemplates v-if="drawKind" :kind="drawKind" />
 

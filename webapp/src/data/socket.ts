@@ -24,7 +24,15 @@
  * 一条「步进」在断线期间重发，可能让账户一次往前跳两根，而用户只按了一次。
  */
 
-import type { ClosedLot, PfView, TradeOrder, Position, Trade } from '@/types/protocol'
+import type {
+  Annotation,
+  ClosedLot,
+  PfView,
+  TemplatesMessage,
+  TradeOrder,
+  Position,
+  Trade,
+} from '@/types/protocol'
 
 /** 一根 K 线（和后端 `BarView` 同名）。没有 `ema20` —— 均线由前端现算。 */
 export interface DeskBar {
@@ -67,6 +75,13 @@ export interface DeskSnapshot {
   trades: Trade[]
   closedLots: ClosedLot[]
   position: Position
+  /**
+   * 这块盘面上已经画好的全部图形（按标的全取，不按账户）。
+   *
+   * 和 K 线一起给：重连后「图上有哪些线」和「揭示到哪一根」必须同时成立，
+   * 分开取会出现「K 线是新的、线还是断线前那批」的错位。
+   */
+  annotations: Annotation[]
   /** 净已实现盈亏（已扣手续费） */
   realizedPnl: number
   unrealizedPnl: number
@@ -122,6 +137,13 @@ export type DeskState = 'connecting' | 'open' | 'closed'
 export interface DeskHandlers {
   onSnapshot: (snapshot: DeskSnapshot) => void
   onEvent: (event: DeskEvent) => void
+  /**
+   * 整份模板列表（`template_list` 的回执，或者任何人改了模板之后的广播）。
+   *
+   * 它是**全局**的，不跟着账户走 —— 所以它单独一条回调，不塞进 `onEvent`：
+   * `onEvent` 的每一条都带 `seq`、都属于某个账户的盘面，而模板两样都没有。
+   */
+  onTemplates: (message: TemplatesMessage) => void
   /** 后端明确拒绝了这个动作（业务原因）。**不是**连接问题 */
   onError: (message: string) => void
   onState: (state: DeskState) => void
@@ -189,6 +211,9 @@ export function openDesk(accountId: string, handlers: DeskHandlers): DeskConnect
       setState('open')
       // 每次连上都要重新自报家门：后端不为「连接」保存任何身份
       send({ type: 'hello', accountId })
+      // 模板是全局的，和账户无关（后端不要求先 hello），所以顺手拉一次：
+      // 断线重连后模板列表也跟着重建，和快照一起把界面恢复成后端的样子
+      send({ type: 'template_list' })
       stopPing()
       pingTimer = window.setInterval(() => send({ type: 'ping' }), PING_MS)
     }
@@ -208,6 +233,9 @@ export function openDesk(accountId: string, handlers: DeskHandlers): DeskConnect
           return
         case 'event':
           handlers.onEvent(message as DeskEvent)
+          return
+        case 'templates':
+          handlers.onTemplates(message as TemplatesMessage)
           return
         case 'error':
           handlers.onError(body.msg || '后端拒绝了这一步，没给原因')

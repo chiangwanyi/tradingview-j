@@ -13,6 +13,7 @@ import com.tradingviewj.server.entity.trade.Trade;
 import com.tradingviewj.server.enums.Actor;
 import com.tradingviewj.server.exception.BusinessException;
 import com.tradingviewj.server.service.AuditLogService;
+import com.tradingviewj.server.service.AnnotationService;
 import com.tradingviewj.server.service.BarCursorService;
 import com.tradingviewj.server.service.BarQueryService;
 import com.tradingviewj.server.service.PropFirmAccountService;
@@ -85,6 +86,7 @@ public class TradeDeskService {
     private final BarCursorService cursor;
     private final AuditLogService audit;
     private final TradingService trading;
+    private final AnnotationService annotations;
 
     /**
      * 账户现在的盘面（K 线窗口 + 账）。
@@ -128,6 +130,8 @@ public class TradeDeskService {
                 book.position(),
                 book.realizedPnl(),
                 book.unrealizedPnl(),
+                // 图形按标的全取：它不挂账户，换账户做同一张图，昨天画的线还在
+                annotations.list(spec.code()),
                 // 只读地重放一遍拿读数：快照不开事务写账户，余额的落库交给「推进一根」和成交
                 judge.view(account, judge.assess(account)));
     }

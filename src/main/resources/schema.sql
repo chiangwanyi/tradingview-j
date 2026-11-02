@@ -211,6 +211,34 @@ CREATE TABLE IF NOT EXISTS drawing_fib_level (
     PRIMARY KEY (drawing_id, level_index)
 );
 
+-- 绘图工具的样式模板（「我习惯用什么颜色的线」）。
+--
+-- **不是图形，也不是图形的一部分。** 图形（上表）是「画在盘面上的事实」，
+-- 模板是「一套外观预设」：画下去那一刻样式被复制进 drawing.style，此后改模板、
+-- 删模板都不影响已经画好的线（见 DrawingStyle 的说明）。
+--
+-- 三个刻意的决定：
+--   1. **没有 symbol_id / account_id**。模板是长期习惯，换标的、换账户、删账户都该在。
+--      挂上去就会长出「同一条预设换个账户就没了」这种需要解释的行为。
+--   2. **style 存一整块 JSON**，不展平成 color / width / dash 列。理由和 drawing 表相反：
+--      drawing 的样式是事实的一部分，会被单独读、按标的下查；模板的样式是纯偏好，
+--      全库没有一处会 where color = ...，唯一的读法就是「整块拿出来给前端」。
+--      展平还得为斐波那契那四条水平线再开一张子表（对应 drawing_fib_level），
+--      而它在这里没有任何查询价值 —— 所以 levels 也留在 JSON 里。
+--   3. **不做出厂预设落库**。表空就是「还没建过模板」，前端 resolveStyle() 兜底画得出来。
+--      预置进库会带来「用户删光了，重启又冒出来」，要解决还得额外加个「已初始化」标记。
+CREATE TABLE IF NOT EXISTS annotation_template (
+    id         TEXT PRIMARY KEY,
+    kind       TEXT NOT NULL,   -- TREND / RAY / RECT / ARROW / FIB（Java 常量名，同第 5 条约定）
+    name       TEXT NOT NULL,
+    style_json TEXT NOT NULL,   -- 整份 AnnotationStyle，含 fib 的 levels 数组
+    created_by TEXT NOT NULL,   -- 谁建的；模板全局，不记账户
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL
+);
+-- 界面上按工具分组显示，这一列是每个列表的唯一过滤条件
+CREATE INDEX IF NOT EXISTS idx_template_kind ON annotation_template (kind);
+
 -- 录音：只存元数据，WAV 文件在磁盘上（storage 层管路径）。
 -- **不带 account_id**：语音依附在 K 线上（symbol_id + bar_time），不参与账户统计。
 CREATE TABLE IF NOT EXISTS audio_clip (

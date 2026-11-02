@@ -2,6 +2,7 @@ package com.tradingviewj.server.ws;
 
 import com.tradingviewj.server.dto.BarView;
 import com.tradingviewj.server.dto.ClosedLotView;
+import com.tradingviewj.server.dto.AnnotationView;
 import com.tradingviewj.server.dto.OrderView;
 import com.tradingviewj.server.dto.PositionView;
 import com.tradingviewj.server.dto.PfView;
@@ -61,6 +62,14 @@ public record DeskSnapshot(
         BigDecimal realizedPnl,
         BigDecimal unrealizedPnl,
         /**
+         * 这块盘面上已经画好的全部图形。
+         *
+         * <p>和 K 线一起给，不分成第二条消息：重连之后「图上有哪些线」必须和「K 线揭示到哪一根」
+         * 同时成立 —— 分开取会出现「K 线是新的、线还是断线前那批」的错位。
+         * 按标的全取（图形不挂账户，换账户做同一张图，线还在）。
+         */
+        List<AnnotationView> annotations,
+        /**
          * 考核读数：余额 / 日终峰值 / 亏损线 / 权益 / 是否已冻结。
          *
          * <p>和上面那几个盈亏数<strong>不是一回事</strong>：{@code realizedPnl} 是「这个账户
@@ -76,9 +85,10 @@ public record DeskSnapshot(
                                  String day, String barTime, boolean hasNext, List<BarView> bars,
                                  List<OrderView> orders, List<TradeView> trades,
                                  List<ClosedLotView> closedLots, PositionView position,
-                                 BigDecimal realizedPnl, BigDecimal unrealizedPnl, PfView pf) {
+                                 BigDecimal realizedPnl, BigDecimal unrealizedPnl,
+                                 List<AnnotationView> annotations, PfView pf) {
         return new DeskSnapshot("snapshot", accountId, accountName, stage, status,
                 symbolId, folder, tick, tickValue, day, barTime, hasNext, bars,
-                orders, trades, closedLots, position, realizedPnl, unrealizedPnl, pf);
+                orders, trades, closedLots, position, realizedPnl, unrealizedPnl, annotations, pf);
     }
 }

@@ -1,6 +1,6 @@
 package com.tradingviewj.server.entity.audit.payload;
 
-import com.tradingviewj.server.entity.drawing.Drawing;
+import com.tradingviewj.server.dto.AnnotationView;
 import com.tradingviewj.server.enums.ReplayAction;
 
 /**
@@ -13,7 +13,7 @@ import com.tradingviewj.server.enums.ReplayAction;
  * <p>负载同样是<strong>改完之后</strong>的图形，端点保持原样。
  */
 public record AnnotationStyledPayload(
-        Drawing annotation
+        AnnotationView annotation
 ) implements ReplayActionPayload {
 
     @Override

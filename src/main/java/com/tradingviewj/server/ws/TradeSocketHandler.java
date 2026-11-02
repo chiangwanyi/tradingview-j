@@ -1,9 +1,12 @@
 package com.tradingviewj.server.ws;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.tradingviewj.server.dto.TemplateView;
 import com.tradingviewj.server.enums.Actor;
 import com.tradingviewj.server.enums.ReplayAction;
 import com.tradingviewj.server.exception.BusinessException;
+import com.tradingviewj.server.service.AnnotationService;
+import com.tradingviewj.server.service.AnnotationTemplateService;
 import com.tradingviewj.server.service.TradingService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -14,6 +17,9 @@ import org.springframework.web.socket.WebSocketSession;
 import org.springframework.web.socket.handler.TextWebSocketHandler;
 
 import java.io.IOException;
+import java.util.Collections;
+import java.util.IdentityHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
@@ -36,9 +42,22 @@ import java.util.concurrent.ConcurrentHashMap;
  * {"type":"order_cancelled","orderId":…}  → {"type":"event","action":"order_cancelled"} 广播
  * {"type":"order_moved","orderId":…,price}→ {"type":"event","action":"order_moved"}   广播
  * {"type":"flat_all","accountId":"a1"}    → {"type":"event","action":"flat_all"}      广播
+ * {"type":"annotation_added","accountId":"a1","annotation":{…}}
+ *                                         → {"type":"event","action":"annotation_added"} 广播
+ * {"type":"annotation_moved" / "annotation_styled","annotation":{…}}
+ *                                         → {"type":"event","action":"annotation_*"}   广播
+ * {"type":"annotation_deleted","annotationId":"…"} / {"type":"annotation_cleared"}
+ *                                         → {"type":"event","action":"annotation_*"}   广播
+ * {"type":"template_list"}                → {"type":"templates","templates":[…]}       只回发起方
+ * {"type":"template_save","template":{…}} → {"type":"templates",…,"lastSavedId":"…"}  广播给所有人
+ * {"type":"template_delete","templateId":"…"} → {"type":"templates",…}                广播给所有人
  * {"type":"ping"}                         → {"type":"pong"}                           只回发起方
  * 其它 / 出错                              → {"type":"error","msg":"..."}              只回发起方
  * </pre>
+ *
+ * <p>两条通道的分界线：<strong>改盘面的东西按账户房间广播</strong>（下单、步进、画线），
+ * <strong>全局偏好的东西发给所有人</strong>（模板）。前者带 {@code seq}、写 {@code audit_event}；
+ * 后者不带、不记账 —— 换台机器接着用同一份模板，但它不是「这次复盘里的一步」。
  *
  * <p><strong>{@code type} 从哪来：</strong>除了 {@code hello} / {@code step} / {@code ping}
  * 三条元命令和 {@code market_order} 这一条<strong>命令层名字</strong>，其余取值一律是
@@ -94,8 +113,23 @@ public class TradeSocketHandler extends TextWebSocketHandler {
     /** 市价单：下单即成交，产出 {@code order_filled}。 */
     private static final String TYPE_MARKET_ORDER = "market_order";
 
+    /**
+     * 模板的三条命令 + 一条下行。
+     *
+     * <p><strong>它们不走 {@code requireInAccount}</strong>：模板是<strong>全局的一份习惯</strong>，
+     * 不属于任何账户（见 {@code AnnotationTemplateService}）。要求先 {@code hello} 才能拉模板，
+     * 会让「交易页刚连上、还没进账户就渲染工具栏」这一帧直接吃一个错误 ——
+     * 而那条错误对用户毫无意义。和 {@code ping} 一样，它们是元命令。
+     */
+    private static final String TYPE_TEMPLATE_LIST = "template_list";
+    private static final String TYPE_TEMPLATE_SAVE = "template_save";
+    private static final String TYPE_TEMPLATE_DELETE = "template_delete";
+    private static final String MSG_TEMPLATES = "templates";
+
     private final ObjectMapper json;
     private final TradeDeskService desk;
+    private final AnnotationService annotations;
+    private final AnnotationTemplateService templates;
 
     /** accountId → 这个账户的所有连接。 */
     private final Map<String, Set<WebSocketSession>> rooms = new ConcurrentHashMap<>();
@@ -135,6 +169,22 @@ public class TradeSocketHandler extends TextWebSocketHandler {
                 case "order_moved" -> broadcast(desk.move(
                         requireInAccount(session, request), request.orderId(), request.price()));
                 case "flat_all" -> broadcast(desk.flatAll(requireInAccount(session, request)));
+                // 图形：改盘面、要记账，所以和下单类命令一样走 requireInAccount + 房间广播。
+                // 动作名就是 ReplayAction 的 wire() 形式（annotation_added …），不再另起命令名。
+                case "annotation_added" -> broadcast(annotations.add(
+                        requireInAccount(session, request), request.annotation()));
+                case "annotation_moved" -> broadcast(annotations.move(
+                        requireInAccount(session, request), request.annotation()));
+                case "annotation_styled" -> broadcast(annotations.style(
+                        requireInAccount(session, request), request.annotation()));
+                case "annotation_deleted" -> broadcast(annotations.delete(
+                        requireInAccount(session, request), request.annotationId()));
+                case "annotation_cleared" -> broadcast(annotations.clear(
+                        requireInAccount(session, request)));
+                // 模板：全局偏好，不记账、不看账户。
+                case TYPE_TEMPLATE_LIST -> sendTo(session, templatesMessage(null));
+                case TYPE_TEMPLATE_SAVE -> saveTemplate(session, request);
+                case TYPE_TEMPLATE_DELETE -> deleteTemplate(session, request);
                 case TYPE_PING -> sendTo(session, new Pong(TYPE_PONG));
                 // 其余一律拒。判据不在这里抄一份名字清单，而是问 ReplayAction：
                 // 「这是不是一个有名字的动作」。是 → 说明动作定义了但还没接通；
@@ -214,9 +264,56 @@ public class TradeSocketHandler extends TextWebSocketHandler {
         }
     }
 
+    // ---------------- 模板 ----------------
+
+    /**
+     * 存一条模板，然后把<strong>整份列表</strong>发给所有人。
+     *
+     * <p>全量而不是增量：模板每个工具几条，全量发送让前端不必维护增量合并
+     * （和 Go 版 {@code templates.go} 同一个理由）。{@code lastSavedId} 让发起方能立刻选中
+     * 刚存下来的那条 —— 新建时 id 是后端分配的，前端本来不知道。
+     */
+    private void saveTemplate(WebSocketSession session, WsRequest request) {
+        TemplateView saved = templates.save(request.template());
+        broadcastTemplates(session, saved.id());
+    }
+
+    private void deleteTemplate(WebSocketSession session, WsRequest request) {
+        templates.delete(request.templateId());
+        broadcastTemplates(session, null);
+    }
+
+    private TemplatesMessage templatesMessage(String lastSavedId) {
+        return new TemplatesMessage(MSG_TEMPLATES, templates.list(), lastSavedId);
+    }
+
+    /**
+     * 广播整份模板列表。
+     *
+     * <p><strong>不按账户房间发</strong>（和 {@link #broadcast} 的唯一区别）：模板是全局的，
+     * 两个不同账户的交易页开在同一台机器上，改一个模板两边都该看见。
+     *
+     * <p>发起方单独兜一次：它可能还没发过 {@code hello}（模板是元命令），
+     * 那样它不在任何房间里，光靠遍历 {@code rooms} 会把它漏掉 —— 表现是「点了保存没反应」。
+     * 用一个 identity set 去重，已经进房间的发起方不会被发两遍。
+     */
+    private void broadcastTemplates(WebSocketSession origin, String lastSavedId) {
+        TemplatesMessage message = templatesMessage(lastSavedId);
+        Set<WebSocketSession> seen = Collections.newSetFromMap(new IdentityHashMap<>());
+        for (Set<WebSocketSession> sessions : rooms.values()) {
+            for (WebSocketSession session : sessions) {
+                if (seen.add(session)) {
+                    sendTo(session, message);
+                }
+            }
+        }
+        if (seen.add(origin)) {
+            sendTo(origin, message);
+        }
+    }
+
     @Override
-    public void afterConnectionClosed(WebSocketSession session, CloseStatus status) {
-        leave(session);
+    public void afterConnectionClosed(WebSocketSession session, CloseStatus status) {        leave(session);
         log.debug("WS 连接关闭: {} ({})", session.getId(), status);
     }
 
@@ -294,5 +391,14 @@ public class TradeSocketHandler extends TextWebSocketHandler {
 
     /** 心跳回执。 */
     record Pong(String type) {
+    }
+
+    /**
+     * 模板全量列表（下行）。字段名和前端 {@code TemplatesMessage} 一一对应。
+     *
+     * <p>{@code lastSavedId} 可为空（删除时就是 null），全局 {@code non_null} 会让这个键
+     * 整个消失 —— 前端按 {@code ?: undefined} 处理。
+     */
+    record TemplatesMessage(String type, List<TemplateView> templates, String lastSavedId) {
     }
 }
