@@ -151,3 +151,30 @@ func TestWinresTemplateHasNoVersionLiteral(t *testing.T) {
 		}
 	}
 }
+
+// build-wsl.sh 是**第三个**承担「让版本号进产物」的执行者（前两个是 build.cmd
+// 和 build.sh），所以同样四件事缺一不可：从 VERSION 读、用 -X main.version 注入、
+// 产物名由版本号拼出来、go-winres 写进 exe 文件属性。
+//
+// 少任何一条，症状都和当初 build.cmd 漂掉时一样 —— 看不出来：文件名写着 0.31.0、
+// 属性页却是 0.30.0，或者横幅打回兜底值。
+//
+// 额外钉住 GOOS=windows：这个脚本存在的唯一理由就是从 Linux 产出**能在 Windows
+// 上双击的那个 exe**，改成别的目标就没有意义了（build.sh 管 macOS）。
+func TestBuildWslInjectsAndNamesVersion(t *testing.T) {
+	sh := readFileT(t, "build-wsl.sh")
+
+	for _, want := range []string{
+		"VERSION",                    // 唯一的版本来源
+		"-X main.version=",           // 注入到二进制里
+		`OUT="tv-capture-v$VER.exe"`, // 产物名由版本号拼出来
+		`-o "$OUT"`,                  // 而且就地生成（outDir 相对 exe 目录展开）
+		"--file-version",             // 写进 exe 的文件属性
+		"--product-version",
+		"GOOS=windows", // 交叉编译目标不能漂
+	} {
+		if !strings.Contains(sh, want) {
+			t.Fatalf("build-wsl.sh 里找不到 %q —— 版本号/目标平台机制被改动了一半？", want)
+		}
+	}
+}

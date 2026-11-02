@@ -15,12 +15,18 @@
 Chrome 里开 `chrome://inspect/#remote-debugging` → 勾 Allow → 打开带 `/chart/` 的图表页、周期切 5 分钟（Chrome
 136+ 加 `--remote-debugging-port` 会被静默忽略，只能走这个开关）。需 Go 1.26+ 与 `go-winres`。
 
-```bat
+```text
 build.cmd            :: 前端 + exe 一次做完（任一阶段失败即中断）· --no-web 只编 exe
+./build-wsl.sh       :: 同上，但在 WSL2 里跑：前端在 ext4 镜像里编、Go 交叉编译到 windows/amd64
 ```
 
 版本号只有 `VERSION` 一个来源（文件名 / exe 属性 / 横幅页脚三处），**升版本 = 改它再重跑 `build.cmd`**；
 `.syso` 是编译期快照，别手改别提交。`web/dist` **不进 exe**，发布要连 `dist` 一起带走。
+
+`build-wsl.sh` 里前端**不能就地编**：`web/node_modules` 是 Windows 的 pnpm 装的，只带 win32 原生二进制
+（rolldown / `@tailwindcss/oxide` / lightningcss），Linux 上会报 `Cannot find native binding`，原地重装又会
+弄坏 `build.cmd`。所以它把 `web/` 镜像到 `~/.cache/tv-capture-web` 去编，再把 `dist` 拷回来；Go 那步仍在
+原地，exe 必须落在根目录（`outDir`/`rawDir` 相对 exe 所在目录展开）。
 
 菜单三项：`1 启动抓取（录 CSV + 开分析页）` · `2 复盘（回放/标注/模拟交易/交易记录）` · `3 退出`。
 
