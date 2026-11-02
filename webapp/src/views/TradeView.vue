@@ -5,7 +5,6 @@ import ChartPanel from '@/components/ChartPanel.vue'
 import ChartToolbar from '@/components/ChartToolbar.vue'
 import DrawToolbarFloat from '@/components/DrawToolbarFloat.vue'
 import Icon from '@/components/Icon.vue'
-import OrderBar from '@/components/OrderBar.vue'
 import TradeDock from '@/components/TradeDock.vue'
 import { usd } from '@/data/rules'
 import { useTradeStore } from '@/stores/trade'
@@ -50,6 +49,41 @@ const remaining = computed(() => {
   return pf ? pf.equity - pf.lossLine : null
 })
 
+/**
+ * 顶栏上的盘面概况：`标的 · 当前这根的时间 · 这一天加载了几根`。
+ *
+ * 原来这一串挂在工具条最右边（`ChartToolbar` 的 `ml-auto` 那一块），2026-11-02 挪到了
+ * 账户名旁边：它描述的是「这个账户现在在看哪张图」，和账户名是同一件事的两半，
+ * 分在两个角落会让人先在屏幕上找一遍。
+ */
+const sceneLine = computed(() => {
+  const inst = store.instance
+  if (!inst) return ''
+  const rest = store.restOfDay > 0 ? `（这一天还剩 ${store.restOfDay} 根）` : ''
+  return `${inst.symbol} · ${store.currentTime || store.day} · ${inst.bars.length} 根${rest}`
+})
+
+/** 连接状态的小圆点：绿=通、黄=正在连、红=断了在重连。断线时用户必须一眼看出来。 */
+const linkDot = computed(() =>
+  store.socketState === 'open'
+    ? 'bg-emerald-500'
+    : store.socketState === 'connecting'
+      ? 'bg-amber-400'
+      : 'bg-red-400',
+)
+const linkText = computed(() =>
+  store.socketState === 'open'
+    ? '已连接'
+    : store.socketState === 'connecting'
+      ? '连接中…'
+      : '重连中…',
+)
+const linkTitle = computed(() =>
+  store.socketState === 'open'
+    ? '交易服务已连接（WebSocket /ws）'
+    : '连接断了，正在自动重连；重连成功后会按后端的样子重建盘面',
+)
+
 onMounted(() => {
   document.title = '交易 · webapp'
   // 连上就开始：账户名要等快照回来才知道，所以标题在 watch 里补
@@ -70,9 +104,10 @@ onBeforeUnmount(() => store.disconnect())
 
 <template>
   <div class="flex h-screen flex-col bg-surface text-ink">
-    <!-- 只留一个返回入口：顶栏上原来那一排（阶段 / 标的 / 日期）都去掉了，
-         盘面本身才是这一页的主体。留下的三个数是**唯一**不该被藏起来的：
-         余额、亏损线、还剩多少缓冲 —— 缺了它们，盘中就不知道自己还有多危险。 -->
+    <!-- 顶栏分两段：左边是「我在看什么」（返回、账户名、标的 / 时间 / 根数、连接状态、
+         阶段状态），右边是「我有多危险」（余额、亏损线、还剩多少缓冲）。
+         盘面概况原来挂在工具条右端，2026-11-02 挪到账户名旁边 —— 它和账户名本来是一件事。
+         右边那三个数是**唯一**不该被藏起来的：缺了它们，盘中就不知道自己还有多危险。 -->
     <header class="flex min-h-9 shrink-0 items-center gap-3 border-b border-line bg-panel px-3 py-1">
       <a
         href="/"
@@ -82,13 +117,25 @@ onBeforeUnmount(() => store.disconnect())
         <Icon name="left" :size="13" />返回账户
       </a>
       <span v-if="store.accountName" class="truncate text-[13px] text-ink">{{ store.accountName }}</span>
-      <span v-if="store.loading" class="text-[13px] text-faint">盘面加载中…</span>
+
+      <!-- 盘面概况（标的 / 当前 K 线时间 / 根数）：和账户名挨着 —— 说的就是「这个账户在看哪张图」 -->
       <span
-        v-else-if="store.socketState === 'closed'"
-        class="text-[13px] text-amber-700"
-        title="连接断了，正在自动重连；重连成功后会按后端的样子重建盘面"
+        v-if="store.instance"
+        class="tnum truncate whitespace-nowrap text-[12px] text-faint"
+        :title="`当前标的 ${store.symbolCode} · 盘面走到 ${store.currentTime || store.day}`"
+        >{{ sceneLine }}</span
       >
-        连接断开，重连中…
+
+      <span v-if="store.loading" class="text-[13px] text-faint">盘面加载中…</span>
+
+      <!-- 连接状态（绿点=通）：放在账户名这一侧，断线一眼可见 -->
+      <span
+        class="flex shrink-0 items-center gap-1.5 whitespace-nowrap text-[12px]"
+        :class="store.socketState === 'open' ? 'text-faint' : 'text-amber-700'"
+        :title="linkTitle"
+      >
+        <span class="h-1.5 w-1.5 rounded-full" :class="linkDot" />
+        {{ linkText }}
       </span>
 
       <!-- 考核状态：失败 / 已达标待升级都意味着「不能再下单」，必须在按按钮之前就看到 -->
@@ -123,11 +170,10 @@ onBeforeUnmount(() => store.disconnect())
     </header>
 
     <main class="relative flex min-h-0 flex-1 flex-col">
-      <!-- 工具条 = 上一条（周期 / 指标 / 盘面概况）+ 下单条（`OrderBar`）。
-           下划线由这个包裹层出，这样「有没有实例」都不会多出一条缝。 -->
+      <!-- 工具条：周期 / 指标在左，下单条在同一行的右端（`OrderBar` 由 `ChartToolbar` 排）
+           下划线由这个包裹层出，这样「有没有盘面」都不会多出一条缝。 -->
       <div class="shrink-0 border-b border-line">
         <ChartToolbar />
-        <OrderBar />
       </div>
       <div class="relative min-h-0 flex-1">
         <ChartPanel />

@@ -7,12 +7,13 @@ import { useTradeStore } from '@/stores/trade'
 import type { Side } from '@/types/protocol'
 
 /**
- * 下单条：一行平铺在**顶部工具条**里（`ChartToolbar` 的下一条）。
+ * 下单条：**顶部工具条同一行的右端**（`ChartToolbar` 的最后一个子元素，`ml-auto` 推到底）。
  *
  * 以前这一块是画布上的浮动窗（`TradeFloat`）：可以拖、可以折叠成一个 44px 的图标。
- * 现在改成固定在工具条里的一行，原因是浮窗挡 K 线 —— 复盘时要反复对照「价格走到哪」
- * 和「我要挂哪个价」，浮窗压住右上角的刻度、挂单线标签和平仓线信息卡，得先拖开才能看。
- * 钉在工具条里就不动了，谁也挡不着谁；代价是画布矮了一行。
+ * 后来改成固定在工具条里的一行（压在周期 / 指标下面），因为浮窗挡 K 线 —— 复盘时要
+ * 反复对照「价格走到哪」和「我要挂哪个价」，浮窗压住右上角的刻度、挂单线标签和平仓线
+ * 信息卡，得先拖开才能看。**2026-11-02 起再并进周期 / 指标那一行**：单独占一行等于白拿
+ * 走画布一条高度，而这一行右边本来就是空的。
  *
  * 留在这一行的只有**真正常按的三类动作**：
  *
@@ -246,7 +247,7 @@ const sep = 'h-4 w-px shrink-0 bg-line'
 <template>
   <div
     v-if="store.instance"
-    class="flex flex-wrap items-center gap-x-2 gap-y-1 px-2 pb-1.5 text-[12px]"
+    class="flex flex-wrap items-center gap-x-2 gap-y-1 text-[12px]"
     :title="matchHint"
   >
     <!-- 不能下单时先说清楚为什么：按钮置灰而不解释，看起来像坏了 -->
@@ -396,7 +397,7 @@ const sep = 'h-4 w-px shrink-0 bg-line'
     -->
     <button
       type="button"
-      class="ml-auto shrink-0 rounded border border-line bg-elev px-2 py-0.5 font-medium whitespace-nowrap text-ink transition hover:border-accent hover:text-accent disabled:cursor-not-allowed disabled:opacity-40"
+      class="shrink-0 rounded border border-line bg-elev px-2 py-0.5 font-medium whitespace-nowrap text-ink transition hover:border-accent hover:text-accent disabled:cursor-not-allowed disabled:opacity-40"
       :disabled="flatDisabled"
       :title="flatTitle"
       @click="flatAll"

@@ -3,19 +3,21 @@ import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 
 import AnnotationEditTemplates from '@/components/AnnotationEditTemplates.vue'
 import { ATR_SMOOTHINGS, type AtrSmoothing } from '@/components/chart/atr'
+import OrderBar from '@/components/OrderBar.vue'
 import { useTradeStore } from '@/stores/trade'
 import { TIMEFRAMES, type Timeframe } from '@/types/protocol'
 
 /**
  * 图表上方的操作条。
  *
- * 从 web/（复盘）搬过来，形状基本没变：周期和指标，右边这一块盘面的概况。
+ * 从 web/（复盘）搬过来，形状基本没变：周期和指标在左，右边这一块是下单条。
  * 五种绘图工具、【下一根】、模板条都不在这里 —— 它们在画布上的浮窗里
  * （`DrawToolbarFloat`）：这些都是对着 K 线用的动作，贴在图上比挂在顶上顺手。
  *
- * 这一条**下面紧跟着**下单条（`OrderBar`，由 `TradeView` 直接排在这一行之后）：
- * 下单那几组输入框原来是一块可以拖动的浮窗，压住右侧的价格轴和挂单线标签，
- * 现在钉成工具条的第二行 —— 见 `OrderBar` 开头那段。本文件不管下单。
+ * 这一条**同一行**的右端就是下单条（`OrderBar`，2026-11-02 起并进来）：下单那几个控件
+ * 原来单独占一整行、压在画布上方，把画布又矮了一截。现在周期 / 指标在左、下单在右，
+ * 一行装完（窄屏放不下时 `flex-wrap` 会把下单整块折到第二行，这是兜底，不是常态）。
+ * 本文件不管下单，只说「把它排在哪儿」。
  * **改掉的只有「谁来执行」**：
  *
  *   - 旧版里步进 / 接管 / 机器人 / 录音都是发消息给 Go 复盘服务，由后端执行再广播回来；
@@ -32,30 +34,7 @@ import { TIMEFRAMES, type Timeframe } from '@/types/protocol'
  */
 const store = useTradeStore()
 
-const hasMoreHint = computed(() => {
-  const inst = store.instance
-  if (!inst) return ''
-  const rest = store.restOfDay > 0 ? `（这一天还剩 ${store.restOfDay} 根）` : ''
-  return `${inst.symbol} · ${store.currentTime || store.day} · ${inst.bars.length} 根${rest}`
-})
-
 // ---------------- 盘面概况 ----------------
-
-/** 连接状态的小圆点：绿=通、灰=重连中。断线时用户必须一眼看出来。 */
-const linkDot = computed(() =>
-  store.socketState === 'open'
-    ? 'bg-emerald-500'
-    : store.socketState === 'connecting'
-      ? 'bg-amber-400'
-      : 'bg-red-400',
-)
-const linkText = computed(() =>
-  store.socketState === 'open'
-    ? '已连接'
-    : store.socketState === 'connecting'
-      ? '连接中…'
-      : '重连中…',
-)
 
 
 const btn = 'rounded border border-line px-2 py-1 text-[13px] transition disabled:cursor-not-allowed disabled:opacity-40'
@@ -439,12 +418,11 @@ onBeforeUnmount(() => {
       「点了没反应」的界面 —— 宁可现在就少几个按钮，等接口做出来再加回来。
     -->
 
-    <div class="ml-auto flex items-center gap-3 text-[12px] text-dim">
-      <span v-if="store.instance" class="tnum text-faint">{{ hasMoreHint }}</span>
-      <span class="flex items-center gap-1.5 text-faint" :title="`交易服务 ${linkText}`">
-        <span class="h-1.5 w-1.5 rounded-full" :class="linkDot" />
-        {{ linkText }}
-      </span>
-    </div>
+    <!--
+      右端：下单条（2026-11-02 起和周期 / 指标同一行）。`ml-auto` 把它整块推到右边，
+      中间留白 —— 左边是「看盘」的参数，右边是「动手」的按钮，两只手各管一边。
+      它自己有 `v-if="store.instance"`，没有盘面时整块不出现（这时也没有下单可谈）。
+    -->
+    <OrderBar class="ml-auto" />
   </div>
 </template>
