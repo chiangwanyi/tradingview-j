@@ -63,8 +63,38 @@ export function sanitizeNatr(s: NatrSettings): NatrSettings {
   }
 }
 
-/** 一次计算的完整结果。界面只排版，不再自己乘 —— 两处各算一遍迟早对不上。 */
-export interface NatrPlan {
+/**
+ * n / 最大亏损的**本机存档**（浏览器 localStorage）。
+ *
+ * 和指标设置同一个理由（见 `lib/indicatorPrefs.ts`）：这两格是「这台电脑上习惯怎么下单」，
+ * 不是盘面事实，不该进账户存档、也不该广播。读出来一律过 `sanitizeNatr` ——
+ * 存档被手改成 `"abc"` 只让那一格回出厂值。
+ *
+ * 键名带版本号：字段语义变了就换键，老存档自然失效，不用写迁移。
+ */
+const NATR_KEY = 'tv-trade-natr-v1'
+
+export function loadNatr(): NatrSettings {
+  try {
+    const raw = localStorage.getItem(NATR_KEY)
+    if (!raw) return { ...DEFAULT_NATR }
+    const o = JSON.parse(raw) as Partial<NatrSettings> | null
+    return sanitizeNatr({ ...DEFAULT_NATR, ...(o ?? {}) })
+  } catch {
+    // JSON 坏了 / 无痕模式里 getItem 抛异常：都按「没存过」处理
+    return { ...DEFAULT_NATR }
+  }
+}
+
+export function saveNatr(s: NatrSettings): void {
+  try {
+    localStorage.setItem(NATR_KEY, JSON.stringify(sanitizeNatr(s)))
+  } catch {
+    // 隐私模式 / 配额满：记不住不影响这一次使用
+  }
+}
+
+/** 一次计算的完整结果。界面只排版，不再自己乘 —— 两处各算一遍迟早对不上。 */export interface NatrPlan {
   /** 止损距离（点）= n × ATR */
   stopDistance: number
   /** 每点值多少美元（tickValue / tick；不知道时按 1 兜底） */

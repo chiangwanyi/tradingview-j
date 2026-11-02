@@ -6,7 +6,7 @@ import { atrSeries, sanitizeAtr, type AtrSettings } from '@/components/chart/atr
 import { sanitizeBarCount, type BarCountSettings } from '@/components/chart/barcount'
 import { sanitizeIndicator, type IndicatorSettings } from '@/components/chart/indicators'
 import { DEFAULT_INDICATOR_PREFS, loadPrefs, savePrefs } from '@/lib/indicatorPrefs'
-import { DEFAULT_NATR, planNatr, sanitizeNatr, type NatrSettings } from '@/lib/natr'
+import { loadNatr, planNatr, sanitizeNatr, saveNatr, type NatrSettings } from '@/lib/natr'
 import { isTradableBar } from '@/lib/session'
 import {
   openDesk,
@@ -261,7 +261,8 @@ export const useTradeStore = defineStore('trade', () => {
   const atr = ref<AtrSettings>(savedPrefs.atr)
   const indicator = ref<IndicatorSettings>(savedPrefs.indicator)
   const barCount = ref<BarCountSettings>(savedPrefs.barCount)
-  const natr = ref<NatrSettings>({ ...DEFAULT_NATR })
+  /** n / 最大亏损同样**从本机存档读**：刷新后还是上次填的那两个数。 */
+  const natr = ref<NatrSettings>(loadNatr())
 
   const orderQuantityRaw = ref(1)
   const orderQuantity = computed<number>({
@@ -646,6 +647,7 @@ export const useTradeStore = defineStore('trade', () => {
 
   function setNatr(patch: Partial<NatrSettings>): void {
     natr.value = sanitizeNatr({ ...natr.value, ...patch })
+    saveNatr(natr.value)
   }
 
   function setTimeframe(tf: Timeframe): void {

@@ -12,9 +12,11 @@ import { useTradeStore } from '@/stores/trade'
  * 留一个永远空着的 Tab 只是噪音。
  *
  * 可以整体收起（只留标题条），这样想全力看盘时画布能再高 200px。
+ * **默认就是收起**：看盘是主任务，下单面板点一下标题条就展开（挂单 / 持仓的摘要
+ * 仍然写在标题条上，不展开也知道手里有什么）。
  */
 const store = useTradeStore()
-const collapsed = ref(false)
+const collapsed = ref(true)
 
 const summary = computed(() => {
   const inst = store.instance

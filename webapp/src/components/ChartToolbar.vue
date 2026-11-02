@@ -3,21 +3,22 @@ import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 
 import AnnotationEditTemplates from '@/components/AnnotationEditTemplates.vue'
 import { ATR_SMOOTHINGS, type AtrSmoothing } from '@/components/chart/atr'
-import AnnotationTemplates from '@/components/AnnotationTemplates.vue'
-import { isDrawTool, useTradeStore, type DrawTool } from '@/stores/trade'
+import { useTradeStore } from '@/stores/trade'
 import { TIMEFRAMES, type Timeframe } from '@/types/protocol'
 
 /**
  * 图表上方的操作条。
  *
- * 从 web/（复盘）搬过来，形状基本没变：中间周期和指标，右边这一块盘面的概况；
- * 五种绘图工具不在这里，它们在画布上的浮窗里（`DrawToolbarFloat`）。
+ * 从 web/（复盘）搬过来，形状基本没变：周期和指标，右边这一块盘面的概况。
+ * 五种绘图工具、【下一根】、模板条都不在这里 —— 它们在画布上的浮窗里
+ * （`DrawToolbarFloat`）：这些都是对着 K 线用的动作，贴在图上比挂在顶上顺手。
  * **改掉的只有「谁来执行」**：
  *
  *   - 旧版里步进 / 接管 / 机器人 / 录音都是发消息给 Go 复盘服务，由后端执行再广播回来；
- *   - 这里只保留【下一根】这一个走后端的动作（WebSocket `/ws`，后端读 CSV + 落库 + 广播），
- *     其余入口全部拿掉 —— 撮合、接管、机器人后端都还没有，留着只会是「点了没反应」的按钮。
- *     留下的按钮（工具、周期、指标、模板）都是**纯前端状态**，点一下立刻生效。
+ *   - 整页唯一走后端的动作是【下一根】（WebSocket `/ws`，后端读 CSV + 落库 + 广播，
+ *     按钮在浮窗里），其余入口全部拿掉 —— 撮合、接管、机器人后端都还没有，
+ *     留着只会是「点了没反应」的按钮。
+ *     留下的按钮（周期、指标）都是**纯前端状态**，点一下立刻生效。
  *     其中指标那四项（EMA / ATR / Doji X + ZigZag / Bar Count）的开关与参数会**存在
  *     这台电脑的浏览器里**（`lib/indicatorPrefs.ts`），刷新页面仍然是你上次调的那一套；
  *     它不进账户存档、也不发给别人。底部那个「恢复默认」就是这套存档的出口。
@@ -27,9 +28,6 @@ import { TIMEFRAMES, type Timeframe } from '@/types/protocol'
  */
 const store = useTradeStore()
 
-/** 当前是不是绘图工具 —— 模板条只在绘图工具下出现（v-if 用得到，也顺手做类型收窄） */
-const drawKind = computed<DrawTool | null>(() => (isDrawTool(store.tool) ? store.tool : null))
-
 const hasMoreHint = computed(() => {
   const inst = store.instance
   if (!inst) return ''
@@ -37,32 +35,7 @@ const hasMoreHint = computed(() => {
   return `${inst.symbol} · ${store.currentTime || store.day} · ${inst.bars.length} 根${rest}`
 })
 
-// ---------------- 【下一根】 ----------------
-
-/**
- * 能不能往后放一根。
- *
- * 四个条件缺一不可：有盘面、后端说磁盘上还有下一根、没有一条 step 正在路上（防连点）、
- * 连接是通的。**连接那一条最重要** —— 断线时按钮必须立刻变灰，否则人按下去什么都不会发生，
- * 只会以为是程序卡了。
- */
-const canStep = computed(
-  () =>
-    !!store.instance &&
-    store.hasNext &&
-    !store.pendingStep &&
-    store.socketState === 'open',
-)
-
-const stepHint = computed(() => {
-  if (store.socketState !== 'open') return '和交易服务的连接断了，正在重连：连上之后才能往后放'
-  if (!store.instance) return '盘面还没加载出来'
-  if (store.pendingStep) return '这一根正在从后端取回来…'
-  if (!store.hasNext) {
-    return `${store.currentTime || '当前这一根'} 已经是磁盘上最后一根：等抓取程序再录一段行情`
-  }
-  return '把盘面往后放一根（等同画布上按 →）。这一根由后端读 CSV 算出来、写进操作记录，再把结果广播回来'
-})
+// ---------------- 盘面概况 ----------------
 
 /** 连接状态的小圆点：绿=通、灰=重连中。断线时用户必须一眼看出来。 */
 const linkDot = computed(() =>
@@ -213,13 +186,10 @@ onBeforeUnmount(() => {
 
 <template>
   <div class="relative flex flex-wrap items-center gap-2 border-b border-line px-2 py-1.5">
-    <!-- 五种绘图工具已经搬到画布上的浮窗（`DrawToolbarFloat`） -->
-    <!-- 模板条：每个工具各有自己的一组（后端持久化，换实例也不会丢） -->
-    <AnnotationTemplates v-if="drawKind" :kind="drawKind" />
-
     <!--
       编辑态的模板条（v0.20.0）：选中一个图形之后出现，只列**同类**模板，
-      点一下就把样式套到那个图形上（不动位置）。
+      点一下就把样式套到那个图形上（不动位置）。（选工具用的模板条在浮窗下面，
+      见 `DrawToolbarFloat`。）
 
       **必须脱离排版流**（绝对定位 + `top-full`）：它比上面那一行宽得多，留在
       flex 里就会把工具条从一行挤成两行，画布跟着矮 27px。而画布一矮，价格轴就
@@ -228,13 +198,11 @@ onBeforeUnmount(() => {
       「看一眼、换个样式」，画布不该跟着动。所以它像下拉面板一样浮在画布上沿。
     -->
     <div
-      v-else-if="store.editingAnnotation"
+      v-if="store.editingAnnotation"
       class="absolute top-full left-2 z-40 mt-1 max-w-[calc(100%-1rem)] shadow-md"
     >
       <AnnotationEditTemplates :annotation="store.editingAnnotation" />
     </div>
-
-    <div class="h-4 w-px bg-line" />
 
     <!--
       周期切换：只换画布看的那份 K 线，不动数据（聚合在前端现算）。
@@ -458,25 +426,10 @@ onBeforeUnmount(() => {
       </div>
     </div>
 
-    <div class="h-4 w-px bg-line" />
-
     <!--
-      【下一根】：这一页唯一「改盘面」的动作，也是唯一走后端的动作。
-      点了不本地推进 —— 发一条 `step` 给后端，由它读 CSV 算出下一根、把账户的
-      `lastBarTime` 推过去、写一条 `BAR_ADVANCED` 操作记录，再把结果广播回来。
-      所以按钮在「还没收到广播」期间是灰的（`pendingStep`），防止连点堆一串。
-    -->
-    <button
-      type="button"
-      :class="[btn, store.pendingStep ? btnActive : btnIdle, 'tnum']"
-      :disabled="!canStep"
-      :title="stepHint"
-      @click="store.step()"
-    >
-      {{ store.pendingStep ? '取下一根…' : '下一根 ›' }}
-    </button>
+      【下一根】在画布上的浮窗里（`DrawToolbarFloat`）—— 它和绘图工具是同一类
+      「对着 K 线点一下」的动作，放在一起手不用来回跑。
 
-    <!--
       下一天的开盘、接管、机器人、录音**仍然没有**：它们都要落库，而后端还没接
       （消息会明确拒绝，见后端的 `TradeSocketHandler`）。留着按钮只会得到一个
       「点了没反应」的界面 —— 宁可现在就少几个按钮，等接口做出来再加回来。
