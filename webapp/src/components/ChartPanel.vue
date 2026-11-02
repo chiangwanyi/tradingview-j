@@ -19,6 +19,7 @@ import { type ClosedTrade } from '@/components/chart/trades'
 import { chartNav, chartViewport } from '@/components/chart/viewport'
 import TradeTipCard from '@/components/TradeTipCard.vue'
 import { sessionBlockReason } from '@/lib/session'
+import { loadView, saveView, type ViewState } from '@/lib/viewState'
 import { TOOL_LABEL, isDrawTool, useTradeStore, type DrawTool } from '@/stores/trade'
 import type { TradeOrder, OrderKind, Point, Side } from '@/types/protocol'
 
@@ -215,6 +216,66 @@ function requestDraw(): void {
   })
 }
 
+// ---------------- 取景存档：拖完 / 缩完停在哪 ----------------
+//
+// 按账户存在 localStorage（见 `lib/viewState.ts`）。只记**时间轴位置 + 缩放 + 价格轴**，
+// 刷新后再进来直接摆回原处；换账户、换交易日窗口滑走就回落默认贴尾。
+// 挂在「操作结束」上写，不挂在 requestDraw 里 —— 一次拖动就是上百帧。
+
+/** 当前取景。左边缘可能落在两根之间、也可能落在最右一根右侧，用「锚点 + 相对根数」记。 */
+function currentView(): ViewState | null {
+  if (scale.bars.length === 0) return null
+  const i = clamp(Math.floor(scale.scroll), 0, scale.bars.length - 1)
+  return {
+    anchorTime: scale.bars[i].time,
+    anchorDxBars: scale.scroll - i,
+    barWidth: scale.barWidth,
+    autoPrice: scale.autoPrice,
+    priceMin: scale.priceMin,
+    priceMax: scale.priceMax,
+  }
+}
+
+function saveViewNow(): void {
+  const v = currentView()
+  if (v) saveView(store.accountId, v)
+}
+
+let saveTimer = 0
+/** 滚一下能连发几十个事件，攒到停下来再写。 */
+function queueSaveView(): void {
+  if (saveTimer) window.clearTimeout(saveTimer)
+  saveTimer = window.setTimeout(() => {
+    saveTimer = 0
+    saveViewNow()
+  }, 200)
+}
+
+/**
+ * 摆回上次的取景。锚点已经不在当前窗口里（窗口随交易日滑动）就返回 false，
+ * 由调用方走 `resetView()`。
+ *
+ * 价格轴**原样**恢复：用户自己纵向缩过的画面就是他的成果；跨日价格跑远了会看到一段空白，
+ * 拖一下或双击就回来了 —— 比替他判断「这个区间是不是过期了」更可预期。
+ */
+function restoreView(): boolean {
+  const v = loadView(store.accountId)
+  if (!v) return false
+  const idx = scale.indexOfTime(v.anchorTime)
+  if (idx === undefined) return false
+  scale.barWidth = v.barWidth
+  scale.scroll = idx + v.anchorDxBars
+  scale.clampScroll()
+  scale.autoPrice = v.autoPrice
+  if (v.autoPrice) {
+    scale.fitPrice(true)
+  } else {
+    scale.priceMin = v.priceMin
+    scale.priceMax = v.priceMax
+  }
+  return true
+}
+
 function draw(): void {
   const el = canvas.value
   const box = host.value
@@ -290,7 +351,9 @@ onMounted(() => {
   // 反过来的话第一帧会按「没有副图」铺一次，开了 ATR 的人会看到 K 线跳一下。
   scale.setAtrPane(store.atr.show)
   scale.setSize(host.value?.clientWidth ?? 0, host.value?.clientHeight ?? 0)
-  scale.resetView()
+  // 挂载时快照还没到（bars 空、accountId 空），这里通常落到 resetView；
+  // 真正生效的恢复是下面那个 instance.id 的 watch。
+  if (!restoreView()) scale.resetView()
   requestDraw()
 
   /**
@@ -315,6 +378,8 @@ onMounted(() => {
   if (host.value) observer.observe(host.value)
   window.addEventListener('keydown', onKeyDown)
   window.addEventListener('keyup', onKeyUp)
+  // 刷新 / 关标签 / 切后台：最后落一次盘，别丢掉刚拖完还没攒满防抖的那一下
+  window.addEventListener('pagehide', saveViewNow)
 })
 
 onBeforeUnmount(() => {
@@ -323,6 +388,8 @@ onBeforeUnmount(() => {
   chartNav.centerOn = () => {}
   window.removeEventListener('keydown', onKeyDown)
   window.removeEventListener('keyup', onKeyUp)
+  window.removeEventListener('pagehide', saveViewNow)
+  if (saveTimer) window.clearTimeout(saveTimer)
   window.removeEventListener('pointermove', onWindowPointerMove)
   window.removeEventListener('pointerup', onWindowPointerUp)
   window.removeEventListener('pointermove', onPinMove)
@@ -332,12 +399,13 @@ onBeforeUnmount(() => {
   if (pinTimer) window.clearTimeout(pinTimer)
 })
 
-// 实例换了：重置视图（否则会拿着上一个标的的缩放去画新标的）
+// 实例换了（快照到了 / 换日 / 换账户）：先摆回这个账户上次的取景，
+// 没有存档或锚点已经不在窗口里，才拿「合适密度 + 贴尾」当默认。
 watch(
   () => store.instance?.id,
   () => {
     scale.setBars(store.displayBars)
-    scale.resetView()
+    if (!restoreView()) scale.resetView()
     hover.value = null
     pending.value = null
     rayHover.value = null
@@ -841,6 +909,7 @@ function onWindowPointerUp(): void {
   moving.value = null
   drag = emptyDrag()
   endPointerCapture()
+  saveViewNow()
   requestDraw()
 }
 
@@ -915,6 +984,7 @@ function onWheel(ev: WheelEvent): void {
   // 在它右边的刻度上滚一下就改变价格轴会更让人迷惑。
   if (p.x >= scale.layout.plot.right && !inAtrPane(p.y)) scale.zoomPrice(1 / factor, p.y)
   else scale.zoomTime(factor, p.x)
+  queueSaveView()
   requestDraw()
 }
 
@@ -926,6 +996,7 @@ function onDoubleClick(ev: MouseEvent): void {
   // stopPropagation，但 dblclick 照样冒上来 —— 这里按事件源再挡一次。
   if ((ev.target as Element | null)?.closest?.('svg')) return
   scale.resetPrice()
+  saveViewNow()
   requestDraw()
 }
 
