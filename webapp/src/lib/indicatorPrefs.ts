@@ -17,8 +17,8 @@ import { DEFAULT_INDICATOR, sanitizeIndicator, type IndicatorSettings } from '@/
  * 这几项全是**显示参数**，不是盘面事实（判断口径见 `indicators.ts` 开头那段）：
  * 关掉 Bar Count 不会改变任何一根 K 线的价格，别人也不该看到我的颜色。
  * 后端 `audit_event` 那套是给「账户发生了什么」用的，把「我今天喜欢多大的 Lag」
- * 塞进去只会污染操作记录。所以它和【下单】浮窗的位置（`TradeFloat` 的
- * `tv-trade-float-pos`）一样，属于**这台电脑这个浏览器**的偏好。
+ * 塞进去只会污染操作记录。所以它和绘图工具浮窗的位置（`tv-draw-toolbar-pos-v1`）
+ * 一样，属于**这台电脑这个浏览器**的偏好。
  *
  * ## 三条必须守住的
  *

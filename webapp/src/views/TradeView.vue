@@ -5,8 +5,8 @@ import ChartPanel from '@/components/ChartPanel.vue'
 import ChartToolbar from '@/components/ChartToolbar.vue'
 import DrawToolbarFloat from '@/components/DrawToolbarFloat.vue'
 import Icon from '@/components/Icon.vue'
+import OrderBar from '@/components/OrderBar.vue'
 import TradeDock from '@/components/TradeDock.vue'
-import TradeFloat from '@/components/TradeFloat.vue'
 import { usd } from '@/data/rules'
 import { useTradeStore } from '@/stores/trade'
 
@@ -123,7 +123,12 @@ onBeforeUnmount(() => store.disconnect())
     </header>
 
     <main class="relative flex min-h-0 flex-1 flex-col">
-      <ChartToolbar />
+      <!-- 工具条 = 上一条（周期 / 指标 / 盘面概况）+ 下单条（`OrderBar`）。
+           下划线由这个包裹层出，这样「有没有实例」都不会多出一条缝。 -->
+      <div class="shrink-0 border-b border-line">
+        <ChartToolbar />
+        <OrderBar />
+      </div>
       <div class="relative min-h-0 flex-1">
         <ChartPanel />
         <DrawToolbarFloat />
@@ -165,8 +170,5 @@ onBeforeUnmount(() => store.disconnect())
         <button type="button" class="text-red-500 hover:opacity-70" @click="store.clearError()">关闭</button>
       </div>
     </div>
-
-    <!-- 下单浮窗：可拖动、可折叠；这里没有回放，所以不用像 web/ 那样按条件隐藏 -->
-    <TradeFloat />
   </div>
 </template>

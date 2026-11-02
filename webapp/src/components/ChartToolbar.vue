@@ -12,6 +12,10 @@ import { TIMEFRAMES, type Timeframe } from '@/types/protocol'
  * 从 web/（复盘）搬过来，形状基本没变：周期和指标，右边这一块盘面的概况。
  * 五种绘图工具、【下一根】、模板条都不在这里 —— 它们在画布上的浮窗里
  * （`DrawToolbarFloat`）：这些都是对着 K 线用的动作，贴在图上比挂在顶上顺手。
+ *
+ * 这一条**下面紧跟着**下单条（`OrderBar`，由 `TradeView` 直接排在这一行之后）：
+ * 下单那几组输入框原来是一块可以拖动的浮窗，压住右侧的价格轴和挂单线标签，
+ * 现在钉成工具条的第二行 —— 见 `OrderBar` 开头那段。本文件不管下单。
  * **改掉的只有「谁来执行」**：
  *
  *   - 旧版里步进 / 接管 / 机器人 / 录音都是发消息给 Go 复盘服务，由后端执行再广播回来；
@@ -185,7 +189,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div class="relative flex flex-wrap items-center gap-2 border-b border-line px-2 py-1.5">
+  <div class="relative flex flex-wrap items-center gap-2 px-2 py-1.5">
     <!--
       编辑态的模板条（v0.20.0）：选中一个图形之后出现，只列**同类**模板，
       点一下就把样式套到那个图形上（不动位置）。（选工具用的模板条在浮窗下面，
