@@ -36,6 +36,13 @@ const counts = computed(() => ({
   FAILED: rows.value.filter((a) => a.status === 'FAILED').length,
 }))
 
+/**
+ * 卡片左上角那格「模板名」（`LucidFlex 50K EVAL`）：账户行上只有 `templateId`，
+ * 名字得从模板列表里查。列表本来就在拉（给新建弹窗用），所以这里只是一次本地查找。
+ * 查不到（模板被删 / 还没加载回来）返回空串，卡片上那一格整颗不画。
+ */
+const tplName = (a: Account): string => api.templateName(a, templateStore.list)
+
 function reload(): Promise<void> {
   return api
     .list()
@@ -252,6 +259,7 @@ defineExpose({ openNew })
           v-for="a in list"
           :key="a.id"
           :a="a"
+          :tpl-name="tplName(a)"
           :busy="pendingId === a.id"
           :pending="pendingId === a.id ? pendingKind : ''"
           @detail="openDetail"

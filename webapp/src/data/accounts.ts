@@ -333,6 +333,34 @@ export function finished(a: Account): boolean {
   return a.stage === 'PAYOUT'
 }
 
+/**
+ * 标的长名 → 短名：`CME_MINI:MES1!` → `MES1!`。
+ *
+ * 账户上的 `symbolId` 是「交易所:代码」的全名（`_symbols.json` 的键，不能改），
+ * 但卡片上那一格只是个身份角标，交易所前缀每次都一样，写全了既挤又难扫。
+ * 所以**只切冒号**：取最后一段，没有冒号就原样返回 —— 不猜代码格式。
+ */
+export function shortSymbol(symbolId: string | null | undefined): string {
+  if (!symbolId) return ''
+  const at = symbolId.lastIndexOf(':')
+  return at >= 0 ? symbolId.slice(at + 1) : symbolId
+}
+
+/**
+ * 账户当前这套模板叫什么（如 `LucidFlex 50K EVAL`），查不到就返回空串。
+ *
+ * **不在账户行上**：`Account.templateId` 只有一个 id，名字在 `pf-templates` 里，
+ * 由调用方把模板列表传进来（总览页本来就要拉一份给新建弹窗用，等于白捡）。
+ * 之所以不让后端往账户 JSON 里塞一个 `templateName`：那是同一份事实的第二份投影，
+ * 模板改名之后两边就会打架，而这里查一次是纯本地查找。
+ *
+ * 空串 = 模板被删了 / 列表还没加载回来 —— 界面上**不画这一格**，
+ * 而不是画一个 id 冒充名字。
+ */
+export function templateName(a: Account, templates: { id: string; name: string }[]): string {
+  return templates.find((t) => t.id === a.templateId)?.name ?? ''
+}
+
 /** "2024-03-04 09:00" → "2024-03-04 09:00"，截到分钟，年月日全留（跨年账户要能分辨）。 */
 export function shortTime(barTime: string): string {
   return barTime.length >= 16 ? barTime.slice(0, 16) : barTime

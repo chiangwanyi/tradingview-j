@@ -9,6 +9,7 @@ import {
   lossLine,
   profitTarget,
   shortInstant,
+  shortSymbol,
   shortTime,
   stageBadge,
   targetRaised,
@@ -18,9 +19,13 @@ import type { Account } from '@/data/accounts'
 import { drawdownLabel, pct, usd } from '@/data/rules'
 
 /**
- * 一张考核卡。版式（2026-11-01 调整后）：
- * 一行「标的 + 账户名」→ 右上角阶段标签（+ 成功/失败） → 盘面最新K线与交易日数
+ * 一张考核卡。版式（2026-11-03 调整后）：
+ * 一行「模板 + 账户名」→ 右上角「标的短名 + 阶段标签（+ 成功/失败）」 → 盘面最新K线与交易日数
  * → 小标签（回撤口径 / 已达标 / 创建于 / 起始时间）→ 四个数字 → 进度条 → 动作。
+ *
+ * 左上角那格是**模板名**（`LucidFlex 50K EVAL` 这种），由调用方查好传进来（见 `tplName`）：
+ * 它既回答「多大规模、什么规则」，也顺带说明了这个号处在哪一段（模板名里就带 EVAL / FUNDED）。
+ * 标的退到右上角，而且只写代码（`MES1!`）—— 交易所前缀每次都一样，写全了只会挤掉阶段标签。
  *
  * 卡片上的入口只有三个：继续交易 / 详情 / 结算今日；外加一颗**只在考核通过时才出现**的
  * 【升级】—— 它是唯一一个「有结论才有动作」的按钮，没达标时整颗不画，
@@ -44,7 +49,20 @@ import { drawdownLabel, pct, usd } from '@/data/rules'
  * 上下也都别再往「整体×2」那条路走：3 列栅格放不下，只会换来满屏折行。
  * 数字用 `.num`（同族 + 等宽数字），**不要用 `.tnum`** —— 那是交易页换 monospace 对齐价格表用的。
  */
-const props = defineProps<{ a: Account; busy?: boolean; pending?: 'settle' | 'promote' | '' }>()
+const props = defineProps<{
+  a: Account
+  /**
+   * 当前这套模板的名字（如 `LucidFlex 50K EVAL`）。空串 = 查不到（模板被删 / 模板列表还没到）
+   * —— 那一格整颗不画，不拿 id 或阶段名冒充。
+   *
+   * 为什么要外面传：名字在 `pf-templates` 里，账户行上只有 `templateId`。
+   * 总览页本来就要拉一份模板列表给新建弹窗，顺手查一下比让后端往账户 JSON 里
+   * 再投影一个 `templateName` 便宜，也不会和模板改名后的事实分叉。
+   */
+  tplName?: string
+  busy?: boolean
+  pending?: 'settle' | 'promote' | ''
+}>()
 const emit = defineEmits<{ detail: [id: string]; settle: [id: string]; promote: [id: string] }>()
 
 const target = computed(() => profitTarget(props.a))
@@ -104,21 +122,29 @@ function onTrade(): void {
 <template>
   <article class="flex flex-col rounded-xl border border-line bg-panel shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
     <header class="flex items-start justify-between gap-2 px-4 pt-4">
-      <!-- 标的 + 账户名同一行：标的在建户时定死，是这个名字的一部分（同名账户靠它区分） -->
+      <!-- 模板 + 账户名同一行：模板决定这套考核的口径（规模 / 回撤 / 有没有目标），
+           升级换了模板这一段字也会跟着变，所以它比标的更像「这个账户是谁」 -->
       <div class="flex min-w-0 items-center gap-1.5">
         <span
-          class="shrink-0 rounded border border-accent/30 bg-accent-soft px-1.5 py-0.5 text-label font-medium text-accent-ink uppercase"
-          title="这个账户只做这一个标的，创建后不可切换"
+          v-if="tplName"
+          class="min-w-0 truncate rounded border border-accent/30 bg-accent-soft px-1.5 py-0.5 text-label font-medium text-accent-ink"
+          title="这套账户是从哪个模板开的；升级后会换成下一阶段那套模板"
         >
-          {{ a.symbolId ?? '未绑定标的' }}
+          {{ tplName }}
         </span>
         <h3 class="min-w-0 truncate text-title font-semibold text-ink">
           {{ a.name }}
         </h3>
       </div>
 
-      <!-- 右上角：阶段标签 + 终态标记（成功 / 失败） -->
+      <!-- 右上角：标的（短名）+ 阶段标签 + 终态标记（成功 / 失败） -->
       <div class="flex shrink-0 flex-wrap items-center justify-end gap-1">
+        <span
+          class="rounded border border-line px-1.5 py-0.5 text-label font-medium whitespace-nowrap text-dim uppercase"
+          :title="`这个账户只做 ${a.symbolId ?? '一个标的'}，创建后不可切换`"
+        >
+          {{ shortSymbol(a.symbolId) || '未绑定标的' }}
+        </span>
         <span
           class="rounded border px-1.5 py-0.5 text-label font-medium whitespace-nowrap"
           :class="badgeClass(badge.tone)"
