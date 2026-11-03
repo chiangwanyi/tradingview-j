@@ -26,8 +26,9 @@ import java.util.regex.Pattern;
  * <h2>为什么单独一个 service，而不是让 Controller 直接读文件</h2>
  *
  * <p>三件事在这里收敛：<strong>code → folder 的映射</strong>（画布传的是标的代码，
- * 磁盘上是目录名）、<strong>「上一个交易日是哪个文件」</strong>（按磁盘上的 CSV 算，不按日历）
- * 和<strong>「没传时刻就用最新一天」</strong>这条默认规则。
+ * 磁盘上是目录名）、<strong>「上一个交易日是哪一个」</strong>（按磁盘上真的开过盘的那些
+ * CSV 文件算，既不看日历、也不把「只有隔夜尾巴」的周六 / 休市日文件算进来）和
+ * <strong>「没传时刻就用最新一天」</strong>这条默认规则。
  * 放进 Controller 会让每个接口各写一遍，迟早有一处不一致。
  *
  * <h2>只读</h2>
@@ -44,6 +45,8 @@ public class BarQueryService {
 
     private final CsvBarStore bars;
     private final SymbolCatalog catalog;
+    /** 「上一交易日」不只看有没有文件，还得看那一天有没有属于它自己的那一场（见 {@link TradingCalendar}）。 */
+    private final TradingCalendar calendar;
 
     /** 标的清单：清单文件里有什么就返回什么，附带磁盘上数出来的日文件范围。 */
     public List<SymbolSummaryResponse> symbols() {
@@ -75,7 +78,9 @@ public class BarQueryService {
      *
      * <p>「上一个交易日」<strong>以磁盘上的 CSV 为准</strong>（{@code data/<folder>/<yyyy-MM-dd>.csv}），
      * 而不是按日历减一天：周末、CME 结算休市、抓取程序没跑的那些天本来就没有文件，
-     * 按日历减一必然落空。这里取的是<strong>文件名严格小于截止日期的最后一个</strong>。
+     * 按日历减一必然落空。但也<strong>不是「有文件就算」</strong>：周六那份装的只是周五那场
+     * 00:00–04:55 的尾巴（见 {@link TradingCalendar}），把它当上一交易日，隔夜参照就只剩 60 根。
+     * 这里取的是<strong>文件名严格小于截止日期、且真的开过盘的最后一个</strong>。
      *
      * <h2>切点怎么比</h2>
      *
@@ -100,7 +105,7 @@ public class BarQueryService {
         LocalDate target = cutoff == null ? dayDateOf(files.get(files.size() - 1)) : cutoff.date();
 
         List<Bar> raw = new ArrayList<>();
-        LocalDate previous = previousTradingDay(files, target);
+        LocalDate previous = previousTradingDay(spec.folder(), files, target);
         if (previous != null) {
             // 上一交易日整天搬过来，不截断：这一段是「隔夜参照」，缺一根就少一根
             raw.addAll(bars.readDay(spec.folder(), previous));
@@ -120,18 +125,32 @@ public class BarQueryService {
     }
 
     /**
-     * 文件列表里<strong>严格早于</strong> {@code target} 的最后一天；没有更早的文件时返回 null
-     * （从最早那天开始看，就没有「上一交易日」可给）。
+     * 文件列表里<strong>严格早于</strong> {@code target} 的最后一个<strong>交易日</strong>；
+     * 没有更早的交易日时返回 null（从最早那天开始看，就没有「上一交易日」可给）。
+     *
+     * <h2>为什么不能只取「最后一个更早的文件」</h2>
+     *
+     * <p>日文件是<strong>日历日</strong>切的，而交易日 D = {@code [D 06:00, D+1 04:00)}：
+     * 周六那份 {@code 2025-08-09.csv} 里装的<strong>全是周五那一场 00:00–04:55 的尾巴</strong>，
+     * 它自己不是交易日。只按文件名取「最后一个更早的」就会把它当成上一交易日 ——
+     * 于是交易页左半边只剩 60 根尾巴，整场周五（216 根）连同它的 #1 一起没了，
+     * 看上去像「隔夜参照只给了个零头」，BarCount 的编号也在左半边整片消失。
+     *
+     * <p>判据复用 {@link TradingCalendar#isTradingDay}（「当天最后一根在 06:00 之后」），
+     * 不再写第二份「哪天真的开过盘」的算法。从后往前扫：正常情况只多看一两个文件
+     * （周五 → 周六 → 命中），长假期也不会扫很多次。
      */
-    private static LocalDate previousTradingDay(List<Path> files, LocalDate target) {
-        LocalDate previous = null;
-        for (Path file : files) {
-            LocalDate date = dayDateOf(file);
-            if (date.isBefore(target) && (previous == null || date.isAfter(previous))) {
-                previous = date;
+    private LocalDate previousTradingDay(String folder, List<Path> files, LocalDate target) {
+        for (int i = files.size() - 1; i >= 0; i -= 1) {
+            LocalDate date = dayDateOf(files.get(i));
+            if (!date.isBefore(target)) {
+                continue;
+            }
+            if (calendar.isTradingDay(folder, date)) {
+                return date;
             }
         }
-        return previous;
+        return null;
     }
 
     /** 截止时刻：日期（决定读哪个日文件）+ 归一化到 {@code yyyy-MM-dd HH:mm} 的比较键。 */

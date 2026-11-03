@@ -62,7 +62,8 @@ class BarQueryServiceTest {
 
         AppProperties properties = new AppProperties();
         properties.setBarRoot(dataRoot.toString());
-        service = new BarQueryService(new CsvBarStore(properties), new SymbolCatalog(properties));
+        CsvBarStore store = new CsvBarStore(properties);
+        service = new BarQueryService(store, new SymbolCatalog(properties), new TradingCalendar(store));
     }
 
     @Test
@@ -122,6 +123,39 @@ class BarQueryServiceTest {
         assertEquals("2024-03-05", service.day("CME_MINI:MES1!", null).day());
         assertEquals(4, service.day("CME_MINI:MES1!", null).bars().size());
         assertEquals("2024-03-05", service.day("CME_MINI:MES1!", "").day());
+    }
+
+    @Test
+    void weekendTailFileIsNotAPreviousTradingDay() throws IOException {
+        // 2024-03-05 那份只有 00:00–04:55 —— 和真实数据里的周六文件一样，装的是前一天那场的尾巴，
+        // 它自己不是交易日。把它当上一交易日，交易页左边就只剩这几十根，整场 03-04 都不见了
+        Path folder = dataRoot.resolve("CME_MINI_MES1!");
+        Files.writeString(folder.resolve("2024-03-05.csv"), """
+                time,open,high,low,close,volume
+                2024-03-05 00:00,5100.00,5101.00,5099.00,5100.50,700
+                2024-03-05 04:55,5101.00,5102.00,5100.00,5101.50,600
+                """);
+        Files.writeString(folder.resolve("2024-03-06.csv"), """
+                time,open,high,low,close,volume
+                2024-03-06 06:00,5110.00,5111.00,5109.00,5110.50,500
+                2024-03-06 09:00,5110.50,5112.00,5110.00,5111.50,400
+                """);
+
+        // 停在 03-06：上一交易日要跨过 03-05 那份「尾巴文件」，落到 03-04
+        BarSeriesResponse series = service.day("CME_MINI:MES1!", "2024-03-06 09:00");
+
+        assertEquals(4, series.bars().size());
+        assertEquals("2024-03-04 09:00", series.bars().get(0).time());
+        assertEquals("2024-03-04 09:05", series.bars().get(1).time());
+        assertEquals("2024-03-06 06:00", series.bars().get(2).time());
+
+        // 停在「尾巴文件」自己上面（账户走到周六凌晨）：上一场整天照给，尾巴接在后面
+        BarSeriesResponse onTail = service.day("CME_MINI:MES1!", "2024-03-05 03:00");
+
+        assertEquals("2024-03-05", onTail.day());
+        assertEquals(3, onTail.bars().size());
+        assertEquals("2024-03-04 09:05", onTail.bars().get(1).time());
+        assertEquals("2024-03-05 00:00", onTail.bars().get(2).time());
     }
 
     @Test
