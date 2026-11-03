@@ -166,6 +166,48 @@ CREATE TABLE IF NOT EXISTS prop_firm_stage_log (
 );
 CREATE UNIQUE INDEX IF NOT EXISTS ux_stage_account_seq ON prop_firm_stage_log (account_id, seq);
 
+-- 日终结算：**每一个交易日的判决书**（2026-11-03 加）。
+--
+-- 为什么必须落库：判定是「从阶段起点完整重放一遍」算出来的，而重放的最后一天要补一次结算
+-- （`PropFirmJudge#settleIfDayOver`）。如果这次结算每次都现算，那它的输入里就混进了
+-- 「用户把盘面推到了哪一根」—— 同一份成交，停在 03:55 和推进到 04:00 会得到两个不同的
+-- 日终峰值（50118 / 50088.5），EOD 峰值于是**会回落**，亏损线跟着回落。
+-- 实测 6 户 × 300 根能刷出 61 条这种漂移，全部落在 03:55–05:55。
+--
+-- 所以把结算从「每次重新求值的纯函数」改成「一次性落库的事实」：这一天结过账了，
+-- 之后无论重放多少次都用这一行，不再重算。
+--
+-- 一行 = 一个账户在某阶段某一天的结算结果：
+--   · **peak_balance 是主角**：截至该日日终的 EOD 峰值（只增不减），亏损线 = 它 − max_drawdown。
+--     重放时逐日套用，峰值天然单调 —— 这正是「跟踪回撤」两个字的全部含义。
+--   · eod_balance 是「结算那一下看到的余额」，只作审计：它可能比真正的收盘余额早
+--     （用户停在 03:55，04:00 的日终强平还没发生），所以**不参与判定**，只看 peak。
+--   · max_day_net / profit_days 是累计快照，一致性上限和升级条件按它们恢复。
+--   · outcome 存那天的判决（RUNNING / PROMOTED / FAILED）：结算一旦发生就不再重判，
+--     否则「达标那一刻」会随着后续成交来回翻面。
+--
+-- account_id 按本文件第 4 条的例外处理：**不加外键，但随账户一起删**
+-- （PropFirmAccountService#delete 显式删）—— 它和 stage_log 一样，记的是这个账户自己的
+-- 时间轴，账户没了就没有任何入口能读到。
+-- stage 进唯一键：升级会换阶段并重置余额基准，同一个交易日不能跨阶段复用。
+CREATE TABLE IF NOT EXISTS pf_settlement (
+    id           TEXT PRIMARY KEY,
+    account_id   TEXT NOT NULL,
+    stage        TEXT NOT NULL,     -- EVAL / FUNDED / PAYOUT
+    trading_day  TEXT NOT NULL,     -- 'YYYY-MM-DD'，交易日（不是日文件名）
+    eod_balance  TEXT NOT NULL,     -- 结算那一刻的余额（审计用，不参与判定）
+    peak_balance TEXT NOT NULL,     -- 截至该日日终的 EOD 峰值（只增不减，判线用它）
+    max_day_net  TEXT NOT NULL,     -- 截至该日「单日净盈利最大值」的累计
+    profit_days  INTEGER NOT NULL,  -- 截至该日攒够的盈利日数
+    outcome      TEXT NOT NULL,     -- RUNNING / PROMOTED / FAILED：那一天的判决
+    message      TEXT,              -- 判决时给用户看的那句话
+    created_at   INTEGER NOT NULL,
+    updated_at   INTEGER NOT NULL
+);
+CREATE UNIQUE INDEX IF NOT EXISTS ux_settlement_day
+    ON pf_settlement (account_id, stage, trading_day);
+CREATE INDEX IF NOT EXISTS idx_settlement_account ON pf_settlement (account_id, stage);
+
 -- 手续费不单独建表：它是标的自己的一个参数（symbol.commission），
 -- 每手每边多少美元，跟着品种走。以前那两张 commission_schedule / commission_rate
 -- 已删除 —— 「一套全局口径 + 一张价目表」这层结构对一只标的只说一次就够了。

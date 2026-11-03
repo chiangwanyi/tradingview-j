@@ -2,6 +2,7 @@ package com.tradingviewj.server.service;
 
 import com.tradingviewj.server.entity.market.Symbol;
 import com.tradingviewj.server.entity.propfirm.PropFirmRules;
+import com.tradingviewj.server.entity.propfirm.PropFirmSettlement;
 import com.tradingviewj.server.entity.propfirm.PropFirmStage;
 import com.tradingviewj.server.entity.propfirm.PositionTier;
 import com.tradingviewj.server.entity.trade.Side;
@@ -10,11 +11,13 @@ import com.tradingviewj.server.storage.Bar;
 import org.junit.jupiter.api.Test;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * 会话终态之后，<strong>成交还得记账</strong>。
@@ -247,11 +250,137 @@ class PropFirmSessionTest {
     }
 
     /** MES：tick 0.25 / tickValue 1.25 → 每点价值 5 美元。 */
+    /**
+     * 这一天结过账之后，收尾窗口里又来了一笔成交（最典型的是 04:00 那根上的日终强平）：
+     * <strong>余额高了就把峰值抬上去，低了就什么都不做</strong>。
+     *
+     * <p>2026-11-03 的数据：6 户 × 300 根剩下 49 条 {@code FLOOR_DRIFT}，全是
+     * 「后端 51159.06 / 重算 51166.77」这种几块钱的差 —— 差的就是 03:55 结账之后
+     * 04:00 强平那一笔。峰值只增不减，所以只补「更高」的那一侧。
+     */
+    @Test
+    void aLateFillInTheSameDayOnlyRaisesThePeak() {
+        Symbol symbol = symbol();
+        // 09:10 赚 48、扣两边手续费 → 余额 50046（这是第一次结算看到的数）；09:15 再赚 52 → 50097
+        Trade open = Trade.fill("acc", CODE, "o1", "2024-03-04 09:05", 1, Side.BUY,
+                new BigDecimal("4000.00"), BigDecimal.ONE, BigDecimal.ZERO, BigDecimal.ONE);
+        Trade take = Trade.fill("acc", CODE, "o2", "2024-03-04 09:10", 2, Side.SELL,
+                new BigDecimal("4009.60"), BigDecimal.ONE, new BigDecimal("48.00"), BigDecimal.ONE);
+        Trade rest = Trade.fill("acc", CODE, "o3", "2024-03-04 09:15", 3, Side.BUY,
+                new BigDecimal("4000.00"), BigDecimal.ONE, new BigDecimal("52.00"), BigDecimal.ONE);
+
+        PropFirmSession.Settlement first = new PropFirmSession.Settlement(
+                LocalDate.parse("2024-03-04"), new BigDecimal("50046.00"), new BigDecimal("50046.00"),
+                BigDecimal.ZERO, 0, PropFirmSettlement.Outcome.RUNNING, "还差 2954（目标 3000）");
+
+        // ① 收尾那笔是**赚**的：峰值被补到 50097，并产生一条待更新的记录
+        PropFirmSession up = new PropFirmSession(PropFirmStage.EVAL, rules(),
+                new BigDecimal("50000.00"), Map.of(CODE, symbol), List.of(open, take, rest), Set.of(),
+                Map.of(first.tradingDay(), first));
+        up.onBar(CODE, bar("2024-03-04 09:00", "4000.00", "4000.00", "4000.00", "4000.00"));
+        up.onBar(CODE, bar("2024-03-04 09:05", "4000.00", "4000.00", "4000.00", "4000.00"));
+        up.onBar(CODE, bar("2024-03-04 09:10", "4000.00", "4009.60", "4000.00", "4009.60"));
+        up.onBar(CODE, bar("2024-03-04 09:15", "4009.60", "4009.60", "4000.00", "4000.00"));
+        up.finish();
+        assertMoney("50097.00", up.eodPeak());
+        assertEquals(1, up.pendingSettlements().size(), "峰值涨了，要交回一条补正记录");
+        assertMoney("50097.00", up.pendingSettlements().get(0).peakBalance());
+
+        // ② 收尾那笔是**亏**的：峰值一动不动，也不产生任何待写记录
+        Trade loss = Trade.fill("acc", CODE, "o4", "2024-03-04 09:15", 4, Side.BUY,
+                new BigDecimal("4000.00"), BigDecimal.ONE, new BigDecimal("-52.00"), BigDecimal.ONE);
+        PropFirmSession down = new PropFirmSession(PropFirmStage.EVAL, rules(),
+                new BigDecimal("50000.00"), Map.of(CODE, symbol), List.of(open, take, loss), Set.of(),
+                Map.of(first.tradingDay(), first));
+        down.onBar(CODE, bar("2024-03-04 09:00", "4000.00", "4000.00", "4000.00", "4000.00"));
+        down.onBar(CODE, bar("2024-03-04 09:05", "4000.00", "4000.00", "4000.00", "4000.00"));
+        down.onBar(CODE, bar("2024-03-04 09:10", "4000.00", "4009.60", "4000.00", "4009.60"));
+        down.onBar(CODE, bar("2024-03-04 09:15", "4000.00", "4000.00", "4000.00", "4000.00"));
+        down.finish();
+        assertMoney("50046.00", down.eodPeak());
+        assertTrue(down.pendingSettlements().isEmpty(), "峰值没变，不该产生写库动作");
+    }
+
     private static Symbol symbol() {
         Symbol symbol = Symbol.of(CODE, FOLDER, new BigDecimal("0.50"));
         symbol.setTick(new BigDecimal("0.25"));
         symbol.setTickValue(new BigDecimal("1.25"));
         return symbol;
+    }
+
+    /**
+     * 已经落过库的那一天，峰值<strong>不许被下一轮重放拉低</strong>。
+     *
+     * <p>这是 2026-11-03 机器人压测刷出 61 条 {@code FLOOR_DRIFT} 的根因：日终结算点跟着
+     * 「用户推到哪一根」走 —— 同一份成交停在 09:10 结出 50497，再推进到 09:15
+     * （那根又付了一笔手续费）就结出 50496，<strong>峰值回落 1</strong>，
+     * 而亏损线 = 峰值 − 2000，线跟着回落。「只增不减」在跨调用这一层曾经完全失效。
+     *
+     * <p>现在结算是一次<strong>写入事实</strong>：第二轮把第一轮的快照传进去，那天就不再重算。
+     */
+    @Test
+    void aSettledDayKeepsItsPeakAcrossPasses() {
+        Symbol symbol = symbol();
+        Trade open = Trade.fill("acc", CODE, "o1", "2024-03-04 09:05", 1, Side.BUY,
+                new BigDecimal("4000.00"), new BigDecimal("2"), BigDecimal.ZERO, new BigDecimal("2.00"));
+        Trade take = Trade.fill("acc", CODE, "o2", "2024-03-04 09:10", 2, Side.SELL,
+                new BigDecimal("4100.00"), BigDecimal.ONE, new BigDecimal("500.00"), new BigDecimal("1.00"));
+        Trade rest = Trade.fill("acc", CODE, "o3", "2024-03-04 09:15", 3, Side.SELL,
+                new BigDecimal("4000.00"), BigDecimal.ONE, BigDecimal.ZERO, new BigDecimal("1.00"));
+        List<Trade> flow = List.of(open, take, rest);
+        Map<String, Symbol> symbols = Map.of(CODE, symbol);
+
+        // 第一轮：只推到 09:10 → 余额 50000 − 2 + (500 − 1) = 50497
+        PropFirmSession first = new PropFirmSession(PropFirmStage.EVAL, rules(),
+                new BigDecimal("50000.00"), symbols, flow, Set.of());
+        first.onBar(CODE, bar("2024-03-04 09:00", "4000.00", "4000.00", "4000.00", "4000.00"));
+        first.onBar(CODE, bar("2024-03-04 09:05", "4000.00", "4000.00", "4000.00", "4000.00"));
+        first.onBar(CODE, bar("2024-03-04 09:10", "4000.00", "4100.00", "4000.00", "4100.00"));
+        first.finish();
+        assertMoney("50497.00", first.balance());
+        assertMoney("50497.00", first.eodPeak());
+        assertEquals(1, first.pendingSettlements().size(), "这一天才第一次结算，应该等着落库");
+        PropFirmSession.Settlement day = first.pendingSettlements().get(0);
+
+        // 第二轮：同一天又多推了一根，最后一笔手续费把余额压到 50496
+        PropFirmSession second = new PropFirmSession(PropFirmStage.EVAL, rules(),
+                new BigDecimal("50000.00"), symbols, flow, Set.of(),
+                Map.of(day.tradingDay(), day));
+        second.onBar(CODE, bar("2024-03-04 09:00", "4000.00", "4000.00", "4000.00", "4000.00"));
+        second.onBar(CODE, bar("2024-03-04 09:05", "4000.00", "4000.00", "4000.00", "4000.00"));
+        second.onBar(CODE, bar("2024-03-04 09:10", "4000.00", "4100.00", "4000.00", "4100.00"));
+        second.onBar(CODE, bar("2024-03-04 09:15", "4100.00", "4100.00", "4000.00", "4000.00"));
+        second.finish();
+
+        assertMoney("50496.00", second.balance());
+        assertMoney("50497.00", second.eodPeak());  // 修复前是 50496：峰值被「多推一根」拉低了
+        assertTrue(second.pendingSettlements().isEmpty(), "这一天已经在库里，不该再产生待写记录");
+    }
+
+    /**
+     * 已经判过失败的那一天，重放时<b>不能翻面</b>。
+     *
+     * <p>判决是历史，不是函数：如果每次都按当前余额重判，「达标那一刻」会随着后来的成交
+     * 来回翻（收在目标之上、次日回撤到线下，重放就会先判没达标、再判失败，
+     * 而当时真实发生的其实是「达标 → 冻结」）。这里钉住失败这一侧。
+     */
+    @Test
+    void aSettledFailureStaysFailedEvenIfTheReplayLooksFine() {
+        Symbol symbol = symbol();
+        PropFirmSession.Settlement verdict = new PropFirmSession.Settlement(
+                LocalDate.parse("2024-03-04"), new BigDecimal("50000.00"), new BigDecimal("50000.00"),
+                BigDecimal.ZERO, 0, PropFirmSettlement.Outcome.FAILED,
+                "日终余额 47900.00 触及亏损线 48000.00");
+
+        PropFirmSession session = new PropFirmSession(PropFirmStage.EVAL, rules(),
+                new BigDecimal("50000.00"), Map.of(CODE, symbol), List.of(), Set.of(),
+                Map.of(verdict.tradingDay(), verdict));
+        session.onBar(CODE, bar("2024-03-04 09:00", "50000.00", "50000.00", "50000.00", "50000.00"));
+
+        PropFirmSession.Step step = session.finish();
+        assertEquals(PropFirmSession.Event.FAILED, step.event(), "库里写着那天失败了，重放不能判成还在场上");
+        assertEquals(PropFirmSession.Event.FAILED, session.state());
+        assertMoney("48000.00", step.floor());
     }
 
     /** EVAL 50K：规模 50000、目标 3000、回撤 2000、冻结水位 52100、一致性 50%。 */

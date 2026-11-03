@@ -7,6 +7,7 @@ import com.tradingviewj.server.entity.propfirm.PropFirmStageLog;
 import com.tradingviewj.server.entity.propfirm.PropFirmTemplate;
 import com.tradingviewj.server.exception.BusinessException;
 import com.tradingviewj.server.repository.PropFirmAccountRepository;
+import com.tradingviewj.server.repository.PropFirmSettlementRepository;
 import com.tradingviewj.server.repository.PropFirmStageLogRepository;
 import com.tradingviewj.server.repository.PropFirmTemplateRepository;
 import com.tradingviewj.server.repository.SymbolRepository;
@@ -54,6 +55,8 @@ public class PropFirmAccountService {
     private final PropFirmAccountRepository accounts;
     private final PropFirmTemplateRepository templates;
     private final PropFirmStageLogRepository stageLogs;
+    /** 日终判决：删账户时跟着清，理由和阶段流水一样（账户自己的时间轴）。 */
+    private final PropFirmSettlementRepository settlements;
     private final PropFirmStartPicker startPicker;
     private final PropFirmJudge judge;
     /** 读账户时数「走过几个交易日」用；日历在数据目录上，不在库里。 */
@@ -218,6 +221,10 @@ public class PropFirmAccountService {
         // 顺序：先流水后账户。反过来的话中途失败会留下「账户没了、流水还在」的孤儿行，
         // 而那个 id 已经没有任何入口能再触发一次清理。
         stageLogs.deleteByAccountId(accountId);
+        // 日终判决同理：它是「这个账户每天结算成了什么样」，账户没了就没有归属。
+        // **不删的后果不是脏数据那么简单**：新建账户若复用了同一个 id（不会，但原理上），
+        // 旧峰值会被当成历史套进去。
+        settlements.deleteByAccountId(accountId);
         if (exists) {
             accounts.deleteById(accountId);
         }

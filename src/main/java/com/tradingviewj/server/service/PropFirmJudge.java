@@ -3,10 +3,12 @@ package com.tradingviewj.server.service;
 import com.tradingviewj.server.dto.PfView;
 import com.tradingviewj.server.entity.market.Symbol;
 import com.tradingviewj.server.entity.propfirm.PropFirmAccount;
+import com.tradingviewj.server.entity.propfirm.PropFirmSettlement;
 import com.tradingviewj.server.entity.trade.Trade;
 import com.tradingviewj.server.entity.trade.TradeOrder;
 import com.tradingviewj.server.exception.BusinessException;
 import com.tradingviewj.server.repository.OrderRepository;
+import com.tradingviewj.server.repository.PropFirmSettlementRepository;
 import com.tradingviewj.server.repository.SymbolRepository;
 import com.tradingviewj.server.repository.TradeRepository;
 import com.tradingviewj.server.storage.Bar;
@@ -18,6 +20,7 @@ import java.math.BigDecimal;
 import java.nio.file.Path;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -72,9 +75,23 @@ public class PropFirmJudge {
     private final OrderRepository orders;
     /** 只问一句话：「{@code lastBarTime} 之后还有没有下一根、它属于哪一天」。 */
     private final BarCursorService cursor;
+    /**
+     * 已经<strong>落库</strong>的日终判决。
+     *
+     * <p>读它是为了让重放跳过「这一天已经结过账」的部分 —— 否则结算点会跟着
+     * {@code lastBarTime} 走，同一份成交停在不同位置得到不同的日终峰值（峰值回落）。
+     * 写它在 {@link #settle}：{@link #assess} 只读，快照路径不写库。
+     */
+    private final PropFirmSettlementRepository settlements;
 
-    /** 推进到 {@code account.lastBarTime} 为止的判定结果。 */
-    public record State(PropFirmSession session, PropFirmSession.Step step) {
+    /**
+     * 推进到 {@code account.lastBarTime} 为止的判定结果。
+     *
+     * @param pending 本轮重放<strong>新算出来</strong>的日终判决（库里还没有的）。
+     *                只读快照（{@link #view}）直接丢掉即可；要落库走 {@link #settle}。
+     */
+    public record State(PropFirmSession session, PropFirmSession.Step step,
+                        List<PropFirmSession.Settlement> pending) {
 
         /** 撞了亏损线。 */
         public boolean failed() {
@@ -113,8 +130,34 @@ public class PropFirmJudge {
         List<Trade> stageTrades = stageTrades(account);
         PropFirmSession session = new PropFirmSession(account.getStage(), account.getRules(),
                 account.getBaseBalance(), Map.of(symbol.getId(), symbol), stageTrades,
-                closeFilled(account, stageTrades));
-        return new State(session, feed(session, symbol, stageTrades, account.getLastBarTime()));
+                closeFilled(account, stageTrades), settledDays(account));
+        return new State(session, feed(session, symbol, stageTrades, account.getLastBarTime()),
+                session.pendingSettlements());
+    }
+
+    /**
+     * 这个账户<strong>当前阶段</strong>已经落库的日终判决，按交易日索引。
+     *
+     * <p>按 {@code stage} 过滤是必须的：升级会换规则、把余额拨回账户规模，
+     * 上一个阶段的峰值带到新阶段就是「一开局就离亏损线很近」。
+     *
+     * <p>查不到（新账户、或者刚升级还没走到任何日终）就返回空表 —— 重放会现场结算那几天，
+     * 结果通过 {@link State#pending()} 交给 {@link #settle} 落库。
+     * <strong>这不是重建历史，是第一次记账</strong>：老账户第一次用新代码跑起来时，
+     * 之前那些天会被一次性补上，从此固定下来。
+     */
+    private Map<LocalDate, PropFirmSession.Settlement> settledDays(PropFirmAccount account) {
+        if (account.getStage() == null) {
+            return Map.of();
+        }
+        Map<LocalDate, PropFirmSession.Settlement> days = new HashMap<>();
+        for (PropFirmSettlement row : settlements.findByAccountIdAndStageOrderByTradingDayAsc(
+                account.getId(), account.getStage())) {
+            days.put(LocalDate.parse(row.getTradingDay()), new PropFirmSession.Settlement(
+                    LocalDate.parse(row.getTradingDay()), row.getEodBalance(), row.getPeakBalance(),
+                    row.getMaxDayNet(), row.getProfitDays(), row.getOutcome(), row.getMessage()));
+        }
+        return days;
     }
 
     /**
@@ -125,9 +168,56 @@ public class PropFirmJudge {
      * 「记成交」必须在同一个事务里，分开就会出现「成交落了库、余额没跟上」。
      */
     public PfView settle(PropFirmAccount account, State state) {
+        flush(account, state.pending());
         account.syncComputed(state.session().balance(), state.session().eodPeak(),
                 state.session().maxDayNet());
         return view(account, state);
+    }
+
+    /**
+     * 把本轮新结算的那几天写进库，从此它们不再重算。
+     *
+     * <p>分两种情况，都很常见：
+     *
+     * <ul>
+     *   <li><strong>库里没有这一天</strong> → 新插一行；</li>
+     *   <li><strong>库里已经有</strong> → 只在余额更高时把峰值抬上去
+     *       （{@link PropFirmSettlement#raiseTo}）。这一天又被结了一次，通常是因为
+     *       03:55 结完账之后 04:00 那根上的日终强平才成交 —— 那才是收盘余额。
+     *       打下来的那一侧不动：峰值只增不减。</li>
+     * </ul>
+     *
+     * <p>已存在的行是托管实体，改了字段由事务提交时写回；新行走 {@code saveAll}。
+     * 唯一键 {@code (account_id, stage, trading_day)} 保证并发下也不会插重。
+     *
+     * <p>⚠️ 调用方必须开事务（{@code settle} 的约定）。
+     */
+    private void flush(PropFirmAccount account, List<PropFirmSession.Settlement> pending) {
+        if (pending == null || pending.isEmpty() || account.getStage() == null) {
+            return;
+        }
+        Map<String, PropFirmSettlement> written = new HashMap<>();
+        for (PropFirmSettlement row : settlements.findByAccountIdAndStageOrderByTradingDayAsc(
+                account.getId(), account.getStage())) {
+            written.put(row.getTradingDay(), row);
+        }
+        List<PropFirmSettlement> touched = new java.util.ArrayList<>();
+        for (PropFirmSession.Settlement day : pending) {
+            String label = day.tradingDay().toString();
+            PropFirmSettlement row = written.get(label);
+            if (row == null) {
+                row = PropFirmSettlement.record(account.getId(), account.getStage(), label,
+                        day.eodBalance(), day.peakBalance(), day.maxDayNet(), day.profitDays(),
+                        day.outcome(), day.message());
+                written.put(label, row);
+                touched.add(row);
+            } else if (day.peakBalance() != null && row.raiseTo(day.peakBalance())) {
+                touched.add(row);
+            }
+        }
+        if (!touched.isEmpty()) {
+            settlements.saveAll(touched);
+        }
     }
 
     /** 重放一遍再判，只为了拿读数（调用方自己开事务，且账户是托管的）。 */

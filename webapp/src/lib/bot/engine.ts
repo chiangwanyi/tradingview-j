@@ -322,7 +322,7 @@ export class BotRun {
           } catch (error) {
             // 「已经失败了」「没有仓位」「禁交易时段」这类业务拒绝不算违例：机器人就是要撞这些边界
             const message = error instanceof Error ? error.message : String(error)
-            if (/失败|没有仓位|没有.*挂单|不用退仓|已撤销|已成交|禁止交易时段|只能平仓/.test(message)) break
+            if (/失败|没有仓位|没有.*挂单|不用退仓|已撤销|已成交|禁止交易时段|只能平仓|价格没变|不用改/.test(message)) break
             throw error
           }
         }
@@ -520,6 +520,13 @@ export class BotRun {
       if (drift(expected, pf.lossLine)) {
         this.violate(run, 'FLOOR_DRIFT', time, `后端亏损线 ${pf.lossLine}，重算 ${expected}（峰值 ${ctx.peak}）`)
       }
+      /*
+       * ⚠️ 下单也会改变「**这一根**结束时的余额」，而日终结算点正是「这一根」。
+       * 只更新 bar 回执的读数，就会漏掉成交刚打进去的那笔钱：后端结算时用的是下单后的余额，
+       * oracle 却还拿下单前的数，于是凭空多出一条 FLOOR_DRIFT —— 2026-11-03 长跑那 51 条
+       * 里有相当一部分就是这么来的（03:55 下单、04:00 结算，差的就是这一笔）。
+       */
+      ctx.prev = { time, day: tradingDayOf(time), balance: pf.balance, lossLine: pf.lossLine }
       return
     }
 
@@ -537,7 +544,18 @@ export class BotRun {
      */
     const day = tradingDayOf(time)
     if (ctx.prev) {
-      if ((day ?? null) !== (ctx.prev.day ?? null)) {
+      /*
+       * 什么时候把「上一根的余额」当成日终余额的候选：
+       *   ① 跨过了交易日边界；
+       *   ② 落在**收尾窗口**（04:00–05:55，没有交易日）里。
+       *
+       * ②是必须的，而且不是重复劳动：后端在收尾窗口里**每一根都会把这一天重结一次**
+       * （`settleIfDayOver` 判定交易日照旧结束），余额更高就把峰值抬上去 ——
+       * 04:00 那根上的日终强平正是靠这条路才进得了峰值。
+       * 少了 ②，oracle 会等到 06:00 才认账，中间一小时的每一根都会误报「后端线偏高」
+       * （2026-11-03 seed 777 那 11 条就是这么来的：后端 50616.75 / 重算 50546.5）。
+       */
+      if ((day ?? null) !== (ctx.prev.day ?? null) || day === null) {
         ctx.peak = Math.max(ctx.peak, ctx.prev.balance)
       }
       const expected = floorOf(ctx.rules, ctx.peak)

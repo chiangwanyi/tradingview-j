@@ -2,7 +2,9 @@ package com.tradingviewj.server.service;
 
 import com.tradingviewj.server.entity.market.Symbol;
 import com.tradingviewj.server.entity.propfirm.PropFirmRules;
+import com.tradingviewj.server.entity.propfirm.PropFirmSettlement;
 import com.tradingviewj.server.entity.propfirm.PropFirmStage;
+import com.tradingviewj.server.entity.trade.Money;
 import com.tradingviewj.server.entity.trade.Position;
 import com.tradingviewj.server.entity.trade.Trade;
 import com.tradingviewj.server.storage.Bar;
@@ -95,6 +97,17 @@ public final class PropFirmSession {
     /** 每个品种最新一根已知 K 线 —— 算浮亏用的极值从这里来。 */
     private final Map<String, Bar> lastBars = new HashMap<>();
 
+    /**
+     * 已经<strong>落库</strong>的那些交易日的判决，按日索引（键是交易日，不是日文件名）。
+     *
+     * <p>它同时充当「本轮已经结算过的日子」的登记簿：{@link #settleDay} 结算完会把新快照
+     * 也放进来，所以同一个交易日在一轮重放里被结算两次时（03:55 一次、推过 04:00 又一次）
+     * 第二次走的是"复现"，不会重复计盈利日、也不会产生两条待落库记录。
+     */
+    private final Map<LocalDate, Settlement> resolved;
+    /** 本轮重放新算出来的结算（库里还没有的），调用方拿它落库；只读快照不落。 */
+    private final List<Settlement> pending = new ArrayList<>();
+
     private BigDecimal balance;
     private BigDecimal eodPeak;
     private LocalDate currentDay;
@@ -124,6 +137,19 @@ public final class PropFirmSession {
     public PropFirmSession(PropFirmStage stage, PropFirmRules rules, BigDecimal baseBalance,
                            Map<String, Symbol> symbols, List<Trade> trades,
                            Set<String> closeFilledTradeIds) {
+        this(stage, rules, baseBalance, symbols, trades, closeFilledTradeIds, Map.of());
+    }
+
+    /**
+     * @param settledDays 已经<strong>落库</strong>的日终判决（交易日 → 快照）。
+     *                    传进来的日子不再重算，直接沿用它的峰值与判决 —— 这是「日终结算是一次
+     *                    写入事实、不是每次重算的纯函数」这条规则的落地方式。传空表等价于
+     *                    「这一天都没结过账」，那么重放会在遇到日终时现场算并放进
+     *                    {@link #pendingSettlements()}，由调用方落库。
+     */
+    public PropFirmSession(PropFirmStage stage, PropFirmRules rules, BigDecimal baseBalance,
+                           Map<String, Symbol> symbols, List<Trade> trades,
+                           Set<String> closeFilledTradeIds, Map<LocalDate, Settlement> settledDays) {
         this.stage = stage;
         this.rules = rules;
         this.baseBalance = baseBalance;
@@ -132,6 +158,7 @@ public final class PropFirmSession {
         this.pointValues = new HashMap<>();
         this.tradesBySymbol = new LinkedHashMap<>();
         this.closeFilledTradeIds = closeFilledTradeIds == null ? Set.of() : Set.copyOf(closeFilledTradeIds);
+        this.resolved = new HashMap<>(settledDays == null ? Map.of() : settledDays);
 
         if (symbols != null) {
             symbols.forEach((id, symbol) -> pointValues.put(id,
@@ -236,10 +263,21 @@ public final class PropFirmSession {
 
     // ---------------------------------------------------------------- 内部
 
-    /** 日终结算。返回的 Step 若是 PROMOTED / FAILED，会话就结束了。 */
-    private Step settleDay() {
+    /**
+     * 日终结算。返回的 Step 若是 PROMOTED / FAILED，会话就结束了。
+     *
+     * <p><strong>结算是一次写入事实，不是每次重算的纯函数。</strong>这一天在 {@link #resolved}
+     * 里已经有过判决（上一轮落过库，或本轮刚刚结过），就直接复现它 —— 峰值只可能被抬高，
+     * 判决原样返回，不会因为「用户又多推了一根」把账倒回去。
+     * 只有确实没结过账的日子才走下面这段现算，算完放进 {@link #pendingSettlements()} 等落库。
+     */    private Step settleDay() {
         LocalDate settled = currentDay;
         String stamp = PropFirmClock.sessionEndOf(settled).toString().replace('T', ' ');
+
+        Settlement known = resolved.get(settled);
+        if (known != null) {
+            return replay(known, stamp);
+        }
 
         // 1) 日终余额进峰值（只增不减）
         if (balance.compareTo(eodPeak) > 0) {
@@ -260,25 +298,99 @@ public final class PropFirmSession {
         BigDecimal line = floor();
         if (rules.getDrawdownType() == PropFirmRules.DrawdownType.TRAILING_EOD
                 && balance.compareTo(line) <= 0) {
+            String message = "日终余额 " + plain(balance) + " 触及亏损线 " + plain(line);
             state = Event.FAILED;
+            remember(settled, PropFirmSettlement.Outcome.FAILED, message);
             return lastStep = new Step(Event.FAILED, stamp, settled, balance, balance, line,
-                    dayNet, maxDayNet, effectiveTarget(), profitDays,
-                    "日终余额 " + plain(balance) + " 触及亏损线 " + plain(line));
+                    dayNet, maxDayNet, effectiveTarget(), profitDays, message);
         }
 
         // 5) 升级判定
         String block = promotionBlockedBy();
         if (block == null) {
+            String message = "达成 " + stage + " 的升级条件";
             state = Event.PROMOTED;
+            remember(settled, PropFirmSettlement.Outcome.PROMOTED, message);
             return lastStep = new Step(Event.PROMOTED, stamp, settled, balance, balance, line,
-                    dayNet, maxDayNet, effectiveTarget(), profitDays,
-                    "达成 " + stage + " 的升级条件");
+                    dayNet, maxDayNet, effectiveTarget(), profitDays, message);
         }
 
         Step step = new Step(Event.RUNNING, stamp, settled, balance, balance, line,
                 dayNet, maxDayNet, effectiveTarget(), profitDays, block);
+        remember(settled, PropFirmSettlement.Outcome.RUNNING, block);
         dayNet = ZERO;
         return lastStep = step;
+    }
+
+    /**
+     * 复现一个<strong>已经结算过</strong>的交易日。
+     *
+     * <p>峰值、单日最大净额、盈利日数一律恢复成快照里的值（都取「只增」的方向，
+     * 因为重放是按日期升序走的，快照本身就是单调上升的）；{@code dayNet} 清零 ——
+     * 这一天已经结完账，当天的净额不该再带到下一天去。
+     *
+     * <p>判决<b>不重判</b>：FAILED 就还是 FAILED，PROMOTED 就还是 PROMOTED。
+     * 否则「达标那一刻」会随着后来的成交来回翻面（收在目标之上、次日回撤到线下，
+     * 重放就会先判没达标再判失败，而当时真实发生的是「达标 → 冻结」）。
+     */
+    private Step replay(Settlement known, String stamp) {
+        BigDecimal peak = known.peakBalance() == null ? eodPeak : known.peakBalance();
+
+        /*
+         * 这一天结过账之后，收尾窗口里还可能有成交 —— 最典型的就是 04:00 那根上的日终强平，
+         * 而结算点往往停在 03:55。它把余额抬上去时，峰值要跟着抬（EOD 峰值就是
+         * 「该交易日所有已知结算点里最高的那个余额」）；打下来的那一侧什么都不做 ——
+         * 峰值不能因为收尾而回落，那正是「跟踪」两个字的意思。
+         */
+        if (balance.compareTo(peak) > 0) {
+            peak = Money.round(balance);
+            Settlement corrected = new Settlement(known.tradingDay(), peak, peak,
+                    known.maxDayNet(), known.profitDays(), known.outcome(), known.message());
+            resolved.put(known.tradingDay(), corrected);
+            pending.add(corrected);
+        }
+        if (peak.compareTo(eodPeak) > 0) {
+            eodPeak = peak;
+        }
+        if (known.maxDayNet() != null && known.maxDayNet().compareTo(maxDayNet) > 0) {
+            maxDayNet = known.maxDayNet();
+        }
+        if (known.profitDays() > profitDays) {
+            profitDays = known.profitDays();
+        }
+        dayNet = ZERO;
+
+        BigDecimal line = floor();
+        if (known.outcome() == PropFirmSettlement.Outcome.FAILED
+                || known.outcome() == PropFirmSettlement.Outcome.PROMOTED) {
+            state = known.outcome() == PropFirmSettlement.Outcome.FAILED ? Event.FAILED : Event.PROMOTED;
+            String message = known.message();
+            if (message == null || message.isBlank()) {
+                message = state == Event.FAILED ? "已判失败" : "已满足升级条件";
+            }
+            return lastStep = new Step(state, stamp, currentDay, balance, balance, line,
+                    ZERO, maxDayNet, effectiveTarget(), profitDays, message);
+        }
+
+        String block = known.message();
+        if (block == null || block.isBlank()) {
+            block = promotionBlockedBy();
+        }
+        return lastStep = new Step(Event.RUNNING, stamp, currentDay, balance, balance, line,
+                ZERO, maxDayNet, effectiveTarget(), profitDays, block);
+    }
+
+    /**
+     * 记下这一天的判决：进本轮登记簿（同一天再结就走复现），同时排进待落库队列。
+     *
+     * <p>两件事一起做是刻意的 —— 分开写就会出现「本轮已经算过、但登记簿里没有」的窗口，
+     * 那个窗口正好是 03:55 与 04:00 之间重复结算同一天时要走的路。
+     */
+    private void remember(LocalDate day, PropFirmSettlement.Outcome outcome, String message) {
+        Settlement snapshot = new Settlement(day, Money.round(balance), Money.round(eodPeak),
+                Money.round(maxDayNet), profitDays, outcome, message);
+        resolved.put(day, snapshot);
+        pending.add(snapshot);
     }
 
     /**
@@ -527,6 +639,18 @@ public final class PropFirmSession {
         return profitDays;
     }
 
+    /**
+     * 本轮重放<strong>新算出来</strong>的日终判决（库里还没有的那些），按结算顺序。
+     *
+     * <p>调用方（{@code PropFirmJudge#settle}）负责把它们落库。只读快照不落 ——
+     * 打开交易页不该顺手写库。
+     *
+     * <p>同一天最多一条：一天的第二次结算走的是 {@link #replay}，不会再往这里加。
+     */
+    public List<Settlement> pendingSettlements() {
+        return List.copyOf(pending);
+    }
+
     public BigDecimal floorLine() {
         return floor();
     }
@@ -536,6 +660,25 @@ public final class PropFirmSession {
                        BigDecimal balance, BigDecimal equity, BigDecimal floor,
                        BigDecimal dayNet, BigDecimal maxDayNet, BigDecimal effectiveTarget,
                        int profitDays, String message) {
+    }
+
+    /**
+     * 一个交易日的判决快照。
+     *
+     * <p>它是「结算」这件事的<strong>唯一载体</strong>：进来时代表已经落库的历史判决，
+     * 出去时（{@link #pendingSettlements()}）代表本轮新算出来、等着落库的那几天。
+     *
+     * @param tradingDay  交易日（不是日文件名 —— 周六那份文件开头是周五的尾巴）
+     * @param eodBalance  结算那一刻的余额，<strong>只作审计</strong>，不参与判定
+     * @param peakBalance 截至该日日终的 EOD 峰值，<strong>只增不减</strong>，判线用它
+     * @param maxDayNet   截至该日「单日净盈利最大值」的累计
+     * @param profitDays  截至该日攒够的盈利日数
+     * @param outcome     那一天的判决；复现时<b>不重判</b>
+     * @param message     判决时给用户看的那句话
+     */
+    public record Settlement(LocalDate tradingDay, BigDecimal eodBalance, BigDecimal peakBalance,
+                             BigDecimal maxDayNet, int profitDays,
+                             PropFirmSettlement.Outcome outcome, String message) {
     }
 
     public enum Event {

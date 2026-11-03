@@ -4,12 +4,14 @@ import com.tradingviewj.server.dto.PfView;
 import com.tradingviewj.server.entity.market.Symbol;
 import com.tradingviewj.server.entity.propfirm.PropFirmAccount;
 import com.tradingviewj.server.entity.propfirm.PropFirmRules;
+import com.tradingviewj.server.entity.propfirm.PropFirmSettlement;
 import com.tradingviewj.server.entity.propfirm.PropFirmStage;
 import com.tradingviewj.server.entity.propfirm.PropFirmTemplate;
 import com.tradingviewj.server.entity.propfirm.PositionTier;
 import com.tradingviewj.server.entity.trade.Side;
 import com.tradingviewj.server.entity.trade.Trade;
 import com.tradingviewj.server.repository.OrderRepository;
+import com.tradingviewj.server.repository.PropFirmSettlementRepository;
 import com.tradingviewj.server.repository.SymbolRepository;
 import com.tradingviewj.server.repository.TradeRepository;
 import com.tradingviewj.server.storage.CsvBarStore;
@@ -21,14 +23,18 @@ import org.junit.jupiter.api.io.TempDir;
 import java.math.BigDecimal;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 /**
@@ -54,6 +60,8 @@ class PropFirmJudgeTest {
     private TradeRepository trades;
     /** 这些用例的成交都当挂单成交看待（返回空表 = 没有市价单）。 */
     private OrderRepository orders;
+    /** 日终判决的持久化层：默认返回空表（等于「还没结过账」），个别用例会喂历史记录。 */
+    private PropFirmSettlementRepository settlements;
 
     @BeforeEach
     void setUp() throws Exception {
@@ -96,7 +104,12 @@ class PropFirmJudgeTest {
         orders = mock(OrderRepository.class);
         when(orders.findByAccountIdOrderByPlacedAtBarAsc(anyString())).thenReturn(List.of());
 
-        judge = new PropFirmJudge(store, symbols, trades, orders, new BarCursorService(store));
+        // 默认「这一天都没结过账」：重放会现场算，结果进 pending。落库另有专门的测试。
+        settlements = mock(PropFirmSettlementRepository.class);
+        when(settlements.findByAccountIdAndStageOrderByTradingDayAsc(anyString(), any()))
+                .thenReturn(List.of());
+
+        judge = new PropFirmJudge(store, symbols, trades, orders, new BarCursorService(store), settlements);
     }
 
     @Test
@@ -121,6 +134,45 @@ class PropFirmJudgeTest {
         // 写回的是账户上那两个缓存列
         assertMoney("50058", account.getBalance());
         assertMoney("50058", account.getEodPeakBalance());
+    }
+
+    /**
+     * 库里已经记过账的那一天，<strong>以库为准</strong>，不按这次重放重算。
+     *
+     * <p>这是「峰值只增不减」在跨请求层面唯一可靠的保证：结算点跟着 {@code lastBarTime} 走，
+     * 只要允许重算，同一份成交停在不用的位置就会算出不同的峰值
+     * （2026-11-03 机器人压测：61 条漂移，全在 03:55–05:55）。
+     */
+    @Test
+    void aSettledDayInTheDatabaseWinsOverTheReplay() {
+        PropFirmAccount account = account();
+        account.advanceBarTime("2024-03-04 09:15");
+
+        // 库里说这一天结在 50100（比这次重放算出来的 50058 高）
+        when(settlements.findByAccountIdAndStageOrderByTradingDayAsc(anyString(), any()))
+                .thenReturn(List.of(PropFirmSettlement.record("acc", PropFirmStage.EVAL, "2024-03-04",
+                        new BigDecimal("50100.00"), new BigDecimal("50100.00"), BigDecimal.ZERO, 0,
+                        PropFirmSettlement.Outcome.RUNNING, "还差 2900（目标 3000）")));
+
+        PropFirmJudge.State state = judge.assess(account);
+        assertMoney("50100", state.session().eodPeak());
+        assertMoney("48100", state.session().floorLine());
+        assertTrue(state.pending().isEmpty(), "这一天已经在库里，不该再产生待写记录");
+    }
+
+    /** 第一次走到日终：结算结果交给调用方落库，且**只交一次**（同一天不会被交两遍）。 */
+    @Test
+    void aFreshlySettledDayIsHandedToTheWriterExactlyOnce() {
+        PropFirmAccount account = account();
+        account.advanceBarTime("2024-03-04 09:15");
+
+        PropFirmJudge.State state = judge.assess(account);
+        assertEquals(1, state.pending().size(), "2024-03-04 走完了，应该正好一天等着落库");
+        assertEquals(LocalDate.parse("2024-03-04"), state.pending().get(0).tradingDay());
+        assertMoney("50058", state.pending().get(0).peakBalance());
+
+        judge.settle(account, state);
+        verify(settlements).saveAll(anyList());
     }
 
     /**
