@@ -141,12 +141,12 @@ defineExpose({ openNew })
     <header class="px-8 pt-10 pb-4">
       <div class="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 class="text-[26px] font-semibold tracking-tight text-ink">账户总览</h1>
-          <p class="mt-1 text-[13px] text-dim">这里是你所有 Prop Firm 考核账户的进度。</p>
+          <h1 class="text-page font-semibold text-ink">账户总览</h1>
+          <p class="mt-1 text-body text-dim">这里是你所有 Prop Firm 考核账户的进度。</p>
         </div>
         <button
           type="button"
-          class="flex items-center gap-1.5 rounded-md bg-accent px-3 py-2 text-[13px] font-medium text-white transition-colors hover:bg-accent-ink"
+          class="flex items-center gap-1.5 rounded-md bg-accent px-3 py-2 text-lead font-medium text-white transition-colors hover:bg-accent-ink"
           @click="openNew"
         >
           <Icon name="plus" :size="15" />新建账户
@@ -158,12 +158,12 @@ defineExpose({ openNew })
           v-for="f in FILTERS"
           :key="f.key"
           type="button"
-          class="rounded-md px-3.5 py-1.5 text-[13px] transition-colors"
+          class="rounded-md px-3.5 py-1.5 text-body transition-colors"
           :class="filter === f.key ? 'bg-panel font-medium text-ink shadow-sm' : 'text-dim hover:text-ink'"
           @click="filter = f.key"
         >
           {{ f.label }}
-          <span class="tnum text-[11px] text-faint">{{ counts[f.key] }}</span>
+          <span class="num text-note font-normal text-faint">{{ counts[f.key] }}</span>
         </button>
       </div>
     </header>
@@ -182,12 +182,12 @@ defineExpose({ openNew })
       <div class="rounded-lg border border-line bg-panel">
         <div class="flex flex-wrap items-center gap-2 border-b border-line px-4 py-2.5">
           <span class="h-3.5 w-1 rounded-full bg-accent"></span>
-          <h2 class="text-[14px] font-medium text-ink">交易时段公告</h2>
-          <span class="rounded bg-accent-soft px-1.5 py-0.5 text-[11px] text-accent-ink">全体账户生效</span>
-          <span class="ml-auto text-[11px] text-faint">日终 04:00 · 开盘 06:00（北京时间）</span>
+          <h2 class="text-section font-semibold text-ink">交易时段公告</h2>
+          <span class="rounded bg-accent-soft px-1.5 py-0.5 text-note font-medium text-accent-ink">全体账户生效</span>
+          <span class="ml-auto text-note text-faint">日终 04:00 · 开盘 06:00（北京时间）</span>
         </div>
 
-        <dl class="grid gap-x-8 gap-y-3 px-4 py-3.5 text-[13px] leading-relaxed lg:grid-cols-2">
+        <dl class="grid gap-x-8 gap-y-3 px-4 py-3.5 text-body lg:grid-cols-2">
           <div class="flex gap-3">
             <dt class="w-[5rem] shrink-0 text-faint">交易日</dt>
             <dd class="min-w-0 text-dim">
@@ -205,7 +205,7 @@ defineExpose({ openNew })
           <div class="flex gap-3">
             <dt class="w-[5rem] shrink-0 text-faint">可下单</dt>
             <dd class="min-w-0 text-dim">
-              <b class="font-medium text-ink tnum">每天 06:05 起，最晚 03:55</b>
+              <b class="num font-medium text-ink">每天 06:05 起，最晚 03:55</b>
               —— 5 分钟一根 K 线，两头的边界各占掉一根。
             </dd>
           </div>
@@ -231,7 +231,7 @@ defineExpose({ openNew })
           </div>
         </dl>
 
-        <p class="border-t border-line px-4 py-2 text-[12px] text-faint">
+        <p class="border-t border-line px-4 py-2 text-note text-faint">
           以上规则由后端强制：禁交易时段的下单会被接口直接拒绝，交易页的下单按钮也会提前置灰。
         </p>
       </div>
@@ -239,7 +239,7 @@ defineExpose({ openNew })
 
     <p
       v-if="error"
-      class="mx-8 mb-3 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-[12px] text-red-700"
+      class="mx-8 mb-3 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-note text-red-700"
     >
       {{ error }}
     </p>
@@ -260,7 +260,7 @@ defineExpose({ openNew })
         />
       </div>
 
-      <p v-else class="py-16 text-center text-[13px] text-faint">
+      <p v-else class="py-16 text-center text-body text-faint">
         <template v-if="loading">加载中…</template>
         <template v-else-if="filter !== 'ALL'">这个筛选下没有账户。</template>
         <template v-else>还没有账户。点右上角「新建账户」，先选一套模板。</template>

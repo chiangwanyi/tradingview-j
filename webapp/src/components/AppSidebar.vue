@@ -26,8 +26,8 @@ const emit = defineEmits<{ select: [key: string]; add: [] }>()
         <span class="size-4 rounded-full border-[1.5px] border-white/85" />
       </span>
       <span class="leading-none">
-        <span class="block text-[15px] font-bold tracking-[0.14em] text-ink">LUCID</span>
-        <span class="mt-1 block text-[9px] tracking-[0.34em] text-faint">TRADING</span>
+        <span class="block text-lead font-bold tracking-[0.14em] text-ink">LUCID</span>
+        <span class="mt-1 block text-note font-medium tracking-[0.34em] text-faint">TRADING</span>
       </span>
     </div>
 
@@ -36,7 +36,7 @@ const emit = defineEmits<{ select: [key: string]; add: [] }>()
         v-for="item in NAV"
         :key="item.key"
         type="button"
-        class="flex w-full items-center gap-2.5 rounded-md border px-2.5 py-2 text-left text-[13px] transition-colors"
+        class="flex w-full items-center gap-2.5 rounded-md border px-2.5 py-2 text-left text-body transition-colors"
         :class="
           item.key === active
             ? 'border-accent/25 bg-accent-soft font-medium text-accent-ink'
@@ -52,7 +52,7 @@ const emit = defineEmits<{ select: [key: string]; add: [] }>()
     <div class="px-3 pt-3">
       <button
         type="button"
-        class="flex w-full items-center justify-center gap-2 rounded-md border border-accent/40 bg-accent-soft/70 py-2 text-[13px] font-medium text-accent-ink transition-colors hover:bg-accent-soft"
+        class="flex w-full items-center justify-center gap-2 rounded-md border border-accent/40 bg-accent-soft/70 py-2 text-body font-medium text-accent-ink transition-colors hover:bg-accent-soft"
         @click="emit('add')"
       >
         <Icon name="plus" :size="15" />
@@ -65,7 +65,7 @@ const emit = defineEmits<{ select: [key: string]; add: [] }>()
       <div
         aria-disabled="true"
         title="未接入"
-        class="flex cursor-default items-center gap-2 border-t border-line pt-3 text-[13px] text-dim"
+        class="flex cursor-default items-center gap-2 border-t border-line pt-3 text-body text-dim"
       >
         <Icon name="logout" :size="15" />退出
       </div>

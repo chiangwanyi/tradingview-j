@@ -77,8 +77,8 @@ function submit(): void {
 }
 
 const inputCls =
-  'w-full rounded-md border border-line bg-panel px-2.5 py-1.5 text-[13px] text-ink outline-none transition-colors focus:border-accent/60 focus:ring-2 focus:ring-accent/15'
-const labelCls = 'mb-1 block text-[11px] tracking-wider text-faint uppercase'
+  'w-full rounded-md border border-line bg-panel px-2.5 py-1.5 text-body text-ink outline-none transition-colors focus:border-accent/60 focus:ring-2 focus:ring-accent/15'
+const labelCls = 'mb-1 block text-note font-medium text-faint uppercase'
 </script>
 
 <template>
@@ -86,8 +86,8 @@ const labelCls = 'mb-1 block text-[11px] tracking-wider text-faint uppercase'
     <div class="w-full max-w-md rounded-xl border border-line bg-panel p-5 shadow-lg">
       <div class="flex items-start justify-between">
         <div>
-          <h2 class="text-[15px] font-semibold text-ink">新建考核账户</h2>
-          <p class="mt-0.5 text-[12px] text-faint">
+          <h2 class="text-section font-semibold text-ink">新建考核账户</h2>
+          <p class="mt-0.5 text-note text-faint">
             规则在这一刻从模板复制进账户，标的一刻定死 —— 之后都不能换。
           </p>
         </div>
@@ -104,12 +104,12 @@ const labelCls = 'mb-1 block text-[11px] tracking-wider text-faint uppercase'
               {{ t.name }} · {{ stageLabel(t.stage) }}
             </option>
           </select>
-          <p v-if="chosen" class="mt-1 text-[11px] text-faint tnum">
+          <p v-if="chosen" class="mt-1 text-note text-faint num">
             规模 {{ usd(chosen.rules.accountSize) }} · 目标 {{ usd(chosen.rules.profitTarget) }} · 回撤
             {{ usd(chosen.rules.maxDrawdown) }}
             <span v-if="chosen.nextTemplateId == null"> · 这条链到此为止</span>
           </p>
-          <p v-else-if="!props.templates.length" class="mt-1 text-[11px] text-red-700">
+          <p v-else-if="!props.templates.length" class="mt-1 text-note text-red-700">
             还没有模板。先去「账户模板」建一套 EVAL，账户才有规则可签。
           </p>
         </div>
@@ -128,13 +128,13 @@ const labelCls = 'mb-1 block text-[11px] tracking-wider text-faint uppercase'
             </option>
             <option v-if="!loadingSymbols && symbols.length === 0" value="">没有标的</option>
           </select>
-          <p v-if="symbolErr" class="mt-1 text-[11px] text-red-700">{{ symbolErr }}</p>
-          <p v-else-if="!loadingSymbols && usable.length === 0" class="mt-1 text-[11px] text-red-700">
+          <p v-if="symbolErr" class="mt-1 text-note text-red-700">{{ symbolErr }}</p>
+          <p v-else-if="!loadingSymbols && usable.length === 0" class="mt-1 text-note text-red-700">
             没有任何标的带 K 线。先跑抓取程序，data/_symbols.json 和 CSV 都齐了才能建账户。
           </p>
-          <p v-else class="mt-1 text-[11px] text-faint">
+          <p v-else class="mt-1 text-note text-faint">
             这个账户只能交易它，交易页不会提供切换标的的入口。
-            <span v-if="chosenSymbol?.firstDay" class="tnum">
+            <span v-if="chosenSymbol?.firstDay" class="num">
               可用区间 {{ chosenSymbol.firstDay }} ~ {{ chosenSymbol.lastDay }}
             </span>
           </p>
@@ -145,7 +145,7 @@ const labelCls = 'mb-1 block text-[11px] tracking-wider text-faint uppercase'
           <input id="name" v-model="name" :class="inputCls" placeholder="例如 LucidFlex 50K 第一次" />
         </div>
 
-        <p v-if="local || props.error" class="rounded border border-red-200 bg-red-50 px-2 py-1.5 text-[12px] text-red-700">
+        <p v-if="local || props.error" class="rounded border border-red-200 bg-red-50 px-2 py-1.5 text-note text-red-700">
           {{ local || props.error }}
         </p>
       </div>
@@ -153,14 +153,14 @@ const labelCls = 'mb-1 block text-[11px] tracking-wider text-faint uppercase'
       <div class="mt-5 flex justify-end gap-2">
         <button
           type="button"
-          class="rounded-md border border-line px-3 py-1.5 text-[13px] text-dim hover:border-line-strong"
+          class="rounded-md border border-line px-3 py-1.5 text-body text-dim hover:border-line-strong"
           @click="emit('close')"
         >
           取消
         </button>
         <button
           type="button"
-          class="rounded-md bg-accent px-3 py-1.5 text-[13px] font-medium text-white hover:bg-accent-ink"
+          class="rounded-md bg-accent px-3 py-1.5 text-body font-medium text-white hover:bg-accent-ink"
           @click="submit"
         >
           开账户

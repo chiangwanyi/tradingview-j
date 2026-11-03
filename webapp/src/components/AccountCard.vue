@@ -36,9 +36,13 @@ import { drawdownLabel, pct, usd } from '@/data/rules'
  * ⚠️ 标签的配色/字面只在 `data/accounts.ts` 的 `stageBadge` + `badgeClass` 里定义一份，
  * 详情页用的是同一份。这里只管「画在哪儿」：【成功】【失败】是终态标记，挂在阶段标签旁边。
  *
- * ⚠️ 字号（2026-11-01 两次调整）：先按「整体一倍」放到 20–36px，实测太抢、卡片被撑散，
- * 现回到**约 1.35 倍**这一档 —— 名字 20 / 标签 14 / 副行 15 / 数字 24 / 动作 15。
- * 上下都别再往「统一×2」那条路走：3 列栅格放不下，只会换来满屏折行。
+ * ⚠️ 字号（2026-11-01 两次调整，2026-11-03 归一）：现在**只允许用 `style.css` 里那六级刻度**
+ * （`text-page` / `text-metric` / `text-title` / `text-metric-sm` / `text-section` `text-lead` /
+ * `text-body` `text-label` / `text-note`），本卡片落到：名字 20 · 主数字 24 · 次数字 20 ·
+ * 副行与按钮 15 · 标签与说明 13 · 刻度 12。别再写 `text-[15px]` 这种裸值 —— 之前 9 档字号
+ * （9/11/12/13/14/15/20/24/26）混在一起，13 和 14 挨得太近，层级就看不出来了。
+ * 上下也都别再往「整体×2」那条路走：3 列栅格放不下，只会换来满屏折行。
+ * 数字用 `.num`（同族 + 等宽数字），**不要用 `.tnum`** —— 那是交易页换 monospace 对齐价格表用的。
  */
 const props = defineProps<{ a: Account; busy?: boolean; pending?: 'settle' | 'promote' | '' }>()
 const emit = defineEmits<{ detail: [id: string]; settle: [id: string]; promote: [id: string] }>()
@@ -96,12 +100,12 @@ function onTrade(): void {
       <!-- 标的 + 账户名同一行：标的在建户时定死，是这个名字的一部分（同名账户靠它区分） -->
       <div class="flex min-w-0 items-center gap-1.5">
         <span
-          class="shrink-0 rounded border border-accent/30 bg-accent-soft px-1.5 py-0.5 text-[14px] tracking-wider text-accent-ink uppercase"
+          class="shrink-0 rounded border border-accent/30 bg-accent-soft px-1.5 py-0.5 text-label font-medium text-accent-ink uppercase"
           title="这个账户只做这一个标的，创建后不可切换"
         >
           {{ a.symbolId ?? '未绑定标的' }}
         </span>
-        <h3 class="min-w-0 truncate text-[20px] leading-tight font-semibold tracking-wide text-ink">
+        <h3 class="min-w-0 truncate text-title font-semibold text-ink">
           {{ a.name }}
         </h3>
       </div>
@@ -109,20 +113,20 @@ function onTrade(): void {
       <!-- 右上角：阶段标签 + 终态标记（成功 / 失败） -->
       <div class="flex shrink-0 flex-wrap items-center justify-end gap-1">
         <span
-          class="rounded border px-1.5 py-0.5 text-[14px] tracking-wider whitespace-nowrap"
+          class="rounded border px-1.5 py-0.5 text-label font-medium whitespace-nowrap"
           :class="badgeClass(badge.tone)"
           :title="badge.hint"
           >{{ badge.text }}</span
         >
         <span
           v-if="success"
-          class="rounded border border-amber-300 bg-amber-50 px-1.5 py-0.5 text-[14px] tracking-wider whitespace-nowrap text-amber-700"
+          class="rounded border border-amber-300 bg-amber-50 px-1.5 py-0.5 text-label font-medium whitespace-nowrap text-amber-700"
           title="出金号已走完全程（PAYOUT），这笔考核结束了"
           >成功</span
         >
         <span
           v-if="failed"
-          class="rounded border border-red-200 bg-red-50 px-1.5 py-0.5 text-[14px] tracking-wider whitespace-nowrap text-red-700"
+          class="rounded border border-red-200 bg-red-50 px-1.5 py-0.5 text-label font-medium whitespace-nowrap text-red-700"
           title="撞了亏损线，本阶段已经判失败（终态，不能重开）"
           >失败</span
         >
@@ -131,7 +135,7 @@ function onTrade(): void {
 
     <!-- 盘面现在停在哪根 + 已经走了几个交易日（原「起点 xxx」那一行） -->
     <p
-      class="mt-1.5 flex flex-wrap items-baseline gap-x-2 px-4 text-[15px] text-faint tnum"
+      class="num mt-1.5 flex flex-wrap items-baseline gap-x-2 px-4 text-lead text-faint"
       title="最新的那根 K 线（盘面停在这儿）；交易日数由后端按数据目录里真实的开盘日数出来（休市日不算）"
     >
       <span>最新K线 {{ shortTime(a.lastBarTime) }}</span>
@@ -144,33 +148,33 @@ function onTrade(): void {
     <div class="mt-2.5 flex flex-wrap gap-1 px-4">
       <span
         v-if="drawLabel"
-        class="rounded border border-line px-1.5 py-0.5 text-[13px] tracking-wider text-faint uppercase"
+        class="rounded border border-line px-1.5 py-0.5 text-label text-faint uppercase"
       >
         {{ drawLabel }}
       </span>
       <span
         v-if="canPromote"
-        class="rounded border border-amber-300 bg-amber-50 px-1.5 py-0.5 text-[13px] tracking-wider text-amber-800"
+        class="rounded border border-amber-300 bg-amber-50 px-1.5 py-0.5 text-label font-medium text-amber-800"
       >
         已达标 · 待升级
       </span>
-      <span class="rounded border border-line px-1.5 py-0.5 text-[13px] tracking-wider text-faint uppercase">
-        创建于 {{ shortInstant(a.stageStartedAt) }}
+      <span class="rounded border border-line px-1.5 py-0.5 text-label text-faint">
+        创建于 <span class="num">{{ shortInstant(a.stageStartedAt) }}</span>
       </span>
       <!-- 起始时间：账户盘面的起点那根（永不改动），和「创建于」并排看才知道这段考核从哪儿开始 -->
       <span
-        class="rounded border border-line px-1.5 py-0.5 text-[13px] tracking-wider text-faint uppercase"
+        class="rounded border border-line px-1.5 py-0.5 text-label text-faint"
         title="这个账户的盘面从哪一根开始（建户时抽中，永不改动）"
       >
-        起始时间 {{ shortTime(a.startBarTime) }}
+        起始时间 <span class="num">{{ shortTime(a.startBarTime) }}</span>
       </span>
     </div>
 
     <div class="mt-3 grid grid-cols-2 gap-x-3 gap-y-3 border-t border-line px-4 py-3.5">
       <div>
-        <p class="text-[13px] tracking-wider text-faint uppercase">账户余额</p>
-        <p class="tnum text-[24px] leading-tight font-semibold text-ink">{{ usd(a.balance) }}</p>
-        <p class="tnum mt-0.5 flex flex-wrap items-baseline gap-x-2 text-[13px] text-faint">
+        <p class="text-label font-medium text-faint">账户余额</p>
+        <p class="num text-metric font-semibold text-ink">{{ usd(a.balance) }}</p>
+        <p class="num mt-0.5 flex flex-wrap items-baseline gap-x-2 text-body text-faint">
           <span class="whitespace-nowrap">起点 {{ usd(a.baseBalance) }}</span>
           <span class="whitespace-nowrap" :class="gained >= 0 ? 'text-accent-ink' : 'text-red-600'">
             {{ gained >= 0 ? '+' : '' }}{{ usd(gained) }}
@@ -178,32 +182,32 @@ function onTrade(): void {
         </p>
       </div>
       <div>
-        <p class="text-[13px] tracking-wider text-faint uppercase">盈利目标</p>
-        <p class="tnum text-[24px] leading-tight font-semibold text-ink">
+        <p class="text-label font-medium text-faint">盈利目标</p>
+        <p class="num text-metric font-semibold text-ink">
           {{ usd(target) }}
         </p>
-        <p class="tnum text-[13px] text-faint">
+        <p class="num text-body text-faint">
           {{ target == null ? '本阶段无目标' : `还差 ${usd(Math.max(0, target - gained))}` }}
         </p>
         <!-- 一致性抬升：目标 > 模板上的那个数时说明原因，否则会被当成 bug -->
-        <p v-if="raised" class="tnum text-[13px] text-accent-ink" title="单日最大净盈利 ÷ 一致性比例">
+        <p v-if="raised" class="num text-body text-accent-ink" title="单日最大净盈利 ÷ 一致性比例">
           一致性抬升 · 单日最大 {{ usd(a.maxDayNetBalance) }}
         </p>
       </div>
       <div>
         <!-- 主数字换成了「回撤线」（跌破就判失败的那条），最大回撤退成灰色小字说明它怎么来的 -->
-        <p class="text-[13px] tracking-wider text-faint uppercase">回撤线</p>
-        <p class="tnum text-[20px] leading-tight font-medium text-ink">{{ usd(floor) }}</p>
-        <p class="tnum text-[13px] text-faint" title="回撤线 = 日终峰值（到过冻结水位就按水位）− 最大回撤">
+        <p class="text-label font-medium text-faint">回撤线</p>
+        <p class="num text-metric-sm font-medium text-ink">{{ usd(floor) }}</p>
+        <p class="num text-body text-faint" title="回撤线 = 日终峰值（到过冻结水位就按水位）− 最大回撤">
           最大回撤 {{ usd(a.rules.maxDrawdown) }}
         </p>
       </div>
       <div>
-        <p class="text-[13px] tracking-wider text-faint uppercase">一致性上限</p>
-        <p class="tnum text-[20px] leading-tight font-medium text-ink">
+        <p class="text-label font-medium text-faint">一致性上限</p>
+        <p class="num text-metric-sm font-medium text-ink">
           {{ a.rules.consistencyRatio == null ? '—' : `≤${pct(a.rules.consistencyRatio)}` }}
         </p>
-        <p class="tnum text-[13px] text-faint">
+        <p class="num text-body text-faint">
           {{ a.rules.minProfitDays == null ? '不查盈利日' : `盈利日 ${a.rules.minProfitDays} 天` }}
         </p>
       </div>
@@ -214,7 +218,7 @@ function onTrade(): void {
       <div class="h-1.5 w-full overflow-hidden rounded-full bg-elev">
         <div class="h-full rounded-full bg-accent" :style="{ width: `${progress * 100}%` }" />
       </div>
-      <div class="mt-1 flex justify-between text-[12px] tracking-wider text-faint uppercase tnum">
+      <div class="num mt-1 flex justify-between text-note text-faint">
         <span>起点 {{ usd(a.baseBalance) }}</span>
         <span>{{ pct(progress) }}</span>
         <span>目标 {{ usd(a.baseBalance + (target ?? 0)) }}</span>
@@ -224,7 +228,7 @@ function onTrade(): void {
     <div class="mt-auto grid grid-cols-2 gap-1.5 px-4 pb-4">
       <button
         type="button"
-        class="flex items-center justify-center gap-1 rounded-md bg-accent py-2 text-[15px] font-medium text-white transition-colors hover:bg-accent-ink"
+        class="flex items-center justify-center gap-1 rounded-md bg-accent py-2 text-lead font-medium text-white transition-colors hover:bg-accent-ink"
         title="在新标签页打开这个账户的 K 线画布"
         @click="onTrade"
       >
@@ -232,7 +236,7 @@ function onTrade(): void {
       </button>
       <button
         type="button"
-        class="rounded-md border border-line py-2 text-[15px] text-dim transition-colors hover:border-line-strong hover:text-ink"
+        class="rounded-md border border-line py-2 text-lead text-dim transition-colors hover:border-line-strong hover:text-ink"
         @click="emit('detail', a.id)"
       >
         详情
@@ -243,7 +247,7 @@ function onTrade(): void {
       <button
         v-if="canPromote"
         type="button"
-        class="col-span-2 flex items-center justify-center gap-1.5 rounded-md bg-accent py-2 text-[15px] font-medium text-white transition-colors hover:bg-accent-ink disabled:opacity-50"
+        class="col-span-2 flex items-center justify-center gap-1.5 rounded-md bg-accent py-2 text-lead font-medium text-white transition-colors hover:bg-accent-ink disabled:opacity-50"
         title="余额会重置回下一阶段的账户规模（本阶段赚的钱不带过去）"
         :disabled="busy"
         @click="emit('promote', a.id)"
@@ -255,7 +259,7 @@ function onTrade(): void {
       <button
         v-if="a.status === 'ACTIVE'"
         type="button"
-        class="col-span-2 rounded-md border border-line py-2 text-[15px] text-dim transition-colors hover:border-line-strong hover:text-ink disabled:opacity-50"
+        class="col-span-2 rounded-md border border-line py-2 text-lead text-dim transition-colors hover:border-line-strong hover:text-ink disabled:opacity-50"
         title="一步推到下一个交易日，结算上一个交易日（日终峰值 → 回撤线上移）；有持仓或挂单时不让用"
         :disabled="busy"
         @click="emit('settle', a.id)"
