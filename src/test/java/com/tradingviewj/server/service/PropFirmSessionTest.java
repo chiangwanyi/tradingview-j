@@ -82,6 +82,47 @@ class PropFirmSessionTest {
         assertMoney("49598", session.balance());
     }
 
+    /**
+     * FUNDED 有目标时，目标与盈利日<strong>两个都要满足</strong>才能升 PAYOUT。
+     *
+     * <p>目标是 4000，5 天各赚 1000（盈利日 5/5、总盈利 5000）：目标 6000 的变体卡在「还差 1000」，
+     * 目标 4000 的变体当天走完就 PROMOTED。合计 5000 差 1000 的那一步正是「只看盈利日」会放过去的地方。
+     */
+    @Test
+    void fundedRequiresTargetAndProfitDays() {
+        assertEquals(PropFirmSession.Event.RUNNING, driveFunded("6000").event(),
+                "盈利日 5/5 但总盈利 5000 < 6000，不能过关");
+        assertEquals(PropFirmSession.Event.PROMOTED, driveFunded("4000").event(),
+                "目标 4000 与盈利日 5/5 都够了，应当升 PAYOUT");
+    }
+
+    /** 5 个交易日、每天净赚 1000，走完最后一天并结账。 */
+    private static PropFirmSession.Step driveFunded(String target) {
+        Symbol symbol = Symbol.of(CODE, FOLDER, new BigDecimal("0.50"));
+        symbol.setTick(new BigDecimal("0.25"));
+        symbol.setTickValue(new BigDecimal("1.25"));
+
+        PropFirmRules rules = new PropFirmRules(new BigDecimal("50000.00"), new BigDecimal(target),
+                new BigDecimal("2000.00"), PropFirmRules.DrawdownType.TRAILING_EOD,
+                new BigDecimal("52100.00"), null, 5, new BigDecimal("150.00"),
+                List.of(new PositionTier(BigDecimal.ZERO, 20)));
+
+        String[] days = {"2024-03-04", "2024-03-05", "2024-03-06", "2024-03-07", "2024-03-08"};
+        List<Trade> trades = new java.util.ArrayList<>();
+        for (int i = 0; i < days.length; i++) {
+            trades.add(Trade.fill("acc", CODE, "o" + (i + 1), days[i] + " 09:05", i + 1, Side.SELL,
+                    new BigDecimal("4000.00"), BigDecimal.ONE, new BigDecimal("1000.00"), BigDecimal.ZERO));
+        }
+
+        PropFirmSession session = new PropFirmSession(PropFirmStage.FUNDED, rules,
+                new BigDecimal("50000.00"), Map.of(CODE, symbol), trades);
+        for (String day : days) {
+            session.onBar(CODE, bar(day + " 09:00", "4000.00", "4000.00", "4000.00", "4000.00"));
+            session.onBar(CODE, bar(day + " 09:05", "4000.00", "4000.00", "4000.00", "4000.00"));
+        }
+        return session.finish();
+    }
+
     /** EVAL 50K：规模 50000、目标 3000、回撤 2000、冻结水位 52100、一致性 50%。 */
     private static PropFirmRules rules() {
         return new PropFirmRules(new BigDecimal("50000.00"), new BigDecimal("3000.00"),

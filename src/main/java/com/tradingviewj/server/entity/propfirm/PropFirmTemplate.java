@@ -64,9 +64,7 @@ public class PropFirmTemplate extends BaseEntity {
      *
      * <ul>
      *   <li>EVAL 必须有盈利目标 —— 没有目标就不是考试；</li>
-     *   <li>FUNDED 不能有盈利目标 —— 出金号如果还有通关目标，那它其实是第二场考试。
-     *       这一类错误（把 EVAL 的模板误标成 FUNDED）会让账户永远升不了级，
-     *       却在界面上看起来完全正常。宁可建不出来。</li>
+     *   <li>FUNDED 的目标可空（LucidFlex 50K FUNDED 是 4000），不空时和盈利日一起判。</li>
      * </ul>
      *
      * @throws IllegalArgumentException 缺名字、缺规模、或缺阶段必需的规则
@@ -117,9 +115,6 @@ public class PropFirmTemplate extends BaseEntity {
         }
         if (stage == PropFirmStage.EVAL && rules.getProfitTarget() == null) {
             throw new IllegalArgumentException("EVAL 阶段必须有盈利目标: " + name);
-        }
-        if (stage == PropFirmStage.FUNDED && rules.getProfitTarget() != null) {
-            throw new IllegalArgumentException("FUNDED 阶段不能有盈利目标（那是 EVAL 的规则）: " + name);
         }
     }
 }

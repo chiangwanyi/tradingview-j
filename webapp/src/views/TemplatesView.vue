@@ -15,7 +15,7 @@ const FILTERS = [
   { key: 'PAYOUT', label: 'PAYOUT' },
 ] as const
 
-const FEATURES = ['EVAL 必须有盈利目标', 'FUNDED 不带目标', '删模板不动已开账户']
+const FEATURES = ['EVAL 必须有盈利目标', 'FUNDED 目标可空', '删模板不动已开账户']
 
 const filter = ref<(typeof FILTERS)[number]['key']>('ALL')
 const list = computed(() =>

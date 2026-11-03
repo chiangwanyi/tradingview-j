@@ -55,8 +55,8 @@ export interface Template {
 /**
  * 模板自身是否自洽 —— 和 `PropFirmTemplate.validate` 同一套条件。
  *
- * 重点是后两条：EVAL 没目标等于没考试；FUNDED 带目标实际上是第二场考试，
- * 这类错配在界面上看起来完全正常，只会让账户永远升不了级，所以宁可存不进去。
+ * 唯一的硬门槛：EVAL 没目标等于没考试。FUNDED 的目标可空（LucidFlex 50K 是 4000），
+ * 有目标时和盈利日一起判，所以不拦。
  */
 export function validate(t: Template): string[] {
   const errors: string[] = []
@@ -66,8 +66,6 @@ export function validate(t: Template): string[] {
   if (r.accountSize == null || r.accountSize <= 0) errors.push('账户规模必须是正数')
   if (r.maxDrawdown == null || r.maxDrawdown <= 0) errors.push('最大回撤必须是正数')
   if (t.stage === 'EVAL' && r.profitTarget == null) errors.push('EVAL 阶段必须有盈利目标')
-  if (t.stage === 'FUNDED' && r.profitTarget != null)
-    errors.push('FUNDED 阶段不能有盈利目标（那是 EVAL 的规则）')
 
   return errors
 }

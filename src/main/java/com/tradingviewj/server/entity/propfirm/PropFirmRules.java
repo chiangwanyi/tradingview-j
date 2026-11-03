@@ -28,8 +28,8 @@ import java.util.List;
  *
  * <ul>
  *   <li>EVAL：有 {@code profitTarget}、有 {@code consistencyRatio}；没有盈利日要求。</li>
- *   <li>FUNDED：{@code profitTarget} 和 {@code consistencyRatio} 都是 {@code null}
- *       （没有目标、不查一致性），但有 {@code minProfitDays} + {@code profitDayThreshold}。</li>
+ *   <li>FUNDED：{@code profitTarget} 可空（LucidFlex 50K 是 4000，与盈利日并列判），
+ *       {@code consistencyRatio} 为 {@code null}，另有 {@code minProfitDays} + {@code profitDayThreshold}。</li>
  * </ul>
  *
  * <p>所以 {@code null} 在这类里<strong>是有意义的取值</strong>，不是「漏配」：

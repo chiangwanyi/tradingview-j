@@ -257,6 +257,9 @@ public final class PropFirmSession {
      *
      * <p>EVAL 的目标里已经包含了「一致性抬高后的目标」，所以这里只需要比较一个数：
      * 一致性 50% 时，单日赚 1800 → 目标从 3000 抬到 3600，总盈利到 3600 才算过关。
+     *
+     * <p>FUNDED 若有 {@code profitTarget}（LucidFlex 50K 是 4000），和盈利日<strong>两个都要满足</strong>；
+     * 没配目标的 FUNDED 仍只看盈利日。
      */
     private String promotionBlockedBy() {
         if (stage != PropFirmStage.EVAL && stage != PropFirmStage.FUNDED) {
@@ -278,6 +281,10 @@ public final class PropFirmSession {
             return null;
         }
 
+        BigDecimal target = effectiveTarget();
+        if (target != null && total.compareTo(target) < 0) {
+            return "还差 " + plain(target.subtract(total)) + "（目标 " + plain(target) + "）";
+        }
         Integer need = rules.getMinProfitDays();
         if (need == null || need <= 0) {
             return "这套规则没有盈利日要求，无法判定通过";

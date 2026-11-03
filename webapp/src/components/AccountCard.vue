@@ -8,7 +8,6 @@ import {
   finished,
   lossLine,
   profitTarget,
-  shortInstant,
   shortSymbol,
   shortTime,
   stageBadge,
@@ -20,8 +19,8 @@ import { drawdownLabel, pct, usd } from '@/data/rules'
 
 /**
  * 一张考核卡。版式（2026-11-03 调整后）：
- * 一行「模板 + 账户名」→ 右上角「标的短名 + 阶段标签（+ 成功/失败）」 → 盘面最新K线与交易日数
- * → 小标签（回撤口径 / 已达标 / 创建于 / 起始时间）→ 四个数字 → 进度条 → 动作。
+ * 一行「模板 + 账户名」→ 右上角「标的短名 + 阶段标签（+ 成功/失败）」
+ * → 小标签（回撤口径 / 已达标 / 最新K线 / 已进行几日 / 起始时间）→ 四个数字 → 进度条 → 动作。
  *
  * 左上角那格是**模板名**（`LucidFlex 50K EVAL` 这种），由调用方查好传进来（见 `tplName`）：
  * 它既回答「多大规模、什么规则」，也顺带说明了这个号处在哪一段（模板名里就带 EVAL / FUNDED）。
@@ -88,14 +87,14 @@ const success = computed(() => finished(props.a))
 const failed = computed(() => props.a.status === 'FAILED')
 
 /**
- * 已进行几个交易日（起点那根 → 盘面最新那根）。
+ * 已进行几日（起点那根 → 盘面最新那根，按真实开盘的交易日数）。
  * `null` 表示算不出来，卡片上写「—」，不编数字。
  */
 const days = computed(() => tradingDaysElapsed(props.a))
 
 /**
  * 回撤口径小标签：**EOD 不再显示**（用户 2026-11-01 要求）——
- * 它不改变卡片上任何数字的读法，只是多一格字，留着只会挤掉「创建于 / 起始时间」。
+ * 它不改变卡片上任何数字的读法，只是多一格字，留着只会挤掉「最新K线 / 起始时间」。
  */
 const drawLabel = computed(() =>
   props.a.rules.drawdownType === 'TRAILING_EOD' ? '' : drawdownLabel(props.a.rules.drawdownType),
@@ -166,18 +165,7 @@ function onTrade(): void {
       </div>
     </header>
 
-    <!-- 盘面现在停在哪根 + 已经走了几个交易日（原「起点 xxx」那一行） -->
-    <p
-      class="num mt-1.5 flex flex-wrap items-baseline gap-x-2 px-4 text-lead text-faint"
-      title="最新的那根 K 线（盘面停在这儿）；交易日数由后端按数据目录里真实的开盘日数出来（休市日不算）"
-    >
-      <span>最新K线 {{ shortTime(a.lastBarTime) }}</span>
-      <span class="whitespace-nowrap"
-        >已进行 <b class="font-medium text-dim">{{ days == null ? '—' : days }}</b> 个交易日</span
-      >
-    </p>
-
-    <!-- 小标签：回撤口径（EOD 不显示）/ 已达标 / 创建于 / 起始时间 -->
+    <!-- 小标签：回撤口径（EOD 不显示）/ 已达标 / 最新K线 / 已进行几日 / 起始时间 -->
     <div class="mt-2.5 flex flex-wrap gap-1 px-4">
       <span
         v-if="drawLabel"
@@ -191,10 +179,21 @@ function onTrade(): void {
       >
         已达标 · 待升级
       </span>
-      <span class="rounded border border-line px-1.5 py-0.5 text-label text-faint">
-        创建于 <span class="num">{{ shortInstant(a.stageStartedAt) }}</span>
+      <!-- 盘面现在停在哪根（原「创建于」那格，2026-11-03 改：阶段起始时间不如下面那根 K 线有用） -->
+      <span
+        class="rounded border border-line px-1.5 py-0.5 text-label text-faint"
+        title="最新的那根 K 线（盘面停在这儿）"
+      >
+        最新K线 <span class="num">{{ shortTime(a.lastBarTime) }}</span>
       </span>
-      <!-- 起始时间：账户盘面的起点那根（永不改动），和「创建于」并排看才知道这段考核从哪儿开始 -->
+      <!-- 已经走了几个交易日：起点那根 → 盘面最新那根，由后端按数据目录里真实开盘日数出来（休市日不算） -->
+      <span
+        class="rounded border border-line px-1.5 py-0.5 text-label text-faint"
+        title="从账户盘面起点到最新那根，中间真实开盘的交易日数（休市日不算）"
+      >
+        已进行 <span class="num font-medium text-dim">{{ days == null ? '—' : days }}</span> 日
+      </span>
+      <!-- 起始时间：账户盘面的起点那根（永不改动），和「最新K线」并排看才知道这段考核从哪儿开始 -->
       <span
         class="rounded border border-line px-1.5 py-0.5 text-label text-faint"
         title="这个账户的盘面从哪一根开始（建户时抽中，永不改动）"

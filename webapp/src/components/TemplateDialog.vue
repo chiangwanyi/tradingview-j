@@ -182,7 +182,7 @@ function submit(): void {
             v-model="form.profitTarget"
             :class="inputCls"
             inputmode="decimal"
-            placeholder="FUNDED 留空"
+            placeholder="FUNDED 可留空"
           />
         </label>
 

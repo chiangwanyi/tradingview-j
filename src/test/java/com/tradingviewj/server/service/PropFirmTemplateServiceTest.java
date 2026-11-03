@@ -106,9 +106,8 @@ class PropFirmTemplateServiceTest {
     /** 阶段与规则矛盾的模板建不出来，失败后库里一条残留都没有。 */
     @Test
     void createRejectsStageRuleMismatch() {
-        // FUNDED 还带盈利目标 —— 那其实是第二场考试，会让账户永远升不了级
-        assertThrows(IllegalArgumentException.class, () -> service.create("错标的出金号", null,
-                PropFirmStage.FUNDED, null, evalRules()));
+        // FUNDED 带盈利目标现在是合法的（LucidFlex 50K FUNDED = 4000），建得出来
+        assertNotNull(service.create("出金号", null, PropFirmStage.FUNDED, null, evalRules()).getId());
 
         // EVAL 没有盈利目标 —— 没有目标就不是考试
         PropFirmRules noTarget = new PropFirmRules(new BigDecimal("50000.00"), null,
@@ -121,7 +120,7 @@ class PropFirmTemplateServiceTest {
         assertThrows(IllegalArgumentException.class, () -> service.create("  ", null,
                 PropFirmStage.EVAL, null, evalRules()));
 
-        assertEquals(0, templates.count(), "校验失败不该留下半条模板");
+        assertEquals(1, templates.count(), "校验失败不该留下半条模板");
     }
 
     /** 改：字段换成新的，身份（id / 创建时间）不变，阶段不变。 */

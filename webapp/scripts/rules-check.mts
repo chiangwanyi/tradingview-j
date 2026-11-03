@@ -37,8 +37,11 @@ assert.deepEqual(validate(tpl('EVAL', base())), [])
 // EVAL 没有盈利目标 = 没有考试，不成立
 assert.deepEqual(validate(tpl('EVAL', base({ profitTarget: null }))), ['EVAL 阶段必须有盈利目标'])
 
-// FUNDED 带盈利目标 = 其实是第二场考试，不成立
-assert.deepEqual(validate(tpl('FUNDED', base())), ['FUNDED 阶段不能有盈利目标（那是 EVAL 的规则）'])
+// FUNDED 带盈利目标也成立（LucidFlex 50K FUNDED = 4000，和盈利日一起判）
+assert.deepEqual(
+  validate(tpl('FUNDED', base({ profitTarget: 4000, consistencyRatio: null, minProfitDays: 5 }))),
+  [],
+)
 
 // 自洽的 FUNDED 能过（无目标、无一致性、有盈利日）
 assert.deepEqual(

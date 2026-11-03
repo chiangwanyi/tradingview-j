@@ -253,7 +253,7 @@ defineExpose({ openNew })
 
     <div class="px-8 pb-10">
       <!-- 3 列（2026-11-01 回到 3 列）：字号收到约 1.35 倍后，431px 的卡刚好一行放得下
-           「创建于 / 起始时间」，2 列反而把 654px 的卡撑得大片留白 -->
+           「最新K线 / 已进行 N 日 / 起始时间」这几个小标签，2 列反而把 654px 的卡撑得大片留白 -->
       <div v-if="list.length" class="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
         <AccountCard
           v-for="a in list"
