@@ -141,13 +141,17 @@ class BarQueryServiceTest {
                 2024-03-06 09:00,5110.50,5112.00,5110.00,5111.50,400
                 """);
 
-        // 停在 03-06：上一交易日要跨过 03-05 那份「尾巴文件」，落到 03-04
+        // 停在 03-06：上一交易日要跨过 03-05 那份「尾巴文件」，落到 03-04 ——
+        // 而且那一场没在 23:55 结束，03-05 的 00:00–04:55 那段收尾也要跟着给
         BarSeriesResponse series = service.day("CME_MINI:MES1!", "2024-03-06 09:00");
 
-        assertEquals(4, series.bars().size());
+        assertEquals(6, series.bars().size());
         assertEquals("2024-03-04 09:00", series.bars().get(0).time());
         assertEquals("2024-03-04 09:05", series.bars().get(1).time());
-        assertEquals("2024-03-06 06:00", series.bars().get(2).time());
+        // 这一场的收尾：周五 23:55 之后还有 03-05 凌晨那几十根
+        assertEquals("2024-03-05 00:00", series.bars().get(2).time());
+        assertEquals("2024-03-05 04:55", series.bars().get(3).time());
+        assertEquals("2024-03-06 06:00", series.bars().get(4).time());
 
         // 停在「尾巴文件」自己上面（账户走到周六凌晨）：上一场整天照给，尾巴接在后面
         BarSeriesResponse onTail = service.day("CME_MINI:MES1!", "2024-03-05 03:00");
@@ -156,6 +160,34 @@ class BarQueryServiceTest {
         assertEquals(3, onTail.bars().size());
         assertEquals("2024-03-04 09:05", onTail.bars().get(1).time());
         assertEquals("2024-03-05 00:00", onTail.bars().get(2).time());
+    }
+
+    @Test
+    void sessionTailIsNotDuplicatedWhenTheNextDayIsTheTarget() throws IOException {
+        // 工作日：上一场（03-04）的收尾就在 target 自己那份文件的开头。
+        // 那份文件下面会带截断读一遍，这里**不能**再补一次 —— 同一个时间戳塞两遍，图会崩
+        Path folder = dataRoot.resolve("CME_MINI_MES1!");
+        Files.writeString(folder.resolve("2024-03-04.csv"), """
+                time,open,high,low,close,volume
+                2024-03-04 00:00,5090.00,5091.00,5089.00,5090.50,700
+                2024-03-04 23:55,5100.00,5101.00,5099.00,5100.50,700
+                """);
+        Files.writeString(folder.resolve("2024-03-05.csv"), """
+                time,open,high,low,close,volume
+                2024-03-05 00:00,5100.50,5102.00,5100.00,5101.50,600
+                2024-03-05 06:00,5110.00,5111.00,5109.00,5110.50,500
+                2024-03-05 09:00,5110.50,5112.00,5110.00,5111.50,400
+                """);
+
+        BarSeriesResponse series = service.day("CME_MINI:MES1!", "2024-03-05 09:00");
+
+        assertEquals(5, series.bars().size());
+        assertEquals("2024-03-04 00:00", series.bars().get(0).time());
+        assertEquals("2024-03-04 23:55", series.bars().get(1).time());
+        assertEquals("2024-03-05 00:00", series.bars().get(2).time());
+        assertEquals("2024-03-05 06:00", series.bars().get(3).time());
+        assertEquals("2024-03-05 09:00", series.bars().get(4).time());
+        assertEquals(5, series.bars().stream().map(b -> b.time()).distinct().count(), "时间戳不能重复");
     }
 
     @Test

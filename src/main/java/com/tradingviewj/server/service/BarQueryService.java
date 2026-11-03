@@ -48,6 +48,15 @@ public class BarQueryService {
     /** 「上一交易日」不只看有没有文件，还得看那一天有没有属于它自己的那一场（见 {@link TradingCalendar}）。 */
     private final TradingCalendar calendar;
 
+    /**
+     * 一场的开始时刻 {@code HH:mm}，和 {@link PropFirmClock} / {@code TradingCalendar} 同一口径。
+     *
+     * <p>用字符串而不是 {@code LocalTime}：CSV 里存的是定长明文，比值按字典序就是时间序，
+     * 换算一次反而多一处能对不上的地方。
+     */
+    private static final String SESSION_START = String.format("%02d:%02d",
+            PropFirmClock.SESSION_START.getHour(), PropFirmClock.SESSION_START.getMinute());
+
     /** 标的清单：清单文件里有什么就返回什么，附带磁盘上数出来的日文件范围。 */
     public List<SymbolSummaryResponse> symbols() {
         List<SymbolSummaryResponse> list = new ArrayList<>();
@@ -74,7 +83,11 @@ public class BarQueryService {
      *
      * <p>交易页要的是「接着上次的位置继续看盘」：只看当天，图上就没有隔夜的收/开盘、
      * 没有昨晚的走势做参照，画出来是一块没有上下文的图。所以切片的起点定在
-     * <strong>上一个交易日的整天开头</strong>，终点定在<strong>调用方给的那一根</strong>。
+     * <strong>上一个交易日的开头</strong>，终点定在<strong>调用方给的那一根</strong>。
+     *
+     * <p>「上一交易日」给的是<strong>一整场</strong>（{@code P 06:00 → P+1 04:55}），
+     * 不是「那一份日文件」：这一场最后那几十根记在 {@code P+1} 那份文件的开头，
+     * 跨周末时就是周六那份 {@code 00:00–04:55}（见 {@link #sessionTail}）。
      *
      * <p>「上一个交易日」<strong>以磁盘上的 CSV 为准</strong>（{@code data/<folder>/<yyyy-MM-dd>.csv}），
      * 而不是按日历减一天：周末、CME 结算休市、抓取程序没跑的那些天本来就没有文件，
@@ -109,6 +122,14 @@ public class BarQueryService {
         if (previous != null) {
             // 上一交易日整天搬过来，不截断：这一段是「隔夜参照」，缺一根就少一根
             raw.addAll(bars.readDay(spec.folder(), previous));
+            // 但**这一场没在 23:55 结束**：交易日 D = [D 06:00, D+1 04:00)，末尾那几十根
+            // 装在**下一天那份文件的开头**。平时 D+1 就是 target（那份下面会带截断读出来，
+            // 重复加会把同样的时间戳塞两遍）；只有跨周末 / 假期时 D+1 是另一份文件
+            // （周六那份 00:00–04:55），不补就会从周五 23:55 直接跳到周一 06:00。
+            LocalDate continuation = previous.plusDays(1);
+            if (continuation.isBefore(target)) {
+                raw.addAll(sessionTail(spec.folder(), continuation));
+            }
         }
         for (Bar b : bars.readDay(spec.folder(), target)) {
             if (cutoff == null || minuteKey(b.barTime()).compareTo(cutoff.moment()) <= 0) {
@@ -122,6 +143,34 @@ public class BarQueryService {
         }
         return new BarSeriesResponse(spec.code(), spec.folder(), target.toString(),
                 spec.tick(), spec.tickValue(), views);
+    }
+
+    /**
+     * 某一天文件里**属于上一场**的那一段：{@code 00:00–05:55}，碰到 06:00 及以后就停
+     * （那是这一天自己那一场的开头，不是上一场的收尾）。
+     *
+     * <p>为什么需要它：交易日 D = {@code [D 06:00, D+1 04:00)}，所以 D 那一场最后那几十根
+     * 记在 {@code D+1} 那份文件的开头（周六的 {@code 2025-08-09.csv} 装的就是周五那场的
+     * {@code 00:00–04:55}）。少补这一段，图上就会从周五 23:55 直接跳到周一 06:00，
+     * BarCount 也会在 217 之后凭空断掉。
+     *
+     * <p>判据用 {@link #SESSION_START}（由 {@link PropFirmClock} 给出，和
+     * {@code TradingCalendar} 是同一把尺子）。按 06:00 一刀在冬夏令时都对：夏令时切在
+     * {@code 04:55 → 06:00} 的缺口上，冬令时数据停在 05:55、缺口是 {@code 05:55 → 06:00}。
+     *
+     * <p>没有文件就是空列表（周末、假期没开盘、那天没抓，都正常）。
+     */
+    private List<Bar> sessionTail(String folder, LocalDate day) {
+        List<Bar> tail = new ArrayList<>();
+        for (Bar b : bars.readDay(folder, day)) {
+            String minute = minuteKey(b.barTime());
+            // 定长明文，字典序 = 时间序；切到 06:00 就是下一天自己的那一场了
+            if (minute.length() >= 16 && minute.substring(11, 16).compareTo(SESSION_START) >= 0) {
+                break;
+            }
+            tail.add(b);
+        }
+        return tail;
     }
 
     /**
