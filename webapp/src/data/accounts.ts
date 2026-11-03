@@ -122,6 +122,13 @@ export const get = (id: string): Promise<Account> => call(`${BASE}/${id}`)
 export const open = (templateId: string, symbolId: string, name: string): Promise<Account> =>
   call(BASE, send('POST', { templateId, symbolId, name }))
 
+/**
+ * 要一个随机账户名（形如「宁静山谷」「星河灯塔」）。
+ *
+ * 词库在后端 `RandomAccountName` 里 —— 前端不拼、也不缓存，点一次要一个。
+ */
+export const randomName = (): Promise<{ name: string }> => call(`${BASE}/random-name`)
+
 /** 改名。只发 name：换模板或换标的都等于重开一个账户，后端也不认这两个字段。 */
 export const rename = (id: string, name: string): Promise<Account> =>
   call(`${BASE}/${id}`, send('PUT', { name }))

@@ -2,6 +2,7 @@
 import { computed, onMounted, ref, watch } from 'vue'
 
 import Icon from './Icon.vue'
+import { randomName } from '@/data/accounts'
 import { symbols as loadSymbolList } from '@/data/bars'
 import type { SymbolBrief } from '@/data/bars'
 import { stageLabel, usd } from '@/data/rules'
@@ -25,6 +26,19 @@ const emit = defineEmits<{
 const templateId = ref(props.templates[0]?.id ?? '')
 const name = ref('')
 const local = ref('')
+
+/** 骰子：词库在后端，点一下换一个名字；连点用 rolling 挡住，避免回来的是上一次的结果。 */
+const rolling = ref(false)
+async function roll(): Promise<void> {
+  rolling.value = true
+  try {
+    name.value = (await randomName()).name
+  } catch (e) {
+    local.value = `随机名没拿到：${e instanceof Error ? e.message : String(e)}`
+  } finally {
+    rolling.value = false
+  }
+}
 
 // ---- 标的：清单来自 data/_symbols.json（和交易页同一个接口，`days` 是磁盘上的日文件数） ----
 const symbols = ref<SymbolBrief[]>([])
@@ -142,7 +156,18 @@ const labelCls = 'mb-1 block text-note font-medium text-faint uppercase'
 
         <div>
           <label :class="labelCls" for="name">账户名</label>
-          <input id="name" v-model="name" :class="inputCls" placeholder="例如 LucidFlex 50K 第一次" />
+          <div class="flex gap-2">
+            <input id="name" v-model="name" :class="inputCls" placeholder="例如 LucidFlex 50K 第一次" />
+            <button
+              type="button"
+              class="shrink-0 rounded-md border border-line px-2 text-faint transition-colors hover:border-accent/60 hover:text-accent disabled:opacity-50"
+              title="随机生成一个名字"
+              :disabled="rolling"
+              @click="roll"
+            >
+              <Icon name="dice" :size="16" />
+            </button>
+          </div>
         </div>
 
         <p v-if="local || props.error" class="rounded border border-red-200 bg-red-50 px-2 py-1.5 text-note text-red-700">

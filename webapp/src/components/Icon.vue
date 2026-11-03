@@ -18,6 +18,8 @@ const PATHS = {
   trash: ['M4 7h16', 'M9 7V4h6v3', 'M6 7l1 14h10l1-14'],
   close: ['M6 6l12 12', 'M18 6L6 18'],
   check: ['M4 12l5 5L20 6'],
+  // 骰子：方框 + 六个点（`h.01` 靠圆线帽画成圆点）
+  dice: ['M4 4h16v16H4z', 'M8 8h.01', 'M16 8h.01', 'M12 12h.01', 'M8 16h.01', 'M16 16h.01'],
 } as const
 
 const props = withDefaults(defineProps<{ name: keyof typeof PATHS; size?: number }>(), { size: 16 })

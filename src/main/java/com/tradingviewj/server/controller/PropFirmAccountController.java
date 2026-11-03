@@ -4,10 +4,12 @@ import com.tradingviewj.server.api.R;
 import com.tradingviewj.server.dto.DailyPnlView;
 import com.tradingviewj.server.dto.PropFirmAccountRequest;
 import com.tradingviewj.server.dto.PropFirmCursorRequest;
+import com.tradingviewj.server.dto.RandomNameResponse;
 import com.tradingviewj.server.entity.propfirm.PropFirmAccount;
 import com.tradingviewj.server.entity.propfirm.PropFirmStageLog;
 import com.tradingviewj.server.service.HistoryQueryService;
 import com.tradingviewj.server.service.PropFirmAccountService;
+import com.tradingviewj.server.service.RandomAccountName;
 import com.tradingviewj.server.service.TradingService;
 import com.tradingviewj.server.ws.TradeDeskService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -94,6 +96,17 @@ public class PropFirmAccountController {
     @GetMapping("/{id}")
     public PropFirmAccount get(@PathVariable String id) {
         return accounts.detail(id);
+    }
+
+    @Operation(summary = "随机账户名", description = """
+            给新建弹窗那颗骰子用：形容词+的+地貌（智慧的山谷）或天象+N（星河灯塔）。
+            N 是风物 / 动物 / 植物 / 食物 / 科技的并集，三千多词。
+            词库写死在 `RandomAccountName` 里，只在这里生成 —— 前端不自己拼。
+            不查重：名字只是标签，撞名不影响任何账务。
+            """)
+    @GetMapping("/random-name")
+    public RandomNameResponse randomName() {
+        return new RandomNameResponse(RandomAccountName.next());
     }
 
     @Operation(summary = "开一个账户", description = """
