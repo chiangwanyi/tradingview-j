@@ -22,7 +22,16 @@ spring:
   datasource:
     # 文件放在 ./db/ 下，和行情目录 data/ 分开：data/ 是入库的行情数据，
     # db/ 是本机运行期状态（已加进 .gitignore），两者备份策略不同。
-    url: jdbc:sqlite:./db/tradingview-j.db
+    #
+    # `journal_mode=WAL&synchronous=NORMAL`：**不是随手加的调优**，是量出来的。
+    # 默认的 rollback journal + synchronous=FULL 意味着**每条命令一次事务、每次提交一次
+    # fsync**；在 Windows 上单次 step 因此从 17ms 变成 166ms（机器人压测 480 根要 2 分 37 秒，
+    # 而服务端真正干活只占 17ms，剩下全是等磁盘）。切到 WAL 后同一轮压测 17 秒。
+    # 安全性：WAL + NORMAL 下**进程崩溃不会损坏库**（只有断电可能丢最后几条提交），
+    # 而这个库记的是模拟盘事实，不是真实资金账。
+    # 注意：这两个值是 SQLite 的 pragma，由 sqlite-jdbc 在每次建连时执行；
+    # 开 WAL 后 db/ 目录会多出 tradingview-j.db-wal / -shm（已在 .gitignore 的 /db/* 覆盖范围内）。
+    url: jdbc:sqlite:./db/tradingview-j.db?journal_mode=WAL&synchronous=NORMAL
     driver-class-name: org.sqlite.JDBC
     hikari:
       # SQLite 同一时刻只允许一个写者。连接池开大只会换来 "database is locked"，
