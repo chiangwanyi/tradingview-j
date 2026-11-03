@@ -219,6 +219,32 @@ class PropFirmJudgeTest {
         assertFalse(view.frozen(), "3250 只过了模板的 3000，一致性把目标抬到 5500 了");
     }
 
+    /**
+     * 「哪些成交是按当根收盘价成交的市价单」<strong>必须返回成交 id</strong>，而不是订单 id。
+     *
+     * <p>这两组 id 是两批不同的 UUID。2026-11-03 这里给的是订单 id，而
+     * {@link PropFirmSession} 拿 {@code trade.getId()} 去比 —— 集合永远命中不了，
+     * 「市价单不承担同根极值」这条规则整条失效，而 {@code PropFirmSessionTest} 里传的是
+     * trade id，所以单测一直是绿的。这条测试就是钉住这个接缝。
+     */
+    @Test
+    void marketFillIdsAreTradeIdsNotOrderIds() {
+        Trade market = Trade.fill("acc", CODE, "order-1", "2024-03-04 09:30", 1, Side.BUY,
+                new BigDecimal("4000.00"), BigDecimal.ONE, BigDecimal.ZERO, BigDecimal.ZERO);
+        Trade another = Trade.fill("acc", CODE, "order-2", "2024-03-04 09:35", 2, Side.SELL,
+                new BigDecimal("4010.00"), BigDecimal.ONE, BigDecimal.ZERO, BigDecimal.ZERO);
+
+        assertEquals(java.util.Set.of(market.getId()),
+                PropFirmJudge.marketFillTradeIds(List.of(market, another), java.util.Set.of("order-1")),
+                "按订单 id 匹配、返回成交 id");
+        assertEquals(java.util.Set.of(),
+                PropFirmJudge.marketFillTradeIds(List.of(market, another), java.util.Set.of()),
+                "没有市价单订单时不该凭空命中");
+        // 反向证据：如果实现又把订单 id 原样返回，这里会拿到 order-1 而不是 trade id
+        assertFalse(PropFirmJudge.marketFillTradeIds(List.of(market), java.util.Set.of("order-1"))
+                .contains("order-1"), "返回的是成交 id，不是订单 id");
+    }
+
     /** EVAL 50K：规模 50000、目标 3000、回撤 2000、冻结水位 52100。 */
     private PropFirmAccount account() {
         PropFirmRules rules = new PropFirmRules(new BigDecimal("50000.00"), new BigDecimal("3000.00"),

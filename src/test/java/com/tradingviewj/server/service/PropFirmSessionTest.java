@@ -157,9 +157,71 @@ class PropFirmSessionTest {
         assertMoney("46550.00", step.equity());
     }
 
+    /**
+     * 同一根里「平掉旧仓 + 同方向再开」：<strong>同一段亏损不能记两次</strong>。
+     *
+     * <p>2026-05-26 16:40 账户「夜色粽子」的缩小版：空 5 手 @30347 一直在手，收盘那一刻
+     * 先市价买回 5 手平掉（实现 −410），又市价卖出 5 手重新开空。持仓符号没变（都是空 5 手），
+     * 所以「剔掉收盘成交再重放」拿到的 {@code held} 还是那笔已经平掉的老仓 ——
+     * 它的 −410 已经进了余额，若再拿它去挨 30392.25 的极值，等于同一段亏损记两遍。
+     *
+     * <p>正确读数：余额 49590、盘中最低权益 = 50000 − 45.25 × 5 × 5 = <strong>48868.75</strong>
+     * （用「平仓前余额 50000 + 老仓按极值标的 −1131.25」）。
+     * 旧算法给的是 48458.75（少 410）；id 错配那版给的是 49483.75（多算了新仓的极值）。
+     */
+    @Test
+    void closeThenReopenSameSideDoesNotCountTheSameLossTwice() {
+        Trade held = Trade.fill("acc", CODE, "o1", "2024-03-04 16:00", 1, Side.SELL,
+                new BigDecimal("30347.00"), new BigDecimal("5"), BigDecimal.ZERO, BigDecimal.ZERO);
+        Trade closed = Trade.fill("acc", CODE, "o2", "2024-03-04 16:40", 2, Side.BUY,
+                new BigDecimal("30388.00"), new BigDecimal("5"), new BigDecimal("-410.00"), BigDecimal.ZERO);
+        Trade reopened = Trade.fill("acc", CODE, "o3", "2024-03-04 16:40", 3, Side.SELL,
+                new BigDecimal("30388.00"), new BigDecimal("5"), BigDecimal.ZERO, BigDecimal.ZERO);
+
+        PropFirmSession session = new PropFirmSession(PropFirmStage.EVAL, rules(),
+                new BigDecimal("50000.00"), Map.of(CODE, symbol()),
+                List.of(held, closed, reopened), Set.of(closed.getId(), reopened.getId()));
+
+        session.onBar(CODE, bar("2024-03-04 16:00", "30350.00", "30350.00", "30345.00", "30347.00"));
+        PropFirmSession.Step step = session.onBar(CODE, bar("2024-03-04 16:40",
+                "30381.75", "30392.25", "30376.75", "30388.00"));
+
+        assertMoney("49590.00", step.balance());
+        assertMoney("48868.75", step.equity());
+        assertEquals(PropFirmSession.Event.RUNNING, step.event(), "48868.75 还在亏损线 48000 之上");
+    }
+
+    /**
+     * 整段仓位在<strong>本根收盘</strong>平掉：这一根的最难受价它经历过，照样要挨极值。
+     *
+     * <p>旧实现在「平完就空仓」时直接跳过（{@code qty == 0 → continue}），等于把这一根的浮亏
+     * 一笔勾销 —— 一根插针把仓位扫出局、收盘前又回头，账面就完全看不出发生过什么。
+     *
+     * <p>正确读数：余额 49750（实现 −250）+ 把 −250 退回 → 50000，再按最低 3900 标 5 手多单
+     * = 50000 − 100 × 5 × 5 = <strong>47500</strong>，破线。
+     */
+    @Test
+    void positionClosedAtBarCloseStillBitesThatBarsExtreme() {
+        Trade open = Trade.fill("acc", CODE, "o1", "2024-03-04 09:00", 1, Side.BUY,
+                new BigDecimal("4000.00"), new BigDecimal("5"), BigDecimal.ZERO, BigDecimal.ZERO);
+        Trade close = Trade.fill("acc", CODE, "o2", "2024-03-04 09:05", 2, Side.SELL,
+                new BigDecimal("3950.00"), new BigDecimal("5"), new BigDecimal("-250.00"), BigDecimal.ZERO);
+
+        PropFirmSession session = new PropFirmSession(PropFirmStage.EVAL, rules(),
+                new BigDecimal("50000.00"), Map.of(CODE, symbol()),
+                List.of(open, close), Set.of(close.getId()));
+
+        session.onBar(CODE, bar("2024-03-04 09:00", "4000.00", "4000.00", "4000.00", "4000.00"));
+        PropFirmSession.Step step = session.onBar(CODE, bar("2024-03-04 09:05",
+                "4000.00", "4000.00", "3900.00", "3950.00"));
+
+        assertMoney("49750.00", step.balance());
+        assertMoney("47500.00", step.equity());
+        assertEquals(PropFirmSession.Event.FAILED, step.event(), "插针 3900 已经破了 48000");
+    }
+
     /** 5 个交易日、每天净赚 1000，走完最后一天并结账。 */
-    private static PropFirmSession.Step driveFunded(String target) {
-        Symbol symbol = Symbol.of(CODE, FOLDER, new BigDecimal("0.50"));
+    private static PropFirmSession.Step driveFunded(String target) {        Symbol symbol = Symbol.of(CODE, FOLDER, new BigDecimal("0.50"));
         symbol.setTick(new BigDecimal("0.25"));
         symbol.setTickValue(new BigDecimal("1.25"));
 

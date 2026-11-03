@@ -23,6 +23,7 @@ const TAB_ROUTE: Record<string, string> = {
   templates: 'templates',
   audit: 'audit',
   records: 'records',
+  bot: 'bot',
   profile: 'profile',
 }
 
@@ -33,6 +34,7 @@ const ROUTE_TAB: Record<string, string> = {
   templates: 'templates',
   audit: 'audit',
   records: 'records',
+  bot: 'bot',
   profile: 'profile',
 }
 

@@ -59,8 +59,9 @@ import java.util.Set;
  * 收盘才买的 15 手被按 7766 标成浮亏 −1050，权益 47911.25 撞上 48000（只差 88.75），
  * 而当时的读数是 48256.25、状态 ACTIVE。
  *
- * <p>所以 {@link #equity} 要把「这根之前就在的仓」和「这根收盘才建/加的仓」分开标：
- * 前者用极值，后者用成交价本身（当根浮盈 0），从<strong>下一根</strong>起才承担波动。
+ * <p>所以 {@link #equity} 的做法是「把本根收盘才成交的那几笔退回去」：用<strong>成交之前的持仓</strong>
+ * 去挨这一根的极值，同时把余额里那几笔的已实现盈亏也退回去 —— 两边一起退，才不会重复计亏
+ * （详见 {@link #equity} 的注释，那里记着 2026-11-03 账户「夜色粽子」的第二次误判）。
  *
  * <h2>为什么每根 K 线都重放一遍账本</h2>
  *
@@ -346,17 +347,31 @@ public final class PropFirmSession {
      * 「盘中持仓某根 K 线里最难受的那一刻有没有穿线」。用 {@code close} 会漏判
      * —— 一根下影线很长的 K 线可以浮亏穿线再收回来，收盘价看不出任何异常。
      *
-     * <p><strong>但「这根收盘才成交的市价单」不参与这个极值</strong>：它的成交价本来就是这根
-     * 的收盘价，low/high 发生在它之前。所以要把持仓拆成两段分别标价：
+     * <h2>「这根收盘才成交的市价单」要单独处理</h2>
+     *
+     * <p>它的成交价本来就是这根 K 线的收盘价，low/high 发生在它之前 —— 那一波它没赶上，
+     * 不能拿极值去标它。做法是先把这些成交「退回去」，看这一根最难受的那一刻账上到底是
+     * 什么状态：
+     *
+     * <pre>
+     * 权益 = (余额 − 本根收盘成交那几笔的已实现盈亏) + 那些成交之前的持仓按极值标的浮盈亏
+     * </pre>
+     *
+     * <p>两个细节，都是 2026-11-03 在账户「夜色粽子」上踩出来的：
      *
      * <ul>
-     *   <li>这根<strong>之前</strong>就在的仓（含本根成交的挂单）→ 用极值；</li>
-     *   <li>本根<strong>收盘</strong>才成交的部分 → 用成交价本身，当根浮盈恒为 0。</li>
+     *   <li><strong>余额要先退回去</strong>：市价单平仓的已实现盈亏<strong>已经进了余额</strong>，
+     *       若再拿「平仓前的持仓」按极值标一遍，同一段亏损就记了两次。
+     *       旧实现在「平仓后立刻同向重开」时正是这样：16:40 平掉 5 手空单、又在同价开 5 手空单，
+     *       持仓符号没变，`held` 判断不出这是「换了一批仓」，于是把已经平掉的那批也按极值标了，
+     *       权益算出 47876，而真实盘中最低是 48291 —— 差 415 就是那笔重复计亏。</li>
+     *   <li><strong>被平掉的那段仍要挨极值</strong>：它整根都在手上，这一根的最难受价它确实经历过，
+     *       只是标价时要用「平仓前」的余额。旧实现在「整段仓位都在本根平掉」时直接跳过，
+     *       等于把这一根的浮亏一笔勾销（偏松）。</li>
      * </ul>
      *
-     * <p>拆分靠「把这根里的市价成交剔掉再重放一次」拿到 {@code held}：只有在
-     * {@code closeFilledTradeIds} 非空、且本根确有这类成交时才多这一次重放，
-     * 其余情形（绝大多数 bar）算的还是原来那一个数。
+     * <p>于是不必再判断「本根是加仓、减仓还是反手」—— 一律用「成交前的持仓 + 成交前的余额」，
+     * 只有一种口径。绝大多数 bar 没有收盘成交，`closeFillsAt` 返回空，走的就是原路径。
      *
      * <p>某个品种还没有 K 线时，它的浮盈亏按 0 算（刚开仓、盘面还没推进到它）。
      */
@@ -374,47 +389,47 @@ public final class PropFirmSession {
             }
             BigDecimal pv = pointValue(symbolId);
             List<Trade> applied = entry.getValue().subList(0, cursor);
-            Position position = TradeLedger.replay(applied, pv).position();
-            BigDecimal qty = position.quantity();
-            if (qty.signum() == 0) {
+
+            List<Trade> atClose = closeFillsAt(applied, barTime);
+            List<Trade> beforeClose = applied;
+            if (!atClose.isEmpty()) {
+                // 这笔钱在余额里，但此刻还没赚到（它是在收盘那一瞬才实现的）
+                BigDecimal realized = ZERO;
+                for (Trade trade : atClose) {
+                    realized = realized.add(trade.getRealizedPnl());
+                }
+                total = total.subtract(realized);
+                Set<String> ids = new java.util.HashSet<>();
+                for (Trade trade : atClose) {
+                    ids.add(trade.getId());
+                }
+                beforeClose = applied.stream().filter(t -> !ids.contains(t.getId())).toList();
+            }
+
+            Position held = TradeLedger.replay(beforeClose, pv).position();
+            if (held.isFlat()) {
                 continue;
             }
-
-            Position marked = position;
-            if (!closeFilledTradeIds.isEmpty() && hasCloseFillAt(applied, barTime)) {
-                // 剔掉本根收盘才成交的那些，剩下的就是「挨过这一根」的仓
-                Position held = TradeLedger.replay(applied.stream()
-                        .filter(t -> !isCloseFillAt(t, barTime)).toList(), pv).position();
-                if (held.isFlat()) {
-                    // 整段持仓都是这根收盘才建的：盘中它不存在，浮亏为 0
-                    continue;
-                }
-                if (held.quantity().signum() != qty.signum()) {
-                    // 本根收盘反手：旧仓已在收盘平掉（且已进余额），留下来的全是新仓
-                    continue;
-                }
-                // 收盘又加了仓 → 只有「原来那段」挨这一根的极值；只减了仓 → 剩下的仍是原均价
-                BigDecimal markedQty = qty.abs().compareTo(held.quantity().abs()) >= 0
-                        ? held.quantity() : qty;
-                marked = new Position(markedQty, held.averagePrice());
-            }
-
             // 多单怕 low、空单怕 high —— 用「这根 K 线里最难受的那个价」，
             // 剩下的符号处理交给 Position#unrealizedPnl（数量带符号，天然正确）
-            BigDecimal worstPrice = qty.signum() > 0 ? bar.low() : bar.high();
-            total = total.add(marked.unrealizedPnl(worstPrice, pv));
+            BigDecimal worstPrice = held.quantity().signum() > 0 ? bar.low() : bar.high();
+            total = total.add(held.unrealizedPnl(worstPrice, pv));
         }
         return total;
     }
 
-    /** 这根里有没有「按收盘价成交」的成交。 */
-    private boolean hasCloseFillAt(List<Trade> applied, String barTime) {
+    /** 这批成交里，落在 {@code barTime} 这根、且是「按收盘价成交」的那些。 */
+    private List<Trade> closeFillsAt(List<Trade> applied, String barTime) {
+        if (closeFilledTradeIds.isEmpty()) {
+            return List.of();
+        }
+        List<Trade> out = new ArrayList<>(1);
         for (Trade trade : applied) {
             if (isCloseFillAt(trade, barTime)) {
-                return true;
+                out.add(trade);
             }
         }
-        return false;
+        return out;
     }
 
     private boolean isCloseFillAt(Trade trade, String barTime) {

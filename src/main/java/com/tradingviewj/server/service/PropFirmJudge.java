@@ -187,18 +187,36 @@ public class PropFirmJudge {
      *
      * <p>查的是 <strong>该账户的全部订单</strong>而不是逐个 {@code findById}：一次成交一个账户也就几十上百张单，
      * 一条查询比 N 次往返划算，而且 {@link #assess} 本来每次都要全量重放。
+     *
+     * <p>⚠️ <strong>返回的必须是 {@code trade} 的 id，不是 {@code order} 的 id。</strong>
+     * {@link PropFirmSession#onBar} 拿到这个集合后是拿 {@code trade.getId()} 去比对的
+     * （见 {@code PropFirmSession#isCloseFillAt}）。2026-11-03 这里曾经 {@code map(Trade::getOrderId)}
+     * 原样返回订单 id，两个 id 是两组不同的 UUID —— 集合永远命中不了，
+     * 「市价单不承担同根极值」这条规则<strong>整条失效</strong>，而单测传的是 trade id，
+     * 所以测试一直是绿的（账户「夜色粽子」2026-05-26 17:05 就是这么被误判失败的）。
+     * 现在把「订单 id → 成交 id」这段单独拎成 {@link #marketFillTradeIds} 并直接测它。
      */
     private Set<String> closeFilled(PropFirmAccount account, List<Trade> stageTrades) {
         Set<String> marketOrders = orders.findByAccountIdOrderByPlacedAtBarAsc(account.getId()).stream()
                 .filter(o -> o.getType() == TradeOrder.Type.MARKET)
                 .map(TradeOrder::getId)
                 .collect(Collectors.toSet());
-        if (marketOrders.isEmpty()) {
+        return marketFillTradeIds(stageTrades, marketOrders);
+    }
+
+    /**
+     * 从成交流水里挑出「由这些订单成交的」那些，<strong>返回成交 id</strong>。
+     *
+     * @param trades          本阶段的成交
+     * @param marketOrderIds  {@code trade_order.type == MARKET} 的订单 id
+     */
+    static Set<String> marketFillTradeIds(List<Trade> trades, Set<String> marketOrderIds) {
+        if (marketOrderIds == null || marketOrderIds.isEmpty() || trades == null || trades.isEmpty()) {
             return Set.of();
         }
-        return stageTrades.stream()
-                .map(Trade::getOrderId)
-                .filter(marketOrders::contains)
+        return trades.stream()
+                .filter(t -> t.getOrderId() != null && marketOrderIds.contains(t.getOrderId()))
+                .map(Trade::getId)
                 .collect(Collectors.toSet());
     }
 

@@ -68,6 +68,13 @@ const routes: RouteRecordRaw[] = [
         component: () => import('@/views/TradeRecordsView.vue'),
       },
       {
+        // 机器人压测：开一堆真 EVAL 账户，用交易页同一条协议跑盘并逐根对账。
+        // 它不是「账户」的一种，所以是独立一级页面（和操作记录同一层）。
+        path: 'bot',
+        name: 'bot',
+        component: () => import('@/views/BotView.vue'),
+      },
+      {
         // 「我的资料」还没做：标题由路由给，占位页不再自己认一个 key。
         path: 'profile',
         name: 'profile',

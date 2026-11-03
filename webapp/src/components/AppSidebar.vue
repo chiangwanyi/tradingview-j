@@ -11,6 +11,7 @@ const NAV = [
   { key: 'templates', label: '账户模板', icon: 'grid' },
   { key: 'audit', label: '操作记录', icon: 'check' },
   { key: 'records', label: '交易记录', icon: 'dollar' },
+  { key: 'bot', label: '机器人压测', icon: 'grid' },
   { key: 'profile', label: '我的资料', icon: 'user' },
 ] as const
 
