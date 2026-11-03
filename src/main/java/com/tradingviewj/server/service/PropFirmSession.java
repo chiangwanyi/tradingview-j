@@ -15,6 +15,7 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * 逐根推进的考核判定器。用户说的「创建临时变量计算」就是这个类。
@@ -42,6 +43,25 @@ import java.util.Map;
  * <p>所以盘中判定用的是<strong>昨天收盘定下的那条线</strong>。盘中先冲高再回吐，
  * 只要不破昨天的线就还在场上；破的是浮亏，不是浮盈。
  *
+ * <h2>为什么「同一根里的成交」不能一视同仁</h2>
+ *
+ * <p>两种成交在<strong>一根 K 线之内</strong>的位置不一样：
+ *
+ * <ul>
+ *   <li><strong>挂单（stop / limit）</strong>：盘中价格穿过挂单价就成交，之后价格还可能继续走坏
+ *       —— 于是它<strong>要承担这一根的最不利价</strong>。这是保守的一侧，保留。</li>
+ *   <li><strong>市价单</strong>：成交价就是<strong>这一根的收盘价</strong>（{@code TradingService#market}），
+ *       而这一根的最低 / 最高发生在收盘<strong>之前</strong>。那一段波动它根本没赶上。</li>
+ * </ul>
+ *
+ * <p>早期版本只看「成交时间 ≤ 这根」，于是市价单被拿去和同一根的极值配对，凭空多出一段浮亏。
+ * 2026-11-03 在账户「7」上就是这样误判失败的：09:30 那根 low 7766、收盘 7770.50，
+ * 收盘才买的 15 手被按 7766 标成浮亏 −1050，权益 47911.25 撞上 48000（只差 88.75），
+ * 而当时的读数是 48256.25、状态 ACTIVE。
+ *
+ * <p>所以 {@link #equity} 要把「这根之前就在的仓」和「这根收盘才建/加的仓」分开标：
+ * 前者用极值，后者用成交价本身（当根浮盈 0），从<strong>下一根</strong>起才承担波动。
+ *
  * <h2>为什么每根 K 线都重放一遍账本</h2>
  *
  * <p>持仓和均价一律走 {@link TradeLedger#replay}，<strong>不在这里维护第二套增量算法</strong>。
@@ -66,6 +86,8 @@ public final class PropFirmSession {
     private final BigDecimal baseBalance;
     private final Map<String, BigDecimal> pointValues;
     private final Map<String, List<Trade>> tradesBySymbol;
+    /** 以<strong>当根收盘价</strong>成交的那些成交 id（市价单），见 {@link #equity}。 */
+    private final Set<String> closeFilledTradeIds;
 
     /** 每个品种已经"应用过"的成交下标（只增不减，保证每笔成交只扣一次）。 */
     private final Map<String, Integer> cursors = new HashMap<>();
@@ -93,9 +115,14 @@ public final class PropFirmSession {
      * @param symbols     用到的标的（取 tick/tickValue 算每点价值）；缺一个就把那个品种的
      *                    浮盈亏按"每点 1 美元"退化，界面上要提示
      * @param trades      该账户的全部成交（内部按时间排序，顺序传错不影响结果）
+     * @param closeFilledTradeIds 以<strong>成交那一根的收盘价</strong>成交的成交 id（市价单）。
+     *                    这些成交在 {@link #equity} 里不承担同根极值 —— 它们的成交价就是收盘价，
+     *                    那一根的 low/high 发生在它们之前。挂单成交<strong>不要</strong>放进来。
+     *                    判据只有一条：{@code trade_order.type == MARKET}
      */
     public PropFirmSession(PropFirmStage stage, PropFirmRules rules, BigDecimal baseBalance,
-                           Map<String, Symbol> symbols, List<Trade> trades) {
+                           Map<String, Symbol> symbols, List<Trade> trades,
+                           Set<String> closeFilledTradeIds) {
         this.stage = stage;
         this.rules = rules;
         this.baseBalance = baseBalance;
@@ -103,6 +130,7 @@ public final class PropFirmSession {
         this.eodPeak = baseBalance;
         this.pointValues = new HashMap<>();
         this.tradesBySymbol = new LinkedHashMap<>();
+        this.closeFilledTradeIds = closeFilledTradeIds == null ? Set.of() : Set.copyOf(closeFilledTradeIds);
 
         if (symbols != null) {
             symbols.forEach((id, symbol) -> pointValues.put(id,
@@ -154,7 +182,7 @@ public final class PropFirmSession {
             // 紧接着 settleIfDayOver 的日终结算就会结在「平仓之前」的数上 ——
             // 账面上等于这次强平没发生过。SKIPPED 只表示「这根没有新行情可交易」，不表示「这根没有账」。
             applyTradesUpTo(bar.barTime());
-            lastStep = new Step(Event.SKIPPED, bar.barTime(), null, balance, equity(), floor(),
+            lastStep = new Step(Event.SKIPPED, bar.barTime(), null, balance, equity(bar.barTime()), floor(),
                     dayNet, maxDayNet, effectiveTarget(), profitDays, "禁止交易时段，跳过");
             return lastStep;
         }
@@ -175,7 +203,7 @@ public final class PropFirmSession {
         applyTradesUpTo(bar.barTime());
         lastBars.put(symbolId, bar);
 
-        BigDecimal equity = equity();
+        BigDecimal equity = equity(bar.barTime());
         BigDecimal line = floor();
         if (equity.compareTo(line) <= 0) {
             // 「等于」也算失败：用户明确要求（差 1 美分也已经没有缓冲）
@@ -318,9 +346,21 @@ public final class PropFirmSession {
      * 「盘中持仓某根 K 线里最难受的那一刻有没有穿线」。用 {@code close} 会漏判
      * —— 一根下影线很长的 K 线可以浮亏穿线再收回来，收盘价看不出任何异常。
      *
+     * <p><strong>但「这根收盘才成交的市价单」不参与这个极值</strong>：它的成交价本来就是这根
+     * 的收盘价，low/high 发生在它之前。所以要把持仓拆成两段分别标价：
+     *
+     * <ul>
+     *   <li>这根<strong>之前</strong>就在的仓（含本根成交的挂单）→ 用极值；</li>
+     *   <li>本根<strong>收盘</strong>才成交的部分 → 用成交价本身，当根浮盈恒为 0。</li>
+     * </ul>
+     *
+     * <p>拆分靠「把这根里的市价成交剔掉再重放一次」拿到 {@code held}：只有在
+     * {@code closeFilledTradeIds} 非空、且本根确有这类成交时才多这一次重放，
+     * 其余情形（绝大多数 bar）算的还是原来那一个数。
+     *
      * <p>某个品种还没有 K 线时，它的浮盈亏按 0 算（刚开仓、盘面还没推进到它）。
      */
-    private BigDecimal equity() {
+    private BigDecimal equity(String barTime) {
         BigDecimal total = balance;
         for (Map.Entry<String, List<Trade>> entry : tradesBySymbol.entrySet()) {
             String symbolId = entry.getKey();
@@ -332,18 +372,53 @@ public final class PropFirmSession {
             if (bar == null) {
                 continue;
             }
-            Position position = TradeLedger.replay(
-                    entry.getValue().subList(0, cursor), pointValue(symbolId)).position();
+            BigDecimal pv = pointValue(symbolId);
+            List<Trade> applied = entry.getValue().subList(0, cursor);
+            Position position = TradeLedger.replay(applied, pv).position();
             BigDecimal qty = position.quantity();
             if (qty.signum() == 0) {
                 continue;
             }
+
+            Position marked = position;
+            if (!closeFilledTradeIds.isEmpty() && hasCloseFillAt(applied, barTime)) {
+                // 剔掉本根收盘才成交的那些，剩下的就是「挨过这一根」的仓
+                Position held = TradeLedger.replay(applied.stream()
+                        .filter(t -> !isCloseFillAt(t, barTime)).toList(), pv).position();
+                if (held.isFlat()) {
+                    // 整段持仓都是这根收盘才建的：盘中它不存在，浮亏为 0
+                    continue;
+                }
+                if (held.quantity().signum() != qty.signum()) {
+                    // 本根收盘反手：旧仓已在收盘平掉（且已进余额），留下来的全是新仓
+                    continue;
+                }
+                // 收盘又加了仓 → 只有「原来那段」挨这一根的极值；只减了仓 → 剩下的仍是原均价
+                BigDecimal markedQty = qty.abs().compareTo(held.quantity().abs()) >= 0
+                        ? held.quantity() : qty;
+                marked = new Position(markedQty, held.averagePrice());
+            }
+
             // 多单怕 low、空单怕 high —— 用「这根 K 线里最难受的那个价」，
             // 剩下的符号处理交给 Position#unrealizedPnl（数量带符号，天然正确）
             BigDecimal worstPrice = qty.signum() > 0 ? bar.low() : bar.high();
-            total = total.add(position.unrealizedPnl(worstPrice, pointValue(symbolId)));
+            total = total.add(marked.unrealizedPnl(worstPrice, pv));
         }
         return total;
+    }
+
+    /** 这根里有没有「按收盘价成交」的成交。 */
+    private boolean hasCloseFillAt(List<Trade> applied, String barTime) {
+        for (Trade trade : applied) {
+            if (isCloseFillAt(trade, barTime)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private boolean isCloseFillAt(Trade trade, String barTime) {
+        return closeFilledTradeIds.contains(trade.getId()) && barTime.equals(trade.getBarTime());
     }
 
     private BigDecimal pointValue(String symbolId) {
@@ -393,7 +468,7 @@ public final class PropFirmSession {
     }
 
     private Step terminal(String barTime) {
-        return new Step(state, barTime, currentDay, balance, equity(), floor(),
+        return new Step(state, barTime, currentDay, balance, equity(barTime), floor(),
                 dayNet, maxDayNet, effectiveTarget(), profitDays, "会话已结束");
     }
 

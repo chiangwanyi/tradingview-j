@@ -12,6 +12,7 @@ import org.junit.jupiter.api.Test;
 import java.math.BigDecimal;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
@@ -63,7 +64,7 @@ class PropFirmSessionTest {
                 new BigDecimal("3600.00"), BigDecimal.ONE, new BigDecimal("-400.00"), new BigDecimal("1.00"));
 
         PropFirmSession session = new PropFirmSession(PropFirmStage.EVAL, rules(),
-                new BigDecimal("50000.00"), Map.of(CODE, symbol), List.of(open, closeOut));
+                new BigDecimal("50000.00"), Map.of(CODE, symbol), List.of(open, closeOut), Set.of());
 
         session.onBar(CODE, bar("2024-03-04 09:00", "4000.00", "4000.00", "4000.00", "4000.00"));
         PropFirmSession.Step breached =
@@ -96,6 +97,66 @@ class PropFirmSessionTest {
                 "目标 4000 与盈利日 5/5 都够了，应当升 PAYOUT");
     }
 
+    /**
+     * <strong>按当根收盘价成交的市价单，不承担这一根的极值。</strong>
+     *
+     * <p>2026-11-03 账户「7」的误判就是这条：09:30 那根 low 7766 / 收盘 7770.50，
+     * 收盘才市价买入的 15 手被拿 7766 去标，凭空多出 −1050 浮亏，权益 47911.25 撞上 48000
+     * （当时真实读数是 48256.25、状态 ACTIVE）。
+     *
+     * <p>这里把它放大到一眼能分辨：开多 15 手 @7775.50（挂单成交，挨这一根），
+     * 同一根收盘再市价买 15 手 @7770.50。那根 low 7750。
+     *
+     * <ul>
+     *   <li>只标「原来那 15 手」→ (7750 − 7775.50) × 5 × 15 = −1912.5，权益 <strong>48087.5</strong>；</li>
+     *   <li>若把收盘才买的也算进去（平均成本 7773、30 手）→ −3450，权益 <strong>46550</strong>，撞线失败。</li>
+     * </ul>
+     */
+    @Test
+    void marketFillAtBarCloseDoesNotBiteTheSameBarExtreme() {
+        Trade held = Trade.fill("acc", CODE, "o1", "2024-03-04 09:25", 1, Side.BUY,
+                new BigDecimal("7775.50"), new BigDecimal("15"), BigDecimal.ZERO, BigDecimal.ZERO);
+        Trade atClose = Trade.fill("acc", CODE, "o2", "2024-03-04 09:30", 2, Side.BUY,
+                new BigDecimal("7770.50"), new BigDecimal("15"), BigDecimal.ZERO, BigDecimal.ZERO);
+
+        PropFirmSession session = new PropFirmSession(PropFirmStage.EVAL, rules(),
+                new BigDecimal("50000.00"), Map.of(CODE, symbol()), List.of(held, atClose),
+                Set.of(atClose.getId()));
+
+        session.onBar(CODE, bar("2024-03-04 09:25", "7775.50", "7775.50", "7775.50", "7775.50"));
+        PropFirmSession.Step step =
+                session.onBar(CODE, bar("2024-03-04 09:30", "7767.50", "7770.75", "7750.00", "7770.50"));
+
+        assertEquals(PropFirmSession.Event.RUNNING, step.event(),
+                "收盘才成交的 15 手没赶上那一根的低点，不能拿 7750 去标它");
+        assertMoney("48087.50", step.equity());
+        assertMoney("50000.00", step.balance());
+    }
+
+    /**
+     * 同一根、同样价格，但那一笔是<strong>挂单</strong>成交 —— 仍然按极值标，该失败就失败。
+     *
+     * <p>挂单是盘中价格穿过才成交的，成交之后价格还可能继续走坏，所以保守一侧保留。
+     * 这条和上一条成对：区别只有「这一笔是不是市价单」，结论却从活变死。
+     */
+    @Test
+    void stopFillAtBarCloseStillBitesTheSameBarExtreme() {
+        Trade held = Trade.fill("acc", CODE, "o1", "2024-03-04 09:25", 1, Side.BUY,
+                new BigDecimal("7775.50"), new BigDecimal("15"), BigDecimal.ZERO, BigDecimal.ZERO);
+        Trade atClose = Trade.fill("acc", CODE, "o2", "2024-03-04 09:30", 2, Side.BUY,
+                new BigDecimal("7770.50"), new BigDecimal("15"), BigDecimal.ZERO, BigDecimal.ZERO);
+
+        PropFirmSession session = new PropFirmSession(PropFirmStage.EVAL, rules(),
+                new BigDecimal("50000.00"), Map.of(CODE, symbol()), List.of(held, atClose), Set.of());
+
+        session.onBar(CODE, bar("2024-03-04 09:25", "7775.50", "7775.50", "7775.50", "7775.50"));
+        PropFirmSession.Step step =
+                session.onBar(CODE, bar("2024-03-04 09:30", "7767.50", "7770.75", "7750.00", "7770.50"));
+
+        assertEquals(PropFirmSession.Event.FAILED, step.event(), "挂单成交要承担这一根的极值");
+        assertMoney("46550.00", step.equity());
+    }
+
     /** 5 个交易日、每天净赚 1000，走完最后一天并结账。 */
     private static PropFirmSession.Step driveFunded(String target) {
         Symbol symbol = Symbol.of(CODE, FOLDER, new BigDecimal("0.50"));
@@ -115,12 +176,20 @@ class PropFirmSessionTest {
         }
 
         PropFirmSession session = new PropFirmSession(PropFirmStage.FUNDED, rules,
-                new BigDecimal("50000.00"), Map.of(CODE, symbol), trades);
+                new BigDecimal("50000.00"), Map.of(CODE, symbol), trades, Set.of());
         for (String day : days) {
             session.onBar(CODE, bar(day + " 09:00", "4000.00", "4000.00", "4000.00", "4000.00"));
             session.onBar(CODE, bar(day + " 09:05", "4000.00", "4000.00", "4000.00", "4000.00"));
         }
         return session.finish();
+    }
+
+    /** MES：tick 0.25 / tickValue 1.25 → 每点价值 5 美元。 */
+    private static Symbol symbol() {
+        Symbol symbol = Symbol.of(CODE, FOLDER, new BigDecimal("0.50"));
+        symbol.setTick(new BigDecimal("0.25"));
+        symbol.setTickValue(new BigDecimal("1.25"));
+        return symbol;
     }
 
     /** EVAL 50K：规模 50000、目标 3000、回撤 2000、冻结水位 52100、一致性 50%。 */

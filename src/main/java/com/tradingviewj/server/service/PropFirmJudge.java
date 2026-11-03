@@ -4,7 +4,9 @@ import com.tradingviewj.server.dto.PfView;
 import com.tradingviewj.server.entity.market.Symbol;
 import com.tradingviewj.server.entity.propfirm.PropFirmAccount;
 import com.tradingviewj.server.entity.trade.Trade;
+import com.tradingviewj.server.entity.trade.TradeOrder;
 import com.tradingviewj.server.exception.BusinessException;
+import com.tradingviewj.server.repository.OrderRepository;
 import com.tradingviewj.server.repository.SymbolRepository;
 import com.tradingviewj.server.repository.TradeRepository;
 import com.tradingviewj.server.storage.Bar;
@@ -18,6 +20,8 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 /**
  * 把 {@link PropFirmSession} 接到库里、盘面上：<strong>喂数据、拿读数</strong>。
@@ -64,6 +68,8 @@ public class PropFirmJudge {
     private final CsvBarStore bars;
     private final SymbolRepository symbols;
     private final TradeRepository trades;
+    /** 只为了回答一句话：这笔成交是不是「按当根收盘价成交」的市价单，见 {@link #closeFilled}。 */
+    private final OrderRepository orders;
     /** 只问一句话：「{@code lastBarTime} 之后还有没有下一根、它属于哪一天」。 */
     private final BarCursorService cursor;
 
@@ -106,7 +112,8 @@ public class PropFirmJudge {
                         "账户的标的 " + account.getSymbolId() + " 不在 symbol 表里：算不出考核读数"));
         List<Trade> stageTrades = stageTrades(account);
         PropFirmSession session = new PropFirmSession(account.getStage(), account.getRules(),
-                account.getBaseBalance(), Map.of(symbol.getId(), symbol), stageTrades);
+                account.getBaseBalance(), Map.of(symbol.getId(), symbol), stageTrades,
+                closeFilled(account, stageTrades));
         return new State(session, feed(session, symbol, stageTrades, account.getLastBarTime()));
     }
 
@@ -168,6 +175,31 @@ public class PropFirmJudge {
         return trades.findByAccountIdOrderByBarTimeAscSeqAsc(account.getId()).stream()
                 .filter(t -> since == null || t.getCreatedAt() == null || !t.getCreatedAt().isBefore(since))
                 .toList();
+    }
+
+    /**
+     * 挑出「按<strong>当根收盘价</strong>成交」的那些成交 id，交给 {@link PropFirmSession} 用。
+     *
+     * <p>为什么需要往回查订单表：成交本身只记了 {@code orderId} 和时间，<strong>「这一笔按什么价成交」</strong>
+     * 是订单的类型决定的 —— 市价单在 {@code TradingService#market} 里用 {@code currentBar().close()}
+     * 成交，也就是那根 K 线的<strong>收盘那一瞬</strong>；挂单（stop/limit）是盘中价格穿过才成交。
+     * 前者不能承担同根极值，后者必须承担（见 {@link PropFirmSession} 的类注释）。
+     *
+     * <p>查的是 <strong>该账户的全部订单</strong>而不是逐个 {@code findById}：一次成交一个账户也就几十上百张单，
+     * 一条查询比 N 次往返划算，而且 {@link #assess} 本来每次都要全量重放。
+     */
+    private Set<String> closeFilled(PropFirmAccount account, List<Trade> stageTrades) {
+        Set<String> marketOrders = orders.findByAccountIdOrderByPlacedAtBarAsc(account.getId()).stream()
+                .filter(o -> o.getType() == TradeOrder.Type.MARKET)
+                .map(TradeOrder::getId)
+                .collect(Collectors.toSet());
+        if (marketOrders.isEmpty()) {
+            return Set.of();
+        }
+        return stageTrades.stream()
+                .map(Trade::getOrderId)
+                .filter(marketOrders::contains)
+                .collect(Collectors.toSet());
     }
 
     /**

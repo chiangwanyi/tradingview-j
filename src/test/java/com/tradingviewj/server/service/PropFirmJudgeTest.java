@@ -9,6 +9,7 @@ import com.tradingviewj.server.entity.propfirm.PropFirmTemplate;
 import com.tradingviewj.server.entity.propfirm.PositionTier;
 import com.tradingviewj.server.entity.trade.Side;
 import com.tradingviewj.server.entity.trade.Trade;
+import com.tradingviewj.server.repository.OrderRepository;
 import com.tradingviewj.server.repository.SymbolRepository;
 import com.tradingviewj.server.repository.TradeRepository;
 import com.tradingviewj.server.storage.CsvBarStore;
@@ -51,6 +52,8 @@ class PropFirmJudgeTest {
 
     private PropFirmJudge judge;
     private TradeRepository trades;
+    /** 这些用例的成交都当挂单成交看待（返回空表 = 没有市价单）。 */
+    private OrderRepository orders;
 
     @BeforeEach
     void setUp() throws Exception {
@@ -90,7 +93,10 @@ class PropFirmJudgeTest {
         trades = mock(TradeRepository.class);
         when(trades.findByAccountIdOrderByBarTimeAscSeqAsc(anyString())).thenReturn(List.of(open, close));
 
-        judge = new PropFirmJudge(store, symbols, trades, new BarCursorService(store));
+        orders = mock(OrderRepository.class);
+        when(orders.findByAccountIdOrderByPlacedAtBarAsc(anyString())).thenReturn(List.of());
+
+        judge = new PropFirmJudge(store, symbols, trades, orders, new BarCursorService(store));
     }
 
     @Test
