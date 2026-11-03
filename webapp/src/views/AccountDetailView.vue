@@ -5,7 +5,7 @@ import { useRouter } from 'vue-router'
 import Icon from '@/components/Icon.vue'
 import TradingCalendar from '@/components/TradingCalendar.vue'
 import * as api from '@/data/accounts'
-import { badgeClass, lossLine, profitTarget, shortInstant, shortTime, stageBadge, targetRaised } from '@/data/accounts'
+import { badgeClass, equityTrack, lossLine, profitTarget, shortInstant, shortTime, stageBadge, targetRaised } from '@/data/accounts'
 import type { Account, DayPnl, StageLog } from '@/data/accounts'
 import { drawdownLabel, pct, stageLabel, usd } from '@/data/rules'
 import { errorText } from '@/data/store'
@@ -60,26 +60,19 @@ const raised = computed(() => (a.value ? targetRaised(a.value) : false))
 const badge = computed(() => (a.value ? stageBadge(a.value) : null))
 
 /**
- * 进度条的三段：**左端 = 亏损线，右端 = 目标**，填充到当前余额。
+ * 进度轨道：[爆仓线 ─ 起点 ─ 目标]，三个点的位置由 `equityTrack` 算（和首页卡片同一份）。
  *
- * 为什么不从 0 画到目标：这条轨道的意义是「还剩多少空间」，左端必须是那道
- * 会被打穿的线（亏损线），不是账户规模。参考图上左端那根 `START` 就是它。
- *
- * 没有盈利目标（FUNDED / PAYOUT）时右端退化成**日终峰值**：那时要盯的不是
- * 「赚够多少」，而是「余额离峰值和亏损线各有多远」，峰值就是那条轨道的满格。
+ * 左端必须是那道会被打穿的线（爆仓线，随日终峰值每天上移），不是账户规模；
+ * 起点按 `baseBalance` 落在两者之间的真实位置。没有盈利目标（FUNDED / PAYOUT）时
+ * 右端退化成**日终峰值**：那时要盯的不是「赚够多少」，而是离峰值和爆仓线各有多远。
  */
-const bar = computed(() => {
-  const acc = a.value
-  if (!acc) return null
-  const hasTarget = target.value != null
-  const start = floor.value ?? acc.baseBalance
-  const end = hasTarget
-    ? acc.baseBalance + (target.value ?? 0)
-    : Math.max(acc.eodPeakBalance, acc.balance, start)
-  const span = end - start
-  const fill = span > 0 ? Math.min(1, Math.max(0, (acc.balance - start) / span)) : 0
-  return { hasTarget, start, end, fill }
-})
+const track = computed(() => (a.value ? equityTrack(a.value) : null))
+/** 比例 → CSS 百分比。 */
+const p = (ratio: number): string => `${(ratio * 100).toFixed(2)}%`
+/** 起点贴边时（出金号的起点就在峰值上）标签会溢出，按位置换锚点。 */
+const startAnchor = computed(() =>
+  (track.value?.mark ?? 0) > 0.8 ? '-translate-x-full' : (track.value?.mark ?? 0) < 0.2 ? '' : '-translate-x-1/2',
+)
 
 /** 余额还能往下走多少（正数 = 缓冲）。没有回撤规则就是 null，不编一个数。 */
 const buffer = computed(() =>
@@ -273,34 +266,55 @@ function openTrade(): void {
     </p>
 
     <div v-if="a" class="flex flex-col gap-3 px-8 pb-10">
-      <!-- 1. 权益进度：亏损线 ──── 当前余额 ──── 目标 -->
-      <section v-if="bar" class="rounded-xl border border-line bg-panel px-5 py-4">
+      <!-- 1. 权益进度：爆仓线 ──── 起点 ──── 目标 -->
+      <section v-if="track" class="rounded-xl border border-line bg-panel px-5 py-4">
         <div class="flex flex-wrap items-baseline justify-between gap-2">
           <p class="text-[11px] tracking-wider text-faint uppercase">本阶段权益进度</p>
           <p class="tnum text-[11px] text-faint">
-            {{ bar.hasTarget ? `距目标还差 ${usd(remaining)}` : '本阶段没有盈利目标，盯住亏损线' }}
+            {{ target != null ? `距目标还差 ${usd(remaining)}` : '本阶段没有盈利目标，盯住爆仓线' }}
           </p>
         </div>
 
-        <!-- 轨道：[亏损线 ────── 当前 ────── 目标] -->
-        <div class="mt-3 h-2.5 w-full overflow-hidden rounded-full bg-elev">
+        <!-- 轨道：[爆仓线 ─ 起点 ─ 目标] -->
+        <div class="relative mt-5 h-2.5 w-full rounded-full bg-elev">
+          <!-- 没有目标时轨道只是「爆仓线 → 峰值」，起点就在右端，两段底色会连成一整条红 —— 不画 -->
+          <template v-if="target != null">
+            <div class="absolute inset-y-0 left-0 rounded-full bg-down/25" :style="{ width: p(track.mark) }" />
+            <div class="absolute inset-y-0 right-0 rounded-full bg-accent/15" :style="{ left: p(track.mark) }" />
+          </template>
           <div
-            class="h-full rounded-full bg-accent/70 transition-[width] duration-500"
-            :style="{ width: `${bar.fill * 100}%` }"
+            v-if="track.fill >= track.mark"
+            class="absolute inset-y-0 rounded-full bg-accent transition-[width] duration-500"
+            :style="{ left: p(track.mark), width: p(track.fill - track.mark) }"
           />
+          <div
+            v-else
+            class="absolute inset-y-0 rounded-full bg-down transition-[width] duration-500"
+            :style="{ left: p(track.fill), width: p(track.mark - track.fill) }"
+          />
+          <div
+            class="absolute -inset-y-1 w-0.5 -translate-x-1/2 rounded-full bg-ink/40"
+            :style="{ left: p(track.mark) }"
+          />
+          <span
+            class="num absolute -top-5 text-[11px] whitespace-nowrap text-faint"
+            :class="startAnchor"
+            :style="{ left: p(track.mark) }"
+            >起点 {{ usd(a.baseBalance) }}</span
+          >
         </div>
 
-        <div class="tnum mt-2 flex flex-wrap items-center justify-between gap-x-4 gap-y-1 text-[11px] text-faint">
+        <div class="num mt-2 flex flex-wrap items-center justify-between gap-x-4 gap-y-1 text-[11px] text-faint">
           <span class="flex items-center gap-1.5">
             <span class="h-2 w-2 rounded-full bg-down/50" />
-            亏损线 {{ usd(bar.start) }}
+            爆仓线 {{ usd(track.lo) }}
           </span>
           <span class="flex items-center gap-1.5 text-dim">
             <span class="h-2 w-2 rounded-full bg-accent" />
             当前 {{ usd(a.balance) }}
           </span>
           <span class="flex items-center gap-1.5">
-            {{ bar.hasTarget ? '目标' : '日终峰值' }} {{ usd(bar.end) }}
+            {{ target == null ? '日终峰值' : '目标' }} {{ usd(track.hi) }}
             <span class="h-2 w-2 rounded-full bg-ink/30" />
           </span>
         </div>
@@ -326,13 +340,13 @@ function openTrade(): void {
           </div>
           <div>
             <p class="text-[11px] tracking-wider text-faint uppercase">
-              {{ bar.hasTarget ? '距目标' : '已在峰值' }}
+              {{ target != null ? '距目标' : '已在峰值' }}
             </p>
             <p class="tnum text-[20px] leading-tight font-semibold text-ink">
-              {{ bar.hasTarget ? usd(remaining) : usd(a.eodPeakBalance) }}
+              {{ target != null ? usd(remaining) : usd(a.eodPeakBalance) }}
             </p>
             <p class="tnum text-[11px] text-faint">
-              {{ bar.hasTarget ? `盈利目标 ${usd(target)}` : '跟踪回撤的基准' }}
+              {{ target != null ? `盈利目标 ${usd(target)}` : '跟踪回撤的基准' }}
             </p>
             <p v-if="raised" class="tnum text-[11px] text-accent-ink">
               一致性抬升 · 单日最大 {{ usd(a.maxDayNetBalance) }}

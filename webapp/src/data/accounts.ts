@@ -214,12 +214,25 @@ export function targetRaised(a: Account): boolean {
   return base != null && real != null && real > base + 0.005
 }
 
-/** 卡片上的进度：本阶段已赚到目标的几成。没有盈利目标（FUNDED / PAYOUT）返回 null。 */
-export function targetProgress(a: Account): number | null {
+/**
+ * 进度轨道的三个位置（都是 0~1 的比例）：
+ *
+ *   0 ────── mark（起点）────── 1
+ *   爆仓线                      目标
+ *
+ * 左端是**爆仓线**（`lossLine`，随日终峰值每天上移，不是固定值），右端是盈利目标，
+ * 起点落在两者之间 —— **位置是算出来的**，不是画在正中。
+ *
+ * `fill` = 当前余额在轨道上的位置。没有盈利目标（FUNDED / PAYOUT）时右端退化成日终峰值：
+ * 那时要盯的是「离峰值和爆仓线各有多远」。
+ */
+export function equityTrack(a: Account): { lo: number; hi: number; mark: number; fill: number } {
+  const lo = lossLine(a) ?? a.baseBalance
   const target = profitTarget(a)
-  if (target == null || target <= 0) return null
-  const gained = a.balance - a.baseBalance
-  return Math.min(1, Math.max(0, gained / target))
+  const hi = target != null ? a.baseBalance + target : Math.max(a.eodPeakBalance, a.balance, lo)
+  const span = hi - lo
+  const at = (v: number) => (span > 0 ? Math.min(1, Math.max(0, (v - lo) / span)) : 0)
+  return { lo, hi, mark: at(a.baseBalance), fill: at(a.balance) }
 }
 
 /**

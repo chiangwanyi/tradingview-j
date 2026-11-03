@@ -4,13 +4,13 @@ import { computed } from 'vue'
 import Icon from './Icon.vue'
 import {
   badgeClass,
+  equityTrack,
   finished,
   lossLine,
   profitTarget,
   shortInstant,
   shortTime,
   stageBadge,
-  targetProgress,
   targetRaised,
   tradingDaysElapsed,
 } from '@/data/accounts'
@@ -48,7 +48,14 @@ const props = defineProps<{ a: Account; busy?: boolean; pending?: 'settle' | 'pr
 const emit = defineEmits<{ detail: [id: string]; settle: [id: string]; promote: [id: string] }>()
 
 const target = computed(() => profitTarget(props.a))
-const progress = computed(() => targetProgress(props.a))
+/** 轨道：[爆仓线 ─ 起点 ─ 目标]，三个点的位置都在 `equityTrack` 里算，模板只管画。 */
+const track = computed(() => equityTrack(props.a))
+/** 比例 → CSS 百分比（模板里用四次，写成函数省得每处都乘 100）。 */
+const p = (ratio: number): string => `${(ratio * 100).toFixed(2)}%`
+/** 起点贴边时（出金号的起点就在峰值上）标签会溢出卡片，按位置换锚点。 */
+const startAnchor = computed(() =>
+  track.value.mark > 0.8 ? '-translate-x-full' : track.value.mark < 0.2 ? '' : '-translate-x-1/2',
+)
 const gained = computed(() => props.a.balance - props.a.baseBalance)
 /** 亏损线：口径和交易页一致（含冻结水位），见 `data/accounts.ts` 的 `lossLine`。 */
 const floor = computed(() => lossLine(props.a))
@@ -213,15 +220,45 @@ function onTrade(): void {
       </div>
     </div>
 
-    <!-- 进度条只在有目标时出现：FUNDED / PAYOUT 没有「差多少达标」这回事，画一根空槽会误导 -->
-    <div v-if="progress != null" class="px-4 pb-3">
-      <div class="h-1.5 w-full overflow-hidden rounded-full bg-elev">
-        <div class="h-full rounded-full bg-accent" :style="{ width: `${progress * 100}%` }" />
+    <!-- 轨道：[爆仓线 ─ 起点 ─ 目标]。左端是**爆仓线**（日终峰值上移它就跟着上移），
+         右端是目标，起点按 `baseBalance` 落在两者之间的真实位置（不是画在正中）。 -->
+    <div class="px-4 pb-3">
+      <div class="relative mt-4 h-1.5 w-full rounded-full bg-elev">
+        <!-- 起点左侧 = 亏损区（红），右侧 = 到目标的盈利区（淡绿）。
+             没有目标时轨道只是「爆仓线 → 峰值」，起点就在右端，这两段底色会变成一整条红 —— 不画。 -->
+        <template v-if="target != null">
+          <div class="absolute inset-y-0 left-0 rounded-full bg-down/25" :style="{ width: p(track.mark) }" />
+          <div class="absolute inset-y-0 right-0 rounded-full bg-accent/15" :style="{ left: p(track.mark) }" />
+        </template>
+        <!-- 余额实到的那一段：赚钱在起点右侧（绿），亏钱在起点左侧（红） -->
+        <div
+          v-if="track.fill >= track.mark"
+          class="absolute inset-y-0 rounded-full bg-accent"
+          :style="{ left: p(track.mark), width: p(track.fill - track.mark) }"
+        />
+        <div
+          v-else
+          class="absolute inset-y-0 rounded-full bg-down"
+          :style="{ left: p(track.fill), width: p(track.mark - track.fill) }"
+        />
+        <!-- 起点线 -->
+        <div class="absolute -inset-y-1 w-0.5 -translate-x-1/2 rounded-full bg-ink/40" :style="{ left: p(track.mark) }" />
+        <span
+          class="num absolute -top-4 text-note whitespace-nowrap text-faint"
+          :class="startAnchor"
+          :style="{ left: p(track.mark) }"
+          title="本阶段起点余额（升级时重置回账户规模）"
+          >起点 {{ usd(a.baseBalance) }}</span
+        >
       </div>
       <div class="num mt-1 flex justify-between text-note text-faint">
-        <span>起点 {{ usd(a.baseBalance) }}</span>
-        <span>{{ pct(progress) }}</span>
-        <span>目标 {{ usd(a.baseBalance + (target ?? 0)) }}</span>
+        <span>
+          爆仓线 <b class="font-medium text-down" :title="`日终峰值 − 最大回撤 ${usd(a.rules.maxDrawdown)}`">{{ usd(track.lo) }}</b>
+        </span>
+        <span>
+          {{ target == null ? '日终峰值' : '目标' }}
+          <b class="font-medium text-accent-ink">{{ usd(track.hi) }}</b>
+        </span>
       </div>
     </div>
 
