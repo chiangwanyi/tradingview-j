@@ -1,5 +1,5 @@
 /**
- * 一条广播对实例状态的**唯一**作用点。
+ * 一条广播对账户状态的**唯一**作用点。
  *
  * 为什么单独抽出来：实时界面和回放必须逐像素一致，而要做到这一点，最省事也最可靠的
  * 办法不是"把回放写得像实时"，而是**两边跑同一个函数**：
@@ -16,6 +16,7 @@
 
 import { ACTION } from '@/types/protocol'
 import type {
+  AccountChangedPayload,
   AnnotationClearedPayload,
   AnnotationDeletedPayload,
   AnnotationPayload,
@@ -48,6 +49,8 @@ export function applyInstanceEvent(inst: InstanceDetail, action: string, payload
       // 换了一根 K 线：语音的「本根 x/9」和清单整体换成新那根的。
       // 这一条**和有没有在录制无关**（v0.16.0），所以不走录制状态那条线。
       if (p.voice) inst.voice = p.voice
+      // 换根可能撮合出成交，余额/权益/亏损线跟着变。老后端/回放里没有这个字段。
+      if (p.account) inst.account = p.account
       break
     }
     /**
@@ -87,7 +90,7 @@ export function applyInstanceEvent(inst: InstanceDetail, action: string, payload
     }
     case ACTION.annotationCleared: {
       // 一次清空是**一个原子状态**：不按 payload 里的编号逐个过滤 ——
-      // 服务端说的是「这个实例现在一个绘图都没有」，照它办就不会有漏网的那一个。
+      // 服务端说的是「这个账户现在一个绘图都没有」，照它办就不会有漏网的那一个。
       const p = payload as AnnotationClearedPayload
       void p
       inst.annotations = []
@@ -113,6 +116,7 @@ export function applyInstanceEvent(inst: InstanceDetail, action: string, payload
       inst.position = p.position
       inst.realizedPnl = p.realizedPnl
       inst.unrealizedPnl = p.unrealizedPnl
+      if (p.account) inst.account = p.account
       break
     }
     case ACTION.flatAll: {
@@ -126,6 +130,18 @@ export function applyInstanceEvent(inst: InstanceDetail, action: string, payload
       inst.position = p.position
       inst.realizedPnl = p.realizedPnl
       inst.unrealizedPnl = p.unrealizedPnl
+      if (p.account) inst.account = p.account
+      break
+    }
+    /**
+     * 考核账户的节点（v0.31.0）：进入 FUNDED、盈利日 +1、当日封顶、触及亏损线、转 PAYOUT。
+     *
+     * 余额本身随每笔成交变化，走的是上面那三个 payload 的 `account` 字段；
+     * 这一条只负责「值得进操作记录」的那几个时刻。
+     */
+    case ACTION.accountChanged: {
+      const p = payload as AccountChangedPayload
+      inst.account = p.account
       break
     }
     case ACTION.membersChanged: {

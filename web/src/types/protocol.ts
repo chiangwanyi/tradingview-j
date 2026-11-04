@@ -107,7 +107,7 @@ export interface Annotation {
   createdAt: number
 }
 
-/** 一个工具下面的一套样式预设（全局的，不属于某个实例）。 */
+/** 一个工具下面的一套样式预设（全局的，不属于某个账户）。 */
 export interface Template {
   id: string
   kind: string
@@ -148,7 +148,15 @@ export interface Trade {
   kind: OrderKind
   price: number
   quantity: number
+  /**
+   * **扣手续费后的净额**（价差盈亏 - 本笔手续费）。
+   *
+   * 开仓/加仓那一笔没有价差、只有手续费，所以是负的 —— 这不是 bug，
+   * 成交本身就要花钱。
+   */
   realizedPnl: number
+  /** 本笔收的手续费（手数 × 每手每边费率），永远 >= 0；没配费率的标的是 0 */
+  commission?: number
 }
 
 /**
@@ -194,6 +202,104 @@ export interface ReplayEvent {
   payload?: unknown
 }
 
+// ---------------- Prop Firm 考核账户 ----------------
+
+/**
+ * 建户那一刻从模板拷贝进来的规则快照。
+ *
+ * 改模板不会影响已经建出来的账户 —— 这和 AnnotationStyle「画下去那一刻定死」
+ * 是同一个道理。所以这里出现的数字就是「这个账户受哪套规则约束」的唯一答案。
+ */
+export interface AccountRules {
+  id: string
+  name: string
+  /** 初始余额 */
+  initial: number
+  /** EVAL 盈利目标（余额到 initial + 它算通过） */
+  profitTarget: number
+  /** 最大回撤（日终追踪） */
+  maxDrawdown: number
+  /** 日终余额到这儿之后亏损线不再上移 */
+  lockBalance: number
+  /** 亏损线的天花板（= lockBalance - maxDrawdown） */
+  floorCap: number
+  /** 当日净盈利到这儿就禁止再开仓 */
+  dailyLimit: number
+  /** 每品种最大持仓手数 */
+  maxContracts: number
+  /** FUNDED 需要几个盈利日 */
+  profitDays: number
+  /** 一个盈利日至少净赚多少 */
+  profitDayMin: number
+}
+
+/** 账户阶段：EVAL → FUNDED → PAYOUT；breached = 触及亏损线的终态 */
+export type AccountPhase = 'eval' | 'funded' | 'payout' | 'breached'
+
+/**
+ * 考核账户的视图（v0.31.0）。
+ *
+ * **所有数字都是后端算好的**，这里一个乘法都不要做：余额、权益、亏损线、当日净额
+ * 的口径必须和日终结算完全一致，前端自己算必然对不上。
+ */
+export interface AccountState {
+  rules: AccountRules
+  phase: AccountPhase
+  /** 已实现净额（含手续费） */
+  balance: number
+  /** 余额 + 当前收盘价下的浮动盈亏 */
+  equity: number
+  /** 当前亏损线（权益 <= 它就判违规） */
+  floor: number
+  /** 日终权益的最高点，亏损线的基准 */
+  peakEod: number
+  /** EVAL 目标余额 */
+  target: number
+  /** 已攒到的盈利日 */
+  profitDays: number
+  /** 当日已实现净额 */
+  dayNet: number
+  /** 当日净盈利已封顶（不能再开仓） */
+  dayLocked: boolean
+  /** 亏损线已锁死，不再上移 */
+  locked: boolean
+  /** 当前交易日（开盘首根的日期） */
+  dayDate: string
+  payout?: number
+  closedAt?: string
+  failReason?: string
+  /** EVAL 已达标但还带着仓，等平仓才切 FUNDED */
+  waitingFund?: boolean
+  /** 交易日历：走过的每个交易日一行（后端按日文件切，见 account.go accountDays） */
+  days?: AccountDay[]
+}
+
+/**
+ * 交易日历里的一格。
+ *
+ * 「一天」是**行情走到的那一天**（日文件那一天），不是日历上的今天，也不是这笔单
+ * 什么时候做的。所以这里只排版，绝不按 `time.slice(0,10)` 自己切。
+ */
+export interface AccountDay {
+  date: string
+  start: string
+  end: string
+  bars: number
+  trades: number
+  /** 当日已实现净额（含手续费），和余额同口径 */
+  pnl: number
+  /** 到这一天结束的累计净额 */
+  cum: number
+  /** 正在过的一天（K 线还没走完） */
+  current?: boolean
+}
+
+/** account_changed 的载荷：一份完整账户视图 + 一句中文（进操作记录） */
+export interface AccountChangedPayload {
+  account: AccountState
+  note: string
+}
+
 export interface InstanceDetail {
   id: string
   symbol: string
@@ -235,12 +341,19 @@ export interface InstanceDetail {
    */
   voice: VoiceState
   /**
-   * 整个实例的语音清单（按 K 线时间排序）。
+   * 整个账户的语音清单（按 K 线时间排序）。
    *
    * 复盘只能往前走、不能倒回：只有当前那根的清单的话，离开一根就再也听不到了。
    * 这份全量清单只在快照和语音广播时下发，`bar_advanced` 不带（它只换当前那根）。
    */
   voiceAll: AudioClip[]
+  /**
+   * 考核账户（v0.31.0）。undefined = 自由模式。
+   *
+   * 回放里永远没有它：`account_changed` 不进交易记录的步骤白名单，记录也只覆盖
+   * 「持仓期间」。所有账户界面都要同时判 `!playbackActive`。
+   */
+  account?: AccountState
 }
 
 export interface InstanceSummary {
@@ -258,6 +371,8 @@ export interface InstanceSummary {
   createdAt: number
   realizedPnl: number
   trades: number
+  /** 非空 = 考核账户（eval / funded / payout / breached），列表行显示徽标 */
+  accountPhase?: string
 }
 
 export interface SymbolInfo {
@@ -379,6 +494,8 @@ export interface BarAdvancedPayload {
   fills: Trade[]
   /** 换根之后的语音状态（清单和「本根 x/9」跟着走，v0.16.0） */
   voice: VoiceState
+  /** 考核账户：换根可能撮合出成交，余额/权益/亏损线都会变 */
+  account?: AccountState
 }
 
 /**
@@ -440,6 +557,8 @@ export interface OrderFilledPayload {
   position: Position
   realizedPnl: number
   unrealizedPnl: number
+  /** 考核账户：余额跟着这笔成交变 */
+  account?: AccountState
 }
 
 /**
@@ -464,6 +583,8 @@ export interface FlatAllPayload {
   position: Position
   realizedPnl: number
   unrealizedPnl: number
+  /** 考核账户：接单后余额/当日净额都可能变 */
+  account?: AccountState
 }
 
 export interface ControlChangedPayload {
@@ -552,6 +673,11 @@ export const ACTION = {
    * 回放里的仓位会被改写成「还开着」。
    */
   barExtended: 'bar_extended',
+  /**
+   * 考核账户「值得进操作记录」的那一刻（v0.31.0）：进入 FUNDED、盈利日 +1、
+   * 当日封顶、触及亏损线、转 PAYOUT。余额随成交变化不在这里，那走 payload.account。
+   */
+  accountChanged: 'account_changed',
 } as const
 
 /**
@@ -593,7 +719,7 @@ export const ANNOTATION_COLORS = [
  * - `realizedPnl` 全部成交的已实现盈亏之和（美元）
  * - `mfe` / `mae` 最大有利 / 不利波动（美元，`mfe >= 0 >= mae`）
  * - `barsHeld` 持仓期间**完整**走过的 K 线根数
- * - `closed` 是否正常平完（false = 记录结束时仓位还在：实例被删 / 程序退出 / 崩溃草稿）
+ * - `closed` 是否正常平完（false = 记录结束时仓位还在：账户被删 / 程序退出 / 崩溃草稿）
  */
 export interface TradeStats {
   /** long / short（开仓方向） */
@@ -646,8 +772,8 @@ export interface RecordingSummary {
   anchor: string
   endTime: string
   /**
-   * 这笔交易发生在哪个实例上。**只用于追溯和显示**：记录是独立的一份数据，
-   * 实例被删掉之后这里会指向一个不存在的 id，打开 / 回放 / 删除都不依赖它。
+   * 这笔交易发生在哪个账户上。**只用于追溯和显示**：记录是独立的一份数据，
+   * 账户被删掉之后这里会指向一个不存在的 id，打开 / 回放 / 删除都不依赖它。
    */
   instanceId?: string
   /**
@@ -741,7 +867,7 @@ export interface AudioClip {
   step: number
   time: string
   durationMs: number
-  /** 文件名（记录里是 audio-N.wav，实例上的语音是 voice-N.wav），音频本身走 HTTP 取 */
+  /** 文件名（记录里是 audio-N.wav，账户上的语音是 voice-N.wav），音频本身走 HTTP 取 */
   file: string
   size: number
   createdAt: number
@@ -760,7 +886,7 @@ export interface VoiceState {
   barTime: string
   /** 这根 K 线上的语音（按录制顺序，含更早几步里录的） */
   clips: AudioClip[]
-  /** 整个实例一共几条（**不限**，只有同一根 K 线才限 9 条） */
+  /** 整个账户一共几条（**不限**，只有同一根 K 线才限 9 条） */
   total: number
   /** 同一根 K 线的上限（9） */
   max: number
@@ -830,7 +956,7 @@ export interface RecordingVoiceMessage {
 /**
  * 「一笔交易刚刚收尾、记录已保存」的一次性通知（v0.18.0）。
  *
- * 它**不是广播**（不进实例的操作记录）：交易记录是独立的数据集，和事件流不是一回事。
+ * 它**不是广播**（不进账户的操作记录）：交易记录是独立的数据集，和事件流不是一回事。
  * 前端拿它做两件事 —— 刷新列表、给一句「这笔赚了多少」的轻提示；
  * 不需要也不应该因此把界面切到某种「正在记录」的状态（那个状态已经被取消了）。
  *
@@ -847,7 +973,7 @@ export interface TradeRecordedMessage {
 export interface VoiceAddedPayload {
   audio: AudioClip
   voice: VoiceState
-  /** 整个实例的清单（「其他 K 线还有 N 条」要用） */
+  /** 整个账户的清单（「其他 K 线还有 N 条」要用） */
   voiceAll: AudioClip[]
 }
 

@@ -72,7 +72,7 @@ export function isDrawTool(tool: ChartTool): tool is DrawTool {
 }
 
 const MAX_LOG = 200
-/** 指标的开关与参数记在本机：它是显示偏好，换实例、重启程序都不该被重置 */
+/** 指标的开关与参数记在本机：它是显示偏好，换账户、重启程序都不该被重置 */
 const INDICATOR_KEY = 'tv-replay-doji-zigzag'
 /** ATR 的开关与参数（Length / Smoothing）也记在本机，理由同上 */
 const ATR_KEY = 'tv-replay-atr'
@@ -348,7 +348,7 @@ export const useReplayStore = defineStore('replay', () => {  const socket = new 
   const timeframe = ref<Timeframe>('5m')
   /** 后端聚合回来的那一份；5 分钟时不用请求（就是 `bars` 本身） */
   const tfBars = ref<Bar[]>([])
-  /** `tfBars` 属于哪个实例（换实例时用来判断要不要先清空） */
+  /** `tfBars` 属于哪个账户（换账户时用来判断要不要先清空） */
   let tfOwnerID = ''
   /** 画布真正画的那一份 */
   const displayBars = computed(() => {
@@ -362,7 +362,7 @@ export const useReplayStore = defineStore('replay', () => {  const socket = new 
    * 拉一次聚合数据。
    *
    * 不做缓存也不做增量：一次请求就是把几百根已揭示的 5 分钟 K 线按桶过一遍，
-   * 比一次重绘还便宜。每走一根、换实例、换周期都会重来一次。
+   * 比一次重绘还便宜。每走一根、换账户、换周期都会重来一次。
    */
   async function loadTimeframe(): Promise<void> {
     const id = instance.value?.id
@@ -372,7 +372,7 @@ export const useReplayStore = defineStore('replay', () => {  const socket = new 
       tfOwnerID = ''
       return
     }
-    // 换了实例就先清空：否则在响应回来之前，画布会拿上一个标的的聚合 K 线顶一两帧
+    // 换了账户就先清空：否则在响应回来之前，画布会拿上一个标的的聚合 K 线顶一两帧
     if (tfOwnerID !== id) {
       tfBars.value = []
       tfOwnerID = id
@@ -384,7 +384,7 @@ export const useReplayStore = defineStore('replay', () => {  const socket = new 
       )
       if (!res.ok) throw new Error((await res.text()).trim() || `HTTP ${res.status}`)
       const data = (await res.json()) as TimeframeBars
-      // 迟到的响应：人已经换了实例/周期，这一份不能再盖上去
+      // 迟到的响应：人已经换了账户/周期，这一份不能再盖上去
       if (timeframe.value !== tf || instance.value?.id !== id) return
       tfBars.value = data.bars ?? []
     } catch (e) {
@@ -399,7 +399,7 @@ export const useReplayStore = defineStore('replay', () => {  const socket = new 
     timeframe.value = tf
   }
 
-  // 换周期、换实例、多走一根 —— 三种情况都要重算（值没变时 watch 不会触发）
+  // 换周期、换账户、多走一根 —— 三种情况都要重算（值没变时 watch 不会触发）
   watch([timeframe, () => instance.value?.id, () => cursor.value, () => bars.value.length], loadTimeframe)
   const isOperator = computed(() => you.value?.operator === true)
   /**
@@ -412,7 +412,7 @@ export const useReplayStore = defineStore('replay', () => {  const socket = new 
   const EMPTY_VOICE: VoiceState = { barTime: '', clips: [], total: 0, max: 9 }
   const voice = computed<VoiceState>(() => instance.value?.voice ?? EMPTY_VOICE)
   const voiceClips = computed(() => voice.value.clips ?? [])
-  /** 整个实例的语音清单（别的 K 线上还有几条，见 InstanceDetail.voiceAll） */
+  /** 整个账户的语音清单（别的 K 线上还有几条，见 InstanceDetail.voiceAll） */
   const voiceAll = computed<AudioClip[]>(() => instance.value?.voiceAll ?? [])
   /** 不在当前这根上的语音（按时间排好）：复盘不能倒回，这些也得能点开听 */
   const voiceElsewhere = computed(() =>
@@ -433,7 +433,7 @@ export const useReplayStore = defineStore('replay', () => {  const socket = new 
   /**
    * 机器人正在跑的策略叫什么名字。
    *
-   * 实例上只存 id（协议里也只传 id），名字从策略清单里查 —— 清单可能还没到，
+   * 账户上只存 id（协议里也只传 id），名字从策略清单里查 —— 清单可能还没到，
    * 那时退回显示 id：显示 id 比显示空白强，至少能看出「跑的不是随机演示」。
    */
   const botStrategyLabel = computed(() => {
@@ -453,7 +453,7 @@ export const useReplayStore = defineStore('replay', () => {  const socket = new 
     return inst.operator || ''
   })
   const openOrders = computed(() => (instance.value?.orders ?? []).filter((o) => o.status === 'open'))
-  /** 当前标的的最小跳动；没进实例时是 0（画布按两位小数兜底） */
+  /** 当前标的的最小跳动；没进账户时是 0（画布按两位小数兜底） */
   const tick = computed(() => instance.value?.tick ?? 0)
   /** 价格显示小数位：由最小跳动决定，至少两位 */
   const priceDecimals = computed(() => {
@@ -556,7 +556,7 @@ export const useReplayStore = defineStore('replay', () => {  const socket = new 
           playbackFail.value = { request: msg.request, message: msg.message }
           playbackFailSeq.value += 1
         }
-        // 重连后原来的实例可能已经不在了：别让界面停在假状态上
+        // 重连后原来的账户可能已经不在了：别让界面停在假状态上
         if (msg.request === 'join_instance') {
           instance.value = null
           you.value = null
@@ -569,11 +569,11 @@ export const useReplayStore = defineStore('replay', () => {  const socket = new 
         log.value = []
         break
       case 'deleted':
-        // 删除是**用户自己点的**（别人的实例删不掉，见后端 handleDelete），
-        // 再弹一句「这个实例已经被删除了」等于把他刚做的事复述一遍，还挂在界面上
+        // 删除是**用户自己点的**（别人的账户删不掉，见后端 handleDelete），
+        // 再弹一句「这个账户已经被删除了」等于把他刚做的事复述一遍，还挂在界面上
         // 一直不消失（错误框要手动关、录制浮层会把它当成提示吃进去）。
         // 所以这里只安静地退回大厅；`instanceId` 对不上就什么都不做 ——
-        // 删的要是别的实例，当前这块盘面不该被清掉。
+        // 删的要是别的账户，当前这块盘面不该被清掉。
         if (instance.value?.id === msg.instanceId) {
           instance.value = null
           you.value = null
@@ -648,9 +648,9 @@ export const useReplayStore = defineStore('replay', () => {  const socket = new 
 
   function applyState(msg: InstanceStateMessage): void {
     const inst = msg.instance
-    // 换了一块盘面（新建 / 进入另一个实例）：上一条错误属于上一条实例，跟着它作废。
-    // 不这么做的话，删掉旧实例时留下的那句话会一直贴在右下角、还会被录制浮层
-    // 抄进「提示」里 —— 新建的实例明明好好的，界面却在喊它已经被删了。
+    // 换了一块盘面（新建 / 进入另一个账户）：上一条错误属于上一条账户，跟着它作废。
+    // 不这么做的话，删掉旧账户时留下的那句话会一直贴在右下角、还会被录制浮层
+    // 抄进「提示」里 —— 新建的账户明明好好的，界面却在喊它已经被删了。
     if (instance.value?.id !== inst.id) {
       clearError()
       // 换了盘面：语音浮窗收起（麦克风是「对着这块盘面讲」的，不该跟到下一块上）
@@ -666,13 +666,13 @@ export const useReplayStore = defineStore('replay', () => {  const socket = new 
     }
     you.value = msg.you
     log.value = [...(inst.events ?? [])].slice(-MAX_LOG)
-    // 快照 = 换了一块盘面：上一条实例的选中在这条里没有对应图形，必须一起丢掉
+    // 快照 = 换了一块盘面：上一条账户的选中在这条里没有对应图形，必须一起丢掉
     selectAnnotation(null)
   }
 
   function applyEvent(msg: ServerEvent): void {
     const inst = instance.value
-    if (!inst || msg.instanceId !== inst.id) return // 只处理当前实例的广播
+    if (!inst || msg.instanceId !== inst.id) return // 只处理当前账户的广播
 
     log.value.push({
       seq: msg.seq,
@@ -734,7 +734,7 @@ export const useReplayStore = defineStore('replay', () => {  const socket = new 
     noteNotice(`已清除这根 K 线上的 ${p.removed.length} 条语音`)
   }
 
-  /** 断线重连后重新对齐：实例和列表都可能已经变了。 */
+  /** 断线重连后重新对齐：账户和列表都可能已经变了。 */
   function resync(): void {
     send({ type: 'list_symbols' })
     send({ type: 'list_instances' })
@@ -744,7 +744,7 @@ export const useReplayStore = defineStore('replay', () => {  const socket = new 
     if (pendingPlaybackId.value) {
       send({ type: 'get_recording', recordingId: pendingPlaybackId.value })
     }
-    // 回放时 instance 是「演出来的那一份」，id 是 rec:xxx，后端根本没有这个实例：
+    // 回放时 instance 是「演出来的那一份」，id 是 rec:xxx，后端根本没有这个账户：
     // 重连后去 join 它只会收到一条错误，还会把回放画面清空。等退出回放再重新 join。
     const id = instance.value?.id
     if (id && !playbackActive.value) send({ type: 'join_instance', instanceId: id })
@@ -828,16 +828,33 @@ export const useReplayStore = defineStore('replay', () => {  const socket = new 
     send({ type: 'list_instances' })
   }
   /**
-   * 新建实例。
+   * 新建账户。
    *
-   * `latest = true` 走【新增实例（最新）】那条路：锚点由后端取「数据目录里最新的那一根」，
-   * `session = true` 走【新增实例（开盘）】：锚点取「随机一个交易日的开盘首根」。
-   * 两种模式下 `time` 都会被忽略。**不在前端算这个时间** —— 文件名只到「哪一天」，
-   * 最后一根在几点（那天可能提前收市）、开盘是 6 点还是 7 点（美国夏令时）都只有
-   * 读 CSV 才知道，拼一个猜的时刻只会得到「这个时间点不在 CSV 里」。
+   * v0.32.0 起**只有一条路**：建考核账户（`accountTemplate` 必填）。原来那三个自由入口
+   * （手填时间 / 最新 / 开盘）连同界面上对应的按钮一起删了，所以 `time` / `latest` 现在只是
+   * 协议里还留着的形参（P1 会从后端一起删掉），前端一律传空。
+   *
+   * 锚点**不在前端算**：文件名只到「哪一天」，最后一根在几点（那天可能提前收市）、
+   * 开盘是 6 点还是 7 点（美国夏令时）都只有读 CSV 才知道，拼一个猜的时刻只会得到
+   * 「这个时间点不在 CSV 里」。考核账户更是必须锚在某个交易日的开盘首根，随机到哪天由后端定。
    */
-  function createInstance(symbol: string, time: string, latest = false, session = false): void {
-    send({ type: 'create_instance', symbol, time, latest, session, bars: 400, forwardDays: 5 })
+  function createInstance(
+    symbol: string,
+    time: string,
+    latest = false,
+    session = false,
+    accountTemplate = '',
+  ): void {
+    send({
+      type: 'create_instance',
+      symbol,
+      time,
+      latest,
+      session,
+      accountTemplate,
+      bars: 400,
+      forwardDays: 5,
+    })
   }
 
   function joinInstance(id: string): void {

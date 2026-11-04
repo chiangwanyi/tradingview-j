@@ -17,7 +17,7 @@ import type { AudioClip } from '@/types/protocol'
  *
  * 为什么要独立成一个组件：v0.11 – v0.15 里麦克风、波形、试听、清空全塞在录制浮窗里，
  * 而那个浮窗只在「录制中」时存在 —— 于是「不开录像就讲不了话」。
- * 现在这个窗在**任何**有实例的时候都能开（回放除外）。v0.18.0 起交易记录自动开始，
+ * 现在这个窗在**任何**有账户的时候都能开（回放除外）。v0.18.0 起交易记录自动开始，
  * 持仓期间录的那条会被后端顺手在记录里占一步（回放到那一步语音响），空仓时录的
  * 只留在盘面上 —— 这件事前端不需要知道，也不需要多显示一个「录制中」。
  *
@@ -28,7 +28,7 @@ import type { AudioClip } from '@/types/protocol'
  *   - 默认落在下单浮窗右边一点，两个窗不打架
  *
  * 额度是**每根 K 线 9 条**（不是每次会话），所以这里显示「本根 x/9」，
- * 另外用小字标出整个实例一共几条。
+ * 另外用小字标出整个账户一共几条。
  */
 
 const store = useReplayStore()
@@ -211,7 +211,7 @@ function scheduleStart(): void {
   startTimer = window.setTimeout(() => {
     startTimer = 0
     arming.value = false
-    // 这一小段里浮窗可能已经关了、实例换了、或者操作权被交还了
+    // 这一小段里浮窗可能已经关了、账户换了、或者操作权被交还了
     if (!store.canVoice) return
     void startClip()
   }, START_DELAY_MS)
@@ -305,7 +305,7 @@ function drawWave(): void {
 // ---------------- 本根语音：预览 / 清空 ----------------
 
 /**
- * 语音的地址是**实例**那一条路由（/api/instances/<id>/voice/<file>），
+ * 语音的地址是**账户**那一条路由（/api/instances/<id>/voice/<file>），
  * 不是录像那条 —— 语音属于盘面，和录不录制无关。录制中同一条音频在录像目录里
  * 另有一份 audio-N.wav，但界面上听到的永远是盘面这份。
  */
@@ -467,7 +467,7 @@ function onDeviceChange(): void {
   void refreshMics(false)
 }
 
-// 操作权被交还 / 机器人接管 / 换了实例：麦克风必须松开（录了也发不出去）
+// 操作权被交还 / 机器人接管 / 换了账户：麦克风必须松开（录了也发不出去）
 watch(
   () => store.canVoice,
   (on) => {

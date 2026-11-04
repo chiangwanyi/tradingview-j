@@ -19,16 +19,16 @@ import "encoding/json"
 
 // 请求类型常量。字面量就写在这里，前端 types/protocol.ts 里有同名的一份。
 const (
-	ReqHello          = "hello"
-	ReqListSymbols    = "list_symbols"
-	ReqListInstances  = "list_instances"
-	ReqCreate         = "create_instance"
-	ReqJoin           = "join_instance"
-	ReqLeave          = "leave_instance"
-	ReqDelete         = "delete_instance"
-	ReqTakeControl    = "take_control"
-	ReqRelease        = "release_control"
-	ReqStep           = "step"
+	ReqHello         = "hello"
+	ReqListSymbols   = "list_symbols"
+	ReqListInstances = "list_instances"
+	ReqCreate        = "create_instance"
+	ReqJoin          = "join_instance"
+	ReqLeave         = "leave_instance"
+	ReqDelete        = "delete_instance"
+	ReqTakeControl   = "take_control"
+	ReqRelease       = "release_control"
+	ReqStep          = "step"
 	// ReqNextOpen 把游标推到下一个交易日的开盘首根（【跳转到下一天开盘】）。
 	// 和 step 分开而不是给它加个开关：它一次会走几百根，日志里也该一眼看出来。
 	ReqNextOpen       = "next_day_open"
@@ -108,7 +108,7 @@ type Request struct {
 	//
 	// 为什么不在前端算好时间传过来：最新一根的时刻只存在于 CSV 内容里，文件名只到「哪一天」。
 	// 让前端拼一个 "最后一天 + 某个钟点" 出来，遇到那天提前收市就会指向一根不存在的 K 线。
-	Latest      bool  `json:"latest"`
+	Latest bool `json:"latest"`
 	// Session = true 表示锚点取「随机一个交易日的开盘首根」（【新增实例（开盘）】）。
 	// 不看 Time：开盘那根在几点只有读 CSV 才知道（夏令时 6 点、冬令时 7 点）；
 	// 但 Seed 认 —— 它挑哪一天是随机的，得能复现。
@@ -116,6 +116,10 @@ type Request struct {
 	Bars        int   `json:"bars"`        // 画布上初始显示多少根（含锚点之前的历史），0 = 默认
 	ForwardDays int   `json:"forwardDays"` // 锚点之后预加载几天，0 = 默认
 	Seed        int64 `json:"seed"`        // 非 0 时随机锚点可复现（测试/复现问题用）
+	// AccountTemplate 非空 = 建一个 Prop Firm 考核账户（界面上的【新建考核账户】）。
+	// 它隐含 Session = true：考核账户必须锚在「某个交易日的开盘首根」，
+	// 随机到哪一天由后端定（Time / Latest 一律不看，和 Session 的规则一致）。
+	AccountTemplate string `json:"accountTemplate"`
 
 	// 所有和某个实例有关的请求
 	InstanceID string `json:"instanceId"`
@@ -245,6 +249,13 @@ const (
 	// （回放里的持仓会突然被改写）。所以延伸步只带 Bar / Cursor / HasMore，
 	// 前端 reducer 只追加 K 线、不碰交易状态。
 	ActBarExtended = "bar_extended"
+
+	// ActAccountChanged 是考核账户「值得进操作记录」的那一刻（v0.31.0）：
+	// 进入 FUNDED、盈利日 +1、当日封顶、触及亏损线、转 PAYOUT。
+	//
+	// 余额跟着每一笔成交变，那种变化不进这里 —— 它随 order_filled / bar_advanced 的
+	// Account 字段一起下发就够了，否则一次下单会多出一条「账户变了」的噪声。
+	ActAccountChanged = "account_changed"
 )
 
 // StepBase 是第 1 步的类型：开始录制那一刻的盘面（没有事件，就是 Base 本身）。
@@ -401,17 +412,25 @@ type Order struct {
 	Group string `json:"group,omitempty"`
 }
 
-// Trade 是一笔成交（= 一次挂单被触发）。不做手续费/滑点；成交价通常等于挂单价，
+// Trade 是一笔成交（= 一次挂单被触发）。不做滑点；成交价通常等于挂单价，
 // 只有开盘就跳过挂单价（跳空）时取开盘价 —— 见 instance.go 的 fillPriceFor。
+//
+// **手续费按成交边、按手数收**（见 instance.go applyFill）：开仓那一笔也要收，
+// 所以开仓成交的 RealizedPnl 是负数（= -Commission）。这不是 bug，是成本。
 type Trade struct {
-	ID          string  `json:"id"`
-	OrderID     string  `json:"orderId"`
-	Time        string  `json:"time"`
-	Side        string  `json:"side"`
-	Kind        string  `json:"kind"`
-	Price       float64 `json:"price"`
-	Quantity    float64 `json:"quantity"`
-	RealizedPnl float64 `json:"realizedPnl"` // 这一笔平掉的部分实现的盈亏；开仓/加仓为 0
+	ID       string  `json:"id"`
+	OrderID  string  `json:"orderId"`
+	Time     string  `json:"time"`
+	Side     string  `json:"side"`
+	Kind     string  `json:"kind"`
+	Price    float64 `json:"price"`
+	Quantity float64 `json:"quantity"`
+	// RealizedPnl 是**扣手续费后的净额**：价差盈亏 - 本笔手续费。
+	// 开仓/加仓那一笔没有价差，只有手续费，所以是负的。
+	RealizedPnl float64 `json:"realizedPnl"`
+	// Commission 是本笔收的手续费（手数 × 每手每边费率），永远 >= 0。
+	// 保留它是为了让成交流水能解释「为什么开仓那行是负的」。
+	Commission float64 `json:"commission,omitempty"`
 }
 
 // ClosedLot 是**一批已经平掉的仓位**：从哪一批开仓成交来、在哪一次平仓成交结束、
@@ -480,6 +499,8 @@ type InstanceSummary struct {
 	// 实时盈亏摘要：列表上就能看到这个实例做到哪儿了
 	RealizedPnl float64 `json:"realizedPnl"`
 	Trades      int     `json:"trades"`
+	// AccountPhase 非空 = 这是个考核账户（eval / funded / payout / breached），列表行要显示徽标。
+	AccountPhase string `json:"accountPhase,omitempty"`
 }
 
 // InstanceDTO 是进入实例时下发的一次性全量快照。
@@ -528,6 +549,90 @@ type InstanceDTO struct {
 	// 回不去了。没有这份全量清单，早先几根上讲的语音会变成「听得见总数、点不到」。
 	// 它只在快照和 voice_added / voice_cleared 时下发，bar_advanced 不带。
 	VoiceAll []AudioClip `json:"voiceAll"`
+	// Account 非空 = 这是个考核账户。nil（自由模式）时这个字段整个不出现，
+	// 前端按可选处理 —— 老客户端见到一个陌生字段也不会坏。
+	Account *AccountDTO `json:"account,omitempty"`
+}
+
+// ---------------- Prop Firm 考核账户 ----------------
+
+// 考核阶段。前三个是需求里的生命周期，breached 是「触及亏损线」的终态 ——
+// 它和 payout 一样不能再开仓，但原因不同，界面上要说清楚是「失败」还是「已出金」。
+const (
+	PhaseEval     = "eval"
+	PhaseFunded   = "funded"
+	PhasePayout   = "payout"
+	PhaseBreached = "breached"
+)
+
+// AccountRules 是建户那一刻从模板**拷贝**进存档的规则快照。
+//
+// 为什么要快照而不是每次去模板里取：模板将来会改（改目标、改回撤），
+// 已经建出来的账户不该被追溯修改 —— 这和 AnnotationStyle「画下去那一刻定死」
+// 是同一个道理。字段名都写全，方便直接打开 meta.json 看。
+type AccountRules struct {
+	ID           string  `json:"id"`
+	Name         string  `json:"name"`
+	Initial      float64 `json:"initial"`      // 初始余额
+	ProfitTarget float64 `json:"profitTarget"` // EVAL 盈利目标（余额要 >= Initial + 它）
+	MaxDrawdown  float64 `json:"maxDrawdown"`  // 最大回撤（日终追踪）
+	LockBalance  float64 `json:"lockBalance"`  // 日终余额到这儿之后亏损线不再上移
+	FloorCap     float64 `json:"floorCap"`     // 亏损线的天花板（= LockBalance - MaxDrawdown）
+	DailyLimit   float64 `json:"dailyLimit"`   // 当日净盈利到这儿就禁止再开仓
+	MaxContracts float64 `json:"maxContracts"` // 每品种最大持仓手数
+	ProfitDays   int     `json:"profitDays"`   // FUNDED 需要几个盈利日
+	ProfitDayMin float64 `json:"profitDayMin"` // 一个盈利日至少净赚多少
+}
+
+// AccountDTO 是下发给前端的账户视图。**所有数字都在后端算好**，前端只排版 ——
+// 这是项目里一贯的口径（前端自己算钱必然和交易日终对不上）。
+type AccountDTO struct {
+	Rules      AccountRules `json:"rules"`
+	Phase      string       `json:"phase"`
+	Balance    float64      `json:"balance"`    // 已实现净额（含手续费）
+	Equity     float64      `json:"equity"`     // 余额 + 当前收盘价下的浮动盈亏
+	Floor      float64      `json:"floor"`      // 当前亏损线
+	PeakEOD    float64      `json:"peakEod"`    // 日终权益的最高点（亏损线的基准）
+	Target     float64      `json:"target"`     // EVAL 目标余额
+	ProfitDays int          `json:"profitDays"` // 已经攒到的盈利日
+	DayNet     float64      `json:"dayNet"`     // 当日已实现净额
+	DayLocked  bool         `json:"dayLocked"`  // 当日净盈利已封顶
+	Locked     bool         `json:"locked"`     // 亏损线已锁死（不再上移）
+	DayDate    string       `json:"dayDate"`    // 当前交易日（开盘首根的日期）
+	Payout     float64      `json:"payout,omitempty"`
+	ClosedAt   string       `json:"closedAt,omitempty"`
+	FailReason string       `json:"failReason,omitempty"`
+	// WaitingFund 为 true = EVAL 已达标但还带着仓，等平仓才切 FUNDED。
+	// 这条不能省：否则用户会觉得「明明赚够了怎么还是 EVAL」。
+	WaitingFund bool `json:"waitingFund,omitempty"`
+
+	// Days 是**交易日历**：已经走过的每个交易日一行（见 account.go accountDays）。
+	// 空 = 还没走过一根 K 线。
+	Days []AccountDayDTO `json:"days,omitempty"`
+}
+
+// AccountDayDTO 是交易日历里的一格。
+//
+// 这里的「一天」是**日文件那一天**（barDate），和日终结算同一把尺子，不是「我什么时候
+// 做的这笔单」，也不是日历上的今天 —— 今天补做去年 1 月的行情，格子要落在行情那一天。
+// 所以它由后端算：前端自己切，遇到跨夜的交易日（美盘 06:00 → 次日 05:00）就会切错。
+type AccountDayDTO struct {
+	Date   string  `json:"date"`   // 这一天的日期（开盘首根的日期）
+	Start  string  `json:"start"`  // 第一个已揭示 K 线的时间
+	End    string  `json:"end"`    // 最后一个已揭示 K 线的时间
+	Bars   int     `json:"bars"`   // 已揭示几根
+	Trades int     `json:"trades"` // 这一天成交几笔
+	Pnl    float64 `json:"pnl"`    // 当日已实现净额（含手续费，和余额同口径）
+	Cum    float64 `json:"cum"`    // 到这一天结束时的累计已实现净额
+	// Current = 正在过的一天（K 线还没走完，日终结算还没发生）。
+	Current bool `json:"current,omitempty"`
+}
+
+// AccountChangedPayload 是 account_changed 的载荷：一份完整账户视图 + 一句中文。
+// note 进操作记录 Tab，用户能在流水里看到「第 3 个盈利日」这种节点。
+type AccountChangedPayload struct {
+	Account AccountDTO `json:"account"`
+	Note    string     `json:"note"`
 }
 
 // You 告诉这条连接「你是谁」，前端据此决定按钮能不能点。
@@ -639,6 +744,9 @@ type BarAdvancedPayload struct {
 	// Voice 是换根之后的语音状态（v0.16.0）：清单一换，界面上的「本根 x/9」立刻跟着走。
 	// 和 Recording 不同 —— 它和有没在录制无关，所以放在这条「每根都发」的广播里。
 	Voice VoiceState `json:"voice"`
+	// Account 是这个实例的考核账户（非考核账户为 nil）。跟成交走是因为
+	// 换根时可能撮合出成交，余额、权益、亏损线都会变。
+	Account *AccountDTO `json:"account,omitempty"`
 }
 
 // BarExtendedPayload 是回放延伸步的负载（v0.27.0，见 ActBarExtended）。
@@ -708,6 +816,8 @@ type OrderFilledPayload struct {
 	Position      Position    `json:"position"`
 	RealizedPnl   float64     `json:"realizedPnl"`
 	UnrealizedPnl float64     `json:"unrealizedPnl"`
+	// Account 见 BarAdvancedPayload 里那段说明。
+	Account *AccountDTO `json:"account,omitempty"`
 }
 
 // FlatAllPayload 是【市价退仓并取消所有挂单】的广播负载（v0.20.0）。
@@ -728,6 +838,8 @@ type FlatAllPayload struct {
 	Position      Position    `json:"position"`
 	RealizedPnl   float64     `json:"realizedPnl"`
 	UnrealizedPnl float64     `json:"unrealizedPnl"`
+	// Account 见 BarAdvancedPayload 里那段说明。
+	Account *AccountDTO `json:"account,omitempty"`
 }
 
 type ControlChangedPayload struct {
@@ -1058,12 +1170,12 @@ type RecordingMsg struct {
 // Summary 是保存之后的那一份（步数 / 根数 / 结束时间都变了），
 // 前端顺手用它刷新列表里那一行，免得「刚加了一根、列表上还是旧数字」。
 type RecordingExtendedMsg struct {
-	Type        string            `json:"type"`
-	RecordingID string            `json:"recordingId"`
-	Steps       []RecordingStep   `json:"steps"`
-	Summary     RecordingSummary  `json:"recording"`
-	HasMore     bool              `json:"hasMore"`
-	Warning     string            `json:"warning,omitempty"`
+	Type        string           `json:"type"`
+	RecordingID string           `json:"recordingId"`
+	Steps       []RecordingStep  `json:"steps"`
+	Summary     RecordingSummary `json:"recording"`
+	HasMore     bool             `json:"hasMore"`
+	Warning     string           `json:"warning,omitempty"`
 }
 
 // RecordingVoiceMsg 是在回放末尾那根 K 线上录音 / 清空的结果（v0.27.0）。

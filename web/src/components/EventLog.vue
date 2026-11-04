@@ -5,6 +5,7 @@ import { formatSigned } from '@/components/chart/scale'
 import { TOOL_LABEL, useReplayStore, type ChartTool } from '@/stores/replay'
 import { ACTION } from '@/types/protocol'
 import type {
+  AccountChangedPayload,
   AnnotationClearedPayload,
   AnnotationPayload,
   BarAdvancedPayload,
@@ -76,6 +77,8 @@ function actionLabel(action: string): string {
       return '机器人启动'
     case ACTION.botStopped:
       return '机器人停止'
+    case ACTION.accountChanged:
+      return '考核账户'
     default:
       return action
   }
@@ -93,6 +96,12 @@ function detail(ev: ReplayEvent): string {
       const p = ev.payload as BarAdvancedPayload
       const fills = p.fills.length > 0 ? ` · 成交 ${p.fills.length} 笔` : ''
       return `${p.bar.time} → 第 ${p.cursor + 1} 根${fills}`
+    }
+    // 考核账户节点：后端给的就是一句完整的中文（「第 3/5 个盈利日」这种），
+    // 前端不再拼 —— 拼一次就多一个口径。
+    case ACTION.accountChanged: {
+      const p = ev.payload as AccountChangedPayload
+      return p.note
     }
     case ACTION.annotationAdded:
     case ACTION.annotationMoved:

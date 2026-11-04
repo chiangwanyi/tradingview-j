@@ -86,7 +86,7 @@ const menu = ref<{ x: number; y: number; price: number; time: string } | null>(n
 /**
  * 「移除 N 个绘图」按下一次之后的上膛状态：**第二次单击才真的删**。
  *
- * 这个动作删的是当前实例上**所有人**画的图，而且没有撤销 —— 手滑一下代价太大，
+ * 这个动作删的是当前账户上**所有人**画的图，而且没有撤销 —— 手滑一下代价太大，
  * 所以用「同一行变红再点一次」代替弹窗：不打断操作，也不用再解释一遍。
  * 菜单一关就复位（见 onContextMenu / 各条关闭路径）。
  */
@@ -190,7 +190,7 @@ let observer: ResizeObserver | null = null
  *
  * 只写四个数：缩放在哪（barWidth）、平移了多少（scroll）、行情区左右边界。
  * 横轴下方的录音条拿它们和 `xOf` 算出**同一个** x —— 语音标记因此永远在
- * 它所挂的那根 K 线正下方，缩放、平移、换实例都不用单独通知它。
+ * 它所挂的那根 K 线正下方，缩放、平移、换账户都不用单独通知它。
  *
  * 放在 `requestDraw` 里（而不是重绘之后）：请求重绘时视图已经改完了，
  * 此时推出去的值就是这一帧要画的值，界面不会晚一帧。
@@ -331,7 +331,7 @@ onBeforeUnmount(() => {
   if (pinTimer) window.clearTimeout(pinTimer)
 })
 
-// 实例换了：重置视图（否则会拿着上一个标的的缩放去画新标的）
+// 账户换了：重置视图（否则会拿着上一个标的的缩放去画新标的）
 watch(
   () => store.instance?.id,
   () => {
@@ -368,7 +368,7 @@ watch(
   },
 )
 
-// 画布上那份序列变了：多了一根（步进）、整体换了（换实例 / 重连）、或者换了周期。
+// 画布上那份序列变了：多了一根（步进）、整体换了（换账户 / 重连）、或者换了周期。
 //
 // 盯的是 `displayBars` 而不是 `bars`：换周期时 5 分钟序列一根都没变，
 // 变的是「画布该画哪一份」—— 只看 `bars.length` 的话按钮点了图不动。
@@ -1525,7 +1525,7 @@ function onKeyDown(ev: KeyboardEvent): void {
   /*
    * →（方向键右键）= 【下一根】（v0.20.0）。
    *
-   * 和工具条上那个按钮**同一套开关条件**：有操作权、进了实例、至少有一根 K 线。
+   * 和工具条上那个按钮**同一套开关条件**：有操作权、进了账户、至少有一根 K 线。
    * 三件都不满足时什么都不做、也不 preventDefault —— 让方向键在该滚的地方照常滚。
    *
    * 两个细节：
@@ -1955,7 +1955,7 @@ defineExpose({ requestDraw })
       v-if="store.instance && !store.instance.bars.length"
       class="absolute inset-0 flex items-center justify-center text-[15px] text-dim"
     >
-      这个实例还没有 K 线
+      这个账户还没有 K 线
     </div>
 
     <!--
@@ -2086,7 +2086,7 @@ defineExpose({ requestDraw })
             ? '当前画布上还没有绘图'
             : !store.canOperate
               ? '现在只能看：先「接管」操作权再移除绘图'
-              : '删掉当前画布上全部绘图（同实例所有人都会看不到，不能撤销）'
+              : '删掉当前画布上全部绘图（同账户所有人都会看不到，不能撤销）'
         "
         @click="menuClearAnnotations"
       >

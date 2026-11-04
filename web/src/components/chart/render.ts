@@ -251,7 +251,7 @@ export function drawChart(input: DrawInput): void {
     ctx.font = MONO
     ctx.textAlign = 'center'
     ctx.textBaseline = 'middle'
-    ctx.fillText('还没有数据：点右上角「标的与实例」建一个实例', width / 2, height / 2)
+    ctx.fillText('还没有数据：点右上角「标的与考核账户」建一个账户', width / 2, height / 2)
     ctx.restore()
     return
   }

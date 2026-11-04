@@ -93,7 +93,10 @@ type instanceMeta struct {
 	Folder    string  `json:"folder"`
 	Tick      float64 `json:"tick"`
 	TickValue float64 `json:"tickValue,omitempty"`
-	Anchor    string  `json:"anchor"`
+	// CommissionPerContract 一手一个成交边的手续费。落盘是为了「规则冻结」：
+	// 改了费率表，已经建出来的实例仍按建户那天的费率结算。
+	CommissionPerContract float64 `json:"commissionPerContract,omitempty"`
+	Anchor                string  `json:"anchor"`
 
 	Cursor      int      `json:"cursor"`
 	Position    Position `json:"position"`
@@ -107,6 +110,11 @@ type instanceMeta struct {
 	SeqAnn int      `json:"seqAnnotation"`
 	SeqOrd int      `json:"seqOrder"`
 	SeqTrd int      `json:"seqTrade"`
+
+	// Account 是考核账户的状态（nil = 自由模式）。放在 meta.json 里而不是单独一个文件，
+	// 是因为它就是「这个实例当前的核心状态」，必须和 Cursor / Position 一起在同一次
+	// 原子提交里落定 —— 单独一个文件就要自己再造一遍「先写谁、崩溃了算什么」的顺序。
+	Account *accountState `json:"account,omitempty"`
 }
 
 // instanceFiles 是一个实例落盘后的全部内容，读写共用。
@@ -168,22 +176,26 @@ func (inst *Instance) toFiles() instanceFiles {
 	}
 	return instanceFiles{
 		Meta: instanceMeta{
-			ID:          inst.ID,
-			Symbol:      inst.Symbol,
-			Folder:      inst.Folder,
-			Tick:        inst.Tick,
-			TickValue:   inst.TickValue,
-			Anchor:      inst.Anchor,
-			Cursor:      inst.Cursor,
-			Position:    inst.Position,
-			RealizedPnl: inst.RealizedPnl,
-			CreatedBy:   inst.CreatedBy,
-			CreatedAt:   inst.CreatedAt,
-			Seq:         inst.Seq,
-			Notes:       copies(inst.notes),
-			SeqAnn:      inst.seqAnn,
-			SeqOrd:      inst.seqOrder,
-			SeqTrd:      inst.seqTrade,
+			ID:                    inst.ID,
+			Symbol:                inst.Symbol,
+			Folder:                inst.Folder,
+			Tick:                  inst.Tick,
+			TickValue:             inst.TickValue,
+			CommissionPerContract: inst.CommissionPerContract,
+			Anchor:                inst.Anchor,
+			Cursor:                inst.Cursor,
+			Position:              inst.Position,
+			RealizedPnl:           inst.RealizedPnl,
+			CreatedBy:             inst.CreatedBy,
+			CreatedAt:             inst.CreatedAt,
+			Seq:                   inst.Seq,
+			Notes:                 copies(inst.notes),
+			SeqAnn:                inst.seqAnn,
+			SeqOrd:                inst.seqOrder,
+			SeqTrd:                inst.seqTrade,
+			// clone 是必须的：flushState 在锁外序列化（见那里的注释），直接交出指针
+			// 会和 2 秒后的另一轮结算写同一块内存。
+			Account: inst.account.clone(),
 		},
 		Bars:        inst.Bars,
 		Annotations: copies(inst.Annotations),
@@ -197,27 +209,29 @@ func (inst *Instance) toFiles() instanceFiles {
 func (f instanceFiles) toInstance() *Instance {
 	m := f.Meta
 	return &Instance{
-		ID:          m.ID,
-		Symbol:      m.Symbol,
-		Folder:      m.Folder,
-		Tick:        m.Tick,
-		TickValue:   m.TickValue,
-		Anchor:      m.Anchor,
-		Bars:        f.Bars,
-		Cursor:      m.Cursor,
-		Annotations: f.Annotations,
-		Orders:      f.Orders,
-		Trades:      f.Trades,
-		Position:    m.Position,
-		RealizedPnl: m.RealizedPnl,
-		CreatedBy:   m.CreatedBy,
-		CreatedAt:   m.CreatedAt,
-		Seq:         m.Seq,
-		Events:      f.Events,
-		notes:       m.Notes,
-		seqAnn:      m.SeqAnn,
-		seqOrder:    m.SeqOrd,
-		seqTrade:    m.SeqTrd,
+		ID:                    m.ID,
+		Symbol:                m.Symbol,
+		Folder:                m.Folder,
+		Tick:                  m.Tick,
+		TickValue:             m.TickValue,
+		CommissionPerContract: m.CommissionPerContract,
+		Anchor:                m.Anchor,
+		Bars:                  f.Bars,
+		Cursor:                m.Cursor,
+		Annotations:           f.Annotations,
+		Orders:                f.Orders,
+		Trades:                f.Trades,
+		Position:              m.Position,
+		RealizedPnl:           m.RealizedPnl,
+		CreatedBy:             m.CreatedBy,
+		CreatedAt:             m.CreatedAt,
+		Seq:                   m.Seq,
+		Events:                f.Events,
+		notes:                 m.Notes,
+		seqAnn:                m.SeqAnn,
+		seqOrder:              m.SeqOrd,
+		seqTrade:              m.SeqTrd,
+		account:               m.Account,
 		// 先只带上清单；落盘目录由 restoreInstanceLocked 里的 attachVoiceLocked 补
 		// （目录要知道 statePath，而这一层不该知道状态目录在哪）。
 		voice: newVoiceStore("", f.Voice, nil),
@@ -643,6 +657,23 @@ func (h *Hub) restoreInstanceLocked(inst *Instance) bool {
 	// 每次恢复都重新取，用户改了配置里的「一跳值多少」之后重开就生效。
 	if v := h.ds.TickValue(inst.Symbol, inst.Folder); v > 0 {
 		inst.TickValue = v
+	}
+	// 旧存档里没有手续费率（这个字段是后加的）：按标的名补一次。0 表示「这个标的本来就不收费」，
+	// 而 DefaultCommission 认不出来也返回 0 —— 两种情况都落在「不扣」，不会凭空给旧实例加成本。
+	if inst.CommissionPerContract == 0 {
+		inst.CommissionPerContract = store.DefaultCommission(inst.Symbol)
+	}
+	// 考核账户：手改过的存档可能缺字段，补成「还能继续算」的样子。
+	// 亏损线缺失就按峰值重算 —— 宁可算出 48000，也不留一条 0 的线（那会让账户立刻爆仓）。
+	// note 不跨进程：它只是「这次要广播的一句提示」，重启后旧提示没有意义。
+	if a := inst.account; a != nil {
+		if a.Phase == "" {
+			a.Phase = PhaseEval
+		}
+		if a.Floor == 0 {
+			a.applyFloor()
+		}
+		a.note = ""
 	}
 	// 旧版本（0.5.2 及以前）的标注类型和样式要迁到新模型上，见 migrateAnnotations。
 	if dropped := migrateAnnotations(inst); dropped > 0 {

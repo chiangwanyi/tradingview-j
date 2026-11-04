@@ -19,6 +19,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"tradingview-j/internal/store"
 )
 
 // Client 是一条已连接的 WebSocket。write/close 由 ws 层注入，Hub 不碰网络细节。
@@ -303,6 +305,26 @@ func (h *Hub) handleListSymbols(c *Client) {
 }
 
 func (h *Hub) handleCreate(c *Client, req Request) {
+	// 考核账户：模板决定了规则，锚点必须是「某个交易日的开盘首根」——
+	// 用户自己填的时间和【最新】都不看（和 Session 的优先级定死是同一个道理）。
+	var rules AccountRules
+	var isAccount bool
+	if req.AccountTemplate != "" {
+		r, ok := accountTemplateByID(req.AccountTemplate)
+		if !ok {
+			h.fail(c, req, fmt.Sprintf("没有这个考核模板：%q", req.AccountTemplate))
+			return
+		}
+		// 没有佣金档位的标的建不了考核账户：费率是这套规则的一部分，
+		// 费率 0 会让「净盈亏」退化成毛盈亏，目标和回撤就不是这套规则了。
+		if store.DefaultCommission(req.Symbol) <= 0 {
+			h.fail(c, req, fmt.Sprintf("%s 没有手续费档位，不能建考核账户（首批只支持 MES / MNQ / MGC）", req.Symbol))
+			return
+		}
+		rules, isAccount = r, true
+		req.Session = true
+	}
+
 	rnd := h.rnd
 	if req.Seed != 0 {
 		// 显式种子：只影响这一次随机锚点的选择，不动全局随机源
@@ -329,6 +351,10 @@ func (h *Hub) handleCreate(c *Client, req Request) {
 	inst.ID = fmt.Sprintf("ins-%d", h.instanceSeq)
 	inst.CreatedBy = c.Name
 	inst.CreatedAt = time.Now().Unix()
+	// 账户在实例建出来之后才挂上：它要和实例的成交/持仓共用同一套记账。
+	if isAccount {
+		inst.account = newAccountState(rules)
+	}
 	// 创建者自动进实例并拿到操作权：自己刚开的盘，第一下就应该是自己能点。
 	if c.InstanceID != "" && c.InstanceID != inst.ID {
 		h.leaveLocked(c, false)
@@ -865,7 +891,7 @@ func (h *Hub) findInstanceLocked(c *Client, req Request) (*Instance, bool) {
 	}
 	inst, ok := h.instances[id]
 	if !ok {
-		h.fail(c, req, fmt.Sprintf("实例 %s 不存在（可能已被删除）", id))
+		h.fail(c, req, fmt.Sprintf("考核账户 %s 不存在（可能已被删除）", id))
 		return nil, false
 	}
 	return inst, true
@@ -1014,6 +1040,24 @@ func (h *Hub) broadcastInstanceLocked(inst *Instance, action string, payload any
 	// 放在广播之后是因为收尾判定要看「这一步做完之后」的仓位：平仓那一笔必须先记进
 	// 记录、再收尾（见 trade.go 的 trackTradeLocked）。
 	h.trackTradeLocked(inst, action, payload, by)
+
+	// 考核账户「值得进操作记录」的那一刻（阶段切换 / 盈利日 / 封顶 / 爆仓）。
+	//
+	// 挂在广播出口而不是散在各个 do* 里：这里是所有状态变化的唯一出口，
+	// 真人、机器人、跳日、成交全都会经过。余额随成交变化不进这里 ——
+	// 它已经在 payload.Account 里了，再发一条只会让操作记录被噪音淹没。
+	if inst.account != nil && inst.account.note != "" {
+		note := inst.account.note
+		inst.account.note = ""
+		// 账户终止了就先把机器人停掉：它下一根还会去下单，只会被闸门一张张拒掉。
+		// 先清 note 再停机器人，停机器人自己会广播，绕回来时 note 已经是空的，不会递归。
+		if inst.botStop != nil &&
+			(inst.account.Phase == PhaseBreached || inst.account.Phase == PhasePayout) {
+			h.stopBotLocked(inst, "")
+		}
+		h.broadcastInstanceLocked(inst, ActAccountChanged,
+			AccountChangedPayload{Account: *inst.accountDTO(), Note: note}, "system")
+	}
 }
 
 func (h *Hub) broadcastMembersLocked(inst *Instance) {
@@ -1105,7 +1149,7 @@ func (h *Hub) TimeframeBars(id string, minutes int) ([]Bar, error) {
 	}
 	h.mu.Unlock()
 	if !ok {
-		return nil, fmt.Errorf("实例 %s 不在内存里（可能已经删掉了）", id)
+		return nil, fmt.Errorf("考核账户 %s 不在内存里（可能已经删掉了）", id)
 	}
 	return Aggregate(src, minutes), nil
 }

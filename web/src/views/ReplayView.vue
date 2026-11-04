@@ -1,21 +1,22 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, watch } from 'vue'
-import { RouterLink } from 'vue-router'
+import { RouterLink, useRoute } from 'vue-router'
 
 import ChartPanel from '@/components/ChartPanel.vue'
 import ChartToolbar from '@/components/ChartToolbar.vue'
-import InstancesMenu from '@/components/InstancesMenu.vue'
+import AccountsMenu from '@/components/AccountsMenu.vue'
 import TradeDock from '@/components/TradeDock.vue'
 import TradeFloat from '@/components/TradeFloat.vue'
 import VoiceFloat from '@/components/VoiceFloat.vue'
 import VoiceTape from '@/components/VoiceTape.vue'
+import { money, phaseClass, phaseLabel } from '@/lib/account'
 import { usePlaybackStore } from '@/stores/playback'
 import { useReplayStore } from '@/stores/replay'
 
 /**
  * 复盘主界面：一条顶栏 + 画布占满 + 底部 Tab（模拟交易 / 操作记录 / 交易记录）+ 浮在页面上的下单窗。
  *
- * 布局是 v1.1 调整过的：左侧那一栏「标的与实例」搬进了右上角的折叠面板，
+ * 布局是 v1.1 调整过的：左侧那一栏「标的与账户」搬进了右上角的折叠面板，
  * 右侧的交易栏搬到了底部 Tab —— 两处都只为了同一个目标：**把空间让给画布**。
  *
  * v0.8.0 又把「下单」这一列从底部面板里提出来，做成一枚可拖动、可折叠成小图标的浮窗：
@@ -24,9 +25,14 @@ import { useReplayStore } from '@/stores/replay'
  * v0.18.0：交易记录改成**自动**的（开仓开始、平仓结束），所以原来贴在画布左上角的
  * 录制浮窗整个删掉了 —— 界面上不再有「正在录制」这个概念；回放仍然在这个画布上演。
  *
- * 整个应用只有两条路由（`/` 与 `/records`）。实例是服务端概念，这里只负责
- * 「进入/退出/观看」，关掉标签页不会删除实例（下次连上还在列表里）。
+ * 整个应用只有三条路由（`/`、`/account/:id?` 与 `/records`）。考核账户是服务端概念，
+ * 这一页只负责「按 URL 里的 id 进入 / 退出 / 观看」，关掉标签页不会删户（下次连上还在列表里）。
+ *
+ * v0.32.0：`/` 变成账户总览，画布搬到 `/account/:id` —— 所以「进哪个户」这件事
+ * 由 URL 说了算，上面那个 watch 负责把 url 变成一条 join 消息。
  */
+
+const route = useRoute()
 
 const store = useReplayStore()
 const pb = usePlaybackStore()
@@ -93,6 +99,24 @@ onBeforeUnmount(() => {
 })
 
 /**
+ * URL 里的账户 id → 一条 join。
+ *
+ * 三个时机都要管：直接打开 `/account/xxx`（要等连上才发得出去）、从总览点卡片、
+ * 以及断线重连（服务端只有内存状态，重连等于重新入场）。
+ * 已经在同一个户里就不重复 join —— 每条 join 都会让后端推一份全量快照。
+ */
+watch(
+  [() => route.params.id, () => store.status],
+  ([id, status]) => {
+    const target = typeof id === 'string' ? id : ''
+    if (!target || status !== 'open' || store.playbackActive) return
+    if (store.instance?.id === target) return
+    store.joinInstance(target)
+  },
+  { immediate: true },
+)
+
+/**
  * 交易记录页点【回放】→ 这里接住（v0.19.0）。
  *
  * 两个时机都要管：跳过来**之前**内容就到了（记录页先收到 recording 消息），
@@ -120,6 +144,13 @@ watch(
     <header
       class="flex min-h-11 shrink-0 flex-wrap items-center gap-x-2.5 gap-y-1 border-b border-line bg-panel px-3 py-1"
     >
+      <RouterLink
+        :to="{ name: 'accounts' }"
+        class="flex shrink-0 items-center gap-1 whitespace-nowrap rounded border border-line px-2 py-0.5 text-[13px] text-dim transition hover:border-accent hover:text-accent"
+        title="回到考核账户总览"
+      >
+        ← 考核账户
+      </RouterLink>
       <span class="whitespace-nowrap text-[15px] font-semibold tracking-wide">看盘 · 复盘</span>
       <span class="whitespace-nowrap text-[12px] text-faint">v{{ store.me?.version ?? '' }}</span>
 
@@ -134,7 +165,7 @@ watch(
         <span v-else-if="store.instance && !store.playbackActive" class="text-faint">（观众）</span>
       </span>
 
-      <!-- 回放中：顶栏直接写清楚「现在看的不是实时实例」 -->
+      <!-- 回放中：顶栏直接写清楚「现在看的不是实时账户」 -->
       <div v-if="store.playbackActive" class="flex min-w-0 items-center gap-2 text-[13px]">
         <span class="h-4 w-px bg-line" />
         <span
@@ -150,11 +181,26 @@ watch(
         <span class="tnum whitespace-nowrap text-[12px] text-faint">{{ store.instance.anchor }}</span>
         <span class="whitespace-nowrap text-[12px] text-faint">{{ cursorText }}</span>
         <span class="tnum whitespace-nowrap text-[12px] text-faint">tick {{ store.tick }}</span>
+        <!-- 考核账户：阶段 + 余额 + 亏损线常驻顶栏。这是要边看盘边盯的三个数字， -->
+        <!-- 放进底部的 Tab 里一收起就看不见了。 -->
+        <span
+          v-if="store.instance.account"
+          class="whitespace-nowrap rounded px-1.5 text-[12px] font-medium"
+          :class="phaseClass(store.instance.account.phase)"
+        >
+          {{ phaseLabel(store.instance.account.phase) }}
+        </span>
+        <span v-if="store.instance.account" class="tnum whitespace-nowrap text-[12px] text-dim">
+          余额 {{ money(store.instance.account.balance) }}
+        </span>
+        <span v-if="store.instance.account" class="tnum whitespace-nowrap text-[12px] text-down">
+          亏损线 {{ money(store.instance.account.floor) }}
+        </span>
         <span v-if="store.instance.bot" class="rounded bg-sky-600/20 px-1.5 text-[12px] text-sky-600">
           机器人演示中
         </span>
       </div>
-      <div v-else class="whitespace-nowrap text-[13px] text-faint">没有进入实例</div>
+      <div v-else class="whitespace-nowrap text-[13px] text-faint">没有打开考核账户</div>
 
       <div class="ml-auto flex shrink-0 items-center gap-2">
         <RouterLink
@@ -167,7 +213,7 @@ watch(
             {{ store.recordings.length }}
           </span>
         </RouterLink>
-        <InstancesMenu />
+        <AccountsMenu />
         <button
           v-if="store.playbackActive"
           type="button"

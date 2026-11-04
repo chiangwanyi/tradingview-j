@@ -17,7 +17,7 @@ import type { OrderKind, Side } from '@/types/protocol'
  * 而且后端撮合时限价买 `low <= 价`、限价卖 `high >= 价` 都能正常参与。
  */
 export function orderKindFor(side: Side, price: number, close: number): OrderKind {
-  // 没有现价（实例还没有 K 线）：给一个保守默认，真正的判定在后端
+  // 没有现价（账户还没有 K 线）：给一个保守默认，真正的判定在后端
   if (!(close > 0)) return side === 'buy' ? 'limit' : 'stop'
   if (side === 'buy') return price <= close ? 'limit' : 'stop'
   return price >= close ? 'limit' : 'stop'

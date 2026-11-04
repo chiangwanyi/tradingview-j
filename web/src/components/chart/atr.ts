@@ -212,7 +212,7 @@ function wma(src: number[], n: number): number[] {
 /**
  * 缓存：Canvas 每帧都会来要一次，而 ATR 要扫全量 K 线。
  *
- * 键用**数组本身**（WeakMap）：实例步进时是 `inst.bars = [...inst.bars, bar]`
+ * 键用**数组本身**（WeakMap）：账户步进时是 `inst.bars = [...inst.bars, bar]`
  * 整个换新数组，所以「换了数组 = 多了一根」天然成立。同一个数组再配 `bars.length`
  * 兜底（回放/快照里万一原地 push 也不会拿到旧结果），参数变了也重算。
  */

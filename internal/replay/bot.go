@@ -37,6 +37,12 @@ func (h *Hub) handleBotStart(c *Client, req Request) {
 		h.fail(c, req, "机器人已经在跑了")
 		return
 	}
+	// 考核账户已经终止（失败 / 已出金）：起来也只是被下单闸门一张张拒掉、刷一屏错误，
+	// 不如一开始就说清楚。平仓还是可以手动点（闸门只拦开仓）。
+	if a := inst.account; a != nil && (a.Phase == PhaseBreached || a.Phase == PhasePayout) {
+		h.fail(c, req, fmt.Sprintf("考核账户已经结束（%s），不能启动机器人", phaseText(a.Phase)))
+		return
+	}
 	if inst.Operator != "" && inst.Operator != c.Name {
 		h.fail(c, req, fmt.Sprintf("现在由 %s 操作，机器人起不来；等他交还或退出", inst.Operator))
 		return
