@@ -127,4 +127,46 @@ class SymbolCatalogTest {
 
         assertThrows(UncheckedIOException.class, () -> catalog().read());
     }
+
+    /**
+     * 缓存（2026-11-03 为压测加）必须<strong>跟着文件走</strong>：抓取侧改了名录，
+     * 下一次 {@code read()} 就要看到新内容 —— 否则「加了新标的却开不了户」。
+     */
+    @Test
+    void seesEditsAfterFirstRead() throws IOException {
+        writeListing("""
+                {"symbols": {"CME_MINI:MES1!": {"folder": "CME_MINI_MES1!", "commission": 0.5}}}
+                """);
+        SymbolCatalog catalog = catalog();
+        assertEquals(1, catalog.read().size());
+
+        // 加一个标的：文件变长，缓存必须失效
+        writeListing("""
+                {"symbols": {
+                  "CME_MINI:MES1!": {"folder": "CME_MINI_MES1!", "commission": 0.5},
+                  "NYMEX:CL1!": {"folder": "NYMEX_CL1!", "commission": 0}
+                }}
+                """);
+
+        List<SymbolSpec> after = catalog.read();
+        assertEquals(2, after.size(), "改完名录必须立刻读得到，不能停在旧的那一份");
+        assertEquals("NYMEX:CL1!", after.get(1).code());
+    }
+
+    /**
+     * 坏数据<strong>不进缓存</strong>：否则改好文件之后，同一个进程里永远读不回来
+     * —— 那会逼着人重启服务，而重启是「用户不知道为什么要做」的那类操作。
+     */
+    @Test
+    void brokenJsonIsNotCached() throws IOException {
+        SymbolCatalog catalog = catalog();
+        writeListing("{ this is not json");
+        assertThrows(UncheckedIOException.class, catalog::read);
+
+        writeListing("""
+                {"symbols": {"CME_MINI:MES1!": {"folder": "CME_MINI_MES1!", "commission": 0.5}}}
+                """);
+
+        assertEquals(1, catalog.read().size(), "改好之后必须能读，不能卡在坏的那一次");
+    }
 }

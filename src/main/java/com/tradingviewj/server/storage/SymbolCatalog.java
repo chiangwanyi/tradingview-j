@@ -12,6 +12,7 @@ import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.BasicFileAttributes;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
@@ -61,6 +62,19 @@ public class SymbolCatalog {
     }
 
     /**
+     * 清单的解析结果，按 {@code 文件 mtime + size} 失效。
+     *
+     * <p>加这一层是因为 {@code read()} <strong>每次调用都读盘 + 解析整份 JSON</strong>，
+     * 而 {@code TradingService#spec()} 每条命令要问它好几次（2026-11-03 压测里
+     * 「一次 step 里读两遍标的名录」占了单步的一成）。清单是抓取侧低频写的静态配置，
+     * 用 mtime 判失效足够；{@code volatile} 直接换整份，不做原地修改。
+     */
+    private record Cached(long modified, long size, List<SymbolSpec> specs) {
+    }
+
+    private volatile Cached cache;
+
+    /**
      * 读出全部标的。
      *
      * @return 按清单里的书写顺序；文件不存在时是空列表
@@ -68,15 +82,24 @@ public class SymbolCatalog {
      */
     public List<SymbolSpec> read() {
         Path file = file();
-        if (!Files.isRegularFile(file)) {
+        BasicFileAttributes attrs = attributes(file);
+        if (attrs == null || !attrs.isRegularFile()) {
+            cache = null;
             log.info("标的清单不存在，跳过同步: {}", file);
             return List.of();
+        }
+        long modified = attrs.lastModifiedTime().toMillis();
+        long size = attrs.size();
+        Cached cached = cache;
+        if (cached != null && cached.modified() == modified && cached.size() == size) {
+            return cached.specs();
         }
 
         JsonNode root;
         try {
             root = mapper.readTree(Files.readString(file, StandardCharsets.UTF_8));
         } catch (IOException e) {
+            // 坏数据不缓存：下一次调用还要再试一次，否则改好了也看不见
             throw new UncheckedIOException("标的清单解析失败: " + file, e);
         }
 
@@ -84,7 +107,9 @@ public class SymbolCatalog {
         JsonNode symbols = root.path("symbols");
         if (!symbols.isObject()) {
             log.warn("标的清单里没有 symbols 对象: {}", file);
-            return List.of();
+            List<SymbolSpec> empty = List.of();
+            cache = new Cached(modified, size, empty);
+            return empty;
         }
 
         List<SymbolSpec> specs = new ArrayList<>();
@@ -109,7 +134,18 @@ public class SymbolCatalog {
             specs.add(new SymbolSpec(code, folder,
                     decimal(node, "tick"), decimal(node, "tickValue"), commission));
         }
-        return specs;
+        List<SymbolSpec> immutable = List.copyOf(specs);
+        cache = new Cached(modified, size, immutable);
+        return immutable;
+    }
+
+    /** 文件属性；不存在或读不到时返回 null。 */
+    private static BasicFileAttributes attributes(Path path) {
+        try {
+            return Files.readAttributes(path, BasicFileAttributes.class);
+        } catch (IOException e) {
+            return null;
+        }
     }
 
     /** 取字符串字段；缺失、null、空白都返回 {@code null}。 */

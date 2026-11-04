@@ -279,6 +279,43 @@ public class CsvBarStore {
         return Files.isRegularFile(resolveFolder(folder).resolve(date + ".csv"));
     }
 
+    /** {@code 2024-03-04.csv → 2024-03-04}；名字不像日期时返回 {@code null}。 */
+    public static LocalDate dayOf(Path file) {
+        String name = file.getFileName().toString();
+        if (name.endsWith(".csv")) {
+            name = name.substring(0, name.length() - 4);
+        }
+        try {
+            return LocalDate.parse(name);
+        } catch (RuntimeException e) {
+            return null;
+        }
+    }
+
+    /**
+     * 一串<strong>按文件名升序</strong>的日文件里，第一个「日期 ≥ {@code day}」的下标。
+     *
+     * <p>文件名是定长 {@code yyyy-MM-dd}，所以这个列表天然按日期有序 —— 「从头找到今天」
+     * 可以二分，不必把三千多个文件名逐个 {@code LocalDate.parse} 一遍。
+     * 名字不像日期的条目按「不早于」处理（起点最多提前，不会漏）。
+     *
+     * @return 全都早于 {@code day} 时返回 {@code files.size()}
+     */
+    public static int firstDayOnOrAfter(List<Path> files, LocalDate day) {
+        int lo = 0;
+        int hi = files.size();
+        while (lo < hi) {
+            int mid = (lo + hi) >>> 1;
+            LocalDate at = dayOf(files.get(mid));
+            if (at != null && at.isBefore(day)) {
+                lo = mid + 1;
+            } else {
+                hi = mid;
+            }
+        }
+        return lo;
+    }
+
     /** {@code time,open,high,low,close,volume}；解析不了返回 null（由调用方计数）。 */
     private static Bar parse(String line) {        String[] parts = line.split(",");
         if (parts.length < 5) {

@@ -515,11 +515,12 @@ export class BotRun {
     }
 
     if (source === 'order') {
-      // 下单回执只对金额与权益：撞线要等【下一根】才结算（这是当前实现的时序，见 TradeDeskService#step）
-      const expected = floorOf(ctx.rules, ctx.peak)
-      if (drift(expected, pf.lossLine)) {
-        this.violate(run, 'FLOOR_DRIFT', time, `后端亏损线 ${pf.lossLine}，重算 ${expected}（峰值 ${ctx.peak}）`)
-      }
+      /*
+       * 这里**不查亏损线**：下单可能正好落在这一天最后一根上，后端会当场把日终结算掉，
+       * 线立刻变；而 oracle 要到下一根才看得出「这根是日终」。查了就是稳定误报
+       * （2026-11-04 那批 `后端 48047.5 / 重算 48000` 就是这么来的）。
+       * 线的检查统一放到 bar 回执里、用 `ctx.prev` 滞后一根做，那里是准的。
+       */
       /*
        * ⚠️ 下单也会改变「**这一根**结束时的余额」，而日终结算点正是「这一根」。
        * 只更新 bar 回执的读数，就会漏掉成交刚打进去的那笔钱：后端结算时用的是下单后的余额，
@@ -555,13 +556,26 @@ export class BotRun {
        * 少了 ②，oracle 会等到 06:00 才认账，中间一小时的每一根都会误报「后端线偏高」
        * （2026-11-03 seed 777 那 11 条就是这么来的：后端 50616.75 / 重算 50546.5）。
        */
-      if ((day ?? null) !== (ctx.prev.day ?? null) || day === null) {
+      /*
+       * 拿哪一根的后端线来比：
+       *   · 收尾窗口里 → **这一根**。后端在这一根上就会把这一天重结一次，线跟着当前余额走，
+       *     拿上一根的线比必然差一笔强平（2026-11-04 `后端 48203.25 / 重算 48256.5`）。
+       *   · 其余 → **上一根**。是不是日终这根自己看不出来，要等下一根才知道，
+       *     所以线的检查整体滞后一根。
+       */
+      let checkTime = ctx.prev.time
+      let checkLine = ctx.prev.lossLine
+      if (day === null) {
+        ctx.peak = Math.max(ctx.peak, pf.balance)
+        checkTime = time
+        checkLine = pf.lossLine
+      } else if ((ctx.prev.day ?? null) !== day) {
         ctx.peak = Math.max(ctx.peak, ctx.prev.balance)
       }
       const expected = floorOf(ctx.rules, ctx.peak)
-      if (drift(expected, ctx.prev.lossLine)) {
-        this.violate(run, 'FLOOR_DRIFT', ctx.prev.time,
-          `后端亏损线 ${ctx.prev.lossLine}，重算 ${expected}（峰值 ${ctx.peak}）`)
+      if (drift(expected, checkLine)) {
+        this.violate(run, 'FLOOR_DRIFT', checkTime,
+          `后端亏损线 ${checkLine}，重算 ${expected}（峰值 ${ctx.peak}）`)
       }
     }
     ctx.prev = { time, day, balance: pf.balance, lossLine: pf.lossLine }

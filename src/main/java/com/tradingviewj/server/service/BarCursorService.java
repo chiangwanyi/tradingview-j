@@ -63,13 +63,12 @@ public class BarCursorService {
             return null;
         }
         LocalDate fromDay = dayOf(from);
-        for (int f = 0; f < files.size(); f++) {
+        // 文件名是 yyyy-MM-dd，字典序 = 日期序，所以「早于 from 那天」的那一段可以二分跳过。
+        // 线性跳过的代价是「每一步都解析一遍三千多个文件名」（2026-11-03 压测里这是单步的 15%）。
+        int start = fromDay == null ? 0 : CsvBarStore.firstDayOnOrAfter(files, fromDay);
+        for (int f = start; f < files.size(); f++) {
             Path file = files.get(f);
             LocalDate day = dayDateOf(file);
-            // 早于 from 那天的文件整个跳过；from 那天本身要看（当天可能还没走完）
-            if (fromDay != null && day.isBefore(fromDay)) {
-                continue;
-            }
             List<Bar> dayBars = bars.readDay(folder, day);
             for (int i = 0; i < dayBars.size(); i++) {
                 Bar bar = dayBars.get(i);

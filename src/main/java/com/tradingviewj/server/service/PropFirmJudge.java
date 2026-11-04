@@ -331,10 +331,16 @@ public class PropFirmJudge {
             return null;
         }
         PropFirmSession.Step last = null;
-        for (Path file : bars.dayFiles(symbol.getFolder())) {
-            LocalDate day = dayOfFile(file);
-            if (day == null || day.isBefore(fromDay) || day.isAfter(toDay)) {
+        List<Path> files = bars.dayFiles(symbol.getFolder());
+        // 二分到 fromDay（文件名 = 日期 = 序），再一路喂到 toDay 就停 —— 别为了走到今天
+        // 把三千多个文件名全解析一遍（这段在 2026-11-03 的压测里每步都跑）。
+        for (int f = CsvBarStore.firstDayOnOrAfter(files, fromDay); f < files.size(); f++) {
+            LocalDate day = dayOfFile(files.get(f));
+            if (day == null) {
                 continue;
+            }
+            if (day.isAfter(toDay)) {
+                break;
             }
             for (Bar bar : bars.readDay(symbol.getFolder(), day)) {
                 if (bar.barTime().compareTo(untilBarTime) > 0) {
