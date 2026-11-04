@@ -23,6 +23,7 @@ import type {
   AnnotationKind,
   AnnotationPayload,
   AnnotationStyle,
+  AudioClip,
   Bar,
   ClosedLot,
   FlatAllPayload,
@@ -38,6 +39,9 @@ import type {
   Template,
   Timeframe,
   Trade,
+  VoiceAddedPayload,
+  VoiceClearedPayload,
+  VoiceState,
 } from '@/types/protocol'
 
 /**
@@ -211,6 +215,16 @@ export const useTradeStore = defineStore('trade', () => {
    * `null` = 还没有盘面（没连上）。读它之前先判空，别给一个假的 0。
    */
   const pf = ref<PfView | null>(null)
+  /**
+   * 当前这根 K 线上的语音讲解（「本根 x/9」）。
+   *
+   * 客户端**不自己数**：条数、总数、上限都是后端算好发下来的（`voice_added` /
+   * `voice_cleared` / `bar_advanced` 三条广播都带着它）。前端 +1 的做法一旦和服务端
+   * 上限改了对不上，表现就是「按钮还能点，点了报错」。
+   */
+  const voice = ref<VoiceState>({ barTime: '', clips: [], total: 0, max: 9 })
+  /** 整个标的的语音清单（按 K 线时间排序）—— 横轴下方录音条的数据源，含早已划出视野的那些。 */
+  const voiceAll = ref<AudioClip[]>([])
   /** 磁盘上还有没有下一根 —— 【下一根】按钮的可用性。 */
   const hasNext = ref(false)
   /** 这一天（这个日文件）还剩几根没放出来。只用来写提示，不决定按钮能不能按。 */
@@ -360,6 +374,23 @@ export const useTradeStore = defineStore('trade', () => {
     return aggregate(bars.value, tf?.minutes ?? 5)
   })
 
+  // ---------------- 语音（挂在 K 线上，和账户统计无关） ----------------
+  const voiceClips = computed(() => voice.value.clips ?? [])
+  const voiceMax = computed(() => voice.value.max || 9)
+  const voiceFull = computed(() => voiceClips.value.length >= voiceMax.value)
+  /** 一段语音的地址：按主键取，文件名由后端拼（请求里不出现磁盘路径）。 */
+  function voiceUrl(clip: AudioClip): string {
+    return `/api/audio/${encodeURIComponent(clip.id)}`
+  }
+  /** 上传一段刚录好的 WAV（base64）。走 WS 而不是 HTTP 上传：它要和「挂在哪一根」同序。 */
+  function sendVoiceAudio(audioData: string, durationMs: number): boolean {
+    return sendQuiet('voice_add', { audioData, durationMs })
+  }
+  /** 清空本根的语音（不可撤销，调用方自己要做两段式确认）。 */
+  function clearVoiceBar(): void {
+    sendQuiet('voice_clear')
+  }
+
   // ---------------- 提示 ----------------
   function noteError(message: string): void {
     lastError.value = message
@@ -475,6 +506,9 @@ export const useTradeStore = defineStore('trade', () => {
     restOfDay.value = 0
     // 重连就是「按后端的样子重建」：考核读数和盘面一起换，不给上一份留残影
     pf.value = snapshot.pf ?? null
+    // 语音和 K 线一起来：录音条要一次摆对，晚一条消息到就会先画一条空带子
+    voice.value = snapshot.voice ?? { barTime: '', clips: [], total: 0, max: 9 }
+    voiceAll.value = snapshot.voiceAll ?? []
     pendingStep.value = false
     pendingAction.value = ''
     clearStepTimer()
@@ -561,6 +595,14 @@ export const useTradeStore = defineStore('trade', () => {
       case 'annotation_cleared':
         clearAnnotationList()
         return
+      // 语音：两条广播的负载形状相同（改完之后的清单 + 全量），走同一个更新
+      case 'voice_added':
+      case 'voice_cleared': {
+        const p = event.payload as VoiceAddedPayload | VoiceClearedPayload
+        voice.value = p.voice
+        voiceAll.value = p.voiceAll ?? voiceAll.value
+        return
+      }
       default:
         // 收到一个还不认识的动作：说明协议变了，得说出来，不能装作没事
         noteError(`收到一个还不认识的动作「${event.action}」`)
@@ -622,6 +664,8 @@ export const useTradeStore = defineStore('trade', () => {
     restOfDay.value = payload.hiddenBars
     accountBarTime.value = bar.time
     if (bar.time.length >= 10) day.value = bar.time.slice(0, 10)
+    // 换了一根 = 换一份「本根 x/9」；录音条上的标记来自 voiceAll，那里不跟着变
+    if (payload.voice) voice.value = payload.voice
 
     const inst = instance.value
     if (!inst) return
@@ -1099,6 +1143,15 @@ export const useTradeStore = defineStore('trade', () => {
     pointValue,
     openOrders,
     orderQuantity,
+    // 语音
+    voice,
+    voiceAll,
+    voiceClips,
+    voiceMax,
+    voiceFull,
+    voiceUrl,
+    sendVoiceAudio,
+    clearVoiceBar,
     // 模板
     templates,
     activeTemplate,

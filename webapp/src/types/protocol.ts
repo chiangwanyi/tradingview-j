@@ -780,16 +780,22 @@ export interface RecordingStep {
 
 /** 一段挂在某根 K 线上的录音。`time` 是 K 线时间（存储键）。 */
 export interface AudioClip {
+  /** 主键，音频走 `GET /api/audio/<id>` 取 */
   id: string
-  /** 在交易记录里是第几步；0 = 空仓时录的（语音是盘面数据，和记录无关） */
-  step: number
+  /**
+   * 在交易记录里是第几步；0 = 空仓时录的。
+   *
+   * webapp 没有「交易记录」这条线（语音只挂在 K 线上），所以后端不下发这个字段 ——
+   * 同一根上的先后按 `createdAt` 排。字段留着是为了集合和 web/ 对齐，读到 undefined 正常。
+   */
+  step?: number
   time: string
   durationMs: number
-  /** 文件名（记录里是 audio-N.wav，实例上的语音是 voice-N.wav），音频本身走 HTTP 取 */
+  /** 相对路径，只用于「这条是哪条」的身份判断；音频本身按 id 取 */
   file: string
   size: number
   createdAt: number
-  /** 谁录的（human / bot）；旧记录里没有这个字段 */
+  /** 谁录的（human / bot / system） */
   by?: string
 }
 

@@ -26,12 +26,14 @@
 
 import type {
   Annotation,
+  AudioClip,
   ClosedLot,
   PfView,
   TemplatesMessage,
   TradeOrder,
   Position,
   Trade,
+  VoiceState,
 } from '@/types/protocol'
 
 /** 一根 K 线（和后端 `BarView` 同名）。没有 `ema20` —— 均线由前端现算。 */
@@ -87,6 +89,10 @@ export interface DeskSnapshot {
   unrealizedPnl: number
   /** 考核读数：余额 / 亏损线 / 权益。见 `types/protocol.ts` 的 `PfView` */
   pf?: PfView
+  /** 当前这根 K 线上的语音讲解；录音条和「本根 x/9」靠它 */
+  voice?: VoiceState
+  /** 整个标的的语音清单（横轴下方的录音条照它摆标记） */
+  voiceAll?: AudioClip[]
 }
 
 /**
@@ -114,6 +120,8 @@ export interface BarAdvancedPayload {
   pf?: PfView
   /** 只装这一根触发的成交（多数时候为空） */
   fills: Trade[]
+  /** 换根之后的语音状态（清单和「本根 x/9」跟着走） */
+  voice?: VoiceState
 }
 
 /**

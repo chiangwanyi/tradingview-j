@@ -1,6 +1,6 @@
 package com.tradingviewj.server.entity.audit.payload;
 
-import com.tradingviewj.server.entity.voice.AudioClip;
+import com.tradingviewj.server.dto.AudioClipView;
 
 import java.util.List;
 
@@ -18,7 +18,7 @@ import java.util.List;
  */
 public record VoiceState(
         String barTime,
-        List<AudioClip> clips,
+        List<AudioClipView> clips,
         int total,
         int max
 ) {

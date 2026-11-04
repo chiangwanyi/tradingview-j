@@ -1,6 +1,6 @@
 package com.tradingviewj.server.entity.audit.payload;
 
-import com.tradingviewj.server.entity.voice.AudioClip;
+import com.tradingviewj.server.dto.AudioClipView;
 import com.tradingviewj.server.enums.ReplayAction;
 
 import java.util.List;
@@ -22,9 +22,9 @@ import java.util.List;
  * 这条描述的是<strong>盘面</strong>上多了一段声音，和有没有在记一笔交易无关。
  */
 public record VoiceAddedPayload(
-        AudioClip audio,
+        AudioClipView audio,
         VoiceState voice,
-        List<AudioClip> voiceAll
+        List<AudioClipView> voiceAll
 ) implements ReplayActionPayload {
 
     @Override

@@ -2,6 +2,7 @@
 import { computed, nextTick, onMounted, ref } from 'vue'
 
 import AnnotationTemplates from '@/components/AnnotationTemplates.vue'
+import VoiceCapture from '@/components/VoiceCapture.vue'
 import { DRAW_TOOLS, TOOL_LABEL, isDrawTool, useTradeStore, type DrawTool } from '@/stores/trade'
 
 /**
@@ -171,6 +172,11 @@ const btnActive = 'border-accent bg-accent-soft text-accent'
     >
       {{ store.pendingStep ? '取下一根…' : '下一根 ›' }}
     </button>
+
+    <!-- 录音：和绘图/翻页一样是「对着 K 线用」的动作，所以贴在同一个浮窗里；
+         麦克风的开关也认空格（见 VoiceCapture） -->
+    <div class="mx-1.5 h-4 w-px bg-line" />
+    <VoiceCapture />
 
     <!--
       模板条：只在拿着笔的时候出现，贴在浮窗下面。

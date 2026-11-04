@@ -8,6 +8,7 @@ import com.tradingviewj.server.exception.BusinessException;
 import com.tradingviewj.server.service.AnnotationService;
 import com.tradingviewj.server.service.AnnotationTemplateService;
 import com.tradingviewj.server.service.TradingService;
+import com.tradingviewj.server.service.VoiceService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -48,6 +49,9 @@ import java.util.concurrent.ConcurrentHashMap;
  *                                         → {"type":"event","action":"annotation_*"}   广播
  * {"type":"annotation_deleted","annotationId":"…"} / {"type":"annotation_cleared"}
  *                                         → {"type":"event","action":"annotation_*"}   广播
+ * {"type":"voice_add","audioData":"<base64 wav>","durationMs":1234}
+ *                                         → {"type":"event","action":"voice_added"}    广播
+ * {"type":"voice_clear"}                  → {"type":"event","action":"voice_cleared"}  广播
  * {"type":"template_list"}                → {"type":"templates","templates":[…]}       只回发起方
  * {"type":"template_save","template":{…}} → {"type":"templates",…,"lastSavedId":"…"}  广播给所有人
  * {"type":"template_delete","templateId":"…"} → {"type":"templates",…}                广播给所有人
@@ -103,7 +107,8 @@ public class TradeSocketHandler extends TextWebSocketHandler {
      * 则以 {@code ReplayAction} 的 {@code wire()} 形式出现 —— 一份名字，两个方向共用
      * （前端 {@code webapp/src/types/protocol.ts} 的 {@code ACTION} 表是同一批串）。
      * 唯一例外是 {@code market_order}：市价单一条命令产出一条事实（{@code order_filled}），
-     * 命令名不等于事实名，见类注释。
+     * 命令名不等于事实名，见类注释。语音的 {@code voice_add} / {@code voice_clear} 同理
+     * （产出 {@code voice_added} / {@code voice_cleared}），所以它们也是这里命名的常量。
      */
     private static final String TYPE_HELLO = "hello";
     /** 推进一根。名字不等于它产出的事实（{@code bar_advanced}），这是本协议第二个例外。 */
@@ -130,6 +135,7 @@ public class TradeSocketHandler extends TextWebSocketHandler {
     private final TradeDeskService desk;
     private final AnnotationService annotations;
     private final AnnotationTemplateService templates;
+    private final VoiceService voice;
 
     /** accountId → 这个账户的所有连接。 */
     private final Map<String, Set<WebSocketSession>> rooms = new ConcurrentHashMap<>();
@@ -181,6 +187,12 @@ public class TradeSocketHandler extends TextWebSocketHandler {
                         requireInAccount(session, request), request.annotationId()));
                 case "annotation_cleared" -> broadcast(annotations.clear(
                         requireInAccount(session, request)));
+                // 语音：和画线一样改盘面、要记账，走 requireInAccount + 房间广播。
+                // 命令名（voice_add / voice_clear）和事实名（voice_added / voice_cleared）不同 ——
+                // 理由同 market_order：「加一段」是意图，「多了一段」是结果，方向不能混。
+                case "voice_add" -> broadcast(voice.add(
+                        requireInAccount(session, request), request.audioData(), request.durationMs()));
+                case "voice_clear" -> broadcast(voice.clear(requireInAccount(session, request)));
                 // 模板：全局偏好，不记账、不看账户。
                 case TYPE_TEMPLATE_LIST -> sendTo(session, templatesMessage(null));
                 case TYPE_TEMPLATE_SAVE -> saveTemplate(session, request);

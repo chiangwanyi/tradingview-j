@@ -6,6 +6,7 @@ import ChartToolbar from '@/components/ChartToolbar.vue'
 import DrawToolbarFloat from '@/components/DrawToolbarFloat.vue'
 import Icon from '@/components/Icon.vue'
 import TradeDock from '@/components/TradeDock.vue'
+import VoiceTape from '@/components/VoiceTape.vue'
 import { usd } from '@/data/rules'
 import { useTradeStore } from '@/stores/trade'
 
@@ -189,6 +190,10 @@ onBeforeUnmount(() => store.disconnect())
           </p>
         </div>
       </div>
+
+      <!-- 录音条：横向和行情区严格对齐（读的是同一份 chartViewport），
+           所以每个标记都正好在它那根 K 线的正下方 -->
+      <VoiceTape />
 
       <TradeDock />
     </main>

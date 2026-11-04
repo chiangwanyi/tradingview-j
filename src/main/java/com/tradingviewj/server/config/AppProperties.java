@@ -30,4 +30,12 @@ public class AppProperties {
      * 两者分开是因为它们的生命周期不同 —— 行情会被清、会被重新抓，业务库不会。
      */
     private String barRoot = "./data";
+
+    /**
+     * 语音讲解的 WAV 根目录。
+     *
+     * <p>和 {@code barRoot} 分开：行情是 CSV、会被重抓，语音是用户自己讲的、不能跟着行情一起被清。
+     * 库里（{@code audio_clip.file_name}）只存相对这里的路径。
+     */
+    private String audioRoot = "./audio";
 }

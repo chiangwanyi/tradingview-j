@@ -3,10 +3,12 @@ package com.tradingviewj.server.ws;
 import com.tradingviewj.server.dto.BarView;
 import com.tradingviewj.server.dto.ClosedLotView;
 import com.tradingviewj.server.dto.AnnotationView;
+import com.tradingviewj.server.dto.AudioClipView;
 import com.tradingviewj.server.dto.OrderView;
 import com.tradingviewj.server.dto.PositionView;
 import com.tradingviewj.server.dto.PfView;
 import com.tradingviewj.server.dto.TradeView;
+import com.tradingviewj.server.entity.audit.payload.VoiceState;
 
 import java.math.BigDecimal;
 import java.util.List;
@@ -77,7 +79,16 @@ public record DeskSnapshot(
          * <strong>本阶段</strong>的余额（升级时被重置回账户规模）。两者在第一批成交之前相等，
          * 之后越离越远 —— 别拿一个去顶另一个。
          */
-        PfView pf
+        PfView pf,
+        /**
+         * 当前这根 K 线上的语音讲解（「本根 x/9」和录音按钮的计数靠它）。
+         *
+         * <p>和 K 线一起给：横轴下方的录音条要一次摆对位置，晚一条消息到就会有
+         * 「先画一条空带子、再长出标记」的闪动。
+         */
+        VoiceState voice,
+        /** 整个标的的语音清单（录音条上「别处还有几条」、`‹n` / `n›` 的数据源）。 */
+        List<AudioClipView> voiceAll
 ) {
 
     public static DeskSnapshot of(String accountId, String accountName, String stage, String status,
@@ -86,9 +97,11 @@ public record DeskSnapshot(
                                  List<OrderView> orders, List<TradeView> trades,
                                  List<ClosedLotView> closedLots, PositionView position,
                                  BigDecimal realizedPnl, BigDecimal unrealizedPnl,
-                                 List<AnnotationView> annotations, PfView pf) {
+                                 List<AnnotationView> annotations, PfView pf,
+                                 VoiceState voice, List<AudioClipView> voiceAll) {
         return new DeskSnapshot("snapshot", accountId, accountName, stage, status,
                 symbolId, folder, tick, tickValue, day, barTime, hasNext, bars,
-                orders, trades, closedLots, position, realizedPnl, unrealizedPnl, annotations, pf);
+                orders, trades, closedLots, position, realizedPnl, unrealizedPnl, annotations, pf,
+                voice, voiceAll);
     }
 }

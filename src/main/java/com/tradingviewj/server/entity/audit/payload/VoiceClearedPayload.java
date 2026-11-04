@@ -1,6 +1,6 @@
 package com.tradingviewj.server.entity.audit.payload;
 
-import com.tradingviewj.server.entity.voice.AudioClip;
+import com.tradingviewj.server.dto.AudioClipView;
 import com.tradingviewj.server.enums.ReplayAction;
 
 import java.util.List;
@@ -16,9 +16,9 @@ import java.util.List;
  * 这样「加」和「清」两个方向在前端可以走同一个更新函数。
  */
 public record VoiceClearedPayload(
-        List<AudioClip> removed,
+        List<AudioClipView> removed,
         VoiceState voice,
-        List<AudioClip> voiceAll
+        List<AudioClipView> voiceAll
 ) implements ReplayActionPayload {
 
     @Override

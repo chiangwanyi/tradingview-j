@@ -1,10 +1,12 @@
 package com.tradingviewj.server.ws;
 
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.web.socket.config.annotation.EnableWebSocket;
 import org.springframework.web.socket.config.annotation.WebSocketConfigurer;
 import org.springframework.web.socket.config.annotation.WebSocketHandlerRegistry;
+import org.springframework.web.socket.server.standard.ServletServerContainerFactoryBean;
 
 /**
  * 把 {@link TradeSocketHandler} 挂到 {@code /ws}。
@@ -29,6 +31,21 @@ import org.springframework.web.socket.config.annotation.WebSocketHandlerRegistry
 public class WebSocketConfig implements WebSocketConfigurer {
 
     private final TradeSocketHandler handler;
+
+    /**
+     * 单条消息的缓冲区上限。
+     *
+     * <p><strong>不能是默认的 8KB</strong>：{@code voice_add} 会把一整段 WAV（base64 后最大约
+     * 2.8MB）塞进一条文本消息，默认缓冲会让 Tomcat 直接关连接 —— 现象是「一录音就断线重连」，
+     * 而日志里只有一句「消息过大」。上限按 {@code VoiceService} 的 2MB 音频留足余量。
+     */
+    @Bean
+    public ServletServerContainerFactoryBean webSocketContainer() {
+        ServletServerContainerFactoryBean container = new ServletServerContainerFactoryBean();
+        container.setMaxTextMessageBufferSize(4 * 1024 * 1024);
+        container.setMaxBinaryMessageBufferSize(4 * 1024 * 1024);
+        return container;
+    }
 
     @Override
     public void registerWebSocketHandlers(WebSocketHandlerRegistry registry) {

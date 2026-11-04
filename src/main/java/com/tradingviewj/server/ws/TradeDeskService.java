@@ -7,7 +7,6 @@ import com.tradingviewj.server.dto.TradeView;
 import com.tradingviewj.server.entity.audit.AuditEvent;
 import com.tradingviewj.server.entity.audit.payload.BarAdvancedPayload;
 import com.tradingviewj.server.entity.audit.payload.FlatAllPayload;
-import com.tradingviewj.server.entity.audit.payload.VoiceState;
 import com.tradingviewj.server.entity.propfirm.PropFirmAccount;
 import com.tradingviewj.server.entity.trade.Trade;
 import com.tradingviewj.server.enums.Actor;
@@ -20,6 +19,7 @@ import com.tradingviewj.server.service.PropFirmAccountService;
 import com.tradingviewj.server.service.PropFirmClock;
 import com.tradingviewj.server.service.PropFirmJudge;
 import com.tradingviewj.server.service.TradingService;
+import com.tradingviewj.server.service.VoiceService;
 import com.tradingviewj.server.storage.CsvBarStore;
 import com.tradingviewj.server.storage.SymbolSpec;
 import lombok.RequiredArgsConstructor;
@@ -76,9 +76,6 @@ import java.util.List;
 @RequiredArgsConstructor
 public class TradeDeskService {
 
-    /** 语音每根的上限。和 {@code AudioClip} 的规则同一个数，前端只照它显示，不自己数。 */
-    private static final int VOICE_MAX_PER_BAR = 9;
-
     private final PropFirmAccountService accounts;
     private final PropFirmJudge judge;
     private final CsvBarStore bars;
@@ -87,6 +84,7 @@ public class TradeDeskService {
     private final AuditLogService audit;
     private final TradingService trading;
     private final AnnotationService annotations;
+    private final VoiceService voice;
 
     /**
      * 账户现在的盘面（K 线窗口 + 账）。
@@ -133,7 +131,9 @@ public class TradeDeskService {
                 // 图形按标的全取：它不挂账户，换账户做同一张图，昨天画的线还在
                 annotations.list(spec.code()),
                 // 只读地重放一遍拿读数：快照不开事务写账户，余额的落库交给「推进一根」和成交
-                judge.view(account, judge.assess(account)));
+                judge.view(account, judge.assess(account)),
+                voice.state(spec.code(), barTime),
+                voice.allViews(spec.code()));
     }
 
     /**
@@ -245,7 +245,8 @@ public class TradeDeskService {
                 pf,
                 // fills 只装这一根触发的成交（多数时候为空），trades 才是历史全量
                 fills,
-                new VoiceState(barTime, List.of(), 0, VOICE_MAX_PER_BAR));
+                // 换了一根 K 线 = 换一份「本根 x/9」；录音条上的标记来自 voiceAll，那里不跟着变
+                voice.state(spec.code(), barTime));
 
         AuditEvent event = audit.append(accountId, spec.code(), barTime, Actor.HUMAN, payload);
         log.debug("账户 {} 步进到 {}（seq={}，今天还剩 {} 根，本根成交 {} 笔）",
@@ -349,7 +350,7 @@ public class TradeDeskService {
                 after.unrealizedPnl(),
                 pf,
                 List.of(),
-                new VoiceState(barTime, List.of(), 0, VOICE_MAX_PER_BAR));
+                voice.state(spec.code(), barTime));
         AuditEvent event = audit.append(accountId, spec.code(), barTime, Actor.HUMAN, payload);
         log.info("账户 {} 结算今日：直接推进到 {}（seq={}，已平仓无挂单才允许整段跳过）",
                 accountId, barTime, event.getSeq());

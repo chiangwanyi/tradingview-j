@@ -67,6 +67,8 @@ app:
   name: tradingview-j-server
   # K 线 CSV 的根目录（对应 Go 版 config.json 的 outDir）
   bar-root: ./data
+  # 语音讲解的 WAV 根目录（和行情分开：行情会被重抓，录音不能跟着一起清）
+  audio-root: ./audio
 
 # Swagger / OpenAPI 文档（springdoc）
 # 页面地址：http://127.0.0.1:8791/swagger-ui.html

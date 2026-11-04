@@ -64,6 +64,10 @@ public record WsRequest(
          * 分成三个 record 只会得到三份一样的字段列表。区别在动作名上，
          * 而动作名由 {@code type} 表达。
          */
-        AnnotationCommand annotation
+        AnnotationCommand annotation,
+        /** {@code voice_add}：16kHz/16bit/单声道 WAV 的 base64（一段一分钟约 2.8MB 字符串） */
+        String audioData,
+        /** {@code voice_add}：前端量到的时长（毫秒）；为空时后端按字节数反推 */
+        Integer durationMs
 ) {
 }
