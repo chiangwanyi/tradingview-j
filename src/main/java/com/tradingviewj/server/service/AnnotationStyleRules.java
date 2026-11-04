@@ -79,6 +79,7 @@ final class AnnotationStyleRules {
             case RECT -> "矩形";
             case ARROW -> "箭头线";
             case FIB -> "斐波那契";
+            case ABCD -> "AB=CD";
         };
     }
 

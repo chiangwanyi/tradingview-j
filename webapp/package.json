@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "vue-tsc -b && vite build",
     "preview": "vite preview",
-    "check": "node --experimental-strip-types --disable-warning=ExperimentalWarning scripts/rules-check.mts && node --experimental-strip-types --disable-warning=ExperimentalWarning scripts/view-state-check.mts && node --experimental-strip-types --disable-warning=ExperimentalWarning scripts/bot-oracle-check.mts",
+    "check": "node --experimental-strip-types --disable-warning=ExperimentalWarning scripts/rules-check.mts && node --experimental-strip-types --disable-warning=ExperimentalWarning scripts/view-state-check.mts && node --experimental-strip-types --disable-warning=ExperimentalWarning scripts/bot-oracle-check.mts && node --experimental-strip-types --disable-warning=ExperimentalWarning scripts/abcd-check.mts",
     "bot": "node --experimental-strip-types --disable-warning=ExperimentalWarning scripts/bot-run.mts"
   },
   "dependencies": {

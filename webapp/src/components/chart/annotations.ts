@@ -25,6 +25,8 @@ export interface FigureInput {
   id: string
   kind: string
   start: FigurePoint
+  /** 只有 abcd 用：B 点 */
+  mid?: FigurePoint
   end: FigurePoint
   style?: AnnotationStyle
   /** 0.5.2 及以前的单一颜色，旧存档里还带着 */
@@ -229,6 +231,49 @@ export function buildFigure(a: FigureInput, view: FigureView): Figure | null {
         })
         figure.chips.push({ x: right - 4, y: y - 4, text: `${lv.ratio}  ${view.priceText(price)}`, color: lv.color, anchor: 'end' })
       }
+      return figure
+    }
+    case 'abcd': {
+      /*
+       * AB=CD：A/B/C 三个点，D = C + (B - A)。
+       *
+       * 为什么在**屏幕坐标**里相加就够了：x 和时间下标、y 和价格都是仿射关系，
+       * 所以「屏幕上同一段向量」与「同样根数、同样价差」是等价的 —— 缩放、
+       * 平移之后 D 依然落在「C 往右 b-a 根、往 b-a 个价差」那个位置。
+       * D 不存库：存进去就会和三个点脱节（理由同斐波那契四条水平线）。
+       */
+      const mid = a.mid
+      if (!mid) {
+        // 预览中间态（只点了 A）：没有 B 就没有 D，先画一条线让人看得见落点
+        figure.segs.push({ x1, y1, x2, y2, color: style.color, width: style.width, dash, opacity: 1 })
+        return figure
+      }
+      const xm = view.xOf(mid)
+      if (xm === undefined) return null
+      const ym = view.yOfPrice(mid.price)
+      const xd = x2 + (xm - x1)
+      const yd = y2 + (ym - y1)
+      const seg = (ax: number, ay: number, bx: number, by: number): Seg => ({
+        x1: ax,
+        y1: ay,
+        x2: bx,
+        y2: by,
+        color: style.color,
+        width: style.width,
+        dash,
+        opacity: 1,
+      })
+      figure.segs.push(seg(x1, y1, xm, ym), seg(xm, ym, x2, y2), seg(x2, y2, xd, yd))
+      // 三条水平线：过 A、B、D 的价位，横向铺满整个图形（斐波那契那样的一排平行线）
+      const left = Math.min(x1, xm, x2, xd)
+      const right = Math.max(x1, xm, x2, xd)
+      for (const y of [y1, ym, yd]) figure.segs.push(seg(left, y, right, y))
+      // 手柄只有 A/B/C：D 不是用户给的，拖不了
+      figure.anchors = [
+        { x: x1, y: y1 },
+        { x: xm, y: ym },
+        { x: x2, y: y2 },
+      ]
       return figure
     }
     case 'ray': {

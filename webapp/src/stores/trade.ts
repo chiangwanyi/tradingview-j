@@ -87,8 +87,8 @@ import type {
 /** 画布上当前手里的工具：指针 + 五种绘图工具（和 web/ 完全一致）。 */
 export type ChartTool = 'select' | DrawTool
 
-/** 五种绘图工具（不含指针）。模板、样式、绘制规则都按它分类。 */
-export type DrawTool = 'trend' | 'ray' | 'rect' | 'arrow' | 'fib'
+/** 六种绘图工具（不含指针）。模板、样式、绘制规则都按它分类。 */
+export type DrawTool = AnnotationKind
 
 /**
  * 手数上限：**两位数**（1..99）。下限自然是 1 —— 期货没有 0 手，也没有半手。
@@ -103,11 +103,11 @@ export type DrawTool = 'trend' | 'ray' | 'rect' | 'arrow' | 'fib'
 export const ORDER_QTY_MAX = 99
 
 /**
- * 五种绘图工具。顺序就是工具栏上的顺序，也是模板列表的分组顺序。
+ * 六种绘图工具。顺序就是工具栏上的顺序，也是模板列表的分组顺序。
  *
  * 字符串就是协议里的 `kind`，和后端 `Drawing.Kind` 的常量名（小写）一一对应。
  */
-export const DRAW_TOOLS: DrawTool[] = ['trend', 'ray', 'rect', 'arrow', 'fib']
+export const DRAW_TOOLS: DrawTool[] = ['trend', 'ray', 'rect', 'arrow', 'fib', 'abcd']
 
 /** 工具名。界面上的中文只在这里写一次。 */
 export const TOOL_LABEL: Record<ChartTool, string> = {
@@ -117,6 +117,7 @@ export const TOOL_LABEL: Record<ChartTool, string> = {
   rect: '矩形',
   arrow: '箭头线',
   fib: '斐波那契',
+  abcd: 'AB=CD',
 }
 
 export function isDrawTool(tool: ChartTool): tool is DrawTool {
@@ -856,6 +857,8 @@ export const useTradeStore = defineStore('trade', () => {
   function addAnnotation(input: {
     kind: AnnotationKind
     start: Point
+    /** 只有 abcd 用：B 点 */
+    mid?: Point
     end: Point
     style: AnnotationStyle
     snap: boolean
@@ -866,6 +869,7 @@ export const useTradeStore = defineStore('trade', () => {
         id: newAnnotationId(),
         kind: input.kind,
         start: input.start,
+        mid: input.mid,
         end: input.end,
         style: resolveStyle({ kind: input.kind, style: input.style }),
         snapped: input.snap,
@@ -874,11 +878,11 @@ export const useTradeStore = defineStore('trade', () => {
   }
 
   /** 拖动端点松手。**两端一起发** —— 只改一端会让射线/矩形的另一端停在没预期的地方。 */
-  function moveAnnotation(id: string, start: Point, end: Point, snap: boolean): void {
+  function moveAnnotation(id: string, start: Point, mid: Point | undefined, end: Point, snap: boolean): void {
     const a = instance.value?.annotations.find((x) => x.id === id)
     if (!a) return
     sendQuiet('annotation_moved', {
-      annotation: { id, kind: a.kind, start, end, snapped: snap },
+      annotation: { id, kind: a.kind, start, mid, end, snapped: snap },
     })
   }
 

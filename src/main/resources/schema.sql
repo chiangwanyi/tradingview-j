@@ -224,7 +224,7 @@ CREATE INDEX IF NOT EXISTS idx_settlement_account ON pf_settlement (account_id, 
 CREATE TABLE IF NOT EXISTS drawing (
     id            TEXT PRIMARY KEY,
     symbol_id     TEXT NOT NULL REFERENCES symbol (id),  -- 画在哪个品种的时间轴上
-    kind          TEXT NOT NULL,     -- TREND / RAY / RECT / ARROW / FIB
+    kind          TEXT NOT NULL,     -- TREND / RAY / RECT / ARROW / FIB / ABCD
     start_bar_time TEXT NOT NULL,
     start_price   TEXT NOT NULL,
     start_offset  INTEGER NOT NULL DEFAULT 0,  -- 从锚点向右延伸的根数
@@ -242,6 +242,18 @@ CREATE TABLE IF NOT EXISTS drawing (
     updated_at    INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_drawing_symbol ON drawing (symbol_id);
+
+-- AB=CD 的中间点（B）。**最多一行**，其它图形没有行；D 点不存 ——
+-- 它是 C 加上 AB 的平移量，存进去就会和三个点脱节（同 Fibonacci 的水平线）。
+-- 为什么另开一张表而不是给 drawing 加三列：脚本全是 CREATE ... IF NOT EXISTS，
+-- 老库加列得另写 ALTER，而这张表里已经有用户画的线，不能重建。
+CREATE TABLE IF NOT EXISTS drawing_mid (
+    drawing_id  TEXT NOT NULL REFERENCES drawing (id) ON DELETE CASCADE,
+    bar_time    TEXT NOT NULL,
+    price       TEXT NOT NULL,
+    bar_offset  INTEGER NOT NULL DEFAULT 0,   -- 「offset」是 SQL 关键字
+    PRIMARY KEY (drawing_id)
+);
 
 -- 斐波那契的四条水平线（只有 FIB 图形有）。
 -- 这一条是**真级联**：水平线是图形的一部分，图形没了它就没有意义。

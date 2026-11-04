@@ -21,11 +21,19 @@ import com.tradingviewj.server.dto.AnnotationStyleView;
 @JsonIgnoreProperties(ignoreUnknown = true)
 public record AnnotationCommand(
         String id,
-        /** trend / ray / rect / arrow / fib */
+        /** trend / ray / rect / arrow / fib / abcd */
         String kind,
         AnnotationPointView start,
+        /** AB=CD 的 B 点；别的图形不传。 */
+        AnnotationPointView mid,
         AnnotationPointView end,
         AnnotationStyleView style,
         Boolean snapped
 ) {
+
+    /** 两个点的图形（除 AB=CD 外的全部）：不写 mid。 */
+    public AnnotationCommand(String id, String kind, AnnotationPointView start, AnnotationPointView end,
+                            AnnotationStyleView style, Boolean snapped) {
+        this(id, kind, start, null, end, style, snapped);
+    }
 }

@@ -78,6 +78,31 @@ public class Drawing extends BaseEntity {
     @Embedded
     private DrawingStyle style;
 
+    /**
+     * AB=CD 的中间点 B。<strong>0 或 1 项</strong>，其它图形这里是空集合。
+     *
+     * <p>为什么是子表而不是 {@code drawing} 上的三列：{@code schema.sql} 全是
+     * {@code CREATE ... IF NOT EXISTS}，老库加列必须另写 ALTER（SQLite 没有
+     * {@code ADD COLUMN IF NOT EXISTS}），而 {@code drawing} 里已有用户画的线不能重建。
+     * 新表对老库是纯增量，和 {@code drawing_fib_level} 同一个理由。
+     */
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "drawing_mid", joinColumns = @JoinColumn(name = "drawing_id"))
+    @AttributeOverride(name = "offset", column = @Column(name = "bar_offset", nullable = false))
+    private List<Anchor> mids = new ArrayList<>();
+
+    /** 中间点（非 AB=CD 图形返回 {@code null}）。 */
+    public Anchor mid() {
+        return mids.isEmpty() ? null : mids.get(0);
+    }
+
+    public void setMid(Anchor mid) {
+        mids.clear();
+        if (mid != null) {
+            mids.add(mid);
+        }
+    }
+
     /** 端点是否吸附过某根 K 线的 OHLC（界面上画个小圆点提示）。 */
     @Setter
     @Column(nullable = false)
@@ -147,6 +172,12 @@ public class Drawing extends BaseEntity {
         this.end = end;
     }
 
+    /** 三个点的图形（AB=CD）整体挪动 / 拖端点：中间点一起走，不然 B 会留在原地。 */
+    public void moveTo(Anchor start, Anchor mid, Anchor end) {
+        moveTo(start, end);
+        setMid(mid);
+    }
+
     public enum Kind {
         /** 两点连成的线段。 */
         TREND,
@@ -157,6 +188,8 @@ public class Drawing extends BaseEntity {
         /** 带箭头的线段。 */
         ARROW,
         /** 斐波那契回撤：两个端点只提供价格区间。 */
-        FIB
+        FIB,
+        /** AB=CD：A/B/C 三个点，D = C + (B - A)（AB 平移一段，起点落在 C 上）。 */
+        ABCD
     }
 }

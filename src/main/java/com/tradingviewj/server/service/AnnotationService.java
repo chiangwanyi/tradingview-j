@@ -85,6 +85,7 @@ public class AnnotationService {
         PropFirmAccount account = accounts.requireExisting(accountId);
         Drawing.Kind kind = AnnotationStyleRules.kindOf(cmd.kind());
         Anchor start = anchor(account, cmd.start(), "起点");
+        Anchor mid = midAnchor(account, kind, cmd);
         Anchor end = anchor(account, cmd.end(), "终点");
 
         String id = cmd.id() == null ? "" : cmd.id().trim();
@@ -94,6 +95,7 @@ public class AnnotationService {
         Drawing drawing = id.isEmpty()
                 ? Drawing.of(account.getSymbolId(), kind, start, end, actor())
                 : Drawing.of(id, account.getSymbolId(), kind, start, end, actor());
+        drawing.setMid(mid);
         applyStyle(drawing, kind, cmd.style());
         drawing.setSnapped(Boolean.TRUE.equals(cmd.snapped()));
 
@@ -112,7 +114,9 @@ public class AnnotationService {
     public TradingService.Event move(String accountId, AnnotationCommand cmd) {
         PropFirmAccount account = accounts.requireExisting(accountId);
         Drawing drawing = require(account, cmd);
-        drawing.moveTo(anchor(account, cmd.start(), "起点"), anchor(account, cmd.end(), "终点"));
+        drawing.moveTo(anchor(account, cmd.start(), "起点"),
+                midAnchor(account, drawing.getKind(), cmd),
+                anchor(account, cmd.end(), "终点"));
         drawing.setSnapped(Boolean.TRUE.equals(cmd.snapped()));
         log.debug("账户 {} 挪动了图形 {}", accountId, drawing.getId());
         return record(account, new AnnotationMovedPayload(AnnotationView.of(drawing)));
@@ -219,6 +223,21 @@ public class AnnotationService {
                     + last + "）：图形不能锚定还没走到的行情");
         }
         return new Anchor(point.time(), point.price(), point.offset());
+    }
+
+    /**
+     * AB=CD 的中间点：<strong>必须有</strong>（少了它这条图形画不出来），其它图形一律忽略。
+     *
+     * @throws BusinessException AB=CD 没给 B 点
+     */
+    private static Anchor midAnchor(PropFirmAccount account, Drawing.Kind kind, AnnotationCommand cmd) {
+        if (kind != Drawing.Kind.ABCD) {
+            return null;
+        }
+        if (cmd.mid() == null) {
+            throw new BusinessException("AB=CD 要三个点：缺中间点 B");
+        }
+        return anchor(account, cmd.mid(), "中间点");
     }
 
     /** 把协议样式写进实体（含斐波那契四条线）。样式一律先过一遍夹取。 */

@@ -38,6 +38,8 @@ public record AnnotationView(
         String id,
         String kind,
         AnnotationPointView start,
+        /** AB=CD 的 B 点；其它图形没有这个字段（全局 non_null 会省掉这一键）。 */
+        AnnotationPointView mid,
         AnnotationPointView end,
         AnnotationStyleView style,
         boolean snapped,
@@ -51,6 +53,7 @@ public record AnnotationView(
                 drawing.getId(),
                 lower(drawing.getKind()),
                 point(drawing.getStart()),
+                point(drawing.mid()),
                 point(drawing.getEnd()),
                 style(drawing.getStyle(), drawing.getFibLevels()),
                 drawing.isSnapped(),

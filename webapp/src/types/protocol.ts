@@ -65,12 +65,13 @@ export interface Point {
 }
 
 /**
- * 五种绘图工具。字符串就是协议里的 `kind`，和后端 annotation.go 的常量一一对应。
+ * 六种绘图工具。字符串就是协议里的 `kind`，和后端 Drawing.Kind 一一对应。
  *
  * 它们全部用「起点 + 终点」两个点描述：趋势线/射线/箭头线是线的两端，
  * 矩形是两个对角点，斐波那契回撤是价格区间的两端。
+ * **唯一例外是 `abcd`**：它多一个 `mid`（B 点），D 点不存、由 A/B/C 现算。
  */
-export type AnnotationKind = 'trend' | 'ray' | 'rect' | 'arrow' | 'fib'
+export type AnnotationKind = 'trend' | 'ray' | 'rect' | 'arrow' | 'fib' | 'abcd'
 
 /** 线型（只有两种：点线在 1px 上和虚线看不出区别） */
 export type DashStyle = 'solid' | 'dashed'
@@ -98,6 +99,8 @@ export interface Annotation {
   id: string
   kind: string
   start: Point
+  /** 只有 abcd 有：B 点（start=A、end=C，D 由 A/B/C 现算） */
+  mid?: Point
   end: Point
   style?: AnnotationStyle
   /** 0.5.2 及以前的单一颜色，只在读旧存档时出现；新标注只用 style.color */

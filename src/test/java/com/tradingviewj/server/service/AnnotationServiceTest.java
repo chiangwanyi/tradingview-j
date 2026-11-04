@@ -60,8 +60,12 @@ import static org.mockito.Mockito.when;
  * 右端靠 {@code offset} 往右推 —— 这正是前端表达「画到最后一根右边」的方式。
  * 需要锚在更晚的根时，先 {@code step} 一根把盘面推过去（见
  * {@link #anchorMaySitOnAnEarlierRevealedBar}）。
+ *
+ * <p><strong>必须 {@code RANDOM_PORT}</strong>：{@code WebSocketConfig#webSocketContainer}
+ * 要从 ServletContext 里取 {@code jakarta.websocket.server.ServerContainer}，
+ * 默认的 MOCK 环境里没有这个属性，整个上下文起不来（改之前这个类是跑不起来的）。
  */
-@SpringBootTest
+@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 class AnnotationServiceTest {
 
     private static final String SYMBOL = "CME_MINI:MES1!";
@@ -251,6 +255,48 @@ class AnnotationServiceTest {
         assertEquals("#123456", levels.get(1).color(), "用户给的 0 号色要保住");
         assertEquals("#38bdf8", levels.get(0).color(), "没给的 -1 补出厂色");
         assertEquals("#22c55e", levels.get(3).color(), "漏掉的 2 补出厂色");
+    }
+
+    /**
+     * AB=CD 存三个点：B 点进 {@code drawing_mid}，D 不存（= C + AB 的平移量，前端现算）。
+     * 拖动时 B 要一起走 —— 漏了它就是「挪了 A/C，B 留在原地」。
+     */
+    @Test
+    void abcdKeepsMiddlePoint() {
+        annotations.add(accountId, new AnnotationCommand("ab1", "abcd",
+                new AnnotationPointView(REVEALED, new BigDecimal("4000"), 0),
+                new AnnotationPointView(REVEALED, new BigDecimal("4020"), 2),
+                new AnnotationPointView(REVEALED, new BigDecimal("4010"), 5),
+                style(), true));
+
+        AnnotationView view = annotations.list(SYMBOL).get(0);
+        assertEquals("abcd", view.kind());
+        assertEquals(0, view.start().offset());
+        // 用 compareTo 比：子表里的价格不保留小数位（{@code 4020.00} 读回来是 {@code 4020}）
+        assertEquals(0, new BigDecimal("4020.00").compareTo(view.mid().price()));
+        assertEquals(2, view.mid().offset());
+        assertEquals(5, view.end().offset(), "C 是第三个点，不是 B");
+        assertNull(view.style().levels(), "AB=CD 没有斐波那契水平线");
+
+        annotations.move(accountId, new AnnotationCommand("ab1", "abcd",
+                new AnnotationPointView(REVEALED, new BigDecimal("4005"), 0),
+                new AnnotationPointView(REVEALED, new BigDecimal("4025"), 2),
+                new AnnotationPointView(REVEALED, new BigDecimal("4015"), 5),
+                null, false));
+
+        assertEquals(0, new BigDecimal("4025.00").compareTo(annotations.list(SYMBOL).get(0).mid().price()),
+                "B 跟着一起挪");
+    }
+
+    /** 少一个 B 点的 AB=CD 画不出来：直接拒，不留半条数据。 */
+    @Test
+    void abcdRejectsMissingMiddlePoint() {
+        assertThrows(BusinessException.class, () -> annotations.add(accountId,
+                new AnnotationCommand("ab1", "abcd",
+                        new AnnotationPointView(REVEALED, new BigDecimal("4000"), 0),
+                        new AnnotationPointView(REVEALED, new BigDecimal("4010"), 5),
+                        style(), true)));
+        assertEquals(0, drawings.count());
     }
 
     // ---------------- 改 ----------------

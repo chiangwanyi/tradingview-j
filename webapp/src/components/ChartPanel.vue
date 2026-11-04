@@ -109,6 +109,8 @@ interface ChartPoint {
 interface PendingShape {
   kind: DrawTool
   start: ChartPoint
+  /** 只有 AB=CD 用：B 点定下之后 `end` 才开始跟着鼠标走（C） */
+  mid?: ChartPoint
   end: ChartPoint
   snap: boolean
   /** 最近一次移动/单击时按没按 Shift（线类工具 = 强制水平） */
@@ -119,6 +121,8 @@ interface PendingShape {
 interface MovingShape {
   id: string
   start: ChartPoint
+  /** 只有 AB=CD 有 */
+  mid?: ChartPoint
   end: ChartPoint
 }
 
@@ -565,17 +569,24 @@ interface DragState {
   snap: boolean
   /** 正在拖的标注 */
   moveId: string
-  /** 拖的是哪个位置：-1 = 整体，0 = 起点，1 = 终点 */
-  anchor: -1 | 0 | 1
+  /**
+   * 拖的是哪个位置：-1 = 整体，其余是 `Figure.anchors` 的下标。
+   * 两个点的图形是 0 起点 / 1 终点；AB=CD 是 0 A / 1 B / 2 C。
+   */
+  anchor: number
   baseStart: Point
+  baseMid: Point | null
   baseEnd: Point
   /** 端点锚定的 K 线下标 */
   baseIndex: number
+  baseIndexMid: number
   baseIndexEnd: number
   /** 端点从锚点往右延伸的根数（>0 = 在最后一根 K 线的右侧） */
   baseOffset: number
+  baseOffsetMid: number
   baseOffsetEnd: number
   basePrice: number
+  basePriceMid: number
   basePriceEnd: number
   /** 指针按下那一刻的价格：拖动时的位移基准（不能用标注自己的价格，否则一按就跳） */
   downPrice: number
@@ -593,12 +604,16 @@ function emptyDrag(): DragState {
     moveId: '',
     anchor: -1,
     baseStart: { time: '', price: 0 },
+    baseMid: null,
     baseEnd: { time: '', price: 0 },
     baseIndex: 0,
+    baseIndexMid: 0,
     baseIndexEnd: 0,
     baseOffset: 0,
+    baseOffsetMid: 0,
     baseOffsetEnd: 0,
     basePrice: 0,
+    basePriceMid: 0,
     basePriceEnd: 0,
     downPrice: 0,
   }
@@ -707,6 +722,15 @@ function clickToDraw(p: { x: number; y: number }, ev: PointerEvent): void {
   const cur = pending.value
   if (!cur || cur.kind !== tool) {
     pending.value = { kind: tool, start: hit, end: hit, snap: ev.ctrlKey, shift: ev.shiftKey }
+    requestDraw()
+    return
+  }
+
+  // AB=CD 的第 2 次单击定的是 B（不是终点）：B 落定之后 C 才开始跟着鼠标走。
+  if (tool === 'abcd' && !cur.mid) {
+    // B 和 A 重合就没有平移量，D 会等于 C —— 这一下忽略，等用户点到别处
+    if (degenerate(cur.start, hit)) return
+    pending.value = { ...cur, mid: hit, end: hit, snap: ev.ctrlKey, shift: ev.shiftKey }
     requestDraw()
     return
   }
@@ -847,9 +871,11 @@ function onWindowPointerMove(ev: PointerEvent): void {
     const deltaBars = Math.round((p.x - drag.startX) / scale.barWidth)
     const deltaPrice = scale.priceAtY(p.y) - drag.downPrice
 
-    // 整体移动：两个端点一起走；拖端点：只动那一个（另一个原样留着）
+    // 整体移动：所有端点一起走；拖端点：只动那一个（其余原样留着）
+    const three = moving.value.mid !== undefined
     const moveStart = drag.anchor === -1 || drag.anchor === 0
-    const moveEnd = drag.anchor === -1 || drag.anchor === 1
+    const moveMid = three && (drag.anchor === -1 || drag.anchor === 1)
+    const moveEnd = drag.anchor === -1 || drag.anchor === (three ? 2 : 1)
 
     // 端点先化成**连续下标**（锚点下标 + 向右偏移）再平移，于是「越过最后一根」的端点
     // 和历史里的端点走的是同一条算术；barRefAt 负责把结果重新表达成
@@ -865,6 +891,22 @@ function onWindowPointerMove(ev: PointerEvent): void {
     if (!barStart || !barEnd) return
     const rawStart = drag.basePrice + (moveStart ? deltaPrice : 0)
     const rawEnd = drag.basePriceEnd + (moveEnd ? deltaPrice : 0)
+
+    // AB=CD 的 B 点走同一套算术，单独再算一遍（它没有「另一端」可以借）
+    let nextMid: ChartPoint | undefined
+    if (three && drag.baseMid) {
+      const refMid = scale.barRefAt(drag.baseIndexMid + drag.baseOffsetMid + (moveMid ? deltaBars : 0))
+      const idxMid = refMid ? scale.indexOfTime(refMid.time) : undefined
+      const barMid = idxMid === undefined ? undefined : scale.bars[idxMid]
+      if (!refMid || !barMid) return
+      const rawMid = drag.basePriceMid + (moveMid ? deltaPrice : 0)
+      nextMid = {
+        time: refMid.time,
+        offset: refMid.offset,
+        price: drag.snap ? nearestOHLC(barMid, rawMid) : rawMid,
+      }
+    }
+
     moving.value = {
       id: drag.moveId,
       start: {
@@ -872,6 +914,7 @@ function onWindowPointerMove(ev: PointerEvent): void {
         offset: refStart.offset,
         price: drag.snap ? nearestOHLC(barStart, rawStart) : rawStart,
       },
+      mid: nextMid,
       end: {
         time: refEnd.time,
         offset: refEnd.offset,
@@ -899,6 +942,7 @@ function onWindowPointerUp(): void {
     store.moveAnnotation(
       m.id,
       { ...m.start, price: round(m.start.price) },
+      m.mid ? { ...m.mid, price: round(m.mid.price) } : undefined,
       { ...m.end, price: round(m.end.price) },
       drag.snap,
     )
@@ -1251,6 +1295,7 @@ function commitPending(p: PendingShape): void {
   store.addAnnotation({
     kind: p.kind,
     start: { ...p.start, price: round(p.start.price) },
+    mid: p.mid ? { ...p.mid, price: round(p.mid.price) } : undefined,
     end: { ...p.end, price: round(p.end.price) },
     style: resolveStyle({ kind: p.kind, style: template?.style }),
     snap: p.snap,
@@ -1278,11 +1323,11 @@ function beginBodyDrag(ev: PointerEvent, id: string): void {
 }
 
 /** 按下端点手柄：只移动这一个端点（手柄只在已选中时存在，所以这里不必再选一次） */
-function beginAnchorDrag(ev: PointerEvent, id: string, anchor: 0 | 1): void {
+function beginAnchorDrag(ev: PointerEvent, id: string, anchor: number): void {
   beginAnnotationDrag(ev, id, anchor)
 }
 
-function beginAnnotationDrag(ev: PointerEvent, id: string, anchor: -1 | 0 | 1): void {
+function beginAnnotationDrag(ev: PointerEvent, id: string, anchor: number): void {
   // 绘图工具下图形这一层根本不接指针事件（模板里 pointer-events 关掉了），这里只是兜底
   if (!pointerMode.value) return
   const a = (store.instance?.annotations ?? []).find((item) => item.id === id)
@@ -1302,6 +1347,7 @@ function beginAnnotationDrag(ev: PointerEvent, id: string, anchor: -1 | 0 | 1): 
   const idxStart = scale.indexOfTime(a.start.time)
   if (idxStart === undefined) return
   const idxEnd = scale.indexOfTime(a.end.time)
+  const idxMid = a.mid ? scale.indexOfTime(a.mid.time) : undefined
   drag = {
     ...emptyDrag(),
     mode: 'move',
@@ -1313,20 +1359,25 @@ function beginAnnotationDrag(ev: PointerEvent, id: string, anchor: -1 | 0 | 1): 
     moveId: a.id,
     anchor,
     baseStart: a.start,
+    baseMid: a.mid ?? null,
     baseEnd: a.end,
     baseIndex: idxStart,
+    baseIndexMid: idxMid ?? idxStart,
     baseIndexEnd: idxEnd ?? idxStart,
     // 端点可能停在最后一根右侧（offset > 0）：拖动的起点必须把它算进去，
     // 否则一按下整条线就会往左跳 offset 根。
     baseOffset: a.start.offset ?? 0,
+    baseOffsetMid: a.mid?.offset ?? 0,
     baseOffsetEnd: a.end.offset ?? 0,
     basePrice: a.start.price,
+    basePriceMid: a.mid?.price ?? 0,
     basePriceEnd: a.end.price,
     downPrice: scale.priceAtY(p.y),
   }
   moving.value = {
     id: a.id,
     start: { time: a.start.time, offset: a.start.offset ?? 0, price: a.start.price },
+    mid: a.mid ? { time: a.mid.time, offset: a.mid.offset ?? 0, price: a.mid.price } : undefined,
     end: { time: a.end.time, offset: a.end.offset ?? 0, price: a.end.price },
   }
   beginPointerCapture()
@@ -1666,6 +1717,7 @@ const figures = computed<Figure[]>(() => {
         id: a.id,
         kind: a.kind,
         start: over ? over.start : a.start,
+        mid: over ? over.mid : a.mid,
         end: over ? over.end : a.end,
         style: a.style,
         color: a.color,
@@ -1688,7 +1740,7 @@ const ghost = computed<Figure | null>(() => {
   const p = pending.value
   if (p) {
     return buildFigure(
-      { id: 'ghost', kind: p.kind, start: p.start, end: p.end, style: store.templateFor(p.kind)?.style },
+      { id: 'ghost', kind: p.kind, start: p.start, mid: p.mid, end: p.end, style: store.templateFor(p.kind)?.style },
       figureView(),
     )
   }
@@ -1717,6 +1769,15 @@ const selectedId = computed(() => {
   return figures.value.some((f) => f.id === id) ? id : null
 })
 
+/** 选中虚线框：包住**全部**端点（AB=CD 有三个，按两个算会漏掉 B 或 C 外面那截） */
+function boundsOf(f: Figure): { x: number; y: number; w: number; h: number } {
+  const xs = f.anchors.map((a) => a.x)
+  const ys = f.anchors.map((a) => a.y)
+  const x = Math.min(...xs)
+  const y = Math.min(...ys)
+  return { x: x - 6, y: y - 6, w: Math.max(...xs) - x + 12, h: Math.max(...ys) - y + 12 }
+}
+
 const hint = computed(() => {
   if (drawMode.value) {
     const name = TOOL_LABEL[store.tool]
@@ -1727,6 +1788,15 @@ const hint = computed(() => {
     // 射线是单击即完成，没有「找终点」这一步，提示语得跟别的工具分开写
     if (store.tool === 'ray') {
       return `射线：单击一下就画出一条水平朝右的射线${snap} · Shift 两次单击画斜射线 · 滚轮缩放 · 中键拖动平移`
+    }
+    // AB=CD 是三个点：A → B → C，D 由 AB 平移得出，所以提示语要跟着「点第几个」变
+    if (store.tool === 'abcd') {
+      if (!pending.value) {
+        return `AB=CD：单击定 A 点 → B 点 → C 点（D 自动按 AB 平移生成）${snap} · 滚轮缩放 · 中键拖动平移`
+      }
+      return pending.value.mid
+        ? `AB=CD：移动鼠标找 C 点，再单击一下定稿${beyond}${snap} · Esc 取消`
+        : `AB=CD：移动鼠标找 B 点，再单击一下${snap} · Esc 取消`
     }
     const extra = store.tool === 'trend' || store.tool === 'arrow' ? ' · Shift 水平' : ''
     return pending.value
@@ -1894,13 +1964,13 @@ defineExpose({ requestDraw })
         >
           {{ c.text }}
         </text>
-        <!-- 选中：虚线包围框 + 两个端点手柄 -->
+        <!-- 选中：虚线包围框 + 端点手柄（AB=CD 是 A/B/C 三个） -->
         <template v-if="selectedId === f.id">
           <rect
-            :x="Math.min(f.anchors[0].x, f.anchors[1].x) - 6"
-            :y="Math.min(f.anchors[0].y, f.anchors[1].y) - 6"
-            :width="Math.abs(f.anchors[1].x - f.anchors[0].x) + 12"
-            :height="Math.abs(f.anchors[1].y - f.anchors[0].y) + 12"
+            :x="boundsOf(f).x"
+            :y="boundsOf(f).y"
+            :width="boundsOf(f).w"
+            :height="boundsOf(f).h"
             fill="none"
             :stroke="theme.selection"
             stroke-width="1"
@@ -1917,7 +1987,7 @@ defineExpose({ requestDraw })
             :stroke="theme.selection"
             stroke-width="1.5"
             style="cursor: grab"
-            @pointerdown.stop="beginAnchorDrag($event, f.id, i === 0 ? 0 : 1)"
+            @pointerdown.stop="beginAnchorDrag($event, f.id, i)"
           />
         </template>
       </g>
