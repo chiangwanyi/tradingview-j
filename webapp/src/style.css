@@ -1,0 +1,136 @@
+@import 'tailwindcss';
+
+/*
+ * 只有一套配色：浅色。参考图是深色，这里按同一套版式换成浅底 ——
+ * 绿色仍是品牌色（Lucid 的主色），在浅底上压暗一档当文字色（--c-accent-ink），
+ * 块状填充用 --c-accent-soft，不然白底上的亮绿读不出来。
+ *
+ * 组件里只写语义色（bg-panel / text-dim / border-line / text-accent-ink），不出现 slate-100 这种色号。
+ */
+
+@theme {
+  /*
+   * 字体系列：全站只有这一套。中文逐级回退，英文/数字都跟中文同一族 ——
+   * 数字不再切 monospace（那是「字体混用」），只用 tabular-nums 对齐（见文件末尾 `.num`）。
+   */
+  --font-sans:
+    'Segoe UI', 'Inter', system-ui, -apple-system, 'PingFang SC', 'HarmonyOS Sans SC', 'Microsoft YaHei',
+    sans-serif;
+
+  /*
+   * 字号刻度 —— 六级，页面上的每一处文字都必须落到其中一档，不许再写 text-[13px] 这种裸值：
+   *
+   *   26  page      页面标题（每页一个）
+   *   24  metric    卡片主数字
+   *   20  title     卡片标题（账户名）
+   *   20  metric-sm 卡片次数字
+   *   15  section   区块标题      / lead  引导行、页面与卡片的主操作
+   *   13  body      正文、表单、次按钮 / label 标签与 chip（大写字距）
+   *   12  note      脚注、进度刻度、计数角标
+   *
+   * 字重不写进 token，靠约定：正文 400，标签/控件 500，标题与数字 600。
+   * 行高随字号走（大字号收紧、小字号放松），字距只有标签一档例外，其余一律 0.01em。
+   */
+  --text-page: 26px;
+  --text-page--line-height: 1.25;
+  --text-page--letter-spacing: 0.01em;
+  --text-metric: 24px;
+  --text-metric--line-height: 1.2;
+  --text-metric--letter-spacing: 0;
+  --text-title: 20px;
+  --text-title--line-height: 1.35;
+  --text-title--letter-spacing: 0.01em;
+  --text-metric-sm: 20px;
+  --text-metric-sm--line-height: 1.25;
+  --text-metric-sm--letter-spacing: 0.01em;
+  --text-section: 15px;
+  --text-section--line-height: 1.5;
+  --text-section--letter-spacing: 0.02em;
+  --text-lead: 15px;
+  --text-lead--line-height: 1.5;
+  --text-lead--letter-spacing: 0.01em;
+  --text-body: 13px;
+  --text-body--line-height: 1.65;
+  --text-body--letter-spacing: 0.01em;
+  --text-label: 13px;
+  --text-label--line-height: 1.5;
+  --text-label--letter-spacing: 0.05em;
+  --text-note: 12px;
+  --text-note--line-height: 1.6;
+  --text-note--letter-spacing: 0.01em;
+
+  --color-surface: var(--c-surface);
+  --color-panel: var(--c-panel);
+  --color-elev: var(--c-elev);
+  --color-line: var(--c-line);
+  --color-line-strong: var(--c-line-strong);
+  --color-ink: var(--c-ink);
+  --color-dim: var(--c-dim);
+  --color-faint: var(--c-faint);
+  --color-accent: var(--c-accent);
+  --color-accent-ink: var(--c-accent-ink);
+  --color-accent-soft: var(--c-accent-soft);
+  /* 方向语义色：交易页的画布/持仓/成交流水用它（绿=涨/多/盈，红=跌/空/亏，美股口径） */
+  --color-up: var(--c-up);
+  --color-down: var(--c-down);
+  --color-up-soft: var(--c-up-soft);
+  --color-down-soft: var(--c-down-soft);
+}
+
+:root {
+  color-scheme: light;
+  --c-surface: #f4f6f8;
+  --c-panel: #ffffff;
+  --c-elev: #f1f4f7;
+  --c-line: #e4e9ef;
+  --c-line-strong: #cfd8e3;
+  --c-ink: #0b1220;
+  --c-dim: #4a5568;
+  --c-faint: #8b98a8;
+  --c-accent: #16a34a;
+  --c-accent-ink: #15803d;
+  --c-accent-soft: #e8f8ed;
+  /* 和画布 render.ts 的 LIGHT_THEME 同一组语义：改一边就要改另一边 */
+  --c-up: #15803d;
+  --c-down: #b91c1c;
+  --c-up-soft: #dcfce7;
+  --c-down-soft: #fee2e2;
+}
+
+html,
+body,
+#app {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--c-surface);
+  color: var(--c-ink);
+  font-family: var(--font-sans);
+  font-size: 14px;
+  line-height: 1.5;
+  letter-spacing: 0.01em;
+  -webkit-font-smoothing: antialiased;
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--c-line-strong) transparent;
+}
+
+/* 金额、比例这类数字用等宽并排对齐（交易页的价格梯队、成交流水依赖它） */
+.tnum {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-variant-numeric: tabular-nums;
+}
+
+/*
+ * 账户总览 / 模板 / 记录这几个 PF 页面用这个：**不换字体族**，只打开等宽数字。
+ * 卡片上的金额和旁边的中文标签在同一族里，视觉才是整块的；`.tnum` 换到 monospace 是为了
+ * 让交易页那几张价格表逐列严格对齐，这里没有那种需要，用不着换族。
+ */
+.num {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum' 1;
+}

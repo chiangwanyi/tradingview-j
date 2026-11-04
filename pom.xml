@@ -1,0 +1,152 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-parent</artifactId>
+        <version>3.5.11</version>
+        <relativePath/>
+    </parent>
+
+    <groupId>com.tradingviewj</groupId>
+    <artifactId>tradingview-j-server</artifactId>
+    <version>1.0.0</version>
+    <name>tradingview-j-server</name>
+    <description>TradingView-J Java/Spring Boot migration target</description>
+
+    <properties>
+        <java.version>21</java.version>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <!-- Hutool 5.x 是 Java 8+ 的稳定分支；6.x 仍在 alpha，不引入 -->
+        <hutool.version>5.8.47</hutool.version>
+        <!--
+          springdoc 的版本线要和 Spring Boot 大版本对齐，不能随便升：
+          2.8.x → Spring Boot 3.4/3.5；3.x → Spring Boot 4（Spring Framework 7）。
+          本工程是 Boot 3.5.11，用 3.x 会在启动阶段就报类找不到。
+        -->
+        <springdoc.version>2.8.16</springdoc.version>
+    </properties>
+
+    <dependencies>
+        <!-- web + 内嵌 Tomcat -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-web</artifactId>
+        </dependency>
+
+        <!--
+          WebSocket：交易页（webapp/trade/:id）的唯一通信通道。
+          用 starter 而不是手写 @ServerEndpoint：这个 starter 会把 WebSocketHandler
+          挂进内嵌 Tomcat 的同一个端口（8791），不需要另开服务、也不需要 JSR-356 的容器扫描。
+        -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-websocket</artifactId>
+        </dependency>
+
+        <!-- 持久化：Spring Data JPA（Hibernate 6.6）+ SQLite -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-data-jpa</artifactId>
+        </dependency>
+        <!--
+          SQLite 的 JDBC 驱动（Xerial）。纯 Java + 内嵌原生库，不需要装数据库服务。
+          版本刻意自己钉：Boot 的 BOM 不管第三方数据库驱动，跟着 xerial 的发布走。
+        -->
+        <dependency>
+            <groupId>org.xerial</groupId>
+            <artifactId>sqlite-jdbc</artifactId>
+            <version>3.50.1.0</version>
+        </dependency>
+        <!--
+          Hibernate 官方主线不带 SQLite 方言，方言在 hibernate-community-dialects 里
+          （org.hibernate.community.dialect.SQLiteDialect）。版本由 Boot BOM 管（hibernate.version），
+          这里不写 version，避免和 hibernate-core 版本错位。
+        -->
+        <dependency>
+            <groupId>org.hibernate.orm</groupId>
+            <artifactId>hibernate-community-dialects</artifactId>
+        </dependency>
+
+        <!-- 日志：logback + slf4j（starter-web 已传递引入，这里显式声明以示这是有意为之） -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-logging</artifactId>
+        </dependency>
+
+        <!-- lombok：只在编译期生效，不进运行时 -->
+        <dependency>
+            <groupId>org.projectlombok</groupId>
+            <artifactId>lombok</artifactId>
+            <optional>true</optional>
+        </dependency>
+
+        <!-- 工具类：判空(StrUtil/CollUtil)、对象转换(BeanUtil)、JSON(JSONUtil)、异常信息(ExceptionUtil) -->
+        <!-- hutool-all 是全量包，省事但体积大；只想要这几个能力可换成 hutool-core + hutool-json -->
+        <dependency>
+            <groupId>cn.hutool</groupId>
+            <artifactId>hutool-all</artifactId>
+            <version>${hutool.version}</version>
+        </dependency>
+
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+
+        <!--
+          Swagger / OpenAPI 文档：springdoc-openapi（Spring Boot 3 起的事实标准）。
+          -starter-webmvc-ui 同时带来两样东西：/v3/api-docs（JSON 描述）和 /swagger-ui.html（可视化页面）。
+          注意不是 springfox：那个项目 2020 年就停更了，和 Boot 3 的 Jakarta 命名空间完全不兼容。
+        -->
+        <dependency>
+            <groupId>org.springdoc</groupId>
+            <artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
+            <version>${springdoc.version}</version>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <finalName>tv-server</finalName>
+
+        <!-- 开启资源过滤：application.yml 里的 @project.version@ 由 Maven 替换（父 pom 已把分隔符设为 @） -->
+        <resources>
+            <resource>
+                <directory>src/main/resources</directory>
+                <filtering>true</filtering>
+            </resource>
+        </resources>
+
+        <plugins>
+            <plugin>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-maven-plugin</artifactId>
+                <configuration>
+                    <excludes>
+                        <exclude>
+                            <groupId>org.projectlombok</groupId>
+                            <artifactId>lombok</artifactId>
+                        </exclude>
+                    </excludes>
+                </configuration>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <configuration>
+                    <annotationProcessorPaths>
+                        <path>
+                            <groupId>org.projectlombok</groupId>
+                            <artifactId>lombok</artifactId>
+                            <version>${lombok.version}</version>
+                        </path>
+                    </annotationProcessorPaths>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
+</project>

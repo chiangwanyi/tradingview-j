@@ -1,0 +1,198 @@
+package com.tradingviewj.server.controller;
+
+import com.tradingviewj.server.api.R;
+import com.tradingviewj.server.dto.DailyPnlView;
+import com.tradingviewj.server.dto.PropFirmAccountRequest;
+import com.tradingviewj.server.dto.PropFirmCursorRequest;
+import com.tradingviewj.server.entity.propfirm.PropFirmAccount;
+import com.tradingviewj.server.entity.propfirm.PropFirmStageLog;
+import com.tradingviewj.server.service.HistoryQueryService;
+import com.tradingviewj.server.service.PropFirmAccountService;
+import com.tradingviewj.server.service.TradingService;
+import com.tradingviewj.server.ws.TradeDeskService;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
+import lombok.RequiredArgsConstructor;
+import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
+
+import java.util.List;
+
+/**
+ * PF 账户接口：{@code /api/pf-accounts}。
+ *
+ * <p>和模板接口一样只做转发：账户的规则（能不能开、能不能下单、升到哪）全在
+ * {@link PropFirmAccountService} 和实体的工厂方法里，这里再写一遍就会出现第二份真相。
+ *
+ * <p>返回实体不是 DTO：账户的字段集就是它的 API 契约。注意 {@code application.yml} 的
+ * {@code non_null} 会把取值为 null 的字段整个省掉（前端读到 {@code undefined}），
+ * 所以前端一律用 {@code == null} 判断。
+ *
+ * <p>业务操作只有四个：升级（{@code promote}）、判失败（{@code fail}）、
+ * 步进（{@code cursor}，只把「盘面最新时间」往后推一格）、
+ * 结算今日（{@code settle-day}，一步推到下一个交易日并结算上一个交易日）。其余都是读写。
+ * 没有「重置余额」—— 余额只能由成交重算后同步，手工改余额会让账和成交流水对不上。
+ */
+@Tag(name = "PF 账户", description = "考核账户的增删改查，以及升级 / 判失败两个业务动作")
+@RestController
+@RequestMapping("/api/pf-accounts")
+@RequiredArgsConstructor
+public class PropFirmAccountController {
+
+    private final PropFirmAccountService accounts;
+
+    /**
+     * 判失败要连同「收摊」一起做（市价平仓 + 撤单），而收摊是账务动作，
+     * 实现和「一键退仓」共用一份（{@link TradingService#closeOut}）。
+     * 所以这一个入口交给 {@link TradingService#failAccount} 串起来，不在这里拼两步 ——
+     * 拼在这里的话，将来「撞线自动判失败」那条路（{@code TradeDeskService#step}）
+     * 就会和手动这条路各写一遍收摊。
+     */
+    private final TradingService trading;
+
+    /**
+     * 「结算今日」是盘面动作（推光标 + 结算），和交易页的【下一根】同一份实现，
+     * 所以走 {@link TradeDeskService}，不在这里另拼一遍光标推进和日终结算。
+     */
+    private final TradeDeskService desk;
+
+    /**
+     * 交易日历是 {@code trade_record} 的一层只读聚合，和「交易记录」列表共用映射，
+     * 所以走 {@link HistoryQueryService}（账户服务不认识这张表）。
+     */
+    private final HistoryQueryService history;
+
+    @Operation(summary = "账户列表", description = """
+            status 可选：ACTIVE / FAILED，不传 = 全部。按建户时间倒序，新建的在前。
+            每个元素都带 rules 快照（规则是开账户时复制的，不是指向模板的引用），
+            外加三个**现算**的结论（都不是列）：
+            passed = 已达标待升级（首页据此决定出不出【升级】按钮）、
+            originStage = 建户时在哪个阶段（阶段流水第一行；和 stage 一比就知道
+            「这个出金号是考出来的」还是「一开始就是出金号」）、
+            tradingDays = 已走过几个交易日（按数据目录里真实的开盘日数，不是日历日、也不是工作日）。
+            """)
+    @GetMapping
+    public List<PropFirmAccount> list(
+            @RequestParam(required = false) PropFirmAccount.Status status) {
+        return accounts.list(status);
+    }
+
+    @Operation(summary = "取一个账户", description = """
+            不存在时返回业务错误码 10000。
+            带三个现算字段：passed（已达成本阶段升级条件、等手动升级；从阶段起点重放到
+            账户停住的那根 K 线）、originStage（建户时的阶段，取自阶段流水第一行）、
+            tradingDays（已走过几个交易日，按数据目录的真实开盘日数）。
+            写操作的返回里没有这三个字段。
+            """)
+    @GetMapping("/{id}")
+    public PropFirmAccount get(@PathVariable String id) {
+        return accounts.detail(id);
+    }
+
+    @Operation(summary = "开一个账户", description = """
+            templateId / name / symbolId 三个都必填，规则在这一刻复制进账户。
+            symbolId 是账户唯一可交易的标的，**建户后不可改**；起点 K 线只在它的日文件里抽
+            （当天 09:00 及之后第一根），抽不到就不建账户（业务错误码 10000）。
+            阶段由模板决定：FUNDED 模板建出来的账户直接是 FUNDED。
+            """)
+    @PostMapping
+    public PropFirmAccount open(@RequestBody PropFirmAccountRequest body) {
+        return accounts.open(body.templateId(), body.symbolId(), body.name());
+    }
+
+    @Operation(summary = "改名", description = """
+            只改 name；请求体里的 templateId / symbolId 被忽略
+            （换模板或换标的都等于重开一个账户，标的在建户时就锁死了）。
+            失败 / PAYOUT 的账户也能改名 —— 它只是标签，不影响余额和阶段流水。
+            """)
+    @PutMapping("/{id}")
+    public PropFirmAccount rename(@PathVariable String id, @RequestBody PropFirmAccountRequest body) {
+        return accounts.rename(id, body.name());
+    }
+
+    @Operation(summary = "删账户", description = """
+            幂等。删 prop_firm_account 这一行，**并且删掉它自己的 prop_firm_stage_log 流水**
+            （流水是这个账户的时间轴，账户没了它就既没归属也读不到）。
+            其余数据全部保留：成交、交易记录、图形、语音、操作记录，
+            它们的 account_id 原样留着（指向一个已经不存在的账户）。
+            不可逆 —— 想留审计痕迹请先 GET /{id}/stages 导出再删。
+            """)
+    @DeleteMapping("/{id}")
+    public R<Void> delete(@PathVariable String id) {
+        accounts.delete(id);
+        return R.ok();
+    }
+
+    @Operation(summary = "升级到下一阶段", description = """
+            EVAL → FUNDED 时按模板的 nextTemplateId 换规则、把余额重置回新账户规模；
+            FUNDED → PAYOUT 就到尽头。每次升级写一行阶段流水（reason=PROMOTED），
+            并把上一段结掉。已在 PAYOUT / 已失败 / 模板没配下一套 → 业务错误码 10000。
+            """)
+    @PostMapping("/{id}/promote")
+    public PropFirmAccount promote(@PathVariable String id) {
+        return accounts.promote(id, null);
+    }
+
+    @Operation(summary = "判失败", description = """
+            撞了亏损线：**先市价平掉持仓、撤掉全部挂单**（和交易页撞线自动触发的那一套完全相同），
+            再置 FAILED（终态），当前阶段流水记 FAILED。
+            失败之后账户**仍然打得开**（看盘、标注、改名、继续往后翻 K 线），
+            只有挂单 / 市价单被拒绝。
+            失败不会自动重开 —— 重考要新建账户，这样两次考核的成交不会混在一个 accountId 下。
+            """)
+    @PostMapping("/{id}/fail")
+    public PropFirmAccount fail(@PathVariable String id) {
+        return trading.failAccount(id);
+    }
+
+    @Operation(summary = "步进一根（记录盘面最新时间）", description = """
+            把账户的 lastBarTime 推到你给的那一根，交易页下次「继续交易」就揭示到那里。
+            必须 yyyy-MM-dd HH:mm，而且只能往后走（退回去要回滚账，现在不做）。
+            账户已失败 / 不存在 → 业务错误码 10000。
+            """)
+    @PostMapping("/{id}/cursor")
+    public PropFirmAccount cursor(@PathVariable String id,
+                                 @RequestBody PropFirmCursorRequest body) {
+        return accounts.advanceCursor(id, body.barTime());
+    }
+
+    @Operation(summary = "结算今日（推进到下一个交易日）", description = """
+            一步把盘面推到**下一个交易日**的第一根（交易日 = [D 06:00, D+1 04:00)，不是日历日），
+            跨到新的一天时上一个交易日当场结算：日终余额进峰值、亏损线随之更新。
+            **有持仓或有挂单时拒绝**（业务错误码 10000）：整段跳过不会撮合中途的止损。
+            返回推进后的账户（余额 / 峰值是新值）。
+            """)
+    @PostMapping("/{id}/settle-day")
+    public PropFirmAccount settleDay(@PathVariable String id) {
+        return desk.settleTradingDay(id);
+    }
+
+    @Operation(summary = "阶段流水", description = """
+            这个账户当过的所有阶段，按进入顺序。行数就是身份：
+            1 行 = 建户时就在这个阶段；2 行 = 考过来的。
+            """)
+    @GetMapping("/{id}/stages")
+    public List<PropFirmStageLog> stages(@PathVariable String id) {
+        return accounts.stageHistory(id);
+    }
+
+    @Operation(summary = "交易日历（按天汇总净额）", description = """
+            详情页那块日历的数据：每天做了几笔、净额多少，**按交易日升序**。
+            交易日 D = [D 06:00, D+1 04:00)，所以凌晨 03:10 平的那笔算前一天 ——
+            和日终结算、「结算今日」同一条口径。
+            只含**已平仓**的记录（还在手上的那笔归到哪天都不对，盈亏也还在浮动）。
+            每格自带当天的每一笔（同交易记录的摘要），点开不用再发一次请求。
+            账户不存在时返回业务错误码 10000。
+            """)
+    @GetMapping("/{id}/calendar")
+    public List<DailyPnlView> calendar(@PathVariable String id) {
+        return history.dailyPnl(id);
+    }
+}

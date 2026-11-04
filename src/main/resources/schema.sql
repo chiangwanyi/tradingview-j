@@ -1,0 +1,468 @@
+-- ---------------------------------------------------------------------------
+-- tradingview-j 业务库（SQLite）
+--
+-- 五条约定：
+--   1. K 线不在这里。行情在 data/<folder>/<日期>.csv，本库只存「谁在什么时候做了什么」。
+--   2. 表之间的引用一律是「按 id 引用」，不做 JPA 关联映射（没有 @ManyToOne）。
+--      外键由下面的 REFERENCES 让数据库自己守（连接打开时 PRAGMA foreign_keys=ON）。
+--      这样做的理由：聚合边界显式、加载不用 fetch join、不会踩 LazyInitializationException。
+--   3. 金额/价格/数量是 TEXT。SQLite 没有 decimal 类型，NUMERIC 亲和性会把
+--      DECIMAL 偷偷转成 REAL 丢精度；账目不能这么干，所以统一按字符串存，
+--      由 BigDecimalTextConverter 在 Java 侧还原成 BigDecimal。
+--      时间戳是 INTEGER，Unix 毫秒（InstantEpochConverter）。
+--   4. **PF 账户是唯一的操作归属点，但不是数据的所有者**。
+--      没有「会话」这张表了：挂单、成交、操作记录、机器人、交易记录
+--      全部用 account_id 指向 prop_firm_account。
+--      **账户绑定一个标的（2026-10-30 起），建户时定，永不改**（symbol_id）。
+--      子表上的 symbol_id 仍然保留：它们记的是「这条事实发生在哪块盘面上」，
+--      是历史留痕，不因为账户锁定了标的而变得多余。凡是"挂在一根 K 线上"且
+--      **要记账**的数据（挂单、成交、交易记录、机器人）都带 symbol_id ——
+--      只有 account_id 就没有时间轴，只有 symbol_id 就不知道算在谁头上，两个都要。
+--      **图形（drawing）和语音（audio_clip）例外：它们没有 account_id。**
+--      两者的附体是 K 线（symbol_id + bar_time），不参与任何账户统计 —— 既不进余额、
+--      也不算回撤/一致性/盈利日。给它们挂账户只会让「同一条线换个账户就消失」
+--      变成一种需要解释的行为。谁画的/谁录的仍有 created_by / actor 记着。
+--      这些 account_id 列 **NOT NULL 且不加外键**：子表里保留原来那个 account_id 字符串
+--      （指向一个已经不存在的账户），既不置空也不删行。
+--      **唯一例外是 prop_firm_stage_log**：它随账户一起删（Java 侧显式删，见
+--      PropFirmAccountService#delete）。分界线是「这行描述的是账户本身，还是盘面上发生的事」——
+--      阶段流水是账户自己的时间轴，账户没了它没有归属、也没有入口能读到；
+--      成交/挂单/交易记录是盘面事实，删了就是篡改复盘，必须留。
+--      为什么不加外键：SET NULL 会改写子表、CASCADE 会删数据、RESTRICT 会让账户
+--      一旦有数据就永远删不掉 —— 三种都不是想要的。一致性由 Java 侧的
+--      PropFirmAccountService#requireActive 把关，不用数据库的引用约束；
+--      「什么跟着删」也由 Java 侧显式表达，不用 ON DELETE CASCADE。
+--      想删数据只能显式删那一行（图形尤其如此：只有用户自己点删除才该消失）。
+--   5. 枚举列（actor / action / kind）存 **Java 常量名**（HUMAN / BAR_ADVANCED），
+--      没有任何转换器参与。Go 协议里的小写下划线串（human / bar_advanced）由输出侧
+--      按「常量名转小写」换算，库里不为客户端格式让步。
+--
+-- 全部 IF NOT EXISTS，可以每次启动重复执行。
+-- ---------------------------------------------------------------------------
+
+-- 标的：一个合约品种（也是 K 线 CSV 目录的锚）
+CREATE TABLE IF NOT EXISTS symbol (
+    id         TEXT PRIMARY KEY,     -- 标的代码本身，如 CME_MINI:MES1!
+    folder     TEXT NOT NULL UNIQUE, -- data/ 下的目录名，K 线靠它定位
+    tick       TEXT,                 -- 最小跳动
+    tick_value TEXT,                 -- 一跳值多少美元
+    commission TEXT NOT NULL,        -- 每手每边的手续费（美元）；0 = 免手续费，不允许 NULL
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL
+);
+
+-- PF 模板：**一个阶段**的规则预设（EVAL 一条、FUNDED 一条，靠 next_template_id 串成链）。
+-- 不再有 daily_loss_limit / min_trading_days / profit_split：
+--   · 单日盈利硬顶取消，只保留一致性上限；
+--   · EVAL 没有最少交易日；FUNDED 数的是"盈利日"，字段是 min_profit_days；
+--   · 本项目是模拟考核，出金提利润没有意义，所以没有分成比例。
+CREATE TABLE IF NOT EXISTS prop_firm_template (
+    id                   TEXT PRIMARY KEY,
+    name                 TEXT NOT NULL,
+    description          TEXT,
+    stage                TEXT NOT NULL,  -- EVAL / FUNDED / PAYOUT：用这套模板开出来的账户处于哪个阶段
+    next_template_id     TEXT,           -- 达标后接哪套模板；NULL = 升到尽头（PAYOUT）
+    account_size         TEXT,           -- 名义规模 + 阶段起始余额（升级时余额重置成它）
+    profit_target        TEXT,           -- NULL = 无盈利目标（FUNDED 就是 NULL）
+    max_drawdown         TEXT,
+    drawdown_type        TEXT,           -- 实际只用 TRAILING_EOD，留着是为了不把话说死
+    trailing_lock_level  TEXT,           -- EOD 余额达到此值后亏损线冻结（50K Flex = 52100）
+    consistency_ratio    TEXT,           -- 一致性上限（0.5）；NULL = 这套考核不要求一致性
+    min_profit_days      INTEGER,        -- 需要几个"盈利日"（FUNDED = 5）；NULL = 不需要
+    profit_day_threshold TEXT,           -- 单个盈利日的最低净盈利（150）
+    position_tiers_json  TEXT,           -- [{"fromProfit":"0","maxContracts":20}, …]，净持仓手数上限
+    created_at           INTEGER NOT NULL,
+    updated_at           INTEGER NOT NULL
+);
+
+-- PF 账户：唯一的「操作归属点」，也是统计考核期一切操作的那个点。
+-- 它是一个临时统计点，不是容器：删掉这一行，盘面子数据（成交/挂单/交易记录/机器人）全部原地保留
+-- （account_id 原样留着）；**只有 prop_firm_stage_log 跟着删** —— 它是账户自己的时间轴，
+-- 不是盘面上发生的事，账户没了就没人能读到。
+-- 规则在开出来那一刻从模板**复制**一份存进来（模板后续改动不影响已有账户）。
+--
+-- **阶段是逐行升级的，不是一次判定**：EVAL 达标 → 同一行切成 FUNDED（规则换成下一套、
+-- base_balance 重置回账户规模）；FUNDED 攒够盈利日 → 切成 PAYOUT 并置 status=COMPLETED。
+-- 每次切换在 prop_firm_stage_log 里留一行，所以"建户时就是 FUNDED"和"考过来的 FUNDED"
+-- 在流水里只是行数不同，账户行长得一样。
+--
+-- **balance 不能由成交重算**：升级时余额被强制拨回账户规模，Σ净盈亏会算出一个负数。
+-- 所以每个阶段存一个 base_balance，balance = base_balance + 本阶段净额。
+CREATE TABLE IF NOT EXISTS prop_firm_account (
+    id                   TEXT PRIMARY KEY,
+    name                 TEXT NOT NULL,
+    template_id          TEXT NOT NULL,  -- 从哪套模板开的；模板删了也保留原 id（不置空）
+    -- 这个账户唯一可交易的标的（2026-10-30 加）。**建户时定，永不改**：
+    -- 换标的等于换一整条时间轴（起点那根 K 线、所有复盘坐标、成交时间轴），
+    -- 那是「重开一个账户」，不是「改一个字段」。实体上 updatable = false + 无 setter。
+    -- 这是个**真引用**（不是 account_id 那种删了也要留的软指针）：指向不存在的标的，
+    -- 一根 K 线都读不出来。SymbolSyncService 从不删标的，所以这条外键不会被同步弄坏。
+    symbol_id            TEXT NOT NULL REFERENCES symbol (id),
+    stage                TEXT NOT NULL,  -- 当前阶段：EVAL / FUNDED / PAYOUT
+    -- ↓↓ 以下 9 列是建户那一刻从模板复制的规则快照，和模板同名同义
+    account_size         TEXT,
+    profit_target        TEXT,
+    max_drawdown         TEXT,
+    drawdown_type        TEXT,
+    trailing_lock_level  TEXT,
+    consistency_ratio    TEXT,
+    min_profit_days      INTEGER,
+    profit_day_threshold TEXT,
+    position_tiers_json  TEXT,
+    -- ↑↑
+    base_balance         TEXT NOT NULL,  -- 本阶段起点余额（= account_size）
+    eod_peak_balance     TEXT NOT NULL,  -- 本阶段"日终余额"的历史最高，初值 = base_balance
+    -- 本阶段**单日净盈利的最大值**（2026-11-01 加，已扣手续费），初值 = 0。
+    -- 一致性规则（consistency_ratio）的输入：真实通关目标 = max(profit_target,
+    -- 这个数 / consistency_ratio)。例：单日赚 2750、比例 0.4 → 目标 6875 而不是 3000。
+    -- 和 eod_peak_balance 一样是**缓存**：真值在成交流水里，权威是
+    -- PropFirmSession#maxDayNet()（只在日终更新）；存下来是因为账户列表要显示
+    -- 「还差多少过关」，不能每张卡片都去扫一遍成交。升级换阶段时清零。
+    max_day_net_balance  TEXT NOT NULL,
+    balance              TEXT NOT NULL,  -- 当前余额 = base_balance + 本阶段已实现净额
+    stage_started_at     INTEGER NOT NULL,
+    -- 起点（2026-10-29）：**模拟时间的零点**，由 PropFirmStartPicker 在开账户时
+    -- 从**该账户绑定标的**的日文件里随机抽一份、定位到当天 09:00。
+    -- 和 started_at 不是一回事：started_at 是真实时钟（这行什么时候写进库），
+    -- 这个才是行情时间轴上的位置。日历首月、可交易日下界、回放起点全由它推。
+    -- **建户即有值，没有「建好了但还没开始」的状态**，所以 NOT NULL。
+    --
+    -- 这里**没有 bar_index**：下标是「位置」，文件重抓 / 补一根 / 删一根坏行都会让它
+    -- 悄悄指向另一根 K 线（而且不报错）。时间才是标识 —— 这条规则和账户绑不绑标的无关。
+    start_bar_time       TEXT NOT NULL,  -- 如 2024-03-04 09:00，起点的唯一键
+    start_day_file       TEXT NOT NULL,  -- 如 2024-03-04.csv（不含目录）
+    -- 盘面现在停在哪一根（2026-10-30 加）：账户的「最新 K 线时间」，**只增不减**。
+    -- 初值 = start_bar_time（建户即停在起点），此后每步进一根就往后推一格。
+    -- 这是「继续交易」打开交易页时该揭示到哪一根的唯一依据 ——
+    -- 没有它的话，重新打开页面只能整天全揭示，等于每次回来都提前看到了未来。
+    -- 存时间而不是下标：文件重抓 / 补一根 / 删一根坏行，下标会指向另一根且不报错。
+    last_bar_time        TEXT NOT NULL,
+    status               TEXT NOT NULL,  -- ACTIVE / FAILED（走到 PAYOUT 用 stage 表达，不另立一个状态）
+    started_at           INTEGER NOT NULL,
+    created_at           INTEGER NOT NULL,
+    updated_at           INTEGER NOT NULL
+);
+
+-- 阶段流水：这个账户"当过哪几个阶段的什么身份"。
+-- 建户时无条件写一行（reason=CREATED），所以建户即 FUNDED 也有记录。
+-- account_id 见本文件第 4 条的例外：**不加外键，但随账户一起删**
+-- （PropFirmAccountService#delete 按 account_id 显式删）—— 账户没了，这段时间轴就没人能读到。
+CREATE TABLE IF NOT EXISTS prop_firm_stage_log (
+    id               TEXT PRIMARY KEY,
+    account_id       TEXT NOT NULL,
+    seq              INTEGER NOT NULL,   -- 从 0 起，账户内连续
+    stage            TEXT NOT NULL,
+    started_at       INTEGER NOT NULL,
+    ended_at         INTEGER,            -- NULL = 就是当前所处阶段
+    base_balance     TEXT NOT NULL,
+    balance_at_end   TEXT,               -- 离开那一刻的余额
+    net_pnl          TEXT,               -- 该阶段净盈亏（balance_at_end - base_balance）
+    max_daily_profit TEXT,               -- 该阶段单日最大净盈利，一致性就是拿它算的
+    profit_days      INTEGER,            -- 该阶段达标盈利日数
+    reason           TEXT NOT NULL,      -- 这一行是怎么来的：CREATED（建户即是此阶段）/ PROMOTED（从上一阶段升上来）
+    end_reason       TEXT,               -- 这个阶段是怎么结束的：PROMOTED / FAILED / PAYOUT_DONE；NULL = 还开着
+    created_at       INTEGER NOT NULL,
+    updated_at       INTEGER NOT NULL
+);
+CREATE UNIQUE INDEX IF NOT EXISTS ux_stage_account_seq ON prop_firm_stage_log (account_id, seq);
+
+-- 手续费不单独建表：它是标的自己的一个参数（symbol.commission），
+-- 每手每边多少美元，跟着品种走。以前那两张 commission_schedule / commission_rate
+-- 已删除 —— 「一套全局口径 + 一张价目表」这层结构对一只标的只说一次就够了。
+-- 这一列 **NOT NULL**：0 就是「免费」（NYMEX:CL1! 就是这样），没有第三个「还没配」状态。
+-- 允许 NULL 的话，漏配的标的会安静地按免费结算，账面上看不出来。
+
+-- 指标：暂时没有表。
+-- 「指标怎么存」还没定（定义表 / 参数 JSON / 前端本地），在决定之前不建半张表。
+-- 旧库里的 indicator 表要手动删：DROP TABLE indicator;（本脚本只管建，不管删）
+
+-- 绘图图形：5 种图形共用「起点 + 终点」两个锚。
+-- **不带 account_id**：图形依附在 K 线上（symbol_id + bar_time），不参与账户统计。
+-- 只有用户手动删除才会消失：删账户跟它一点关系都没有（它压根没记着自己属于谁）。
+CREATE TABLE IF NOT EXISTS drawing (
+    id            TEXT PRIMARY KEY,
+    symbol_id     TEXT NOT NULL REFERENCES symbol (id),  -- 画在哪个品种的时间轴上
+    kind          TEXT NOT NULL,     -- TREND / RAY / RECT / ARROW / FIB
+    start_bar_time TEXT NOT NULL,
+    start_price   TEXT NOT NULL,
+    start_offset  INTEGER NOT NULL DEFAULT 0,  -- 从锚点向右延伸的根数
+    end_bar_time  TEXT NOT NULL,
+    end_price     TEXT NOT NULL,
+    end_offset    INTEGER NOT NULL DEFAULT 0,
+    color         TEXT,
+    width         TEXT,
+    dash          TEXT,              -- SOLID / DASHED
+    fill          TEXT,
+    fill_opacity  TEXT,
+    snapped       INTEGER NOT NULL DEFAULT 0,
+    created_by    TEXT NOT NULL,     -- 谁画的（人/机器人），不是账户
+    created_at    INTEGER NOT NULL,
+    updated_at    INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_drawing_symbol ON drawing (symbol_id);
+
+-- 斐波那契的四条水平线（只有 FIB 图形有）。
+-- 这一条是**真级联**：水平线是图形的一部分，图形没了它就没有意义。
+CREATE TABLE IF NOT EXISTS drawing_fib_level (
+    drawing_id  TEXT NOT NULL REFERENCES drawing (id) ON DELETE CASCADE,
+    level_index INTEGER NOT NULL,
+    ratio       TEXT NOT NULL,
+    color       TEXT,
+    PRIMARY KEY (drawing_id, level_index)
+);
+
+-- 绘图工具的样式模板（「我习惯用什么颜色的线」）。
+--
+-- **不是图形，也不是图形的一部分。** 图形（上表）是「画在盘面上的事实」，
+-- 模板是「一套外观预设」：画下去那一刻样式被复制进 drawing.style，此后改模板、
+-- 删模板都不影响已经画好的线（见 DrawingStyle 的说明）。
+--
+-- 三个刻意的决定：
+--   1. **没有 symbol_id / account_id**。模板是长期习惯，换标的、换账户、删账户都该在。
+--      挂上去就会长出「同一条预设换个账户就没了」这种需要解释的行为。
+--   2. **style 存一整块 JSON**，不展平成 color / width / dash 列。理由和 drawing 表相反：
+--      drawing 的样式是事实的一部分，会被单独读、按标的下查；模板的样式是纯偏好，
+--      全库没有一处会 where color = ...，唯一的读法就是「整块拿出来给前端」。
+--      展平还得为斐波那契那四条水平线再开一张子表（对应 drawing_fib_level），
+--      而它在这里没有任何查询价值 —— 所以 levels 也留在 JSON 里。
+--   3. **不做出厂预设落库**。表空就是「还没建过模板」，前端 resolveStyle() 兜底画得出来。
+--      预置进库会带来「用户删光了，重启又冒出来」，要解决还得额外加个「已初始化」标记。
+CREATE TABLE IF NOT EXISTS annotation_template (
+    id         TEXT PRIMARY KEY,
+    kind       TEXT NOT NULL,   -- TREND / RAY / RECT / ARROW / FIB（Java 常量名，同第 5 条约定）
+    name       TEXT NOT NULL,
+    style_json TEXT NOT NULL,   -- 整份 AnnotationStyle，含 fib 的 levels 数组
+    created_by TEXT NOT NULL,   -- 谁建的；模板全局，不记账户
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL
+);
+-- 界面上按工具分组显示，这一列是每个列表的唯一过滤条件
+CREATE INDEX IF NOT EXISTS idx_template_kind ON annotation_template (kind);
+
+-- 录音：只存元数据，WAV 文件在磁盘上（storage 层管路径）。
+-- **不带 account_id**：语音依附在 K 线上（symbol_id + bar_time），不参与账户统计。
+CREATE TABLE IF NOT EXISTS audio_clip (
+    id          TEXT PRIMARY KEY,
+    symbol_id   TEXT NOT NULL REFERENCES symbol (id),  -- 讲的是哪个品种的 K 线
+    bar_time    TEXT NOT NULL,       -- 挂在哪根 K 线上
+    seq         INTEGER NOT NULL,    -- 同一根上的第几段（上限 9）
+    file_name   TEXT NOT NULL,       -- 相对路径，不存绝对路径
+    duration_ms INTEGER NOT NULL,
+    size_bytes  INTEGER NOT NULL,
+    actor       TEXT,                -- JAVA 常量名：HUMAN / BOT / SYSTEM
+    created_at  INTEGER NOT NULL,
+    updated_at  INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_audio_symbol_bar ON audio_clip (symbol_id, bar_time);
+
+-- 交易记录：一笔完整交易 = **一段操作流水的区间** + 一份结算摘要（2026-10-29 起）。
+-- account_id 是统计归属，不是所有权：账户删了记录还在，account_id 原样留着。
+--
+-- start_seq / end_seq 指向 audit_event 的序号区间：同一账户内 [start_seq, end_seq]
+-- 之间的所有事件，就是这笔交易的全过程（逐 K 回放读的就是这一段）。
+--   · start_seq 指向那条 action='BASE' 的事件（开仓前那一屏），不可变
+--   · end_seq = -1 表示还没收尾（进程崩溃 / 账户被删 / 还持着仓）
+-- **摘要字段是独立列，不依赖事件行** —— 所以删账户、清理事件之后再列记录，
+-- 盈亏和标签照样在。这也正是「删账户后仍能在另一个页面看所有记录」的落点。
+CREATE TABLE IF NOT EXISTS trade_record (
+    id             TEXT PRIMARY KEY,
+    account_id     TEXT NOT NULL,    -- 保留原账户 id；账户删了也不置空
+    -- 账户名快照：账户行被删之后，这是唯一还记得「当初算在谁头上」的地方。
+    -- 不跟随账户改名 —— 名字也是「签下那一刻的事实」，和 Trade.commission 一个道理。
+    account_name   TEXT NOT NULL,
+    symbol_id      TEXT NOT NULL REFERENCES symbol (id),  -- 这笔交易做的是哪个品种
+    anchor_bar_time TEXT NOT NULL,   -- 起点那根（= BASE 事件的 bar_time，冗余供列表显示）
+    start_seq      INTEGER NOT NULL, -- 区间起点：BASE 事件的 seq
+    end_seq        INTEGER NOT NULL DEFAULT -1,  -- 区间终点；-1 = 还没收尾
+    entry_bar_time TEXT,
+    exit_bar_time  TEXT,
+    side           TEXT,             -- LONG / SHORT
+    quantity       TEXT,
+    max_quantity   TEXT,
+    entry_price    TEXT,
+    exit_price     TEXT,
+    realized_pnl   TEXT,
+    -- 这条记录承担的手续费合计。**不能由区间内 Σ trade.commission 现算**：反手时一笔成交
+    -- 横跨两条记录（旧仓平仓腿 + 新仓开仓腿），区间求和会把同一笔费算两遍。
+    -- 净盈亏 = realized_pnl − commission，两条记录各自独立成立。
+    commission     TEXT NOT NULL DEFAULT '0.00',
+    mfe            TEXT,             -- 最大有利波动
+    mae            TEXT,             -- 最大不利波动
+    closed         INTEGER NOT NULL DEFAULT 0,
+    actor          TEXT NOT NULL,    -- JAVA 常量名：HUMAN / BOT（SYSTEM 不是一笔交易的来源）
+    actor_name     TEXT,
+    ended_at       INTEGER,
+    created_at     INTEGER NOT NULL,
+    updated_at     INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_record_account ON trade_record (account_id);
+
+-- 一个账户同一时刻最多一条未闭合记录。
+-- 反手的「闭合旧记录 + 开新记录」在同一个事务里完成，正常情况下不会有两条；
+-- 这条索引管的是异常：程序崩在成交落库和记录封口之间时，重启后「有未闭合 + 又开新的」
+-- 会让后面每一笔开仓都挂到一条早就该关掉的记录上，而且不报错。
+-- 注意：旧库里如果已经有两条以上未闭合记录，这里会建失败并让整个启动挂掉 ——
+-- 那正是要暴露的问题（本表 2026-10-30 前零引用，正常库是空的）。
+CREATE UNIQUE INDEX IF NOT EXISTS ux_record_open ON trade_record (account_id) WHERE closed = 0;
+
+-- 用户给交易记录打的自定义标签（标签是记录的一部分 → 真级联）
+--
+-- **2026-11-01 拆成两张表**。原来只有下面这一张，它是「标签定义 + 归属」的合体：
+--   trade_record_tag(record_id, tag_index, name, color)，主键 (record_id, tag_index)
+-- 那样存的结果是：同一个「追单」在 20 条记录里就是 20 行互不相关的数据 ——
+-- 改个颜色要改 20 次、删了一条记录另外 19 条的"同名兄弟"还在、也没法回答
+-- 「我一共有哪些标签」「哪些交易带追单」。**标签本身是个东西，不是一个字符串**。
+--
+-- 现在的分工：
+--   trade_tag        标签是什么（名字 + 颜色），一条一行，跟记录无关
+--   trade_record_tag 谁打了它（记录 ↔ 标签 + 显示顺序），纯关联
+--
+-- 注意「标签名唯一」这条索引：允许同名的话，「按追单筛选」会筛出两堆，
+-- 而用户眼里它们明明是同一个标签。名字是标签的身份，所以加唯一索引。
+CREATE TABLE IF NOT EXISTS trade_tag (
+    id         TEXT PRIMARY KEY,
+    name       TEXT NOT NULL,
+    color      TEXT,                 -- #rrggbb
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL
+);
+CREATE UNIQUE INDEX IF NOT EXISTS ux_tag_name ON trade_tag (name);
+
+-- 关联表：一条记录打过哪些标签。**两端都不是数据的所有者，各自独立存在**。
+--   · record_id → trade_record，**级联删**：记录没了，这个记号没有附体，跟着走；
+--   · tag_id    → trade_tag，**限制删**（RESTRICT）：标签还被记录引用时不许删，
+--     必须先把所有记录上的它摘掉。理由（2026-11-01 定）：「我不想要这个标签了」
+--     要付一次显式代价 —— 否则删掉一个标签会静默抹掉几十条历史交易上的记号，
+--     而那些记号是当时真实的判断，事后没人能还原。
+--     RESTRICT 是 SQLite 默认行为，这里写出来是为了让意图直接落在 DDL 上，
+--     而不是靠「没写 CASCADE」这种默认值来表达。
+-- tag_index 只是显示顺序（用户拖出来的先后），**不参与主键**：
+-- 它变一次不该让这行「变成另一行」；同一对 (记录, 标签) 也只该有一行。
+CREATE TABLE IF NOT EXISTS trade_record_tag (
+    record_id  TEXT NOT NULL REFERENCES trade_record (id) ON DELETE CASCADE,
+    tag_id     TEXT NOT NULL REFERENCES trade_tag (id) ON DELETE RESTRICT,
+    tag_index  INTEGER NOT NULL,
+    PRIMARY KEY (record_id, tag_id)
+);
+-- 「这个标签用在哪些交易上」是标签页/筛选的主要查询方向
+CREATE INDEX IF NOT EXISTS idx_record_tag_tag ON trade_record_tag (tag_id);
+
+-- 挂单。表名不能叫 order（SQL 保留字，SQLite 会直接报错）
+CREATE TABLE IF NOT EXISTS trade_order (
+    id            TEXT PRIMARY KEY,
+    account_id    TEXT NOT NULL,     -- 保留原账户 id；账户删了也不置空
+    symbol_id     TEXT NOT NULL REFERENCES symbol (id),  -- 挂在哪个品种上
+    side          TEXT NOT NULL,     -- BUY / SELL
+    type          TEXT NOT NULL,     -- LIMIT / STOP / MARKET
+    status        TEXT NOT NULL,     -- OPEN / FILLED / CANCELLED
+    price         TEXT NOT NULL,
+    quantity      TEXT NOT NULL,
+    -- 「哪一根」只有一个答案：时间。**没有 placed_index / filled_index**（2026-10-29 删）——
+    -- 下标是位置，数据文件重抓 / 补一根 / 删一根坏行就指向另一根 K 线，且不报错；
+    -- 它还只在某个标的下成立，而账户不绑标的。排序用 placed_at_bar（明文定长，字典序=时间序）。
+    placed_at_bar TEXT NOT NULL,
+    filled_at_bar TEXT,             -- NULL = 没成交（不再用 -1 这种哨兵值）
+    fill_price    TEXT,
+    created_at    INTEGER NOT NULL,
+    updated_at    INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_order_account ON trade_order (account_id);
+
+-- 成交。持仓、已实现盈亏都是这张表的**派生结果**，不单独落库。
+-- 成交是盘面上的事实：账户删了，成交还在，account_id 原样留着。
+CREATE TABLE IF NOT EXISTS trade (
+    id              TEXT PRIMARY KEY,
+    account_id      TEXT NOT NULL,   -- 保留原账户 id；账户删了也不置空
+    symbol_id       TEXT NOT NULL REFERENCES symbol (id),  -- 成交在哪个品种上
+    order_id        TEXT NOT NULL,
+    bar_time        TEXT NOT NULL,
+    -- 成交流水号：同一账户内从 1 起单调递增。**排序只认它，不认 id**
+    -- （id 是 UUID，同一根 K 线上多笔成交按它排等于随机排，均价会在反手时算错）。
+    seq             INTEGER NOT NULL,
+    side            TEXT NOT NULL,
+    price           TEXT NOT NULL,
+    quantity        TEXT NOT NULL,
+    realized_pnl    TEXT NOT NULL,   -- 平均成本法算出的「这一笔平掉的部分」（**税前毛利**）
+    commission      TEXT NOT NULL,   -- 这一笔成交的单边手续费（成交那一刻的快照，改费率不影响历史账）
+    trade_record_id TEXT REFERENCES trade_record (id) ON DELETE SET NULL,
+    created_at      INTEGER NOT NULL,
+    updated_at      INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_trade_account ON trade (account_id, symbol_id, bar_time);
+CREATE UNIQUE INDEX IF NOT EXISTS ux_trade_account_seq ON trade (account_id, seq);
+CREATE INDEX IF NOT EXISTS idx_trade_record ON trade (trade_record_id);
+
+-- 复盘进度：**这张表已于 2026-10-29 删除**，进度改为「最后一条事件的 bar_time」。
+--
+-- 原来的理由是「唯一一种算不出来、必须存的状态」。那个理由只在「没有全量操作记录」的
+-- 前提下成立 —— 一旦每个动作都记进了 audit_event，进度就是
+-- 「这个账户在这个品种上最后一条事件停在哪根 K 线」，查一次就有。
+-- 同一份状态留两个来源，早晚会对不上（改了一条、忘了改另一条）。
+--
+-- 中间曾经加过一列 cursor（第几根的下标）来顶替它，同一天又删了：
+-- **下标是位置，时间是标识**。文件重抓 / 补一根 / 删一根坏行，同一个下标就指向另一根
+-- K 线而且不报错；时间永远指向原来那颗。位置类字段在这个库里已经全部清掉
+-- （连同 trade_order 的 placed_index / filled_index、prop_firm_account 的 start_bar_index）。
+--
+-- 旧库里的表不会自动消失（本脚本只管建，不管删）。要清掉它，手工执行：
+--   DROP TABLE IF EXISTS replay_cursor;
+-- 旧库还需要重建才能拿到 audit_event / trade_record 的新列，见 README.md 的 Spring 侧「改表」一节。
+
+-- 操作记录：append-only 的审计流水。**它是整个「记录 / 回放」的唯一日志层。**
+-- account_id **NOT NULL 且故意不加外键**：任何改写（包括 SET NULL）都会让这条流水
+-- 不再是「当时发生的事实」。账户删了这里仍保留原 id，指向一个不存在的账户不丢信息。
+--
+-- symbol_id / bar_time 是 2026-10-29 加的，之前它们只在 payload_json 里：
+--   · symbol_id —— 一个账户可同时做 MES / MNQ / MGC，seq 是混着排的，
+--                  没有这一列「这个品种从第几步到第几步」只能全表拉回内存逐条解析；
+--   · bar_time  —— 交易记录的区间回放要按 K 线定位、按时间过滤，也是进度本身。
+-- 两列都 NOT NULL：所有动作都发生在某块盘面的某根 K 线上（包括「退出」）。
+CREATE TABLE IF NOT EXISTS audit_event (
+    id           TEXT PRIMARY KEY,
+    account_id   TEXT NOT NULL,      -- 保留原账户 id，永不改写/置空
+    symbol_id    TEXT NOT NULL,      -- 发生在哪个品种的盘面上；不加外键（同 account_id 的理由）
+    bar_time     TEXT NOT NULL,      -- 当时停在哪根 K 线上（本地时区明文）；**这就是位置**
+    seq          INTEGER NOT NULL,
+    actor        TEXT NOT NULL,      -- JAVA 常量名：HUMAN / BOT / SYSTEM
+    action       TEXT NOT NULL,      -- JAVA 常量名：BAR_ADVANCED / ORDER_PLACED …（见 ReplayAction）
+    payload_json TEXT,               -- 原始广播负载，原样留存；BASE 事件可为 NULL
+    created_at   INTEGER NOT NULL,
+    updated_at   INTEGER NOT NULL
+);
+CREATE UNIQUE INDEX IF NOT EXISTS ux_audit_account_seq ON audit_event (account_id, seq);
+-- 「这个账户在这个品种上盘面停在哪」全靠它：找回进度、按品种切片回放
+CREATE INDEX IF NOT EXISTS idx_audit_account_symbol ON audit_event (account_id, symbol_id, seq);
+
+-- 没有 account_id / symbol_id 的「全局操作」（例如新建标的）不在这张表里。
+-- 需要这类流水时应另开一张表，不要把这两列放开成 NULL —— 一放开，
+-- 「这条属于哪块盘面」就有了空答案，而回放和进度都建立在「必有答案」之上。
+
+-- 策略：注册表。真正的算法是 strategy 包里的 Java 类，这张表只记「有哪些 + 参数」
+CREATE TABLE IF NOT EXISTS strategy (
+    id          TEXT PRIMARY KEY,
+    code        TEXT NOT NULL UNIQUE, -- 对应 TradingStrategy 实现类的 bean 名
+    name        TEXT NOT NULL,
+    summary     TEXT,
+    params_json TEXT,
+    enabled     INTEGER NOT NULL DEFAULT 1,
+    created_at  INTEGER NOT NULL,
+    updated_at  INTEGER NOT NULL
+);
+
+-- 策略执行机器人：一次运行 = 一行。运行期的逐拍状态不落库
+CREATE TABLE IF NOT EXISTS strategy_bot (
+    id          TEXT PRIMARY KEY,
+    account_id  TEXT NOT NULL,       -- 保留原账户 id；账户删了也不置空
+    symbol_id   TEXT NOT NULL REFERENCES symbol (id),  -- 这个机器人在哪个品种上跑
+    strategy_id TEXT REFERENCES strategy (id),  -- NULL = 老式随机演示机器人
+    quantity    TEXT NOT NULL,
+    interval_ms INTEGER NOT NULL,
+    status      TEXT NOT NULL,       -- RUNNING / STOPPED / FINISHED / FAILED
+    started_at  INTEGER NOT NULL,
+    stopped_at  INTEGER,
+    entry_count INTEGER NOT NULL DEFAULT 0,
+    stop_reason TEXT,
+    created_at  INTEGER NOT NULL,
+    updated_at  INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_bot_account ON strategy_bot (account_id);

@@ -1,0 +1,43 @@
+{
+  "compilerOptions": {
+    "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.node.tsbuildinfo",
+    "target": "es2023",
+    "lib": ["ES2023"],
+    "types": ["node"],
+    "skipLibCheck": true,
+
+    /*
+     * Bundler mode。
+     *
+     * 这里**必须**是 `bundler` 而不是 `nodenext`：本项目的源码用**无扩展名**的别名 import
+     * （`@/types/protocol`），NodeNext 的解析不会替 substitution 结果补 `.ts`，
+     * 于是 `scripts/*.mts` 一旦 import 到应用源码（`view-state-check.mts` 就 import 了
+     * `chart/scale.ts`），就会在 `scale.ts` 第 1 行报「找不到模块」——
+     * 报错位置指着应用代码，真因却在这一侧的解析模式。`bundler` 和 vite 实际打包时的
+     * 解析一致，也是 @vue/tsconfig 给应用侧的同一套。只做检查、不产出，改它不影响输出。
+     */
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
+    "verbatimModuleSyntax": true,
+    "moduleDetection": "force",
+    "noEmit": true,
+
+    /* Linting */
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "erasableSyntaxOnly": true,
+    "noFallthroughCasesInSwitch": true,
+
+    /*
+     * `scripts/*.mts` 会直接 import 应用源码（`../src/components/chart/scale.ts`），
+     * 而源码里用的是 `@/...` 别名。这个项目没配 `paths`，别名解析不了，就会报在
+     * `scale.ts` 头上（看着像应用代码坏了，其实是这一侧缺映射）——所以这里必须有，
+     * 且要和 tsconfig.app.json / vite.config.ts 的 alias 保持一致。
+     */
+    "paths": {
+      "@/*": ["./src/*"]
+    }
+  },
+  "include": ["vite.config.ts", "scripts/**/*.mts"]
+}

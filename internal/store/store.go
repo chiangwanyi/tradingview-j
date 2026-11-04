@@ -66,8 +66,12 @@ type Store struct {
 	taken      map[string]string  // lower(folder) -> symbol
 	ticks      map[string]float64 // symbol -> 最小跳动（来自 _symbols.json，写回时保留）
 	tickValues map[string]float64 // symbol -> 1 tick 的美元价值（同上，写回时保留）
-	accepted   map[string]int64   // folder -> Add 调用次数（含覆盖）
-	idxDirty   bool
+	// commissions 是 symbol -> 每手每边的手续费（同上，写回时保留）。抓取侧不算账，
+	// 只负责别把它弄丢；用指针是为了区分「没配」和「配了 0」——
+	// CL 就是显式的 "commission": 0（免手续费），抹掉它和漏配看起来一模一样。
+	commissions map[string]*float64
+	accepted    map[string]int64 // folder -> Add 调用次数（含覆盖）
+	idxDirty    bool
 }
 
 type day struct {
@@ -87,14 +91,15 @@ func Open(opts Options) (*Store, error) {
 		loc = time.Local
 	}
 	s := &Store{
-		opts:       opts,
-		loc:        loc,
-		days:       map[string]*day{},
-		folders:    map[string]string{},
-		taken:      map[string]string{},
-		ticks:      map[string]float64{},
-		tickValues: map[string]float64{},
-		accepted:   map[string]int64{},
+		opts:        opts,
+		loc:         loc,
+		days:        map[string]*day{},
+		folders:     map[string]string{},
+		taken:       map[string]string{},
+		ticks:       map[string]float64{},
+		tickValues:  map[string]float64{},
+		commissions: map[string]*float64{},
+		accepted:    map[string]int64{},
 	}
 	if err := os.MkdirAll(opts.Root, 0o755); err != nil {
 		return nil, fmt.Errorf("创建数据目录 %s 失败: %w", opts.Root, err)
@@ -121,7 +126,14 @@ type symRec struct {
 	// 复盘结算盈亏要用它：光有 tick 只能知道价格跳多粗，不知道一跳值多少钱。
 	// 和 Tick 一样由用户直接写进 _symbols.json，抓取这边原样保留。
 	TickValue float64 `json:"tickValue,omitempty"`
-	Created   int64   `json:"created,omitempty"`
+	// Commission 是**每手每边**的手续费（美元），由用户写进 _symbols.json，抓取这边不算账、
+	// 但必须原样带回去：saveIndexLocked 是「按结构整个重写」，字段不列在这里就等于
+	// 一出现新标的就把整份费率静默抹掉（只留下 version + symbols 的壳）。
+	//
+	// 用指针而不是 float64：CL 的费率就是 0（免手续费），omitempty 会把 0 和「没配」
+	// 一起省成缺省键 —— 那两只标的在文件里会长得一样，看不出哪个是漏填。
+	Commission *float64 `json:"commission,omitempty"`
+	Created    int64    `json:"created,omitempty"`
 }
 
 type symbolIndex struct {
@@ -159,6 +171,10 @@ func (s *Store) loadIndex() {
 			}
 			if rec.TickValue > 0 {
 				s.tickValues[sym] = rec.TickValue
+			}
+			if rec.Commission != nil {
+				v := *rec.Commission
+				s.commissions[sym] = &v
 			}
 			if rec.Folder == "" {
 				continue
@@ -246,10 +262,19 @@ func shortHash(s string) string {
 }
 
 // saveIndexLocked 写 _symbols.json。调用方必须已经持有 s.mu（见 Flush）。
+//
+// 这里的映射是**整个重写**，所以手写进文件的每个字段都必须先从内存带回来再写出去
+// （tick / tickValue / commission 三个都是）。少带一个，表现是「用户配好的值在
+// 某个新标的出现的那一刻消失」，而且没有任何报错 —— 只是复盘那边的小数位或成本变了。
 func (s *Store) saveIndexLocked() error {
 	idx := symbolIndex{Version: 1, Symbols: map[string]symRec{}}
 	for sym, folder := range s.folders {
-		idx.Symbols[sym] = symRec{Folder: folder, Tick: s.ticks[sym], TickValue: s.tickValues[sym]}
+		idx.Symbols[sym] = symRec{
+			Folder:     folder,
+			Tick:       s.ticks[sym],
+			TickValue:  s.tickValues[sym],
+			Commission: s.commissions[sym],
+		}
 	}
 	buf, err := json.MarshalIndent(idx, "", "  ")
 	if err != nil {
