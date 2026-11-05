@@ -103,7 +103,19 @@ export interface Figure {
 /** 斐波那契的四个比例。后端 annotation.go 里的 fibRatios 是同一份，顺序也一样。 */
 export const FIB_RATIOS = [-1, 0, 1, 2] as const
 
-/** 四个水平的出厂颜色（和后端 levelColorByRatio 一致） */
+/**
+ * AB=CD 的三段：ratio 0 / 1 / 2 就是 AB / BC / CD。
+ *
+ * 复用 `style.levels` 这一层（斐波那契已经在用它装「一图形多颜色」）：后端只按
+ * `(ratio, color)` 存、按比例下发，两边不必多一套协议。水平线的颜色跟着段走 ——
+ * A 用 AB、B 用 BC、D 用 CD。
+ */
+export const ABCD_LEGS = [0, 1, 2] as const
+
+/** 三段的界面上写的字（和后端 kindLabel 无关，那是图形名不是段名） */
+export const ABCD_LEG_LABEL: Record<number, string> = { 0: 'AB', 1: 'BC', 2: 'CD' }
+
+/** 水平线的出厂颜色（和后端 levelColorByRatio 一致）。AB=CD 直接用 0/1/2 三项。 */
 export const FIB_COLORS: Record<number, string> = {
   [-1]: '#38bdf8',
   0: '#f59e0b',
@@ -123,20 +135,24 @@ export function defaultStyle(kind: string): AnnotationStyle {
       return { color: '#f59e0b', width: 1.4, dash: 'solid', fill: '#f59e0b', fillOpacity: 0.12 }
     case 'fib':
       return { color: '#f59e0b', width: 1.2, dash: 'solid', levels: defaultLevels() }
+    case 'abcd':
+      return { color: '#f59e0b', width: 1.4, dash: 'solid', levels: defaultLevels('abcd') }
     default:
       return { color: '#f59e0b', width: 1.6, dash: 'solid' }
   }
 }
 
-export function defaultLevels(): FibLevel[] {
-  return FIB_RATIOS.map((r) => ({ ratio: r, color: FIB_COLORS[r] }))
+/** 出厂配色：斐波那契四条水平线，AB=CD 三段（0/1/2）。 */
+export function defaultLevels(kind: string = 'fib'): FibLevel[] {
+  const ratios = kind === 'abcd' ? ABCD_LEGS : FIB_RATIOS
+  return ratios.map((r) => ({ ratio: r, color: FIB_COLORS[r] }))
 }
 
 /**
  * 把「可能不全」的样式补成「一定完整」的样式。
  *
  * 三处会遇到不完整：旧存档（只有 color）、后端模板被手工改过、以及兜底路径。
- * 规则和后端 sanitizeStyle 一致（线宽 1~6、只有 solid/dashed、斐波那契固定四条）。
+ * 规则和后端 sanitizeStyle 一致（线宽 1~6、只有 solid/dashed、斐波那契固定四条、AB=CD 固定三段）。
  */
 export function resolveStyle(input: { kind: string; style?: AnnotationStyle; color?: string }): AnnotationStyle {
   const base = defaultStyle(input.kind)
@@ -152,18 +168,21 @@ export function resolveStyle(input: { kind: string; style?: AnnotationStyle; col
     style.fillOpacity = s.fillOpacity ?? base.fillOpacity ?? 0.12
   }
   if (input.kind === 'fib') {
-    style.levels = resolveLevels(s.levels)
+    style.levels = resolveLevels(s.levels, FIB_RATIOS)
+  }
+  if (input.kind === 'abcd') {
+    style.levels = resolveLevels(s.levels, ABCD_LEGS)
   }
   return style
 }
 
-/** 只认 -1/0/1/2 四个比例，缺的补出厂色，顺序固定 —— 界面上永远不会出现第五条线。 */
-function resolveLevels(inLevels: FibLevel[] | undefined): FibLevel[] {
+/** 只认给定的比例（fib：-1/0/1/2；abcd：0/1/2），缺的补出厂色，顺序固定。 */
+function resolveLevels(inLevels: FibLevel[] | undefined, ratios: readonly number[]): FibLevel[] {
   const byRatio = new Map<number, string>()
   for (const lv of inLevels ?? []) {
     if (lv && typeof lv.color === 'string' && lv.color) byRatio.set(lv.ratio, lv.color)
   }
-  return FIB_RATIOS.map((r) => ({ ratio: r, color: byRatio.get(r) ?? FIB_COLORS[r] }))
+  return ratios.map((r) => ({ ratio: r, color: byRatio.get(r) ?? FIB_COLORS[r] }))
 }
 
 // ---------------- 几何 ----------------
@@ -242,10 +261,18 @@ export function buildFigure(a: FigureInput, view: FigureView): Figure | null {
        * 平移之后 D 依然落在「C 往右 b-a 根、往 b-a 个价差」那个位置。
        * D 不存库：存进去就会和三个点脱节（理由同斐波那契四条水平线）。
        */
+      // 三段各自一个颜色；水平线跟着段走（A ← AB、B ← BC、D ← CD）
+      const levels = style.levels ?? defaultLevels('abcd')
+      const leg = (ratio: number): string =>
+        levels.find((lv) => lv.ratio === ratio)?.color ?? style.color
+      const ab = leg(0)
+      const bc = leg(1)
+      const cd = leg(2)
+
       const mid = a.mid
       if (!mid) {
         // 预览中间态（只点了 A）：没有 B 就没有 D，先画一条线让人看得见落点
-        figure.segs.push({ x1, y1, x2, y2, color: style.color, width: style.width, dash, opacity: 1 })
+        figure.segs.push({ x1, y1, x2, y2, color: ab, width: style.width, dash, opacity: 1 })
         return figure
       }
       const xm = view.xOf(mid)
@@ -253,21 +280,27 @@ export function buildFigure(a: FigureInput, view: FigureView): Figure | null {
       const ym = view.yOfPrice(mid.price)
       const xd = x2 + (xm - x1)
       const yd = y2 + (ym - y1)
-      const seg = (ax: number, ay: number, bx: number, by: number): Seg => ({
+      const seg = (ax: number, ay: number, bx: number, by: number, color: string): Seg => ({
         x1: ax,
         y1: ay,
         x2: bx,
         y2: by,
-        color: style.color,
+        color,
         width: style.width,
         dash,
         opacity: 1,
       })
-      figure.segs.push(seg(x1, y1, xm, ym), seg(xm, ym, x2, y2), seg(x2, y2, xd, yd))
-      // 三条水平线：过 A、B、D 的价位，横向铺满整个图形（斐波那契那样的一排平行线）
+      figure.segs.push(seg(x1, y1, xm, ym, ab), seg(xm, ym, x2, y2, bc), seg(x2, y2, xd, yd, cd))
+      // 三条水平线：过 A / B / D 的价位，横向铺满整个图形（斐波那契那样的一排平行线）
       const left = Math.min(x1, xm, x2, xd)
       const right = Math.max(x1, xm, x2, xd)
-      for (const y of [y1, ym, yd]) figure.segs.push(seg(left, y, right, y))
+      for (const [y, color] of [
+        [y1, ab],
+        [ym, bc],
+        [yd, cd],
+      ] as const) {
+        figure.segs.push(seg(left, y, right, y, color))
+      }
       // 手柄只有 A/B/C：D 不是用户给的，拖不了
       figure.anchors = [
         { x: x1, y: y1 },

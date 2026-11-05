@@ -76,7 +76,10 @@ export type AnnotationKind = 'trend' | 'ray' | 'rect' | 'arrow' | 'fib' | 'abcd'
 /** 线型（只有两种：点线在 1px 上和虚线看不出区别） */
 export type DashStyle = 'solid' | 'dashed'
 
-/** 斐波那契回撤的一条水平线。ratio 只认 -1 / 0 / 1 / 2，由后端固定住。 */
+/**
+ * 「一图形多颜色」的一行：斐波那契的一条水平线（ratio -1/0/1/2），
+ * 或 AB=CD 的一段（ratio 0/1/2 = AB/BC/CD）。取值集合由前后端各固定一份。
+ */
 export interface FibLevel {
   ratio: number
   color: string
@@ -92,6 +95,7 @@ export interface AnnotationStyle {
   dash: DashStyle
   fill?: string
   fillOpacity?: number
+  /** 只有 fib（四条水平）和 abcd（三段 AB/BC/CD）有 */
   levels?: FibLevel[]
 }
 

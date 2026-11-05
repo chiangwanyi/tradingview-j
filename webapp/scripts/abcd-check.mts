@@ -7,7 +7,7 @@
  */
 import assert from 'node:assert/strict'
 
-import { buildFigure, type FigurePoint } from '../src/components/chart/annotations.ts'
+import { buildFigure, defaultStyle, resolveStyle, type FigurePoint } from '../src/components/chart/annotations.ts'
 
 /** 假视图：时间用数字字符串当横轴刻度，价格直接翻成屏幕 y */
 const view = {
@@ -19,8 +19,18 @@ const view = {
 
 const at = (time: string, price: number): FigurePoint => ({ time, price })
 
+// 三段各一个颜色：AB=红、BC=绿、CD=蓝（比值 0/1/2）
+const legs = [
+  { ratio: 0, color: '#aa0000' },
+  { ratio: 1, color: '#00aa00' },
+  { ratio: 2, color: '#0000aa' },
+]
+
 // A(0,100) → B(1,200) → C(3,150)：D 应当是 (4,250)，屏幕上就是 C 平移了 AB 那一段
-const f = buildFigure({ id: 'a1', kind: 'abcd', start: at('0', 100), mid: at('1', 200), end: at('3', 150) }, view)
+const f = buildFigure(
+  { id: 'a1', kind: 'abcd', start: at('0', 100), mid: at('1', 200), end: at('3', 150), style: { ...defaultStyle('abcd'), levels: legs } },
+  view,
+)
 assert.ok(f, 'A/B/C 齐全时必须画得出来')
 
 const [ab, bc, cd] = f.segs
@@ -42,6 +52,27 @@ for (const s of f.segs.slice(3)) {
   assert.deepEqual([s.x1, s.x2], [0, 40], '横跨 A..D')
 }
 
+// 水平线的颜色跟着段走：A ← AB、B ← BC、D ← CD
+assert.deepEqual(
+  f.segs.slice(3).map((s) => s.color),
+  ['#aa0000', '#00aa00', '#0000aa'],
+  'A/B/D 三条水平线各自用 AB/BC/CD 的色',
+)
+assert.deepEqual([ab.color, bc.color, cd.color], ['#aa0000', '#00aa00', '#0000aa'], '三段各自的颜色')
+
+// 出厂样式：三段齐全，缺的补出厂色，越界的比例丢掉
+const born = resolveStyle({ kind: 'abcd', style: { color: '#f59e0b', width: 1.4, dash: 'solid' } })
+assert.deepEqual(
+  born.levels?.map((lv) => lv.ratio),
+  [0, 1, 2],
+  '缺省样式要补齐三段',
+)
+assert.deepEqual(
+  resolveStyle({ kind: 'abcd', style: { color: '#f59e0b', width: 1, dash: 'solid', levels: [{ ratio: 0, color: '#123456' }, { ratio: 7, color: '#ffffff' }] } }).levels?.map((lv) => lv.color),
+  ['#123456', '#ec4899', '#22c55e'],
+  '给了的保住、越界的丢掉、缺的补出厂色',
+)
+
 // 手柄是用户给的三个点（D 是算出来的，拖不了）
 assert.deepEqual(
   f.anchors.map((a) => [a.x, a.y]),
@@ -52,6 +83,10 @@ assert.deepEqual(
   ],
 )
 
-// 只点了 A 的预览：没有 B 就没有 D，但仍然要看得见一条线
-const preview = buildFigure({ id: 'g', kind: 'abcd', start: at('0', 100), end: at('2', 120) }, view)
-assert.deepEqual(preview?.segs.length, 1, '预览只有一个线段')
+// 只点了 A 的预览：没有 B 就没有 D，但仍然要看得见一条线（用 AB 的色）
+const preview = buildFigure(
+  { id: 'g', kind: 'abcd', start: at('0', 100), end: at('2', 120), style: { ...defaultStyle('abcd'), levels: legs } },
+  view,
+)
+assert.equal(preview?.segs.length, 1, '预览只有一个线段')
+assert.equal(preview?.segs[0].color, '#aa0000')

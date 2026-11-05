@@ -34,6 +34,16 @@ final class AnnotationStyleRules {
     /** 斐波那契的四个比例。<strong>顺序就是显示顺序</strong>，前端 {@code FIB_RATIOS} 是同一份。 */
     static final List<Integer> FIB_RATIOS = List.of(-1, 0, 1, 2);
 
+    /**
+     * AB=CD 的三段：ratio 0 / 1 / 2 = AB / BC / CD（前端 {@code ABCD_LEGS} 是同一份）。
+     *
+     * <p>复用「一图形多颜色」的那张表（{@code drawing_fib_level}）而不是另开一套：
+     * 后端只认 {@code (ratio, color)} 这对，斐波那契装四条水平、AB=CD 装三段颜色，
+     * 校验、落库、下发全都是同一段代码。水平线怎么配色（A ← AB、B ← BC、D ← CD）
+     * 是渲染的事，后端不解释。
+     */
+    static final List<Integer> ABCD_LEGS = List.of(0, 1, 2);
+
     /** 四条水平线的出厂色，按 ratio 索引。前端 {@code FIB_COLORS} 是同一份。 */
     static final Map<Integer, String> FIB_COLORS = Map.of(
             -1, "#38bdf8",
@@ -132,7 +142,13 @@ final class AnnotationStyleRules {
         }
         if (kind == Drawing.Kind.FIB) {
             // 斐波那契没有「一个颜色」：四条线各一个。顶层 color 留着给 chip 上的色块用
-            return new AnnotationStyleView(color, width, dash, null, null, levels(style.levels()));
+            return new AnnotationStyleView(color, width, dash, null, null,
+                    levels(style.levels(), FIB_RATIOS, FIB_COLORS));
+        }
+        if (kind == Drawing.Kind.ABCD) {
+            // AB=CD 同理：AB / BC / CD 三段各一个颜色
+            return new AnnotationStyleView(color, width, dash, null, null,
+                    levels(style.levels(), ABCD_LEGS, FIB_COLORS));
         }
         return new AnnotationStyleView(color, width, dash, null, null, null);
     }
@@ -141,6 +157,7 @@ final class AnnotationStyleRules {
         BigDecimal fallback = new BigDecimal(switch (kind) {
             case RECT -> "1.4";
             case FIB -> "1.2";
+            case ABCD -> "1.4";
             default -> "1.6";
         });
         if (in == null) {
@@ -173,20 +190,21 @@ final class AnnotationStyleRules {
     }
 
     /**
-     * 只认 -1 / 0 / 1 / 2 四个比例，缺的补出厂色，顺序固定 ——
-     * 界面上永远不会出现第五条线，也不会因为用户传了个 0.618 就多一条。
+     * 只认给定的一组比例（斐波那契 -1/0/1/2、AB=CD 0/1/2），缺的补出厂色，顺序固定 ——
+     * 界面上永远不会多出一条，也不会因为用户传了个 0.618 就多一条。
      */
-    private static List<AnnotationStyleView.FibLevelView> levels(List<AnnotationStyleView.FibLevelView> in) {
+    private static List<AnnotationStyleView.FibLevelView> levels(
+            List<AnnotationStyleView.FibLevelView> in, List<Integer> ratios, Map<Integer, String> palette) {
         Map<Integer, String> byRatio = new LinkedHashMap<>();
         for (AnnotationStyleView.FibLevelView level : in == null ? List.<AnnotationStyleView.FibLevelView>of() : in) {
-            if (level == null || !FIB_RATIOS.contains(level.ratio())) {
+            if (level == null || !ratios.contains(level.ratio())) {
                 continue;
             }
-            byRatio.put(level.ratio(), color(level.color(), FIB_COLORS.get(level.ratio())));
+            byRatio.put(level.ratio(), color(level.color(), palette.get(level.ratio())));
         }
-        List<AnnotationStyleView.FibLevelView> out = new ArrayList<>(FIB_RATIOS.size());
-        for (Integer ratio : FIB_RATIOS) {
-            out.add(new AnnotationStyleView.FibLevelView(ratio, byRatio.getOrDefault(ratio, FIB_COLORS.get(ratio))));
+        List<AnnotationStyleView.FibLevelView> out = new ArrayList<>(ratios.size());
+        for (Integer ratio : ratios) {
+            out.add(new AnnotationStyleView.FibLevelView(ratio, byRatio.getOrDefault(ratio, palette.get(ratio))));
         }
         return out;
     }

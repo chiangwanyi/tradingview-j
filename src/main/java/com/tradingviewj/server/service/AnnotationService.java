@@ -240,7 +240,12 @@ public class AnnotationService {
         return anchor(account, cmd.mid(), "中间点");
     }
 
-    /** 把协议样式写进实体（含斐波那契四条线）。样式一律先过一遍夹取。 */
+    /**
+     * 把协议样式写进实体（含斐波那契四条水平线 / AB=CD 三段颜色）。样式一律先过一遍夹取。
+     *
+     * <p>哪些图形「有多颜色」由 {@code sanitize} 回答：它只在 FIB / ABCD 上返回 {@code levels}，
+     * 别的图形是 {@code null}。所以这里不必再按 kind 分支 —— 多一种多色图形只改一处。
+     */
     private static void applyStyle(Drawing drawing, Drawing.Kind kind, AnnotationStyleView in) {
         AnnotationStyleView style = AnnotationStyleRules.sanitize(kind, in);
         drawing.setStyle(new DrawingStyle(
@@ -249,11 +254,11 @@ public class AnnotationService {
                 "dashed".equals(style.dash()) ? DrawingStyle.Dash.DASHED : DrawingStyle.Dash.SOLID,
                 style.fill(),
                 style.fillOpacity()));
-        drawing.setFibLevels(kind == Drawing.Kind.FIB && style.levels() != null
-                ? style.levels().stream()
+        drawing.setFibLevels(style.levels() == null
+                ? List.of()
+                : style.levels().stream()
                         .map(level -> new FibLevel(BigDecimal.valueOf(level.ratio()), level.color()))
-                        .toList()
-                : List.of());
+                        .toList());
     }
 
     private static String actor() {

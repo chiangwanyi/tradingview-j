@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 
-import { defaultLevels, resolveStyle } from '@/components/chart/annotations'
+import { ABCD_LEG_LABEL, defaultLevels, resolveStyle } from '@/components/chart/annotations'
 import TemplateSwatch from '@/components/TemplateSwatch.vue'
 import { TOOL_LABEL, useTradeStore, type DrawTool } from '@/stores/trade'
 import { ANNOTATION_COLORS, type AnnotationStyle, type DashStyle, type Template } from '@/types/protocol'
@@ -79,12 +79,22 @@ function remove(): void {
   store.deleteTemplate(t.id)
 }
 
+/** 这个工具是不是「一图形多颜色」（斐波那契四条水平 / AB=CD 三段） */
+const multiColor = computed(() => props.kind === 'fib' || props.kind === 'abcd')
+
+/** 多色图形每一行的名字：斐波那契写比例，AB=CD 写段名 */
+function levelName(ratio: number): string {
+  return props.kind === 'abcd' ? ABCD_LEG_LABEL[ratio] : String(ratio)
+}
+
 /** 把模板的样式说成一句人话，放在 chip 的 tooltip 里 */
 function describe(t: Template): string {
   const s = resolveStyle({ kind: props.kind, style: t.style })
   const parts = [`${TOOL_LABEL[props.kind]}模板 ${t.name}`]
   if (props.kind === 'fib') {
     parts.push('四条水平线各自配色')
+  } else if (props.kind === 'abcd') {
+    parts.push('AB / BC / CD 三段各自配色')
   } else {
     parts.push(`线宽 ${s.width}px`, s.dash === 'dashed' ? '虚线' : '实线')
     if (props.kind === 'rect') parts.push('带填充')
@@ -92,11 +102,11 @@ function describe(t: Template): string {
   return parts.join(' · ')
 }
 
-/** 编辑器里改某一条斐波那契水平的颜色 */
+/** 编辑器里改某一段（斐波那契的一条水平 / AB=CD 的一段）的颜色 */
 function setLevelColor(index: number, color: string): void {
   const d = editing.value
   if (!d) return
-  const levels = d.style.levels ?? defaultLevels()
+  const levels = d.style.levels ?? defaultLevels(props.kind)
   d.style.levels = levels.map((lv, i) => (i === index ? { ...lv, color } : lv))
 }
 
@@ -169,7 +179,7 @@ const inputClass = `${field} w-full`
         </label>
 
         <!-- 线类 + 矩形：线条颜色 -->
-        <div v-if="props.kind !== 'fib'" class="mb-2 flex items-center gap-2">
+        <div v-if="!multiColor" class="mb-2 flex items-center gap-2">
           <span class="w-12 shrink-0 text-dim">{{ props.kind === 'rect' ? '边框色' : '线条色' }}</span>
           <input
             type="color"
@@ -236,11 +246,11 @@ const inputClass = `${field} w-full`
           </label>
         </template>
 
-        <!-- 斐波那契：四条水平各一个颜色 -->
-        <div v-if="props.kind === 'fib'" class="mb-2 space-y-1">
-          <div class="text-dim">水平（比例固定，只能改颜色）</div>
-          <div v-for="(lv, i) in editing.style.levels ?? defaultLevels()" :key="lv.ratio" class="flex items-center gap-2">
-            <span class="tnum w-6 text-right text-faint">{{ lv.ratio }}</span>
+        <!-- 多色图形：斐波那契四条水平 / AB=CD 三段，各一个颜色（只能改颜色，线条位置是算出来的） -->
+        <div v-if="multiColor" class="mb-2 space-y-1">
+          <div class="text-dim">{{ props.kind === 'abcd' ? '线段（AB / BC / CD，水平线跟各自的段色）' : '水平（比例固定，只能改颜色）' }}</div>
+          <div v-for="(lv, i) in editing.style.levels ?? defaultLevels(props.kind)" :key="lv.ratio" class="flex items-center gap-2">
+            <span class="w-6 text-right text-faint" :class="{ tnum: props.kind !== 'abcd' }">{{ levelName(lv.ratio) }}</span>
             <input
               type="color"
               class="h-6 w-8 rounded border border-line bg-transparent"
@@ -258,7 +268,7 @@ const inputClass = `${field} w-full`
 
         <!-- 快捷色板：点一下就换（色值和上面那个 color input 是同一个字段）。
              斐波那契没有「一个颜色」，四条水平各自在上面调，所以这里不显示。 -->
-        <div v-if="props.kind !== 'fib'" class="mb-3 flex items-center gap-1.5">
+        <div v-if="!multiColor" class="mb-3 flex items-center gap-1.5">
           <span class="w-12 shrink-0 text-faint">快捷色</span>
           <button
             v-for="c in ANNOTATION_COLORS"

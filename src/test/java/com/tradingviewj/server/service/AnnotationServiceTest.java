@@ -260,14 +260,23 @@ class AnnotationServiceTest {
     /**
      * AB=CD 存三个点：B 点进 {@code drawing_mid}，D 不存（= C + AB 的平移量，前端现算）。
      * 拖动时 B 要一起走 —— 漏了它就是「挪了 A/C，B 留在原地」。
+     *
+     * <p>样式这边多了「三段各自一个颜色」：复用斐波那契那张表，比例 0/1/2 = AB/BC/CD，
+     * 越界的比例（9）要被丢掉，顺序固定 0、1、2。
      */
     @Test
-    void abcdKeepsMiddlePoint() {
+    void abcdKeepsMiddlePointAndThreeLegColors() {
+        AnnotationStyleView legs = new AnnotationStyleView("#f59e0b", new BigDecimal("1.4"), "solid",
+                null, null,
+                List.of(new AnnotationStyleView.FibLevelView(0, "#111111"),
+                        new AnnotationStyleView.FibLevelView(1, "#222222"),
+                        new AnnotationStyleView.FibLevelView(2, "#333333"),
+                        new AnnotationStyleView.FibLevelView(9, "#999999")));
         annotations.add(accountId, new AnnotationCommand("ab1", "abcd",
                 new AnnotationPointView(REVEALED, new BigDecimal("4000"), 0),
                 new AnnotationPointView(REVEALED, new BigDecimal("4020"), 2),
                 new AnnotationPointView(REVEALED, new BigDecimal("4010"), 5),
-                style(), true));
+                legs, true));
 
         AnnotationView view = annotations.list(SYMBOL).get(0);
         assertEquals("abcd", view.kind());
@@ -276,7 +285,13 @@ class AnnotationServiceTest {
         assertEquals(0, new BigDecimal("4020.00").compareTo(view.mid().price()));
         assertEquals(2, view.mid().offset());
         assertEquals(5, view.end().offset(), "C 是第三个点，不是 B");
-        assertNull(view.style().levels(), "AB=CD 没有斐波那契水平线");
+
+        List<AnnotationStyleView.FibLevelView> got = view.style().levels();
+        assertEquals(List.of(0, 1, 2),
+                got.stream().map(AnnotationStyleView.FibLevelView::ratio).toList(), "三段，顺序固定");
+        assertEquals("#111111", got.get(0).color(), "AB 的色");
+        assertEquals("#222222", got.get(1).color(), "BC 的色");
+        assertEquals("#333333", got.get(2).color(), "CD 的色");
 
         annotations.move(accountId, new AnnotationCommand("ab1", "abcd",
                 new AnnotationPointView(REVEALED, new BigDecimal("4005"), 0),
@@ -284,8 +299,9 @@ class AnnotationServiceTest {
                 new AnnotationPointView(REVEALED, new BigDecimal("4015"), 5),
                 null, false));
 
-        assertEquals(0, new BigDecimal("4025.00").compareTo(annotations.list(SYMBOL).get(0).mid().price()),
-                "B 跟着一起挪");
+        AnnotationView moved = annotations.list(SYMBOL).get(0);
+        assertEquals(0, new BigDecimal("4025.00").compareTo(moved.mid().price()), "B 跟着一起挪");
+        assertEquals("#111111", moved.style().levels().get(0).color(), "挪位置不动样式");
     }
 
     /** 少一个 B 点的 AB=CD 画不出来：直接拒，不留半条数据。 */

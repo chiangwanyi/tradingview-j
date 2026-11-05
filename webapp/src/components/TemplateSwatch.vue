@@ -11,28 +11,31 @@ import type { AnnotationStyle } from '@/types/protocol'
  * （新建图形用）和编辑态的模板条（给已画的图形换样式用）都在列模板，
  * 两处各抄一份 SVG 的话，改一处配色另一处就会悄悄不一致。
  *
- * 只认样式，不认数据：斐波那契画四条水平、矩形画一个带填充的框、其余画一条线。
+ * 只认样式，不认数据：斐波那契画四条水平、AB=CD 画三段（AB/BC/CD 各自的颜色）、
+ * 矩形画一个带填充的框、其余画一条线。
  */
 const props = defineProps<{ kind: string; style?: AnnotationStyle }>()
 
 const style = computed(() => resolveStyle({ kind: props.kind, style: props.style }))
 
-/** 斐波那契是四条线四个颜色，其余图形只有「一个颜色」 */
+/** 「一图形多颜色」的两种：斐波那契四条水平、AB=CD 三段；其余图形只有「一个颜色」 */
+const multiColor = computed(() => props.kind === 'fib' || props.kind === 'abcd')
 const colors = computed(() =>
-  props.kind === 'fib' ? (style.value.levels ?? defaultLevels()).map((lv) => lv.color) : [style.value.color],
+  multiColor.value ? (style.value.levels ?? defaultLevels(props.kind)).map((lv) => lv.color) : [style.value.color],
 )
 </script>
 
 <template>
   <svg width="16" height="10" viewBox="0 0 16 10" class="shrink-0">
-    <template v-if="kind === 'fib'">
+    <!-- 四条水平（斐波那契）/ 三段（AB=CD）：一行一个颜色，条数与 colors 同步 -->
+    <template v-if="multiColor">
       <line
         v-for="(c, i) in colors"
         :key="i"
         x1="0"
         x2="16"
-        :y1="1.5 + i * 2.4"
-        :y2="1.5 + i * 2.4"
+        :y1="colors.length === 3 ? 2 + i * 3.2 : 1.5 + i * 2.4"
+        :y2="colors.length === 3 ? 2 + i * 3.2 : 1.5 + i * 2.4"
         :stroke="c"
         stroke-width="1.4"
       />

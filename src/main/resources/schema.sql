@@ -255,8 +255,9 @@ CREATE TABLE IF NOT EXISTS drawing_mid (
     PRIMARY KEY (drawing_id)
 );
 
--- 斐波那契的四条水平线（只有 FIB 图形有）。
--- 这一条是**真级联**：水平线是图形的一部分，图形没了它就没有意义。
+-- 一图形多颜色的那几行：斐波那契的四条水平线（比例 -1/0/1/2）、
+-- AB=CD 的三段颜色（比例 0/1/2 = AB/BC/CD）。其它图形没有行。
+-- 这一条是**真级联**：这些行是图形的一部分，图形没了它就没有意义。
 CREATE TABLE IF NOT EXISTS drawing_fib_level (
     drawing_id  TEXT NOT NULL REFERENCES drawing (id) ON DELETE CASCADE,
     level_index INTEGER NOT NULL,

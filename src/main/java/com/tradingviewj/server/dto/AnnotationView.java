@@ -64,8 +64,9 @@ public record AnnotationView(
     /**
      * 样式 + 斐波那契水平线合到一份协议样式里。
      *
-     * <p>{@code levels} 只有 FIB 图形才有值 —— 给一条趋势线发 {@code []} 也不算错，
-     * 但发 {@code null}（全局 non_null 会省掉这个键）更诚实：「这个图形没有水平线」。
+     * <p>{@code levels} 只有「一图形多颜色」的两种才有值：FIB 是四条水平线（比例 -1/0/1/2），
+     * ABCD 是 AB / BC / CD 三段（比例 0/1/2）。给一条趋势线发 {@code []} 也不算错，
+     * 但发 {@code null}（全局 non_null 会省掉这个键）更诚实：「这个图形没有分段颜色」。
      */
     static AnnotationStyleView style(DrawingStyle style, List<FibLevel> levels) {
         return new AnnotationStyleView(

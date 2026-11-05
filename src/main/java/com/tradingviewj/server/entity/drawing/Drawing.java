@@ -108,7 +108,10 @@ public class Drawing extends BaseEntity {
     @Column(nullable = false)
     private boolean snapped;
 
-    /** 斐波那契的四条水平线。其它图形这里是空集合。 */
+    /**
+     * 一图形多颜色时的那几行：斐波那契四条水平（比例 -1/0/1/2）、AB=CD 三段
+     * （比例 0/1/2 = AB/BC/CD）。其它图形这里是空集合。
+     */
     @Setter
     @ElementCollection(fetch = FetchType.EAGER)
     @CollectionTable(name = "drawing_fib_level", joinColumns = @JoinColumn(name = "drawing_id"))
