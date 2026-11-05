@@ -44,6 +44,9 @@ const store = useTradeStore()
  * 用**权益**而不是余额：持仓浮亏已经在扣了，只盯余额会在盘中给出一个偏乐观的缓冲。
  * 这个减法在前端做是安全的 —— 两个数都来自同一次重放，没有口径问题；
  * 但「亏损线在哪」不能自己算（EOD 追踪有一道冻结水位，见 `data/rules.ts` 的 `lossLine`）。
+ *
+ * 失败账户上这个数会是负的，而「余额 − 亏损线」往往是正的 —— 那不是 bug：
+ * 穿线发生在盘中低点（权益口径），收摊却按当根收盘价平仓（余额口径），见下方顶栏的注释。
  */
 const remaining = computed(() => {
   const pf = store.pf
@@ -153,20 +156,48 @@ onBeforeUnmount(() => store.disconnect())
         >已达标 · 待升级</span
       >
 
-      <!-- 三个考核读数：数字全部由后端算（它才是唯一口径），这里只排版 -->
+      <!-- 三个考核读数：数字全部由后端算（它才是唯一口径），这里只排版。
+           ⚠️ 余额和权益不是一回事：余额只含**已实现**，判定用的是**权益**（持仓按
+           K 线最差价计浮亏，多单 low / 空单 high）。失败账户两者必然分叉 ——
+           穿线发生在盘中低点，收摊却按当根收盘价平仓，余额会回到线上。
+           所以失败时余额标成「强平后余额」、第三格直接摆「权益」（判死用的口径），
+           不要拿余额去减亏损线 —— 2026-11-05 碧空蒲团就是这么被看成「状态不对」的。 -->
       <div v-if="store.pf" class="ml-auto flex items-center gap-3 whitespace-nowrap text-[12px] tnum">
-        <span class="text-faint">余额</span>
+        <span
+          class="text-faint"
+          :title="
+            store.pf.status === 'FAILED'
+              ? '按当根收盘价强平后的实收现金；判死用的是权益，不是这个数'
+              : ''
+          "
+          >{{ store.pf.status === 'FAILED' ? '强平后余额' : '余额' }}</span
+        >
         <span class="text-[13px] font-semibold text-ink">{{ usd(store.pf.balance) }}</span>
         <span class="text-faint">亏损线</span>
         <span class="text-[13px] text-dim">{{ usd(store.pf.lossLine) }}</span>
-        <span class="text-faint">距亏损线</span>
-        <span
-          class="text-[13px] font-semibold"
-          :class="remaining != null && remaining <= 0 ? 'text-red-600' : 'text-ink'"
-          :title="store.pf.hint ?? ''"
-        >
-          {{ remaining == null ? '—' : `${remaining < 0 ? '-' : ''}${usd(Math.abs(remaining))}` }}
-        </span>
+        <template v-if="store.pf.status === 'FAILED'">
+          <span class="text-faint" :title="store.pf.hint ?? '权益 ≤ 亏损线即判失败'">权益</span>
+          <span
+            class="text-[13px] font-semibold"
+            :class="remaining != null && remaining <= 0 ? 'text-red-600' : 'text-ink'"
+            :title="store.pf.hint ?? ''"
+          >
+            {{ usd(store.pf.equity)
+            }}<span v-if="remaining != null && remaining < 0" class="text-[11px] text-red-500"
+              >（触线 {{ usd(Math.abs(remaining)) }}）</span
+            >
+          </span>
+        </template>
+        <template v-else>
+          <span class="text-faint">距亏损线</span>
+          <span
+            class="text-[13px] font-semibold"
+            :class="remaining != null && remaining <= 0 ? 'text-red-600' : 'text-ink'"
+            :title="store.pf.hint ?? ''"
+          >
+            {{ remaining == null ? '—' : `${remaining < 0 ? '-' : ''}${usd(Math.abs(remaining))}` }}
+          </span>
+        </template>
       </div>
     </header>
 

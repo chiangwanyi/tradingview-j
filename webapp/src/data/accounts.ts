@@ -76,6 +76,15 @@ export interface Account {
    */
   effectiveProfitTarget?: number | null
   balance: number
+  /**
+   * 权益读数 = 余额 + 持仓按 K 线最不利价的浮盈亏（多单 low / 空单 high）——
+   * **判死的是它，不是 `balance`**。读接口现算（后端 `PropFirmJudge#view`，
+   * 和交易页 `PfView.equity` 同源）；写操作的返回里没有（= undefined，界面上不画那一行）。
+   *
+   * 失败账户上它和 `balance` 必然分叉：判死发生在盘中最差价，收摊却按当根收盘价平仓，
+   * 余额会回到回撤线之上（2026-11-05 碧空蒲团：余额 49,350 在线上、权益 48,525 在线下）。
+   */
+  equity?: number
   /** 进入当前阶段的时刻（ISO 字符串）。 */
   stageStartedAt: string
   /** 这行账户写进库的真实时刻。 */

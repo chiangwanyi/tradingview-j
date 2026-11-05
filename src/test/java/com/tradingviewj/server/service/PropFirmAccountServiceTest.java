@@ -46,8 +46,12 @@ import static org.mockito.Mockito.when;
  *
  * <p>业务库 {@code ./db/tradingview-j.db} 一次都不碰，理由和
  * {@code PropFirmTemplateServiceTest} 一样：跑测试不能悄悄改用户的账户数据。
+ *
+ * <p><strong>必须 {@code RANDOM_PORT}</strong>：{@code WebSocketConfig#webSocketContainer}
+ * 要从 ServletContext 里取 {@code jakarta.websocket.server.ServerContainer}，
+ * 默认的 MOCK 环境里没有这个属性，整个上下文起不来（同 {@code AnnotationServiceTest}）。
  */
-@SpringBootTest
+@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 class PropFirmAccountServiceTest {
 
     /** 每个账户都绑同一个标的。必须在 {@code symbol} 表里存在 —— 这一列是真外键。 */

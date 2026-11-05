@@ -358,6 +358,22 @@ public class PropFirmAccount extends BaseEntity {
     private Integer tradingDays;
 
     /**
+     * <strong>权益</strong>：最近一次重放的读数（余额 + 持仓按 K 线最不利价的浮盈亏，
+     * 多单用 low、空单用 high）—— <strong>判死的是它，不是 {@link #balance}</strong>。
+     *
+     * <p>同一类 {@code @Transient} 结论（不落库、读账户时现算）：口径在
+     * {@code PropFirmJudge#view} <strong>一处</strong>，和交易页 {@code PfView.equity} 同源。
+     * 余额只含已实现、收摊又按当根收盘价成交，所以失败账户「余额在回撤线之上、
+     * 却是被判死的」是常态 —— 界面得把权益亮出来，账才对得上
+     * （2026-11-05 碧空蒲团：余额 49350 在线上，权益 48525 在线下）。
+     *
+     * <p>{@code null} = 这次没算（写操作的返回里没有 / 重放没跑起来），
+     * 界面上不画这一行，不拿余额冒充。
+     */
+    @Transient
+    private BigDecimal equity;
+
+    /**
      * 由 service 填入「已达标待升级」的结论。不落库、不参与任何判定，
      * 只影响界面上那颗【升级】按钮。
      */
@@ -373,6 +389,11 @@ public class PropFirmAccount extends BaseEntity {
     /** 由 service 填入「已走过几个交易日」。不落库。 */
     public void markTradingDays(int tradingDays) {
         this.tradingDays = tradingDays;
+    }
+
+    /** 由 service 填入「权益」读数（重放现算，同交易页 {@code PfView.equity}）。不落库。 */
+    public void markEquity(BigDecimal equity) {
+        this.equity = equity;
     }
 
     /** 本阶段赚了多少（已扣手续费）。可正可负。 */

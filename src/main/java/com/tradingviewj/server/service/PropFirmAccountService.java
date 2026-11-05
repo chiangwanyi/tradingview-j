@@ -379,14 +379,16 @@ public class PropFirmAccountService {
     }
 
     /**
-     * 取一个账户，<strong>顺便把「已达标待升级」算出来填上</strong>（{@code account.passed}）。
+     * 取一个账户，<strong>顺便把「已达标待升级」和「权益」算出来填上</strong>
+     * （{@code account.passed}、{@code account.equity}）。
      *
      * <p>只在<strong>读接口</strong>用（{@code GET /api/pf-accounts/{id}}）：那一次请求就是为了
-     * 让界面决定「升级按钮出不出现」，多花一次重放（十几到几十毫秒）换掉前端自己推规则。
+     * 让界面决定「升级按钮出不出现、权益那一行怎么写」，多花一次重放（十几到几十毫秒）
+     * 换掉前端自己推规则。
      *
      * <p>⚠️ <strong>不要换掉 {@link #get}</strong>：{@code requireExisting} 走的是 {@code get}，
      * 那是看盘 / 撤单 / 退仓的热路径，每按一次【下一根】就要读一次账户，
-     * 在那里重放一遍整段盘面纯属浪费 —— 而写操作本来也不需要这个数。
+     * 在那里重放一遍整段盘面纯属浪费 —— 而写操作本来也不需要这些数。
      */
     @Transactional(readOnly = true)
     public PropFirmAccount detail(String accountId) {
@@ -396,17 +398,17 @@ public class PropFirmAccountService {
     }
 
     /**
-     * 把三个「读的时候才算得出来」的结论填到实体上（都不落库）：
+     * 把四个「读的时候才算得出来」的结论填到实体上（都不落库）：
      * {@code originStage}（建户时在哪个阶段）、{@code passed}（已达标待升级）、
-     * {@code tradingDays}（已经走过几个交易日）。
+     * {@code equity}（权益读数）、{@code tradingDays}（已经走过几个交易日）。
      *
      * <p>放在一处是因为它们的调用时机<b>完全一样</b> —— 都只在读接口里，
-     * 都是给界面判断用的。写操作的返回里三个字段都缺（前端读到 {@code undefined}），
+     * 都是给界面判断用的。写操作的返回里四个字段都缺（前端读到 {@code undefined}），
      * 那些地方不需要它们，也不该为此多读一次流水、多重放一次盘面、多数一遍日历。
      */
     private void fillDerived(PropFirmAccount account) {
         fillOriginStage(account);
-        fillPassed(account);
+        fillJudgeReadings(account);
         fillTradingDays(account);
     }
 
@@ -455,25 +457,34 @@ public class PropFirmAccountService {
     }
 
     /**
-     * 算「已达标待升级」并填到实体上（不落库）。
+     * 算两件「只有重放才知道」的事、一次重放填两个数：{@code passed}（已达标待升级）和
+     * {@code equity}（权益读数，同交易页 {@code PfView.equity}）。别拆成两半各重放一遍。
      *
-     * <p>三类直接给 {@code false}，连重放都不做：
+     * <p>{@code passed} 里两类直接给 {@code false}：
      *
      * <ul>
      *   <li><strong>已判失败</strong> —— 终态，没有下一阶段可升；</li>
      *   <li><strong>已在 PAYOUT</strong> —— 链的尽头。</li>
      * </ul>
      *
-     * <p>重放本身失败（标的被删了、规则快照缺字段）也退化成 {@code false}：
-     * 那是一个「详情页少一颗按钮」的问题，不该变成「账户列表打不开」。
+     * <p>但 {@code equity} <strong>失败的账户也要</strong>（所以这里只跳过 PAYOUT）：
+     * 账户卡上「余额在回撤线之上、却是被判死的」正是要用权益解释 ——
+     * 余额是按当根收盘价强平后的实收，判死发生在盘中最差价（2026-11-05 碧空蒲团）。
+     * 代价是失败号也各多一次重放，和 {@link #list} 已经接受的量级相同。
+     *
+     * <p>重放本身失败（标的被删了、规则快照缺字段）退化成 {@code passed = false}、
+     * {@code equity} 留 {@code null}：那是「详情页少一颗按钮、卡片少一行」的问题，
+     * 不该变成「账户列表打不开」。
      */
-    private void fillPassed(PropFirmAccount account) {
-        if (!account.isOpen() || account.getStage() == PropFirmStage.PAYOUT) {
+    private void fillJudgeReadings(PropFirmAccount account) {
+        if (account.getStage() == PropFirmStage.PAYOUT) {
             account.markPassed(false);
             return;
         }
         try {
-            account.markPassed(judge.assess(account).frozen());
+            PropFirmJudge.State state = judge.assess(account);
+            account.markPassed(account.isOpen() && state.frozen());
+            account.markEquity(judge.view(account, state).equity());
         } catch (RuntimeException e) {
             account.markPassed(false);
         }
@@ -482,8 +493,9 @@ public class PropFirmAccountService {
     /**
      * 账户列表，新建的在前。
      *
-     * <p>每个元素都带上 {@code promoted}（考出来的吗）和 {@code passed}（已达标待升级），
-     * 见 {@link #fillDerived} —— 首页据此决定阶段标签怎么写、【升级】按钮出不出来。
+     * <p>每个元素都带上 {@code promoted}（考出来的吗）、{@code passed}（已达标待升级）和
+     * {@code equity}（权益读数），见 {@link #fillDerived} —— 首页据此决定阶段标签怎么写、
+     * 【升级】按钮出不出来、失败卡上「权益」那一行写什么。
      * 代价是「每账户一次流水查询 + 一次重放」，和「每个账户都去交易页开一遍」同一份量级，
      * 只是提前在一次请求里做完。
      *

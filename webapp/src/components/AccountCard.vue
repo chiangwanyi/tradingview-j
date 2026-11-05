@@ -204,7 +204,14 @@ function onTrade(): void {
 
     <div class="mt-3 grid grid-cols-2 gap-x-3 gap-y-3 border-t border-line px-4 py-3.5">
       <div>
-        <p class="text-label font-medium text-faint">账户余额</p>
+        <!-- 失败账户标「强平后」：余额是按当根收盘价强平后的实收，判死用的是权益（下行那一格）。
+             不标口径的话，「余额 49,350 > 回撤线 48,591 却失败了」会被看成状态错了。 -->
+        <p
+          class="text-label font-medium text-faint"
+          :title="failed ? '按当根收盘价强平后的实收现金；判死用的是权益，不是这个数' : ''"
+        >
+          {{ failed ? '强平后余额' : '账户余额' }}
+        </p>
         <p class="num text-metric font-semibold text-ink">{{ usd(a.balance) }}</p>
         <p class="num mt-0.5 flex flex-wrap items-baseline gap-x-2 text-body text-faint">
           <span class="whitespace-nowrap">起点 {{ usd(a.baseBalance) }}</span>
@@ -232,6 +239,20 @@ function onTrade(): void {
         <p class="num text-metric-sm font-medium text-ink">{{ usd(floor) }}</p>
         <p class="num text-body text-faint" title="回撤线 = 日终峰值（到过冻结水位就按水位）− 最大回撤">
           最大回撤 {{ usd(a.rules.maxDrawdown) }}
+        </p>
+        <!-- 失败卡补一行「权益」：判死的是权益（持仓按盘中最差价计浮亏），不是上面的余额 ——
+             两个数并排而不说明口径，卡片就会看起来「状态不对」（碧空蒲团 2026-11-05）。
+             数字来自后端重放（`a.equity`，同交易页 PfView.equity），缺了就不画，不拿余额冒充。 -->
+        <p
+          v-if="failed && a.equity != null"
+          class="num text-body"
+          :class="floor != null && a.equity < floor ? 'text-red-600' : 'text-faint'"
+          title="权益 = 余额 + 持仓最不利浮盈亏（多单按 low、空单按 high）；权益 ≤ 回撤线即判失败。余额是强平后的实收，两者分叉不是 bug"
+        >
+          权益 {{ usd(a.equity)
+          }}<span v-if="floor != null && a.equity < floor" class="whitespace-nowrap">
+            （触线 {{ usd(floor - a.equity) }}）</span
+          >
         </p>
       </div>
       <div>
