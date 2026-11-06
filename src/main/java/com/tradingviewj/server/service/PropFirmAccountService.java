@@ -85,6 +85,20 @@ public class PropFirmAccountService {
      */
     @Transactional
     public PropFirmAccount open(String templateId, String symbolId, String name) {
+        return open(templateId, symbolId, name, null);
+    }
+
+    /**
+     * 同上，但可以把起点<strong>限定在某一年</strong>（{@code year == null} = 完全随机）。
+     *
+     * <p>年份只是「候选文件的范围」，同一年里抽哪一天仍然是随机的 —— 用户要的是
+     * 「这一年里随便拿一段来练」，不是「固定从 1 月 2 日开始」。校验和报错都在
+     * {@link PropFirmStartPicker#pick(String, Integer)} 里。
+     *
+     * @param year 只在标的这一年（{@code yyyy}）的日文件里抽；{@code null} = 全部年份
+     */
+    @Transactional
+    public PropFirmAccount open(String templateId, String symbolId, String name, Integer year) {
         PropFirmTemplate template = templates.findById(templateId)
                 .orElseThrow(() -> new BusinessException("模板不存在: " + templateId));
         if (template.getRules() == null || template.getRules().getAccountSize() == null) {
@@ -92,7 +106,7 @@ public class PropFirmAccountService {
         }
         // 先抽起点再落库：抽不到就整个操作失败，不留下半成品账户。
         // 标的存不存在也在这一步判（抽不到就不可能有起点）。
-        PropFirmStartPicker.Pick pick = startPicker.pick(symbolId);
+        PropFirmStartPicker.Pick pick = startPicker.pick(symbolId, year);
         PropFirmAccount account = accounts.save(PropFirmAccount.open(template, symbolId, name,
                 pick.barTime(), pick.dayFile()));
         stageLogs.save(PropFirmStageLog.begin(account.getId(), 0, account.getStage(),

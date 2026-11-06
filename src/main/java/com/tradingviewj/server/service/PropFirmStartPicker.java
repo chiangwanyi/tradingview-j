@@ -13,7 +13,9 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
+import java.util.Objects;
 import java.util.concurrent.ThreadLocalRandom;
 
 /**
@@ -68,13 +70,32 @@ public class PropFirmStartPicker {
     }
 
     /**
-     * 在指定标的的日文件里抽一个起点。
+     * 在指定标的的日文件里抽一个起点（不限年份）。
      *
      * @param symbolCode 账户绑定的标的（{@code symbol} 表的 id，即标的代码）
      * @throws BusinessException 没给标的 / 标的不在库里 / 这个标的没有任何日文件 /
      *                           所有候选日都定位不到可交易的 K 线
      */
     public Pick pick(String symbolCode) {
+        return pick(symbolCode, null);
+    }
+
+    /**
+     * 在指定标的的日文件里抽一个起点，可限定年份。
+     *
+     * <p>{@code year} 只做一件事：把候选文件按文件名前缀过滤一遍，然后<strong>照旧随机</strong>
+     * 挑一份。它是「用户想练哪一年」这个偏好，不是精确指定某一天 —— 同一年里抽哪天仍然随机，
+     * 否则每天都是同一个起点，复盘就没有意义了。
+     *
+     * <p>{@code year == null} 就是「完全随机」：候选是这个标的的全部日文件。这条路径
+     * 和以前<strong>一模一样</strong>，不因为多了年份参数而变化。
+     *
+     * @param symbolCode 账户绑定的标的（{@code symbol} 表的 id，即标的代码）
+     * @param year       只在这一年的日文件里抽；{@code null} = 全部年份都算候选
+     * @throws BusinessException 没给标的 / 标的不在库里 / 这个标的没有任何日文件 /
+     *                           指定年份没有任何日文件 / 所有候选日都定位不到可交易的 K 线
+     */
+    public Pick pick(String symbolCode, Integer year) {
         if (symbolCode == null || symbolCode.isBlank()) {
             throw new BusinessException("开账户必须指定交易标的（symbolId 不能为空）");
         }
@@ -93,7 +114,7 @@ public class PropFirmStartPicker {
                 .orElseThrow(() -> new BusinessException(
                         "不认识的标的: " + symbolCode + "（symbol 表里只有: "
                                 + all.stream().map(Symbol::getId).toList() + "）"));
-        return pickFrom(bars, List.of(symbol.getFolder()));
+        return pickFrom(bars, List.of(symbol.getFolder()), year);
     }
 
     /**
@@ -101,8 +122,10 @@ public class PropFirmStartPicker {
      *
      * <p>拆成静态方法是为了可测：一个临时目录 + 一份三行 CSV 就能把
      * 「随机挑一天、定位到 09:00」这件事钉住，不必起 Spring 上下文。
+     *
+     * @param year 只在这一年的文件里抽；{@code null} = 全部文件都是候选
      */
-    static Pick pickFrom(CsvBarStore bars, List<String> folders) {
+    static Pick pickFrom(CsvBarStore bars, List<String> folders, Integer year) {
         List<Path> files = new ArrayList<>();
         for (String folder : folders) {
             files.addAll(bars.dayFiles(folder));
@@ -111,6 +134,21 @@ public class PropFirmStartPicker {
             throw new BusinessException(
                     "标的目录下没有任何 .csv（已检查 " + folders.size() + " 个目录：" + folders + "），"
                             + "无法给账户分配起始时间。请先用抓取程序录一段行情。");
+        }
+        if (year != null) {
+            // ⚠️ 必须 equals 不能 `==`：Integer 只缓存 -128..127，年份一定在缓存外，
+            // 用 == 比的是引用，于是「选了 2024」总是过滤成空集。
+            List<Path> inYear = files.stream()
+                    .filter(f -> year.equals(yearOf(f)))
+                    .toList();
+            if (inYear.isEmpty()) {
+                // 把「实际有哪些年」报出来：用户选了 2023 而数据从 2024 开始，
+                // 只说「这一年没有数据」还得让他自己去翻目录。
+                throw new BusinessException("标的目录里没有 " + year + " 年的 K 线（" + folders
+                        + " 只有一个标的目录，现有年份: " + yearsOf(files) + "）。"
+                        + "换个年份，或者在建户时把年份留空 = 完全随机。");
+            }
+            files = new ArrayList<>(inYear);
         }
 
         // 随机起点 + 线性探测：抽到不合格的一天就顺延，整圈都没有才报错。
@@ -125,7 +163,31 @@ public class PropFirmStartPicker {
             }
         }
         throw new BusinessException("所有 " + files.size()
-                + " 个 K 线日文件都定位不到可交易的起点（09:00 及之后没有 K 线，或全在禁交易窗口）");
+                + " 个 K 线日文件都定位不到可交易的起点（09:00 及之后没有 K 线，或全在禁交易窗口）"
+                + (year == null ? "" : "（候选已限定在 " + year + " 年）"));
+    }
+
+    /** 日文件名前三四个字符就是年份；不是「日期.csv」就返回 {@code null}（当作不属于任何年份）。 */
+    private static Integer yearOf(Path file) {
+        String name = file.getFileName().toString();
+        if (name.length() < 4) {
+            return null;
+        }
+        try {
+            return Integer.valueOf(name.substring(0, 4));
+        } catch (NumberFormatException e) {
+            return null;
+        }
+    }
+
+    /** 这堆文件覆盖了哪些年份，降序 —— 只用来把报错写清楚。 */
+    private static List<Integer> yearsOf(List<Path> files) {
+        return files.stream()
+                .map(PropFirmStartPicker::yearOf)
+                .filter(Objects::nonNull)
+                .distinct()
+                .sorted(Comparator.reverseOrder())
+                .toList();
     }
 
     /**

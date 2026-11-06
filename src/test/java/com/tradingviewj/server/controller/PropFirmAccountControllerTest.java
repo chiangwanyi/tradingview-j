@@ -76,7 +76,7 @@ class PropFirmAccountControllerTest {
 
     @Test
     void openReadsTemplateIdSymbolIdAndName() throws Exception {
-        when(accounts.open(eq("tpl-1"), eq("CME_MINI:MES1!"), eq("第一次考核")))
+        when(accounts.open(eq("tpl-1"), eq("CME_MINI:MES1!"), eq("第一次考核"), isNull()))
                 .thenReturn(evalAccount());
 
         String body = """
@@ -96,13 +96,32 @@ class PropFirmAccountControllerTest {
                 // 规则快照随账户一起回：前端卡片上的目标/回撤直接读它，不再去查模板
                 .andExpect(jsonPath("$.data.rules.profitTarget").value(3000.0));
 
-        verify(accounts).open("tpl-1", "CME_MINI:MES1!", "第一次考核");
+        verify(accounts).open("tpl-1", "CME_MINI:MES1!", "第一次考核", null);
+    }
+
+    /**
+     * 年份是可选的筛子：传了就原样交给 service（限定候选文件），不传就是「完全随机」。
+     *
+     * <p>用两条不同的桩分开验，是因为「忘了转发」和「转发成 null」在界面上看起来一样，
+     * 但前者会让「选 2024 却抽到 2026」变成一个时好时坏的怪现象。
+     */
+    @Test
+    void openPassesYearThroughToTheStartPicker() throws Exception {
+        when(accounts.open(any(), any(), any(), eq(2024))).thenReturn(evalAccount());
+
+        mvc.perform(post("/api/pf-accounts").contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"name":"抽 2024","templateId":"tpl-1","symbolId":"CME_MINI:MES1!","year":2024}
+                                """))
+                .andExpect(status().isOk());
+
+        verify(accounts).open("tpl-1", "CME_MINI:MES1!", "抽 2024", 2024);
     }
 
     /** 实体校验失败（没名字）→ 400，原因原样回给前端。 */
     @Test
     void openMapsIllegalArgumentToBadRequest() throws Exception {
-        when(accounts.open(any(), any(), any()))
+        when(accounts.open(any(), any(), any(), any()))
                 .thenThrow(new IllegalArgumentException("账户必须有名字，收到: "));
 
         mvc.perform(post("/api/pf-accounts").contentType(MediaType.APPLICATION_JSON)

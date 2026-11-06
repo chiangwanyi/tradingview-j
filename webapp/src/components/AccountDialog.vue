@@ -9,17 +9,21 @@ import { stageLabel, usd } from '@/data/rules'
 import type { Template } from '@/data/rules'
 
 /**
- * 开账户：选一套模板 + 起个名字 + **指定唯一标的**。
+ * 开账户：选一套模板 + 起个名字 + **指定唯一标的**（+ 可选的起点年份）。
  *
  * 起点 K 线由后端在该标的的日文件里随机抽（当天 09:00 及之后第一根），余额和规则都是
  * 模板的副本。这里不提供「自定义余额」之类的入口：余额只能从成交重算出来后同步。
  *
  * 标的是三个输入里**唯一不可逆**的那个 —— 建完就锁死，交易页也只有一个标的，
  * 所以表单上写清楚，别让人以为以后还能换。
+ *
+ * 「起点年份」只是**缩小随机范围**：选 2024 就在 2024 的日文件里随便抽一天，
+ * 不选就跨全部年份随机。它跟着标的变化（年份列表来自该标的磁盘上真实存在的文件），
+ * 所以换标的时要把已选年份清掉，否则会带着上一年的选择去撞「这一年没有数据」的报错。
  */
 const props = defineProps<{ templates: Template[]; error: string }>()
 const emit = defineEmits<{
-  save: [{ templateId: string; name: string; symbolId: string }]
+  save: [{ templateId: string; name: string; symbolId: string; year: number | null }]
   close: []
 }>()
 
@@ -63,6 +67,20 @@ onMounted(async () => {
 const chosen = computed(() => props.templates.find((t) => t.id === templateId.value) ?? null)
 const chosenSymbol = computed(() => symbols.value.find((s) => s.code === symbolId.value) ?? null)
 
+/**
+ * 起点年份：`''` = 任意年份（完全随机），否则是那一年。
+ *
+ * 存字符串是因为 `<select>` 的 `v-model` 给回来的一定是字符串 ——
+ * 在这里转成数字（提交时）比在下拉里塞对象简单，也不会出现 `0 === ''` 这种蠢问题。
+ */
+const yearPick = ref('')
+const yearOptions = computed<number[]>(() => chosenSymbol.value?.years ?? [])
+
+// 换标的 → 重选年份。上一个标的的年份列表对新标的不成立，留着只会换来一次「这一年没有数据」。
+watch(symbolId, () => {
+  yearPick.value = ''
+})
+
 // 模板列表是异步拉回来的：组件挂载时还是空的，等它到了再自动选中第一套，
 // 否则下拉框停在空值上（看着像「没有模板」，其实只是没选中）。
 watch(
@@ -87,7 +105,12 @@ function submit(): void {
     return
   }
   local.value = ''
-  emit('save', { templateId: templateId.value, symbolId: symbolId.value, name: name.value.trim() })
+  emit('save', {
+    templateId: templateId.value,
+    symbolId: symbolId.value,
+    name: name.value.trim(),
+    year: yearPick.value ? Number(yearPick.value) : null,
+  })
 }
 
 const inputCls =
@@ -151,6 +174,26 @@ const labelCls = 'mb-1 block text-note font-medium text-faint uppercase'
             <span v-if="chosenSymbol?.firstDay" class="num">
               可用区间 {{ chosenSymbol.firstDay }} ~ {{ chosenSymbol.lastDay }}
             </span>
+          </p>
+        </div>
+
+        <div>
+          <label :class="labelCls" for="year">起点年份（可选）</label>
+          <select
+            id="year"
+            v-model="yearPick"
+            :class="inputCls"
+            :disabled="!yearOptions.length"
+          >
+            <option value="">任意年份（完全随机）</option>
+            <option v-for="y in yearOptions" :key="y" :value="String(y)">{{ y }} 年</option>
+          </select>
+          <p class="mt-1 text-note text-faint">
+            {{
+              yearOptions.length
+                ? '只在选定的这一年里随机抽一天开盘；选「任意年份」就跨年随机。'
+                : '这个标的还没有 K 线，先跑抓取程序。'
+            }}
           </p>
         </div>
 

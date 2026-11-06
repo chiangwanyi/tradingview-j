@@ -116,11 +116,14 @@ public class PropFirmAccountController {
             templateId / name / symbolId 三个都必填，规则在这一刻复制进账户。
             symbolId 是账户唯一可交易的标的，**建户后不可改**；起点 K 线只在它的日文件里抽
             （当天 09:00 及之后第一根），抽不到就不建账户（业务错误码 10000）。
+            year 可选：只在这一年的日文件里抽；不传 = 全部年份完全随机。
+            传了而这一年没有数据 → 业务错误码 10000（报错里会列出实际有哪些年份）。
+            可选年份来自 GET /api/bars/symbols 的 years 字段。
             阶段由模板决定：FUNDED 模板建出来的账户直接是 FUNDED。
             """)
     @PostMapping
     public PropFirmAccount open(@RequestBody PropFirmAccountRequest body) {
-        return accounts.open(body.templateId(), body.symbolId(), body.name());
+        return accounts.open(body.templateId(), body.symbolId(), body.name(), body.year());
     }
 
     @Operation(summary = "改名", description = """

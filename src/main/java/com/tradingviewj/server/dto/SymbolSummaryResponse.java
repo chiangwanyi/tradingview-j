@@ -1,6 +1,7 @@
 package com.tradingviewj.server.dto;
 
 import java.math.BigDecimal;
+import java.util.List;
 
 /**
  * 交易页标的选择器里的一行。
@@ -17,6 +18,9 @@ import java.math.BigDecimal;
  * @param days       这个标的磁盘上有多少个日文件
  * @param firstDay   最早的日文件日期（{@code yyyy-MM-dd}）；没有文件时为 null
  * @param lastDay    最新的日文件日期；没有文件时为 null
+ * @param years      这个标的的数据覆盖了哪些年份，<strong>降序、去重</strong>（如 {@code [2026, 2025, 2024]}）。
+ *                   给建户弹窗的「按年份抽起点」用 —— 年份是从磁盘上的文件名数出来的，
+ *                   所以它和「这一年到底能不能抽出起点」是同一份事实。没有文件时是空数组。
  */
 public record SymbolSummaryResponse(
         String code,
@@ -26,6 +30,7 @@ public record SymbolSummaryResponse(
         BigDecimal commission,
         int days,
         String firstDay,
-        String lastDay
+        String lastDay,
+        List<Integer> years
 ) {
 }

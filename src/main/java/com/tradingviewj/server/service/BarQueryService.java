@@ -16,7 +16,10 @@ import java.nio.file.Path;
 import java.time.LocalDate;
 import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
+import java.util.Set;
+import java.util.TreeSet;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -70,10 +73,36 @@ public class BarQueryService {
                     spec.commission(),
                     files.size(),
                     files.isEmpty() ? null : dayOf(files.get(0)),
-                    files.isEmpty() ? null : dayOf(files.get(files.size() - 1))
+                    files.isEmpty() ? null : dayOf(files.get(files.size() - 1)),
+                    yearsOf(files)
             ));
         }
         return list;
+    }
+
+    /**
+     * 这堆日文件覆盖了哪些年份（降序）。
+     *
+     * <p>直接从文件名前三四个字符取，不解析成 {@code LocalDate}：目录里混进
+     * 名字不是日期的文件时，{@code dayDateOf} 会抛异常，而这里只是「少一个年份选项」，
+     * 不该让整个标的清单挂掉。解析不出年份的文件直接跳过。
+     *
+     * <p>降序是把「最近一年」排在最前面 —— 建户弹窗里第一项就是它。
+     */
+    private static List<Integer> yearsOf(List<Path> files) {
+        Set<Integer> years = new TreeSet<>(Comparator.reverseOrder());
+        for (Path file : files) {
+            String name = dayOf(file);
+            if (name.length() < 4) {
+                continue;
+            }
+            try {
+                years.add(Integer.parseInt(name.substring(0, 4)));
+            } catch (NumberFormatException e) {
+                // 不是 日期.csv：当它不存在
+            }
+        }
+        return List.copyOf(years);
     }
 
     /**

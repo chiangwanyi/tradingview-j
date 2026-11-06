@@ -76,7 +76,36 @@ class BarQueryServiceTest {
         assertEquals(2, mes.days());
         assertEquals("2024-03-04", mes.firstDay());
         assertEquals("2024-03-05", mes.lastDay());
+        // 建户弹窗的「按年份抽起点」就靠这个字段：它必须来自真实文件，而不是配置里的日期范围
+        assertEquals(List.of(2024), mes.years());
         assertEquals(0, new java.math.BigDecimal("0.25").compareTo(mes.tick()));
+    }
+
+    /**
+     * 年份去重 + 降序：同一年多个文件只出现一次，最近的一年排在最前（弹窗里第一项就是它）。
+     *
+     * <p>顺带钉住「名字不是日期的文件不参与」—— 目录里混进 {@code notes.csv} 时
+     * 不该多出一个莫名其妙的年份，也不该让整份标的清单挂掉。
+     */
+    @Test
+    void yearsAreDistinctAndDescending() throws IOException {
+        Path folder = dataRoot.resolve("CME_MINI_MES1!");
+        Files.writeString(folder.resolve("2023-12-29.csv"), """
+                time,open,high,low,close,volume
+                2023-12-29 09:00,4700.00,4701.00,4699.00,4700.50,100
+                """);
+        Files.writeString(folder.resolve("2026-01-05.csv"), """
+                time,open,high,low,close,volume
+                2026-01-05 09:00,6000.00,6001.00,5999.00,6000.50,100
+                """);
+        // 混进来的非日期文件：不参与年份统计
+        Files.writeString(folder.resolve("notes.csv"), "hello\n");
+
+        SymbolSummaryResponse mes = service.symbols().get(0);
+
+        assertEquals(List.of(2026, 2024, 2023), mes.years());
+        // 但它仍然算一个「日文件」—— days 按文件个数数，口径没动
+        assertEquals(5, mes.days());
     }
 
     @Test

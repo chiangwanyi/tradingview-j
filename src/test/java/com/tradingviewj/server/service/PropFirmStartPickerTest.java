@@ -153,6 +153,51 @@ class PropFirmStartPickerTest {
         assertEquals("2024-03-05 09:00", pick.barTime());
     }
 
+    /**
+     * 限定年份：只在那一年的文件里抽。
+     *
+     * <p>这里写两天、一旧一新，断言抽到的是指定年份那天 —— 一年只有一天，
+     * 所以「随机」不可能蒙对，年份过滤真的生效了才能过。
+     */
+    @Test
+    void yearNarrowsTheCandidatesToOneYear() throws IOException {
+        writeDay("CME_MINI_MES1!", "2024-03-04", """
+                time,open,high,low,close,volume
+                2024-03-04 09:00,100,101,99,100.5,10
+                """);
+        writeDay("CME_MINI_MES1!", "2025-07-15", """
+                time,open,high,low,close,volume
+                2025-07-15 09:00,200,201,199,200.5,10
+                """);
+
+        PropFirmStartPicker picker = new PropFirmStartPicker(repo(symbol(MES, "CME_MINI_MES1!")), bars());
+
+        assertEquals("2024-03-04.csv", picker.pick(MES, 2024).dayFile());
+        assertEquals("2025-07-15.csv", picker.pick(MES, 2025).dayFile());
+        // 不传年份 = 全部年份都是候选，抽到哪一份都算对
+        assertTrue(List.of("2024-03-04.csv", "2025-07-15.csv").contains(picker.pick(MES, null).dayFile()));
+    }
+
+    /** 指定的年份没有数据：当场报错并列出实际有哪些年份，别退回「随便抽一个别的年」。 */
+    @Test
+    void yearWithoutDataFailsAndListsAvailableYears() throws IOException {
+        writeDay("CME_MINI_MES1!", "2024-03-04", """
+                time,open,high,low,close,volume
+                2024-03-04 09:00,100,101,99,100.5,10
+                """);
+        writeDay("CME_MINI_MES1!", "2026-01-05", """
+                time,open,high,low,close,volume
+                2026-01-05 09:00,100,101,99,100.5,10
+                """);
+
+        PropFirmStartPicker picker = new PropFirmStartPicker(repo(symbol(MES, "CME_MINI_MES1!")), bars());
+
+        BusinessException e = assertThrows(BusinessException.class, () -> picker.pick(MES, 2023));
+        assertTrue(e.getMessage().contains("2023"), e.getMessage());
+        assertTrue(e.getMessage().contains("2024"), "报错要列出实际有哪些年份: " + e.getMessage());
+        assertTrue(e.getMessage().contains("2026"), e.getMessage());
+    }
+
     private void writeDay(String folder, String date, String content) throws IOException {
         Path dir = barRoot.resolve(folder);
         Files.createDirectories(dir);

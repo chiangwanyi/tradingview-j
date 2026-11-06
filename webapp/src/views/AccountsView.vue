@@ -72,9 +72,14 @@ function openNew(): void {
   drafting.value = true
 }
 
-function onCreate(payload: { templateId: string; symbolId: string; name: string }): void {
+function onCreate(payload: {
+  templateId: string
+  symbolId: string
+  name: string
+  year: number | null
+}): void {
   api
-    .open(payload.templateId, payload.symbolId, payload.name)
+    .open(payload.templateId, payload.symbolId, payload.name, payload.year)
     .then(() => {
       drafting.value = false
       return reload()

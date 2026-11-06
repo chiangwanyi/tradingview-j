@@ -127,9 +127,18 @@ export const get = (id: string): Promise<Account> => call(`${BASE}/${id}`)
  * 开账户：模板 + 名字 + **交易标的**（三个都必填）。
  *
  * `symbolId` 只在建户这一刻有意义 —— 后端把它钉死在账户上，之后的改名、升级都不会碰它。
+ *
+ * `year` 是**可选**的：传了就只在这一年的日文件里抽起点（如 `2024`），
+ * 不传 = 全部年份完全随机。同一年里抽哪一天仍然随机 —— 它是「想练哪一年」的偏好，
+ * 不是「指定从哪天开始」。可选年份见 `SymbolBrief.years`。
  */
-export const open = (templateId: string, symbolId: string, name: string): Promise<Account> =>
-  call(BASE, send('POST', { templateId, symbolId, name }))
+export const open = (
+  templateId: string,
+  symbolId: string,
+  name: string,
+  year?: number | null,
+): Promise<Account> =>
+  call(BASE, send('POST', { templateId, symbolId, name, year: year ?? null }))
 
 /**
  * 要一个随机账户名（形如「宁静山谷」「星河灯塔」）。

@@ -10,6 +10,11 @@ package com.tradingviewj.server.dto;
  * <p>改名只读 {@code name}，{@code templateId} 和 {@code symbolId} 都被忽略：
  * 换模板等于换一整套规则和余额基准、换标的等于换一整条时间轴，两者都是「重开一个账户」，
  * 不是「改一个字段」（阶段链见 {@code PropFirmTemplate#nextTemplateId}）。
+ *
+ * @param year 只在标的这一年的日文件里抽起点（{@code yyyy}，如 {@code 2024}）。
+ *             <strong>可以为空</strong>，空 = 全部年份完全随机 —— 这是老行为，
+ *             年份只是一个可选筛子，同一年里抽哪一天仍然随机。
+ *             改名时同样被忽略。
  */
-public record PropFirmAccountRequest(String name, String templateId, String symbolId) {
+public record PropFirmAccountRequest(String name, String templateId, String symbolId, Integer year) {
 }
